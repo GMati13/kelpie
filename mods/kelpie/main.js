@@ -175,11 +175,11 @@ function sidebar(state) {
 // The toolbar's Claude and Terminal (and their keys): in a story, the story's own; elsewhere a tab in
 // the shown space's folder.
 function newClaude(work = storyNow(), space = spaces().find((s) => s.active)) {
-  if (work?.story) return kelpie.claude();
+  if (work?.story) return work.claude();
   if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: claudeArgv(shownProfile()) });
 }
 function newTerminal(work = storyNow(), space = spaces().find((s) => s.active)) {
-  if (work?.story) return kelpie.terminal();
+  if (work?.story) return work.terminal();
   if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: shellArgv(shownProfile()) });
 }
 
@@ -332,7 +332,7 @@ function toolbar() {
     const on = work?.view === id;
     return decor("controlDecor", t, h_flex().id(`view-${id}`).h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected).text_color(t.foreground)).when(!on, (el) => el.text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)))
-      .on_mouse_down("left", stop).on_click(() => kelpie.show(id))
+      .on_mouse_down("left", stop).on_click(() => work.show(id))
       .child(skinFont(div(), "tab").child(skinText(label, "tab"))).when(typeof n === "number" && n > 0, (el) => el.child(skinFont(div().text_color(t.dim), "count", SMALL).child(skinText(String(n), "count")))),
     { kind: "view", id: `view-${id}`, label, on });
   };
@@ -346,7 +346,7 @@ function toolbar() {
   const has = (n) => typeof n === "number" && n > 0;
   const changes = !work?.preview || has(work?.prs) || has(work?.files);
   const shots = !work?.preview || has(work?.shots);
-  const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!work || kelpie.view === "agent") }));
+  const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!work || work.view === "agent") }));
   // The sidebar hidden (cmd-b): a button to bring it back, after room for the window buttons when the
   // tab bar is the top block (no story header above it).
   const sideOff = sideHidden(root);
@@ -358,20 +358,20 @@ function toolbar() {
       // A drag that leaves the bar, or is let go between tabs, ends without moving anything.
       .on_hover((on, cx) => { if (!on && tabDrag.id) { tabDragEnd(); cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => { if (tabDrag.id) { tabDragEnd(); cx.notify(); } })
-      .children(shownTabs.map((c) => (work ? tab(c).on_click(() => { run("tab.select", { id: c.id }); kelpie.show("agent"); }) : tab(c))))
+      .children(shownTabs.map((c) => (work ? tab(c).on_click(() => { run("tab.select", { id: c.id }); work.show("agent"); }) : tab(c))))
       // Outside a story: a Claude agent with no task, or a shell, as a new tab in the shown space's folder.
       .when(!work?.story && Boolean(space) && !profileElsewhere(), (el) => el
         .child(create("A Claude agent with no task, in this space's folder", "A shell in this space's folder")))
       .when(Boolean(work?.story), (el) => el
         // A pull request shown on its own (a review, one of yours with no ticket) has no Overview.
-        .when(kelpie.preview && !kelpie.review, (x) => x.child(view("start", "Overview")))
+        .when(work.preview && !work.review, (x) => x.child(view("start", "Overview")))
         // A review has no space of its own: its agent goes to the Reviews space (Start review).
-        .when(!kelpie.review, (x) => x
+        .when(!work.review, (x) => x
           .child(create("A Claude agent for this story with no task, in the profile's folder", "A plain shell for this story")))
         // The line between the tabs (and +) and the views; a pull request on its own has nothing before them.
-        .when((changes || shots) && !kelpie.review, (x) => x.child(div().w(1).h(16).mx(4).flex_none().bg(t.border)))
-        .when(changes, (x) => x.child(view("changes", "Changes", kelpie.files)))
-        .when(shots && !kelpie.review, (x) => x.child(view("shots", "Screenshots", kelpie.shots)))))
+        .when((changes || shots) && !work.review, (x) => x.child(div().w(1).h(16).mx(4).flex_none().bg(t.border)))
+        .when(changes, (x) => x.child(view("changes", "Changes", work.files)))
+        .when(shots && !work.review, (x) => x.child(view("shots", "Screenshots", work.shots)))))
     // In the Kelpie layout, a space whose Hub shows nothing keeps a way back to its setup.
     .when(hubHidden(), (el) => el.child(h_flex().id("hub-setup").h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
       .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(`Choose what ${space?.name ?? "this space"}'s Hub shows`)
@@ -588,11 +588,11 @@ async function command(c) {
   if (c === "what-next") return whatNext();
   const work = storyNow();
   if (!work?.story) return;
-  if (c === "start") return kelpie.start();
-  if (c === "pause") return kelpie.pause();
-  if (c === "fold") return kelpie.fold();
+  if (c === "start") return work.start();
+  if (c === "pause") return work.pause();
+  if (c === "fold") return work.fold();
   // "view-agent", "view-changes", "view-shots", "view-start": the tab bar's view buttons.
-  if (c.startsWith("view-")) return kelpie.show(c.slice("view-".length));
+  if (c.startsWith("view-")) return work.show(c.slice("view-".length));
 }
 
 // The Kelpie layout's Hub roles (work.js) are views of their own.

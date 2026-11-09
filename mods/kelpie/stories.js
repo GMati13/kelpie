@@ -1727,7 +1727,7 @@ export class Stories extends Source {
       : paused.length ? { label: "Resume", tip: `Bring back ${paused.length === 1 ? "its paused session" : `its ${paused.length} paused sessions`} where they left off` }
       : ticket.last ? { label: "Resume", tip: `Continue "${ticket.last.title}" (${ago(ticket.last.updated)} ago)`, last: true }
       : { label: it.space ? "Start agent" : "Start work", tip: `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`, fresh: true };
-    const go = work && primaryButton(t, "story-main", kelpie.label, () => startWork(st, it), { tip: `${kelpie.tip} ⌘⇧R` });
+    const go = work && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
     const primary = waiting ? primaryButton(t, "story-peek", "Peek", () => run("terminal.peek", { terminal: waiting.address }), { tip: `Answer ${waiting.tab_name} here, without switching spaces` })
       : headAsk ? this.askButton(t, st, it, `story-ask-${headAsk.kind}`, headAsk.kind, headAsk.prs, true)
       : go;
@@ -1741,7 +1741,7 @@ export class Stories extends Source {
     const earlier = sessionsFor(st.data, key).filter((x) => !(work?.last && x.id === ticket.last.id));
     const rows = [
       // The main action, when a pull request's or the agent's took its place.
-      ...(work && primary !== go && !live.length ? [{ label: kelpie.label, tip: `${kelpie.tip} ⌘⇧R`, action: () => startWork(st, it) }] : []),
+      ...(work && primary !== go && !live.length ? [{ label: work.label, tip: `${work.tip} ⌘⇧R`, action: () => startWork(st, it) }] : []),
       // With a space, more agents come from the tab bar's +; before one, this starts the story afresh
       // instead of resuming its last session.
       ...(work?.fresh || it.space ? [] : [{ label: "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start }]),
