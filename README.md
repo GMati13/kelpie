@@ -2,7 +2,7 @@
 
 A kelpie is the sheepdog that works the flock on its own and comes back only when it's needed. This one does the same for your Claude agents in Herdr.
 
-Layouts and mods for Herdr built around profiles and stories: a profile's Jira sprint in the sidebar, each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
+Layouts and mods for [Herdr](https://herdr.dev) built around profiles and stories: a profile's Jira sprint in the sidebar, each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
 
 - `layouts/Kelpie.json` (the Quiet Pages look) and `layouts/Kelpie-Plain.json` (no skin), with their themes and previews
 - `mods/kelpie`: every Kelpie view (sidebar, story header, Changes, tab bar, footer, dialogs, skins)
@@ -26,7 +26,7 @@ A review waiting for you, before any agent starts on it:
 
 A story nobody has started yet:
 
-![A story not started: its description and subtasks, each with Start work](docs/screenshots/overview.png)
+![A story not started: its description, and its subtasks each with what can be done next (Start work, or Resume an earlier session)](docs/screenshots/overview.png)
 
 `Kelpie-Plain` is the same layout without the skin:
 
@@ -34,27 +34,57 @@ A story nobody has started yet:
 
 ## Requirements
 
-- Herdr and [Claude Code](https://claude.com/claude-code)
-- `git`, `python3`, `jq` and `curl`
+- [Herdr](https://herdr.dev), with its `herdr-app` and `hc` commands on your `PATH` (tested with Herdr 0.1.14 and herdr-core 0.1.19), and [Claude Code](https://claude.com/claude-code)
+- `git`, `jq`, `curl`, and `python3` (its standard library only)
 - For pull requests: the GitHub CLI `gh`, signed in (`gh auth login`)
 - For Jira (Jira Cloud only): an API token, kept in the macOS Keychain or printed by a command of your own (`op read …`, `pass …`, `secret-tool lookup …`); the profile dialog sets it up
-- Optional: `terminal-browser` for the Web panel; `sqlite3` lets Restart browser forget a stuck page
+- Optional:
+  - [ImageMagick](https://imagemagick.org) (`magick`) to mark up screenshots before sending them to an agent
+  - [`terminal-browser`](https://terminal-browser.com) (`brew install --cask terminal-browser`) for the Web panel
+  - `sqlite3`, which lets Restart browser forget a page that froze it
 
-Developed on macOS. Linux is meant to work (no Keychain: use a token command) but is less tested.
+Developed on macOS. Linux is meant to work but is less tested. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only (without it, the gallery's thumbnails are the full images).
 
 ## Install
 
 ```sh
+git clone https://github.com/GMati13/kelpie.git
+cd kelpie
 ./install.sh
 ```
 
-Then merge the sections of `keys.json` into `~/.config/herdr-app/keys.json`, and pick a Kelpie layout (`cmd-shift-l`). Profiles (folder, Jira board, GitHub owner, Claude account) are set up from the sidebar's profile menu, or by a Claude agent with "Let me configure it for you".
+`install.sh` links the layouts, themes and mods into Herdr's folder (`~/.config/herdr-app`, or `$HERDR_APP_HOME`), so a `git pull` updates them, and copies what Herdr won't read through a link: the layouts' previews, the icons, and the skin's art and fonts. Run it again after updating. It never overwrites a file of yours: if one is in the way, it names it and stops.
 
-Optional:
+Then:
 
-- Claude limits in the footer: set Claude Code's status line to `sh ~/.config/herdr-app/mods/kelpie/claude-statusline.sh`
-- The web panel needs `terminal-browser` and, for its images, `terminal-browser config set render.presenter patched` once
-- Skins with art: `python3 mods/kelpie/skins/<name>/build.py` (needs pillow) where a skin has one
+1. **Restart Herdr** if it's running: it loads fonts only at start.
+2. **Add Kelpie's keys** to Herdr's own `~/.config/herdr-app/keys.json`. Kelpie's `keys.json` has a section for each layout (`layout:Kelpie`, `layout:Kelpie-Plain`), which go in as they are, and one global key (`cmd-shift-s` toggles the Web panel), which goes into your `global` section. This merges them, keeping a backup and your own keys (Kelpie's win where both bind the same key):
+
+   ```sh
+   k=~/.config/herdr-app/keys.json
+   [ -f "$k" ] && cp "$k" "$k.bak" || echo '{}' > "$k"
+   jq -s '.[0] * .[1]' "$k" keys.json > "$k.new" && cat "$k.new" > "$k" && rm "$k.new"
+   ```
+
+   In the Kelpie layouts, these replace Herdr's: `cmd-w` closes a tab (asking first, Pause or Close, for a story's last one), `cmd-n` opens a new space for the profile, `cmd-b` hides the sidebar. Kelpie's own: `cmd-shift-j` next thing that needs you, `cmd-shift-k` find a story, `cmd-shift-r` start or show the story's agent, `cmd-alt-p` pause, `cmd-alt-c` new Claude, `cmd-alt-t` new terminal, `cmd-alt-d` the Desk, `cmd-shift-h` fold the story's details.
+3. **Pick Kelpie** in Herdr's Settings › Look (or press `ctrl-shift-l` to cycle through layouts).
+4. **Make a profile** from the profile menu at the top of the sidebar (New profile…).
+
+### Profiles
+
+A profile is a folder you work in, plus whatever you connect to it: a Jira board (its sprint becomes the sidebar's stories), a GitHub owner (pull requests and reviews), a Claude account, a start page for the Web panel. Only the folder is needed. Without Jira, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog.
+
+### Optional
+
+- **Claude's usage limits in the footer:** point Claude Code's status line at Kelpie's script, in the `settings.json` of each Claude config folder you use (`~/.claude`, and any other you run with `CLAUDE_CONFIG_DIR`):
+
+  ```json
+  "statusLine": { "type": "command", "command": "sh ~/.config/herdr-app/mods/kelpie/claude-statusline.sh" }
+  ```
+
+  It saves the limits for Kelpie and prints nothing, so it replaces a status line you already have. A word after the path names the account in the footer (`… claude-statusline.sh Work`). With `HERDR_APP_HOME`, use that folder in the path.
+- **The Web panel:** run `terminal-browser config set render.presenter patched` once, for its images to draw in place.
+- **Changing a skin's art:** the art is already built; after editing it, rebuild with `python3 mods/kelpie/skins/<name>/build.py` (needs pillow).
 
 ## Try it without Jira
 
@@ -62,9 +92,17 @@ Optional:
 herdr-app do kelpie.demo
 ```
 
-This adds a profile called Acme, with a made-up sprint, pull requests and agents in every state, and opens its stories as spaces. Nothing reaches Jira, GitHub or Claude. Its agents are a stand-in script, and its links go nowhere real. What it shows comes from `mods/kelpie/demo/demo.json`: edit it and press Refresh to set up another situation. When you're done, close the Acme spaces and delete the profile from its profile dialog.
+This adds a profile called Acme, with a made-up sprint, pull requests and agents in every state, and opens its stories as spaces. Nothing reaches Jira, GitHub or Claude. Its agents are a stand-in script, and its links can't reach anyone. What it shows comes from `mods/kelpie/demo/demo.json`: edit it and press Refresh to set up another situation.
 
-See `CLAUDE.md` for how it all works.
+To take it away again (its spaces, the profile and its folder):
+
+```sh
+herdr-app do kelpie.demo-remove
+```
+
+## Contributing
+
+`CLAUDE.md` holds the internals and design notes. It's written for the coding agents that work on Kelpie, so it's dense, but it's the reference for how every part works.
 
 ## License
 
