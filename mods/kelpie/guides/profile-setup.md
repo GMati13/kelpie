@@ -18,10 +18,15 @@ changed. Do only the scope you were given; at the end, mention anything else tha
   Saving one page at a time is fine; you don't have to save everything at the end.
 - **Secrets never pass through you.** Never ask for, read, print, store or pass an API token, a
   password or a token command's output. Sign-in is a Keychain item the person fills in their own
-  terminal, or a token command (one that prints the token, like `op read …`) whose output only ever
-  goes to `jira.sh`. Don't run a token command yourself.
-- **Read-only exploring.** Listing folders, `git` status, `gh` queries, `jira.sh … get` are fine.
-  Anything that changes something (writing scripts, deleting, moving) needs the person's yes.
+  terminal, or a token command (one that prints the token, like `op read …`) that only Kelpie runs.
+  Don't run a token command yourself.
+- **Your own access, never Kelpie's.** Look things up in Jira, GitHub or anywhere else only through
+  the access your own setup gives you (its MCP servers, plugins, tools and permissions). Kelpie's
+  scripts (`jira.sh` and the rest) and the person's Kelpie sign-in are Kelpie's, not a way around
+  your setup: never run them to fetch data. When you can't reach something, say so and ask the
+  person for it (a board address, a column name, an organisation); that's how it's meant to work.
+- **Read-only exploring.** Listing folders and `git` status are fine, and so is reading through your
+  own access. Anything that changes something (writing scripts, deleting, moving) needs the person's yes.
 - **Nothing personal goes into the mod or its repo.** Settings live in the profile. Scripts the person
   wants go where they say (their dotfiles, a scripts folder in the profile's folder), never into `<mod>`.
 - **What the profile says is yours; how it's shown is the layout's.** The layout is the same for
@@ -67,7 +72,7 @@ Fields you may see that aren't in the dialog (`sources`, `seen`, `id`) are old o
 Write a change request, ask the layout to apply it, then read the result:
 
 ```sh
-mkdir -p "<home>/work"
+mkdir -p "<home>/kelpie"
 cat > "<home>/kelpie/profile-apply.json" <<'JSON'
 { "id": "<id>", "set": { "commands": { "leftovers": "~/bin/leftovers {key}" } } }
 JSON
@@ -79,6 +84,15 @@ The result is `{ "ok": true, "profile": {…} }` or `{ "ok": false, "error": "�
 time. The request file is removed once it's read. If no result shows up within a few seconds, the Kelpie
 layout isn't on screen: ask the person to show it, then run `herdr-app do kelpie.apply-profile` again.
 
+**Some changes wait for the person's yes.** Anything that can run a command or steer agents
+(`commands`, `jira.tokenCommand`, `prompts`, the `github` prompts, `claude`), decide where the Jira
+sign-in goes or which one (`jira.url`, `jira.email`, `jira.keychain`), or open a page (`web`) isn't
+saved by your request: Kelpie shows the person what you asked for, and only their click saves it. The
+result then says `"pending": true`. Tell the person to look at Kelpie, and read the result file again
+after they've answered: it becomes `"ok": true`, or an error saying they said no. Nothing else in the
+request is saved meanwhile, so send those changes in a request of their own, or wait. You can't
+confirm it yourself, and shouldn't try.
+
 How `set` merges:
 
 - Top-level keys: `name`, `folder`, `jira`, `github`, `commands`, `prompts`, `notify`, `claude`, `web`.
@@ -88,7 +102,8 @@ How `set` merges:
   `null` is removed; a section set to `null` is removed whole (disconnecting Jira, say).
 - Every value must be a string, except `jira.board` (a number), `notify.pulls` (true/false) and
   `null`s. Keys that look like secrets (`token`, `password`, `apiToken`, `secret`) are refused.
-- `jira.url` is checked and `jira.site` and `jira.board` are filled in from it. A Jira section needs
+- `jira.url` must be a Jira Cloud board (`https://<name>.atlassian.net/…/boards/<n>`); `jira.site` and
+  `jira.board` are filled in from it. `jira.email` takes no quotes, backslashes or spaces. A Jira section needs
   `keychain`, or `tokenCommand` with `email`. A `github` section needs `owner`. `web.home` must start
   with `https://` or `http://`.
 - A prompt or message equal to its default doesn't need saving: remove it with `null` to go back to
@@ -153,27 +168,22 @@ and stop if that's what they use.
   - **A token command** (`jira.tokenCommand` and `jira.email`): a command that prints the token from a
     password manager: `op read op://…`, `pass show …`, `secret-tool lookup …`. For non-macOS systems, or
     when they keep it there already. A token command, when set, wins over the Keychain item.
-- **Check it** with the mod's script (it prints JSON: `code` 200 and `authed` true means signed in;
-  a wrong token comes back as 200 with `authed` false):
-  ```sh
-  sh <mod>/jira.sh <site> <keychain item> get /rest/agile/1.0/board/<board>
-  sh <mod>/jira.sh --email <email> --token-command '<command>' <site> "" get /rest/agile/1.0/board/<board>
-  ```
-  `jq '{code, authed, name: .body.name, type: .body.type}'` keeps it short. The output never contains
-  the token.
+- **Check it** in Kelpie, not yourself: once it's saved, open the profile's Jira page
+  (`herdr-app do kelpie.edit-profile-jira`) and ask the person to press its Check button, which signs
+  in with what they stored and says whether it worked and which board it found. Don't sign in for it.
 - **Your part** (`jira.handover`, scope `handover`): the board column from which the person's part of a
   ticket is done (usually the first testing or review column). A story whose subtasks assigned to them
   are all in that column or further right waits on others, so it sinks to the end of their list.
-  Get the columns with `… get /rest/agile/1.0/board/<board>/configuration` (`.body.columnConfig.columns[].name`)
-  and ask. Save the column's exact name. Unset, the layout picks the first column named like test,
+  Find the board's columns through your own Jira access if you have it, else ask: after Check, the
+  Jira page's "My part is done from column" lists them. Save the column's exact name. Unset, the layout picks the first column named like test,
   QA or verify, else the last.
 
 ### 3. GitHub
 
-- **Owner** (`github.owner`): the organisation (or user) whose repositories hold the work. Check `gh`
-  is signed in (`gh auth status`), then that the owner finds their pull requests:
-  `gh search prs --owner <owner> --author @me --state open --limit 5`. The person's orgs:
-  `gh api user/orgs --jq '.[].login'`.
+- **Owner** (`github.owner`): the organisation (or user) whose repositories hold the work. Find it
+  through your own GitHub access if you have it (their organisations, where their pull requests are),
+  else ask. Kelpie reads GitHub through the GitHub CLI, signed in as the person (`gh auth login`, in a
+  terminal of theirs): the GitHub page's Check button says whether it finds their pull requests.
 - **Notifications** (`notify.pulls`, default true): a notification when one of their pull requests
   starts failing checks, gets changes requested, or becomes ready to merge.
 

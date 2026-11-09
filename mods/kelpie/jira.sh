@@ -27,11 +27,13 @@ site=${1%/}
 item=$2
 shift 2 2>/dev/null
 
-case "$site" in
-  https://*) ;;
-  *) jq -nc '{code: 0, error: "site"}'; exit 0 ;;
-esac
+# Jira Cloud only: the token goes to this site, so nothing but https://<name>.atlassian.net.
+if ! printf '%s' "$site" | grep -Eq '^https://[A-Za-z0-9-]+\.atlassian\.net$'; then
+  jq -nc '{code: 0, error: "site"}'; exit 0
+fi
 
+nl='
+'
 if [ -n "$token_command" ]; then
   # Its errors are dropped too: a secret tool's message could quote what it read.
   if ! token=$("${SHELL:-/bin/sh}" -c "$token_command" 2>/dev/null </dev/null) || [ -z "$token" ]; then
@@ -39,8 +41,6 @@ if [ -n "$token_command" ]; then
     exit 0
   fi
   # Only its first line counts, without a trailing CR (Windows line ends).
-  nl='
-'
   token=${token%%"$nl"*}
   token=${token%"$(printf '\r')"}
 elif [ -n "$item" ]; then
@@ -51,6 +51,13 @@ if [ -z "$token" ] || [ -z "$email" ]; then
   jq -nc --arg site "$site" '{site: $site, code: 0, body: null, error: "missing"}'
   exit 0
 fi
+# Both go into curl's config inside double quotes: a quote, backslash or line break there would add
+# options of its own (another URL that gets the credentials, say), so a sign-in holding one is refused.
+case "$email$token" in
+  *'"'*|*'\'*|*"$(printf '\r')"*|*"$nl"*)
+    jq -nc --arg site "$site" '{site: $site, code: 0, body: null, error: "invalid"}'
+    exit 0 ;;
+esac
 
 body=$(mktemp) || exit 1
 headers=$(mktemp) || exit 1

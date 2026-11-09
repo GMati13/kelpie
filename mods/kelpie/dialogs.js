@@ -12,6 +12,7 @@ import { closeOverlay, openOverlay, props, run } from "herdr";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, primaryButton, textButton } from "./ui.js";
 import { selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
+import { applyPendingProfile } from "./config.js";
 
 export const openStoryPicker = () => openOverlay({ mod: MOD, kind: "popup", at: "top", offset: 40, width: 640, height: 520, props: { role: "story-picker" } });
 
@@ -101,9 +102,16 @@ export class Confirm {
     this.handle.focus();
   }
 
+  // `pendingProfile`: an agent's profile change waiting for the person (config.js). It's applied here,
+  // by this button, never through a command an agent could run itself.
   yes(command = props().command) {
     closeOverlay(props().overlay);
+    if (props().pendingProfile) return applyPendingProfile(true);
     run(command.name, command.args ?? {});
+  }
+  no() {
+    if (props().pendingProfile) applyPendingProfile(false);
+    closeOverlay(props().overlay);
   }
 
   render() {
@@ -112,7 +120,7 @@ export class Confirm {
     return decor("blockDecor", t, v_flex().id("kelpie-confirm").track_focus(this.handle).size_full().min_h(0).p(DIALOG.pad).gap(DIALOG.gap).bg(t.popover).text_size(TEXT)
       .on_key_down((e, cx) => {
         if (e.key === "enter") this.yes();
-        else if (e.key === "escape") closeOverlay(p.overlay);
+        else if (e.key === "escape") this.no();
         else return;
         cx.stop_propagation();
       })
@@ -126,7 +134,7 @@ export class Confirm {
           .when(Boolean(x.key), (row) => row.child(div().flex_none().text_size(SMALL).mt(1).text_color(t.dim).child(x.key)))
           .child(div().flex_1().min_w(0).text_color(t.foreground).child(x.text)))))))
       .child(h_flex().justify_end().gap(DIALOG.gap)
-        .child(textButton(t, "confirm-no", "Cancel", () => closeOverlay(p.overlay)))
+        .child(textButton(t, "confirm-no", "Cancel", () => this.no()))
         .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, () => this.yes(p.alt.command))))
         .child(primaryButton(t, "confirm-yes", p.yes ?? "Confirm", () => this.yes()))), { role: "confirm", now: new Date() });
   }

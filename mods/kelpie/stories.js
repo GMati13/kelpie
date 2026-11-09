@@ -16,7 +16,7 @@ import { agents, exec, focused, hc, notify, openOverlay, panes, readTextFile, ru
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { PREVIEWS, STORIES, chooseProfile, claudeArgv, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { PREVIEWS, STORIES, chooseProfile, claudeArgv, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
 import { searchPulls } from "./pulls.js";
 import { adfBlocks, adfLines, adfText } from "./adf.js";
@@ -1136,7 +1136,7 @@ function startDeskTask(kind, profile, prs) {
 // for your answer: the message would land in its question.
 function sendStoryTask(kind, profile, it, prs, agent) {
   if (agent.status === "blocked") return say(`${agent.tab_name} is waiting for your answer: answer it first.`);
-  hc(["send", agent.address, storyTaskText(kind, profile, it, prs)])
+  sendToClaude(agent.address, storyTaskText(kind, profile, it, prs))
     .then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); say(`Sent ${it.key ? `${it.key}'s` : "the"} ${STORY_TASKS[kind].what} to ${agent.tab_name}.`); })
     .catch((e) => say(`Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`));
 }
@@ -1163,7 +1163,7 @@ function askPull(profile, p, kind) {
     return say(`Asked a new agent on the Desk: ${ASK[kind].toLowerCase()} ${prName(p)}.`);
   }
   if (a.status === "blocked") return say(`${a.tab_name} is waiting for your answer: answer it first.`);
-  hc(["send", a.address, text]).then(() => { showPullAgent(p); say(`Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
+  sendToClaude(a.address, text).then(() => { showPullAgent(p); say(`Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
     .catch((e) => say(`Couldn't send it to ${a.tab_name}: ${String(e?.message ?? e)}`));
 }
 
@@ -1231,7 +1231,9 @@ function startReview(profile, p) {
     const [checkout, ticket] = await Promise.all([checkoutReview(profile, p), reviewTicket(profile, p)]);
     say(checkout.note);
     const task = reviewTask(profile.github, { url: p.url, repo: p.repository.name, number: p.number, title: p.title, author: p.author?.login ?? "", folder: checkout.folder ?? "", ...ticket });
-    const tab = { name, folder: checkout.folder ?? profile.folder, argv: claudeArgv(profile), task };
+    // The agent starts in the profile's folder, never in the checkout: it's someone else's code, and
+    // Claude would take in its settings, hooks and instructions there. It reads the checkout by path.
+    const tab = { name, folder: profile.folder, argv: claudeArgv(profile), task };
     const space = spacesOf(profile).find((s) => s.name === REVIEWS);
     if (!space) return run("space.new", { name: REVIEWS, folder: tab.folder, tab: name, argv: tab.argv, task: tab.task });
     newTab({ space: space.id, ...tab });
@@ -1610,7 +1612,7 @@ export class Stories extends Source {
     const agent = sub?.agent ?? (key === it.key ? it.agent : null) ?? (sub && !sub.paused && !sub.last ? it.agent : null);
     if (agent) {
       if (agent.status === "blocked") { this.flash = `${agent.tab_name} is waiting for your answer: answer it first.`; cx.notify(); return; }
-      hc(["send", agent.address, text]).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { this.flash = `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`; cx.notify(); });
+      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { this.flash = `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`; cx.notify(); });
     } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, text));
     else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, text));
     // A new agent knows nothing yet: the ticket prompt comes first.
@@ -1768,7 +1770,7 @@ export class Stories extends Source {
     const agent = tab ? agents().find((a) => a.tab === tab.id) ?? null : null;
     const tell = (text) => (cx) => {
       if (agent.status === "blocked") { this.flash = `${agent.tab_name} is waiting for your answer: answer it first.`; cx.notify(); return; }
-      hc(["send", agent.address, text]).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
+      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
         .catch((e) => { this.flash = `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`; cx.notify(); });
     };
     const decide = (id, label, text, tip) => this.carefulButton(t, `review-${id}`, label, true, tell(text), { tip, confirmTip: `${tip}: click again to send it to its agent` });
@@ -3134,8 +3136,23 @@ function leftoverItems(profile, it) {
   return Object.entries(leftoversByKey(profile, it)).flatMap(([k, lines]) => lines.map((text) => ({ key: k === it.key ? null : k, text })));
 }
 
+// Why a story can't be cleaned up yet, if anything: only work that's done and settled goes. A story
+// must be Done in Jira (a pull request without a ticket: merged), with no pull request still open and
+// no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted work is
+// checked when it's cleaned (cleanUp), as that takes a look at its folders.
+function cleanBlockers(it) {
+  const why = [];
+  const lone = it.pull || it.review;
+  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't Done in Jira");
+  if (!lone && allPrs(it).some((p) => !p.merged)) why.push("a pull request of it is still open");
+  const live = [...allAgents(it), ...(it.space ? agents().filter((a) => a.space === it.space.id) : [])];
+  if (live.some((a) => a.status === "working")) why.push("an agent is working on it");
+  if (live.some((a) => a.status === "blocked")) why.push("an agent is waiting for you");
+  return why;
+}
+
 function cleanable(profile, it) {
-  if (!profile || !finished(it)) return [];
+  if (!profile || !finished(it) || cleanBlockers(it).length) return [];
   const paused = allPaused(it).length;
   const left = cleanCommand(profile) ? leftoversOf(profile, it) : [];
   return [it.space && "closes its space",
@@ -3143,10 +3160,26 @@ function cleanable(profile, it) {
     left.length && `runs the clean-up command on what it left${left.length > 1 ? ` (${left.length} things)` : ""}`].filter(Boolean);
 }
 
+// The repos of a story's ticket folders with uncommitted work (changes.py): a clean-up command may
+// delete them, so a story with any isn't cleaned up. A demo profile has none on disk.
+async function uncommitted(profile, it) {
+  if (isDemo(profile)) return [];
+  const on = it.space ? spaces().find((s) => s.id === it.space.id)?.machine : null;
+  const code = await readTextFile(modFile("changes.py"));
+  const r = await exec("python3", ["-I", "-c", code, profile.folder, ...storyKeys(it)], on ? { on } : {});
+  if (r.code !== 0) return [`its folders (couldn't check them: ${(r.stderr || "").trim().split("\n").pop() || "changes.py failed"})`];
+  return JSON.parse(r.stdout || "[]").filter((x) => x.files?.length).map((x) => `${x.key} ${x.repo}`);
+}
+
 // Cleans up a finished story (the confirm dialog's Clean up): closes its space, forgets what shared
 // state kept of it, runs the clean-up command when it left something (once per key it was found under,
 // 25 s each), then looks again, so the broom goes once nothing's left.
 async function cleanUp(profile, it) {
+  // Checked again now: an agent may have started, or a pull request opened, since the dialog showed.
+  const why = cleanBlockers(it);
+  if (why.length) return say(`${it.key} wasn't cleaned up: ${why.join(", ")}.`);
+  const dirty = await uncommitted(profile, it);
+  if (dirty.length) return say(`${it.key} wasn't cleaned up: uncommitted work in ${dirty.join(", ")}.`);
   const command = cleanCommand(profile);
   const folder = command && leftoversOf(profile, it).length > 0;
   const on = it.space ? spaces().find((s) => s.id === it.space.id)?.machine : null;
@@ -3191,7 +3224,7 @@ function askCleanUp(profile, it) {
   const said = parts.map((p, i) => (items.length && i === parts.length - 1 ? p.replace(/ \(\d+ things\)$/, "") : p));
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(items.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${it.key}?`, yes: "Clean up", command: { name: `${MOD}.clean-story-${it.key}` },
-    detail: `${it.key} is ${it.category === "done" ? "done" : "merged"}. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
+    detail: `${it.key} is ${it.category === "done" ? "done" : "merged"}, nothing of it is open or running. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
 }
 
 // Clean up all's dialog (the list's broom beside its freshness line, and Next): every finished story
@@ -3344,7 +3377,9 @@ async function brew(profile, task) {
       if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
       return;
     }
-    const [cmd, ...args] = claudeArgv(profile, "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task);
+    // Read only: plan mode (whatever the person's own default mode is, auto or bypass included) and
+    // no editing tools. Reading through the person's own access (plugins, MCP, tools) still works.
+    const [cmd, ...args] = claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task);
     const r = await exec(cmd, args, { cwd: profile.folder, timeout: BREW_FOR });
     let out = null;
     try { out = JSON.parse(r.stdout); } catch { /* not JSON: said below */ }

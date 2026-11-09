@@ -12,7 +12,7 @@ import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
-import { ASK_PROMPTS, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile } from "./config.js";
+import { ASK_PROMPTS, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { searchPulls } from "./pulls.js";
@@ -152,7 +152,9 @@ export class Setup {
     if (this.profile?.demo) return {}; // the demo's board answers from its fixture (demo.js)
     const tokenCommand = this.tokenCommand.value().trim();
     const email = this.email.value().trim();
-    if (tokenCommand) return email ? { tokenCommand, email } : { missing: "Give the Jira email the token command's token belongs to." };
+    if (tokenCommand && !email) return { missing: "Give the Jira email the token command's token belongs to." };
+    if (tokenCommand && !validEmail(email)) return { missing: "That email has a quote, backslash or space in it, which a sign-in can't carry." };
+    if (tokenCommand) return { tokenCommand, email };
     const keychain = this.mac ? this.keychain.value().trim() : "";
     if (keychain) return { keychain };
     return { missing: this.mac ? "Name the Keychain item to sign in with, or a token command." : "Give a token command that prints your Jira Cloud API token." };
@@ -190,9 +192,9 @@ export class Setup {
   }
 
   checkJira(cx) {
-    const parsed = parseBoard(this.board.value());
+    const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
     const { missing, ...signIn } = this.signIn();
-    if (!parsed) return this.result("jira", false, "That isn't a board URL: it should end in /boards/<number>.", cx);
+    if (!parsed) return this.result("jira", false, "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>.", cx);
     if (missing) return this.result("jira", false, missing, cx);
     this.result("jira", null, "Checking…", cx);
     cx.spawn(async (cx) => {
@@ -236,7 +238,7 @@ export class Setup {
   // Fields this dialog doesn't edit (ones added later, say) are kept.
   draft() {
     const url = this.board.value().trim();
-    const parsed = parseBoard(url);
+    const parsed = parseBoard(url, { demo: Boolean(this.profile?.demo) });
     const { missing, ...signIn } = this.signIn();
     // A Keychain item stays saved beside a token command, for when the command is taken out again.
     const keychain = this.keychain.value().trim();
@@ -255,7 +257,7 @@ export class Setup {
     const home = this.webHome.value().trim();
     const name = this.name.value().trim();
     const folder = this.folder.value().trim();
-    const error = url && !parsed ? ["jira", "That isn't a board URL: it should end in /boards/<number>."]
+    const error = url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
       : parsed && missing ? ["jira", missing]
       : home && !/^https?:\/\//.test(home) ? ["web", "Start it with https://."]
       : !name ? ["name", "Give it a name."]
@@ -331,7 +333,7 @@ export class Setup {
         return folder || "No folder yet";
       }
       case "jira": {
-        const parsed = parseBoard(this.board.value());
+        const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
         return parsed ? `${parsed.site.replace(/^https:\/\//, "").split(".")[0]} · board ${parsed.board}` : "Not connected";
       }
       case "github": return this.owner.value().trim() || "Not connected";
@@ -427,7 +429,7 @@ export class Setup {
     const email = this.email.value().trim() || "<jira email>";
     const tokenCommand = this.tokenCommand.value().trim();
     // The handover choice shows once the board in the field is the one whose columns are known.
-    const parsed = parseBoard(this.board.value());
+    const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
     const columns = this.columns && parsed?.site === this.columns.site && parsed?.board === this.columns.board ? this.columns.list : null;
     const from = columns ? handoverFrom(columns, this.handover) : -1;
     // Claude accounts by folder name; a saved folder no longer found still shows, so it can be changed.
