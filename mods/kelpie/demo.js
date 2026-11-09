@@ -12,7 +12,7 @@
 
 import { exec, readTextFile, run, setShared, shared, spaces } from "herdr";
 import { modFile } from "./ui.js";
-import { DESK_NAME, profileById, saveProfile } from "./config.js";
+import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
 
 export const DEMO_ID = "demo";
 export const isDemo = (x) => Boolean(x?.demo);
@@ -244,3 +244,32 @@ export async function setupDemo() {
   setShared("kelpie.paused", { ...(shared("kelpie.paused") ?? {}), [DEMO_ID]: paused });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
 }
+
+// kelpie.demo-remove: undoes kelpie.demo. Closes the demo profile's spaces (ending their stand-in
+// agents), deletes the profile and what's kept for it in shared state, and removes its folder, only
+// when that's inside ~/.local/share/kelpie/demo (an edited fixture could name any folder).
+const BY_PROFILE = ["kelpie.paused", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.profile.last", "kelpie.notify.prs"];
+export async function removeDemo() {
+  const p = profileById(DEMO_ID);
+  for (const s of p ? spacesOf(p) : []) run("space.close", { id: s.id, confirmed: true });
+  for (const key of BY_PROFILE) {
+    const all = shared(key);
+    if (all && typeof all === "object" && DEMO_ID in all) { const rest = { ...all }; delete rest[DEMO_ID]; setShared(key, rest); }
+  }
+  const owned = shared("kelpie.space.profile") ?? {};
+  setShared("kelpie.space.profile", Object.fromEntries(Object.entries(owned).filter(([, id]) => id !== DEMO_ID)));
+  const web = shared("kelpie.web");
+  if (web?.slots?.[DEMO_ID] || web?.panels?.[DEMO_ID]) {
+    const { [DEMO_ID]: _s, ...slots } = web.slots ?? {};
+    const { [DEMO_ID]: _p, ...panels } = web.panels ?? {};
+    setShared("kelpie.web", { ...web, slots, panels });
+  }
+  if (p) saveProfile(DEMO_ID, null);
+  const home = await homeOf();
+  const root = `${home}/.local/share/kelpie/demo/`;
+  const folder = String(p?.folder ?? "").replace(/\/+$/, "");
+  const rest = folder.slice(root.length);
+  // Never the demo window's own Herdr home (CLAUDE.md, Demo), kept beside it.
+  if (folder.startsWith(root) && rest && !rest.includes("..") && rest.split("/")[0] !== "herdr-app") await exec("rm", ["-rf", folder]).catch(() => {});
+}
+

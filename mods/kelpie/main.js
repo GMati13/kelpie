@@ -18,7 +18,7 @@ import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { goDesk } from "./desk.js";
-import { demoAccounts, isDemo, setupDemo } from "./demo.js";
+import { demoAccounts, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { agentState, decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, statusMark, syncSkin } from "./skins/index.js";
 
 function top() {
@@ -577,7 +577,8 @@ async function command(c) {
   if (c === "clean-all") return cleanAll();
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
   if (c === "what-next") return whatNext();
-  // demo: the demo profile and its spaces, from mods/kelpie/demo/demo.json (demo.js).
+  // demo: the demo profile and its spaces, from mods/kelpie/demo/demo.json (demo.js); demo-remove undoes it.
+  if (c === "demo-remove") return removeDemo().catch((e) => notify({ title: "The demo wasn't removed", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo") return setupDemo().catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   const work = storyNow();
   if (!work?.story) return;
