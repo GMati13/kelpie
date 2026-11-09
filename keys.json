@@ -2,7 +2,7 @@
   "global": {
     "cmd-shift-s": "kelpie.web"
   },
-  "layout:kelpie": {
+  "layout:Kelpie-Plain": {
     "cmd-w": "kelpie.close",
     "cmd-n": "kelpie.new-space",
     "cmd-alt-d": "kelpie.desk",
@@ -15,7 +15,7 @@
     "cmd-shift-h": "kelpie.fold",
     "cmd-b": "layout.toggle:side"
   },
-  "layout:kelpie-quiet-pages": {
+  "layout:Kelpie": {
     "cmd-w": "kelpie.close",
     "cmd-n": "kelpie.new-space",
     "cmd-alt-d": "kelpie.desk",

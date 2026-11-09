@@ -1,4 +1,4 @@
-// Quiet Pages: ink, lamp and safelight (layout "kelpie-quiet-pages"). See skins/index.js for every hook and what it gets.
+// Quiet Pages: ink, lamp and safelight (layout "Kelpie"). See skins/index.js for every hook and what it gets.
 // A calm warm-graphite page where colour lives only in small things: a 2px ink rule under each group,
 // Fastext keys (teletext's coloured keys, drawn as round dots: squares this small read as a missing
 // glyph) on tabs, buttons, chips and views. Two lights with two

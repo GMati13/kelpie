@@ -4,7 +4,7 @@ A kelpie is the sheepdog that works the flock on its own and comes back only whe
 
 Layouts and mods for Herdr built around profiles and stories: a profile's Jira sprint in the sidebar, each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
 
-- `layouts/kelpie.json` (plain) and `layouts/kelpie-quiet-pages.json` (the Quiet Pages skin), with their themes
+- `layouts/Kelpie.json` (the Quiet Pages look) and `layouts/Kelpie-Plain.json` (no skin), with their themes and previews
 - `mods/kelpie`: every Kelpie view (sidebar, story header, Changes, tab bar, footer, dialogs, skins)
 - `mods/kelpie-artifacts`: the Artifacts panel and the Screenshots view
 

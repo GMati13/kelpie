@@ -1,4 +1,4 @@
-// The base skin: the Kelpie layout as it is ("kelpie", and any layout without a skin of its own).
+// The base skin: the Kelpie layout as it is ("Kelpie-Plain", and any layout without a skin of its own).
 // Every hook here changes nothing, so the Kelpie views draw exactly what they drew before skins
 // existed. A skin starts from this object and overrides only the hooks it needs:
 //

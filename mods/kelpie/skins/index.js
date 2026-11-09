@@ -2,8 +2,8 @@
 // picks a skin by its name, shared("layout"); the views call the hooks below where a look can differ.
 //
 //   layout              skin file               art (sources)             art (drawn from)
-//   kelpie              skins/base.js           -                         -
-//   kelpie-quiet-pages  skins/quiet-pages.js    skins/quiet-pages/art/    art/kelpie/skins/quiet-pages/
+//   Kelpie-Plain        skins/base.js           -                         -
+//   Kelpie              skins/quiet-pages.js    skins/quiet-pages/art/    art/kelpie/skins/quiet-pages/
 // Any other layout gets base, which changes nothing.
 //
 // A skin is an object: base's hooks ({ ...base }) with some replaced. Every hook is optional; a hook
@@ -73,15 +73,15 @@
 //       that looks right (>= 250 ms), and prefer native motion (.loop, .frames, .spin, .transition),
 //       which costs no redraws. Never stream images.
 //
-// Skin agents touch only skins/<name>.js, skins/<name>/ (art, fonts), layouts/kelpie-<name>.json and
-// themes/kelpie-<name>.json. Shared files (this one, base.js, common.js, the views) change only to add a
+// Skin agents touch only skins/<name>.js, skins/<name>/ (art, fonts), layouts/Kelpie-<Name>.json and
+// themes/Kelpie-<Name>.json. Shared files (this one, base.js, common.js, the views) change only to add a
 // hook every skin can use, a no-op in base (the plain Kelpie layout must look exactly as it did).
 
 import { setShared, shared, theme } from "herdr";
 import base from "./base.js";
 import quietPages from "./quiet-pages.js";
 
-export const SKINS = { "kelpie-quiet-pages": quietPages };
+export const SKINS = { "Kelpie": quietPages };
 
 
 // The shown layout's skin (base for any layout without one).

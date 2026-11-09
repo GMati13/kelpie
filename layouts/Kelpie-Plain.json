@@ -6,7 +6,7 @@
     24,
     15
   ],
-  "theme": "kelpie",
+  "theme": "Kelpie-Plain",
   "ui_font": "Geist",
   "background": "#1a1714",
   "terminal_padding": [
@@ -16,7 +16,7 @@
   "terminal_opacity": 0,
   "padding": 0,
   "gap": 0,
-  "preview": "layouts/kelpie.svg",
+  "preview": "layouts/Kelpie-Plain.svg",
   "divider": {
     "width": 1,
     "color": "#ffffff14"
