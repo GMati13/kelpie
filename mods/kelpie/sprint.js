@@ -11,6 +11,7 @@ import { skinTheme } from "./skins/index.js";
 import { SMALL, avatar, chip, chrome, icon, iconButton, modFile, openExternal, platform, stop, textButton, tint } from "./ui.js";
 import { Source, empty, frame, needsSetup, notice, startAgent } from "./source.js";
 import { jiraTask } from "./config.js";
+import { demoJira } from "./demo.js";
 
 // A board can run more than one sprint at a time; all of its active ones show.
 const PAGES = 10; // up to 1000 tickets, sub-tasks included
@@ -62,10 +63,15 @@ function save(key, value) {
 
 // One request through jira.sh, for a setup's { site, keychain } or { site, email, tokenCommand }.
 // The token command (and the email) go as arguments; the token it prints never leaves jira.sh's pipes.
+// A demo profile's board (demo.js) answers from its fixture.
 export async function jira(cfg, ...args) {
-  const signIn = cfg.tokenCommand ? ["--email", cfg.email ?? "", "--token-command", cfg.tokenCommand] : [];
-  const out = await exec("sh", [modFile("jira.sh"), ...signIn, cfg.site, cfg.keychain ?? "", ...args]);
-  const r = JSON.parse(out.stdout || "{}");
+  let r;
+  if (cfg?.demo) r = await demoJira(args);
+  else {
+    const signIn = cfg.tokenCommand ? ["--email", cfg.email ?? "", "--token-command", cfg.tokenCommand] : [];
+    const out = await exec("sh", [modFile("jira.sh"), ...signIn, cfg.site, cfg.keychain ?? "", ...args]);
+    r = JSON.parse(out.stdout || "{}");
+  }
   if (r.error === "site") throw new Error("The board URL in this profile isn't an https:// Jira Cloud address.");
   if (r.error === "command") throw new Error(`The token command failed or printed nothing. ${tokenHelp(cfg)}`);
   if (r.error === "missing") throw new Error(`No Jira Cloud sign-in${cfg.tokenCommand ? "" : platform() === "macos" ? " in the Keychain" : ""}. ${tokenHelp(cfg)}`);

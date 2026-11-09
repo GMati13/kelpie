@@ -235,7 +235,9 @@ export const claudeConfigOf = (profile) => profile?.claude?.config || null;
 // global config (.claude.json) and sign-in from elsewhere.
 export const isOwnClaude = (dir) => base(dir) === ".claude";
 // The argv that starts a new Claude agent for a profile (any extra arguments after "claude").
+// A demo profile's (demo.js) start the demo's stand-in agent instead, waiting for its first message.
 export function claudeArgv(profile, ...args) {
+  if (profile?.demo) return ["sh", modFile("demo/agent.sh"), "idle", ""];
   const dir = claudeConfigOf(profile);
   if (!dir) return ["claude", ...args];
   return ["env", ...(isOwnClaude(dir) ? ["-u", "CLAUDE_CONFIG_DIR"] : [`CLAUDE_CONFIG_DIR=${dir}`]), "claude", ...args];

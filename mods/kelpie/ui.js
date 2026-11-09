@@ -338,8 +338,10 @@ export async function claudeSession(address) {
 
 // The argv that resumes a Claude session, on the account (config folder) it ran on. No config (the
 // session is in Claude's own ~/.claude): plain claude, which uses ~/.claude as herdr-core's environment
-// sets no CLAUDE_CONFIG_DIR.
-export const resumeArgv = (id, config) => [...(config ? ["env", `CLAUDE_CONFIG_DIR=${config}`] : []), "claude", "--resume", id];
+// sets no CLAUDE_CONFIG_DIR. The demo's made-up sessions (demo.js, ids "demo-…"; Claude's are UUIDs)
+// resume as its stand-in agent.
+export const resumeArgv = (id, config) => (String(id).startsWith("demo-") ? ["sh", modFile("demo/agent.sh"), "idle", ""]
+  : [...(config ? ["env", `CLAUDE_CONFIG_DIR=${config}`] : []), "claude", "--resume", id]);
 
 // The agent whose limits to show: the focused one, else the shown tab's, else the last one shown.
 export function shownAgent(last) {

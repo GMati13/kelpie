@@ -8,6 +8,7 @@ import { exec } from "herdr";
 import { skinTheme } from "./skins/index.js";
 import { SMALL, ago, avatar, chip, openExternal, textButton } from "./ui.js";
 import { Source, empty, frame, needsSetup, startAgent } from "./source.js";
+import { demoPulls } from "./demo.js";
 
 const QUERY = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number title url isDraft updatedAt reviewDecision author { login } repository { name }
@@ -30,7 +31,9 @@ const checks = (pr) => pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state 
 const LIGHT = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number title url updatedAt author { login } repository { name } } } } }`;
 
-export async function searchPulls(q, { light = false } = {}) {
+// `demo`: a demo profile's (demo.js), answered from its fixture.
+export async function searchPulls(q, { light = false, demo = false } = {}) {
+  if (demo) return (await demoPulls(q)).map(decided);
   const r = await exec("gh", ["api", "graphql", "-f", `q=${q}`, "-f", `query=${light ? LIGHT : QUERY}`]);
   if (r.code !== 0) throw new Error(r.stderr.trim().split("\n")[0] || "gh couldn't search pull requests.");
   return JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.number).map(decided);
@@ -51,7 +54,7 @@ export class Pulls extends Source {
   }
 
   async fetch({ setup }) {
-    const lists = await Promise.all(GROUPS.map((g) => searchPulls(g.q(setup.github.owner))));
+    const lists = await Promise.all(GROUPS.map((g) => searchPulls(g.q(setup.github.owner), { demo: Boolean(setup.github.demo) })));
     return Object.fromEntries(GROUPS.map((g, i) => [g.id, lists[i]]));
   }
 

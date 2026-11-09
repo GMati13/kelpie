@@ -1,0 +1,651 @@
+{
+  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Demo profile and opens these spaces; edit this file and press Refresh to change what it shows. Times are relative: -25m, -3h, -2d.",
+  "profile": {
+    "name": "Acme",
+    "folder": "~/.local/share/kelpie/demo/acme",
+    "site": "https://kelpie-demo.atlassian.net",
+    "project": "ACME",
+    "board": 7,
+    "owner": "kelpie-demo",
+    "me": "you"
+  },
+  "board": {
+    "name": "Acme Trips",
+    "columns": [
+      {
+        "name": "To Do",
+        "statuses": [
+          {
+            "id": "10000",
+            "name": "To Do",
+            "category": "new"
+          }
+        ]
+      },
+      {
+        "name": "In Progress",
+        "statuses": [
+          {
+            "id": "3",
+            "name": "In Progress",
+            "category": "indeterminate"
+          }
+        ]
+      },
+      {
+        "name": "Review",
+        "statuses": [
+          {
+            "id": "10101",
+            "name": "In Review",
+            "category": "indeterminate"
+          }
+        ]
+      },
+      {
+        "name": "QA",
+        "statuses": [
+          {
+            "id": "10102",
+            "name": "In QA",
+            "category": "indeterminate"
+          }
+        ]
+      },
+      {
+        "name": "Done",
+        "statuses": [
+          {
+            "id": "10001",
+            "name": "Done",
+            "category": "done"
+          }
+        ]
+      }
+    ]
+  },
+  "sprints": [
+    {
+      "id": 24,
+      "name": "Trips Sprint 24"
+    }
+  ],
+  "issues": [
+    {
+      "key": "ACME-142",
+      "summary": "Offline mode for saved trips",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.\n\n## What we want\n\nSaved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.\n\n- Cache every trip the traveller opened in the last 30 days in `IndexedDB`\n- Queue edits made offline and replay them in order\n- Show a calm banner while offline, never a blocking error\n\n## Out of scope\n\nDownloading map tiles: that's ACME-190.\n\n## Done when\n\n1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online\n3. Conflicts keep the newest change and say so in the trip's history"
+    },
+    {
+      "key": "ACME-143",
+      "summary": "Cache trips in IndexedDB",
+      "parent": "ACME-142",
+      "status": "In Progress",
+      "mine": true,
+      "description": "Add a `TripCache` on top of the trips store: write a trip through on every successful load, read it first when the network fails. Keep at most 30 days of trips and drop the oldest first."
+    },
+    {
+      "key": "ACME-144",
+      "summary": "Queue offline edits and sync them back",
+      "parent": "ACME-142",
+      "status": "To Do",
+      "mine": true
+    },
+    {
+      "key": "ACME-145",
+      "summary": "Design the offline banner",
+      "parent": "ACME-142",
+      "status": "Done"
+    },
+    {
+      "key": "ACME-151",
+      "summary": "Pay with Apple Pay at checkout",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "Let travellers pay with **Apple Pay** on the checkout page in Safari and the iOS app.\n\n## Notes\n\n- The merchant session is created by the payments service, never in the browser\n- Receipts for wallet payments go out like card receipts\n- Behind the `wallet-payments` flag until finance signs off"
+    },
+    {
+      "key": "ACME-152",
+      "summary": "Apple Pay button and merchant session",
+      "parent": "ACME-151",
+      "status": "In Review",
+      "mine": true
+    },
+    {
+      "key": "ACME-153",
+      "summary": "Receipts for wallet payments",
+      "parent": "ACME-151",
+      "status": "To Do",
+      "mine": true
+    },
+    {
+      "key": "ACME-160",
+      "summary": "Typo-tolerant search",
+      "type": "Story",
+      "status": "In Review",
+      "description": "Searching for `barcleona` or `amstredam` finds nothing today. Match destinations and hotels within one or two typos, ranking exact matches first.\n\n## Approach\n\nA trigram index on names in the search service, with a similarity floor of 0.3, then the usual popularity ranking."
+    },
+    {
+      "key": "ACME-161",
+      "summary": "Fuzzy matching in the search service",
+      "parent": "ACME-160",
+      "status": "In Review",
+      "mine": true
+    },
+    {
+      "key": "ACME-171",
+      "summary": "Dark mode for the dashboard",
+      "type": "Story",
+      "status": "In Review",
+      "description": "The dashboard is the last screen without a dark theme. Move its colours to the shared theme tokens and add the toggle to the account menu, following the system setting by default."
+    },
+    {
+      "key": "ACME-172",
+      "summary": "Theme tokens and the dark mode toggle",
+      "parent": "ACME-171",
+      "status": "In Review",
+      "mine": true
+    },
+    {
+      "key": "ACME-175",
+      "summary": "Fix the flaky login test",
+      "type": "Task",
+      "status": "In Progress",
+      "mine": true,
+      "description": "`login.e2e.ts` fails about one run in eight on CI: the test clicks the profile menu before the session cookie is set. Wait for the cookie, not a fixed timeout."
+    },
+    {
+      "key": "ACME-138",
+      "summary": "Rate-limit the public API",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "Partners hammering the public API slow everyone down. Limit each API key to 600 requests a minute with a token bucket, answering `429` with a `Retry-After` header."
+    },
+    {
+      "key": "ACME-139",
+      "summary": "Token bucket per API key",
+      "parent": "ACME-138",
+      "status": "In Progress",
+      "mine": true
+    },
+    {
+      "key": "ACME-180",
+      "summary": "Export an itinerary as PDF",
+      "type": "Story",
+      "status": "To Do",
+      "description": "Travellers want a printable itinerary: every booking of a trip on one page, with confirmation numbers and addresses, as a PDF from the trip's share menu."
+    },
+    {
+      "key": "ACME-181",
+      "summary": "PDF layout for itineraries",
+      "parent": "ACME-180",
+      "status": "To Do",
+      "mine": true
+    },
+    {
+      "key": "ACME-182",
+      "summary": "Export from the share sheet",
+      "parent": "ACME-180",
+      "status": "To Do"
+    },
+    {
+      "key": "ACME-129",
+      "summary": "Password reset emails",
+      "type": "Story",
+      "status": "In QA",
+      "description": "Password reset emails are plain text and land in spam. Send them from the transactional template, with a link that expires after an hour."
+    },
+    {
+      "key": "ACME-130",
+      "summary": "Reset email template",
+      "parent": "ACME-129",
+      "status": "In QA",
+      "mine": true
+    },
+    {
+      "key": "ACME-131",
+      "summary": "Expiring reset links",
+      "parent": "ACME-129",
+      "status": "In Progress"
+    },
+    {
+      "key": "ACME-122",
+      "summary": "Upgrade the services to Node 22",
+      "type": "Story",
+      "status": "Done",
+      "description": "Node 18 reaches end of life. Move the API, web and worker services to Node 22, with the base images and CI updated."
+    },
+    {
+      "key": "ACME-123",
+      "summary": "Node 22 base images and CI",
+      "parent": "ACME-122",
+      "status": "Done",
+      "mine": true
+    }
+  ],
+  "pulls": [
+    {
+      "repo": "web",
+      "number": 418,
+      "title": "ACME-143 Cache trips in IndexedDB for offline use",
+      "updated": "-25m",
+      "checks": "SUCCESS",
+      "files": [
+        {
+          "path": "src/trips/cache.ts",
+          "status": "added",
+          "text": "import { openDB, type IDBPDatabase } from \"idb\";\nimport type { Trip } from \"./types\";\n\nconst DAYS = 30;\nconst DAY = 24 * 60 * 60 * 1000;\n\n// Trips the traveller opened lately, kept on the device so they open without a network.\nexport class TripCache {\n  private db: Promise<IDBPDatabase>;\n\n  constructor(name = \"trips\") {\n    this.db = openDB(name, 1, {\n      upgrade(db) {\n        const store = db.createObjectStore(\"trips\", { keyPath: \"id\" });\n        store.createIndex(\"openedAt\", \"openedAt\");\n      },\n    });\n  }\n\n  async put(trip: Trip): Promise<void> {\n    const db = await this.db;\n    await db.put(\"trips\", { ...trip, openedAt: Date.now() });\n    await this.prune();\n  }\n\n  async get(id: string): Promise<Trip | undefined> {\n    return (await this.db).get(\"trips\", id);\n  }\n\n  // Drops trips not opened for DAYS days, oldest first.\n  private async prune(): Promise<void> {\n    const db = await this.db;\n    const old = IDBKeyRange.upperBound(Date.now() - DAYS * DAY);\n    for (const key of await db.getAllKeysFromIndex(\"trips\", \"openedAt\", old)) await db.delete(\"trips\", key);\n  }\n}\n",
+          "patch": "@@ -0,0 +1,36 @@\n+import { openDB, type IDBPDatabase } from \"idb\";\n+import type { Trip } from \"./types\";\n+\n+const DAYS = 30;\n+const DAY = 24 * 60 * 60 * 1000;\n+\n+// Trips the traveller opened lately, kept on the device so they open without a network.\n+export class TripCache {\n+  private db: Promise<IDBPDatabase>;\n+\n+  constructor(name = \"trips\") {\n+    this.db = openDB(name, 1, {\n+      upgrade(db) {\n+        const store = db.createObjectStore(\"trips\", { keyPath: \"id\" });\n+        store.createIndex(\"openedAt\", \"openedAt\");\n+      },\n+    });\n+  }\n+\n+  async put(trip: Trip): Promise<void> {\n+    const db = await this.db;\n+    await db.put(\"trips\", { ...trip, openedAt: Date.now() });\n+    await this.prune();\n+  }\n+\n+  async get(id: string): Promise<Trip | undefined> {\n+    return (await this.db).get(\"trips\", id);\n+  }\n+\n+  // Drops trips not opened for DAYS days, oldest first.\n+  private async prune(): Promise<void> {\n+    const db = await this.db;\n+    const old = IDBKeyRange.upperBound(Date.now() - DAYS * DAY);\n+    for (const key of await db.getAllKeysFromIndex(\"trips\", \"openedAt\", old)) await db.delete(\"trips\", key);\n+  }\n+}"
+        },
+        {
+          "path": "src/trips/store.ts",
+          "patch": "@@ -1,8 +1,10 @@\n import { api } from \"../api\";\n+import { TripCache } from \"./cache\";\n import type { Trip } from \"./types\";\n \n+const cache = new TripCache();\n+\n export async function loadTrip(id: string): Promise<Trip> {\n-  const res = await api.get(`/trips/${id}`);\n-  return res.json();\n+  try {\n+    const trip: Trip = await (await api.get(`/trips/${id}`)).json();\n+    await cache.put(trip);\n+    return trip;\n+  } catch (error) {\n+    const saved = await cache.get(id);\n+    if (saved) return { ...saved, offline: true };\n+    throw error;\n+  }\n }\n@@ -41,7 +52,7 @@ export function useTrip(id: string) {\n   const [trip, setTrip] = useState<Trip | null>(null);\n   useEffect(() => {\n-    loadTrip(id).then(setTrip).catch(() => setError(\"Couldn't load this trip.\"));\n+    loadTrip(id).then(setTrip).catch(() => setError(\"This trip isn't saved on this device yet.\"));\n   }, [id]);\n   return { trip, error };\n }"
+        },
+        {
+          "path": "src/trips/types.ts",
+          "patch": "@@ -12,4 +12,6 @@ export interface Trip {\n   stops: Stop[];\n   bookings: Booking[];\n   updatedAt: string;\n+  /** Shown from the device's cache: the network didn't answer. */\n+  offline?: boolean;\n }"
+        },
+        {
+          "path": "package-lock.json",
+          "patch": "@@ -2210,6 +2210,11 @@\n     \"node_modules/idb\": {\n+      \"version\": \"8.0.0\",\n+      \"resolved\": \"https://registry.npmjs.org/idb/-/idb-8.0.0.tgz\",\n+      \"license\": \"ISC\"\n+    },\n+    \"node_modules/immer\": {"
+        }
+      ]
+    },
+    {
+      "repo": "payments",
+      "number": 97,
+      "title": "ACME-152 Apple Pay button and merchant session",
+      "updated": "-1h",
+      "checks": "FAILURE",
+      "files": [
+        {
+          "path": "src/wallet/session.ts",
+          "status": "added",
+          "patch": "@@ -0,0 +1,14 @@\n+import { merchant } from \"../config\";\n+\n+// Apple asks the merchant's server, never the browser, for a payment session.\n+export async function merchantSession(validationUrl: string, domain: string) {\n+  const res = await fetch(validationUrl, {\n+    method: \"POST\",\n+    body: JSON.stringify({ merchantIdentifier: merchant.id, displayName: \"Acme Trips\", initiative: \"web\", initiativeContext: domain }),\n+    agent: merchant.tlsAgent,\n+  });\n+  if (!res.ok) throw new Error(`Apple Pay validation failed: ${res.status}`);\n+  return res.json();\n+}"
+        },
+        {
+          "path": "src/wallet/session.test.ts",
+          "status": "added",
+          "patch": "@@ -0,0 +1,9 @@\n+import { merchantSession } from \"./session\";\n+\n+test(\"asks Apple for a session\", async () => {\n+  mockFetch(200, { epochTimestamp: 1 });\n+  await expect(merchantSession(\"https://apple-pay-gateway.apple.com/x\", \"acme.test\")).resolves.toEqual({ epochTimestamp: 1 });\n+});"
+        }
+      ]
+    },
+    {
+      "repo": "search",
+      "number": 233,
+      "title": "ACME-161 Fuzzy matching with a trigram index",
+      "updated": "-3h",
+      "checks": "SUCCESS",
+      "review": "CHANGES_REQUESTED",
+      "files": [
+        {
+          "path": "migrations/0042_trigram_index.sql",
+          "status": "added",
+          "patch": "@@ -0,0 +1,3 @@\n+CREATE EXTENSION IF NOT EXISTS pg_trgm;\n+CREATE INDEX destinations_name_trgm ON destinations USING gin (name gin_trgm_ops);\n+CREATE INDEX hotels_name_trgm ON hotels USING gin (name gin_trgm_ops);"
+        },
+        {
+          "path": "src/query.py",
+          "patch": "@@ -18,11 +18,15 @@ def search(term: str, limit: int = 20):\n     \"\"\"Destinations and hotels whose name matches the term, best first.\"\"\"\n-    rows = db.fetch(\n-        \"SELECT id, name, kind FROM places WHERE name ILIKE %s ORDER BY popularity DESC LIMIT %s\",\n-        (f\"%{term}%\", limit),\n-    )\n+    rows = db.fetch(\n+        \"\"\"SELECT id, name, kind, similarity(name, %s) AS score\n+           FROM places WHERE name %% %s\n+           ORDER BY name ILIKE %s DESC, score DESC, popularity DESC\n+           LIMIT %s\"\"\",\n+        (term, term, term, limit),\n+    )\n     return [Place(**row) for row in rows]"
+        }
+      ]
+    },
+    {
+      "repo": "web",
+      "number": 415,
+      "title": "ACME-172 Theme tokens and the dark mode toggle",
+      "updated": "-5h",
+      "checks": "SUCCESS",
+      "review": "APPROVED",
+      "files": [
+        {
+          "path": "src/theme/tokens.css",
+          "patch": "@@ -1,9 +1,21 @@\n :root {\n-  --page: #ffffff;\n-  --text: #1d1f23;\n+  --page: #ffffff;\n+  --raised: #f6f7f9;\n+  --text: #1d1f23;\n+  --muted: #5d636e;\n   --accent: #2f6fde;\n }\n+\n+:root[data-theme=\"dark\"] {\n+  --page: #15171b;\n+  --raised: #1d2025;\n+  --text: #e6e8eb;\n+  --muted: #9aa1ab;\n+  --accent: #6d9cf0;\n+}"
+        },
+        {
+          "path": "src/dashboard/Dashboard.tsx",
+          "patch": "@@ -27,7 +27,7 @@ export function Dashboard() {\n   return (\n-    <main style={{ background: \"#fff\", color: \"#1d1f23\" }}>\n+    <main className=\"dashboard\">\n       <Header />\n       <TripList trips={trips} />\n     </main>"
+        },
+        {
+          "path": "src/account/Menu.tsx",
+          "patch": "@@ -14,6 +14,7 @@ export function AccountMenu() {\n     <Menu>\n       <MenuItem href=\"/settings\">Settings</MenuItem>\n+      <ThemeToggle />\n       <MenuItem onSelect={signOut}>Sign out</MenuItem>\n     </Menu>"
+        }
+      ]
+    },
+    {
+      "repo": "web",
+      "number": 423,
+      "title": "ACME-175 Wait for the session cookie in the login test",
+      "updated": "-8m",
+      "checks": "PENDING",
+      "files": [
+        {
+          "path": "e2e/login.e2e.ts",
+          "patch": "@@ -9,8 +9,8 @@ test(\"signs in and opens the profile menu\", async ({ page }) => {\n   await page.fill(\"#email\", user.email);\n   await page.fill(\"#password\", user.password);\n   await page.click(\"text=Sign in\");\n-  await page.waitForTimeout(500);\n+  await expect.poll(async () => (await page.context().cookies()).some((c) => c.name === \"session\")).toBe(true);\n   await page.click(\"[aria-label='Profile']\");\n   await expect(page.getByText(\"Signed in as\")).toBeVisible();\n });"
+        }
+      ]
+    },
+    {
+      "repo": "docs",
+      "number": 58,
+      "title": "Fix typos in the onboarding guide",
+      "updated": "-2d",
+      "checks": "SUCCESS",
+      "draft": true,
+      "files": [
+        {
+          "path": "onboarding.md",
+          "patch": "@@ -3,3 +3,3 @@\n ## Your first week\n-Pair with a teamate on a small ticket.\n+Pair with a teammate on a small ticket."
+        }
+      ]
+    },
+    {
+      "repo": "web",
+      "number": 409,
+      "title": "ACME-130 Password reset email template",
+      "updated": "-2d",
+      "merged": true
+    },
+    {
+      "repo": "api",
+      "number": 298,
+      "title": "ACME-123 Node 22 base images and CI",
+      "updated": "-4d",
+      "merged": true
+    },
+    {
+      "repo": "web",
+      "number": 421,
+      "title": "ACME-166 Share a trip with a link",
+      "updated": "-20h",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "priya-n",
+      "files": [
+        {
+          "path": "src/share/link.ts",
+          "status": "added",
+          "patch": "@@ -0,0 +1,8 @@\n+import { api } from \"../api\";\n+\n+// A read-only link to a trip, valid for 14 days.\n+export async function shareLink(tripId: string): Promise<string> {\n+  const { token } = await (await api.post(`/trips/${tripId}/share`, { days: 14 })).json();\n+  return `${location.origin}/t/${token}`;\n+}"
+        }
+      ]
+    },
+    {
+      "repo": "api",
+      "number": 305,
+      "title": "Bump OpenTelemetry to 1.28",
+      "updated": "-3h",
+      "checks": "PENDING",
+      "reviewer": true,
+      "author": "tomas-r",
+      "files": [
+        {
+          "path": "go.mod",
+          "patch": "@@ -8,3 +8,3 @@ require (\n-\tgo.opentelemetry.io/otel v1.24.0\n+\tgo.opentelemetry.io/otel v1.28.0\n \tgo.opentelemetry.io/otel/trace v1.28.0"
+        }
+      ]
+    }
+  ],
+  "local": [
+    {
+      "key": "ACME-143",
+      "repo": "web",
+      "branch": "ACME-143-trip-cache",
+      "files": [
+        {
+          "path": "src/trips/sync-queue.ts",
+          "status": "added",
+          "patch": "@@ -0,0 +1,10 @@\n+import type { TripEdit } from \"./types\";\n+\n+// Edits made offline, replayed in order once the network is back (ACME-144).\n+export class SyncQueue {\n+  private edits: TripEdit[] = [];\n+\n+  push(edit: TripEdit) {\n+    this.edits.push(edit);\n+  }\n+}"
+        }
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "id": "demo-s1",
+      "title": "Sketch the PDF itinerary layout",
+      "first": [
+        "ACME-181"
+      ],
+      "updated": "-2d"
+    },
+    {
+      "id": "demo-s2",
+      "title": "Token bucket per API key",
+      "first": [
+        "ACME-139"
+      ],
+      "updated": "-3h"
+    },
+    {
+      "id": "demo-s3",
+      "title": "Reset email in the transactional template",
+      "first": [
+        "ACME-130"
+      ],
+      "updated": "-3d"
+    },
+    {
+      "id": "demo-s4",
+      "title": "Compare map libraries by size",
+      "first": [],
+      "updated": "-1d"
+    }
+  ],
+  "spaces": [
+    {
+      "name": "ACME-142",
+      "tabs": [
+        {
+          "name": "ACME-143",
+          "agent": "blocked",
+          "title": "Cache trips for offline use",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme/ACME-142/web\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Work on Jira ACME-143: Cache trips in IndexedDB",
+            "",
+            "\\033[0m● I'll add a cache on top of the trips store, so a trip that loaded once opens without a network. Reading how trips load today.",
+            "",
+            "\\033[32m●\\033[0m \\033[1mRead\\033[0m(src/trips/store.ts)",
+            "\\033[2m  ⎿  Read 64 lines\\033[0m",
+            "",
+            "\\033[32m●\\033[0m \\033[1mWrite\\033[0m(src/trips/cache.ts)",
+            "\\033[2m  ⎿  Wrote 36 lines to src/trips/cache.ts\\033[0m",
+            "",
+            "\\033[0m● Now the store reads through the cache when the network fails.",
+            "",
+            "\\033[32m●\\033[0m \\033[1mUpdate\\033[0m(src/trips/store.ts)",
+            "\\033[34m╭──────────────────────────────────────────────────────────╮\\033[0m",
+            "\\033[34m│\\033[0m \\033[1mEdit file\\033[0m                                                \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m \\033[2msrc/trips/store.ts\\033[0m                                       \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m                                                          \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m  \\033[31m-  const res = await api.get(`/trips/${id}`);\\033[0m           \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m  \\033[32m+  try {\\033[0m                                                \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m  \\033[32m+    const trip = await fetchTrip(id);\\033[0m                  \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m  \\033[32m+    await cache.put(trip);\\033[0m                             \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m                                                          \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m Do you want to make this edit to \\033[1mstore.ts\\033[0m?               \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m \\033[34m❯ 1. Yes\\033[0m                                                 \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m   2. Yes, allow all edits during this session            \\033[34m│\\033[0m",
+            "\\033[34m│\\033[0m   3. No, and tell Claude what to do differently          \\033[34m│\\033[0m",
+            "\\033[34m╰──────────────────────────────────────────────────────────╯\\033[0m"
+          ]
+        },
+        {
+          "name": "Terminal",
+          "screen": [
+            "\\033[32m~/acme/ACME-142/web\\033[0m \\033[34mACME-143-trip-cache\\033[0m $ npm run dev",
+            "",
+            "  \\033[32mVITE v6.0.3\\033[0m  ready in 412 ms",
+            "",
+            "  ➜  \\033[1mLocal\\033[0m:   http://localhost:5173/",
+            "  \\033[2m➜  Network: use --host to expose\\033[0m"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ACME-151",
+      "tabs": [
+        {
+          "name": "ACME-152",
+          "agent": "done",
+          "title": "Apple Pay merchant session",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Work on Jira ACME-152: Apple Pay button and merchant session",
+            "",
+            "\\033[32m●\\033[0m \\033[1mBash\\033[0m(npm test -- wallet)",
+            "\\033[2m  ⎿  1 failed, 12 passed\\033[0m",
+            "",
+            "\\033[0m● The session test fails on CI because the merchant certificate isn't in the test environment. Pushed the branch; the check needs `APPLE_MERCHANT_CERT` set in CI before it can pass.",
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ACME-160",
+      "tabs": [
+        {
+          "name": "ACME-161",
+          "agent": "working",
+          "title": "Address review on fuzzy search",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Address the review comments on search#233",
+            "",
+            "\\033[32m●\\033[0m \\033[1mBash\\033[0m(gh pr view 233 --comments)",
+            "\\033[2m  ⎿  2 comments from priya-n\\033[0m",
+            "",
+            "\\033[0m● Priya asks for exact matches to rank first and for the similarity floor to be a setting. Doing both.",
+            "",
+            "\\033[32m●\\033[0m \\033[1mUpdate\\033[0m(src/query.py)",
+            "\\033[2m  ⎿  Updated src/query.py with 4 additions and 2 removals\\033[0m",
+            "",
+            "\\033[38;5;173m✽ Running the search tests…\\033[0m \\033[2m(14s · esc to interrupt)\\033[0m"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ACME-171",
+      "tabs": [
+        {
+          "name": "ACME-172",
+          "agent": "idle",
+          "title": "Dark mode tokens",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Work on Jira ACME-172: Theme tokens and the dark mode toggle",
+            "",
+            "\\033[0m● Done: the dashboard reads its colours from the theme tokens, the account menu has the toggle, and it follows the system setting until changed. web#415 is approved and green.",
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ACME-175",
+      "tabs": [
+        {
+          "name": "ACME-175",
+          "agent": "working",
+          "title": "Flaky login test",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Work on Jira ACME-175: Fix the flaky login test",
+            "",
+            "\\033[32m●\\033[0m \\033[1mBash\\033[0m(npx playwright test login --repeat-each 40)",
+            "\\033[2m  ⎿  40 passed (1.2m)\\033[0m",
+            "",
+            "\\033[0m● Forty runs in a row pass with the cookie wait. Pushed web#423; waiting for CI.",
+            "",
+            "\\033[38;5;173m✽ Watching the checks…\\033[0m \\033[2m(52s · esc to interrupt)\\033[0m"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ACME-122",
+      "tabs": [
+        {
+          "name": "ACME-123",
+          "agent": "idle",
+          "title": "Node 22 upgrade",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[0m● api#298 is merged and the deploy finished. Nothing left to do on ACME-123.",
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Desk",
+      "tabs": [
+        {
+          "name": "Claude",
+          "agent": "idle",
+          "title": "Why is the web bundle 2 MB?",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Why is the web bundle 2 MB?",
+            "",
+            "\\033[0m● Most of it is the map library (1.1 MB) loaded on every page. Loading it only on the trip map would take the first load down to about 700 KB.",
+            ""
+          ]
+        }
+      ]
+    }
+  ],
+  "paused": {
+    "ACME-138": [
+      {
+        "id": "demo-s2",
+        "name": "ACME-139",
+        "at": "-3h"
+      }
+    ]
+  },
+  "limits": {
+    "account": "Claude",
+    "model": "Opus",
+    "five": 38,
+    "week": 61,
+    "fiveResets": "+2h",
+    "weekResets": "+3d"
+  },
+  "suggest": [
+    {
+      "key": "ACME-181",
+      "action": "Start the PDF itinerary layout",
+      "why": "Next in the sprint's order, and nobody has started on Export an itinerary as PDF yet."
+    },
+    {
+      "url": "https://github.com/kelpie-demo/web/pull/421",
+      "action": "Review Priya's trip sharing links",
+      "why": "It's waited almost a day and ACME-166 can't move until it's reviewed."
+    },
+    {
+      "idea": "Load the map library only on the trip map page, so the first load drops from about 2 MB to 700 KB.",
+      "where": "web",
+      "action": "Load the map library on demand",
+      "why": "The Desk found it's half the bundle and every page pays for it."
+    }
+  ]
+}

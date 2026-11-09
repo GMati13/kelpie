@@ -23,6 +23,7 @@ import { adfBlocks, adfLines, adfText } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands } from "./skins/common.js";
+import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
@@ -1191,6 +1192,7 @@ else
 fi
 echo "ok:$wt"`;
 async function checkoutReview(profile, p) {
+  if (isDemo(profile)) return { folder: null, note: null };
   const r = await exec("sh", ["-c", REVIEW_CHECKOUT, "sh", profile.folder, p.repository.name, String(p.number)]).catch((e) => ({ stdout: `error:${String(e?.message ?? e)}` }));
   const line = (r.stdout ?? "").trim().split("\n").pop() ?? "";
   const [kind, ...rest] = line.split(":");
@@ -1350,6 +1352,7 @@ export class Stories extends Source {
   // Claude sessions under the folder, with the keys they were started on (sessions.py); null when
   // that failed.
   fetchSessions({ space, setup }) {
+    if (isDemo(setup.profile)) return demoSessions(setup.folder).then((list) => list.map(session)).catch(() => null);
     return readTextFile(modFile("sessions.py"))
       .then((code) => exec("python3", ["-I", "-c", code, setup.folder, "200"], space?.machine ? { on: space.machine } : {}))
       .then((r) => (r.code === 0 ? JSON.parse(r.stdout).map(session) : null))
@@ -1379,16 +1382,17 @@ export class Stories extends Source {
   async fetch({ space, setup }) {
     const cfg = setup.jira;
     const owner = setup.github?.owner;
+    const demo = Boolean(setup.github?.demo);
     const since = new Date(Date.now() - MERGED_DAYS * 864e5).toISOString().slice(0, 10);
     // GitHub failing (it does answer 502 now and then) mustn't hide the stories: they show without
     // their pull requests, and the frame says why.
     let prError = null;
     const pulls = owner
-      ? Promise.all([searchPulls(`user:${owner} is:pr is:open author:@me`), searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true })])
+      ? Promise.all([searchPulls(`user:${owner} is:pr is:open author:@me`, { demo }), searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo })])
         .catch((e) => { prError = `Pull requests didn't load: ${String(e?.message ?? e)}`; return [[], []]; })
       : Promise.resolve([[], []]);
     // What doesn't wait on Jira runs beside it.
-    const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`).catch(() => []) : Promise.resolve([]);
+    const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo }).catch(() => []) : Promise.resolve([]);
     const sessionsP = this.fetchSessions({ space, setup });
     // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
     const [config, active] = await Promise.all([
@@ -1959,11 +1963,13 @@ export class Stories extends Source {
     this.extra[it.key] = { ...(before ?? {}), loading: true, at: before?.at ?? 0 };
     const keys = [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a) => a.indexOf(k) === i);
     const on = st.space?.machine ? { on: st.space.machine } : {};
+    const demo = isDemo(st.profile);
     cx.spawn(async (cx) => {
       try {
         const prFiles = (p) => {
           const m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(p.url);
           if (!m) return Promise.resolve([]);
+          if (demo) return demoPullFiles(p.url);
           return exec("gh", ["api", "--paginate", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/files`, "--jq", ".[] | {filename, previous_filename, status, additions, deletions, patch, sha}"])
             .then((r) => r.stdout.split("\n").filter(Boolean).map((l) => JSON.parse(l)));
         };
@@ -1971,7 +1977,7 @@ export class Stories extends Source {
         const [prLists, local, sessions] = await Promise.all([
           Promise.all(prs.map((p) => prFiles(p).catch(() => null))),
           // A pull request shown on its own has no ticket folders or sessions: only its files.
-          lonePr(it) ? [] : readTextFile(modFile("changes.py"))
+          lonePr(it) ? [] : demo ? demoLocal(st.setup.folder, keys) : readTextFile(modFile("changes.py"))
             .then((code) => exec("python3", ["-I", "-c", code, st.setup.folder, ...keys], on))
             .then((r) => (r.code === 0 ? JSON.parse(r.stdout || "[]") : [])).catch(() => []),
           lonePr(it) ? [] : this.storySessions(st, it, keys),
@@ -2439,7 +2445,9 @@ export class Stories extends Source {
     cx.spawn(async (cx) => {
       try {
         let text;
-        if (f.group.path) text = await readTextFile(`${f.group.path}/${f.path}`, { on: st.space?.machine ?? null });
+        // A demo profile's files (demo.js) have their text in the fixture, if anywhere.
+        if (isDemo(st.profile)) text = await demoBlob(f.group.url ?? null, f.path);
+        else if (f.group.path) text = await readTextFile(`${f.group.path}/${f.path}`, { on: st.space?.machine ?? null });
         else {
           // The pull request's own version of the file, by its blob (merged ones too).
           const m = /github\.com\/([^/]+)\/([^/]+)\/pull\//.exec(f.group.url ?? "");
@@ -3331,6 +3339,11 @@ export function whatNext() {
 async function brew(profile, task) {
   setBrewing(profile, Date.now());
   try {
+    if (isDemo(profile)) {
+      const { kept } = await applyPicks(profile, await demoSuggest());
+      if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
+      return;
+    }
     const [cmd, ...args] = claudeArgv(profile, "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task);
     const r = await exec(cmd, args, { cwd: profile.folder, timeout: BREW_FOR });
     let out = null;

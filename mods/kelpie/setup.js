@@ -149,6 +149,7 @@ export class Setup {
 
   // What signs in to Jira: { keychain } or { tokenCommand, email }, and what's missing, if anything.
   signIn() {
+    if (this.profile?.demo) return {}; // the demo's board answers from its fixture (demo.js)
     const tokenCommand = this.tokenCommand.value().trim();
     const email = this.email.value().trim();
     if (tokenCommand) return email ? { tokenCommand, email } : { missing: "Give the Jira email the token command's token belongs to." };
@@ -196,7 +197,7 @@ export class Setup {
     this.result("jira", null, "Checking…", cx);
     cx.spawn(async (cx) => {
       try {
-        const cfg = { ...parsed, ...signIn };
+        const cfg = { ...parsed, ...signIn, ...(this.profile?.demo ? { demo: true } : {}) };
         const [r, config] = await Promise.all([
           jira(cfg, "get", `/rest/agile/1.0/board/${parsed.board}`),
           jira(cfg, "get", `/rest/agile/1.0/board/${parsed.board}/configuration`).catch(() => null),
@@ -216,7 +217,7 @@ export class Setup {
     this.result("github", null, "Checking…", cx);
     cx.spawn(async (cx) => {
       try {
-        const mine = await searchPulls(`user:${owner} is:pr is:open author:@me`);
+        const mine = await searchPulls(`user:${owner} is:pr is:open author:@me`, { demo: Boolean(this.profile?.demo) });
         this.result("github", true, `Found. ${mine.length} open pull request${mine.length === 1 ? "" : "s"} of yours.`, cx);
       } catch (e) {
         this.result("github", false, String(e?.message ?? e), cx);
@@ -266,8 +267,8 @@ export class Setup {
         ...(this.profile ?? {}),
         name,
         folder,
-        jira: parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}) } : null,
-        github: owner ? { owner, ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}) } : null,
+        jira: parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
+        github: owner ? { owner, ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
         notify: { pulls: this.notifyPulls },
