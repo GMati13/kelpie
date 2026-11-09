@@ -1,0 +1,132 @@
+// What every Hub source shares: it shows the shown space's data, by that space's setup, loading on
+// start, on a timer, on Refresh and when the space or its setup changes; its frame; starting agents.
+
+import { div } from "gpui-kit";
+import { h_flex, v_flex } from "gpui-base";
+import { run, setShared, shared, spaces } from "herdr";
+import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
+import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
+
+export const REFRESH = "kelpie.refresh";
+const STUCK = 2 * 60 * 1000;
+export const count = (id, space) => `kelpie.count.${id}.${space}`;
+
+export class Source {
+  // needs: what of the setup it can't work without ("jira", "github"), or null.
+  constructor(id, every, needs = null) {
+    this.id = id;
+    this.every = every;
+    this.needs = needs;
+    this.cache = {}; // context key -> { data, error, at }
+    this.busy = new Set();
+    this.started = {}; // context key -> when its load started
+  }
+
+  init(cx) {
+    this.seen = shared(REFRESH);
+    this.load(cx);
+    cx.timer.every(this.every, (cx) => this.load(cx));
+  }
+
+  // The shown space, its setup, and a key that changes when either (or a source's own option) does.
+  context() {
+    const space = shownSpace();
+    const setup = setupOf(space);
+    return { space, setup, key: JSON.stringify([space?.id, this.keyOf(setup)]) };
+  }
+
+  keyOf(setup) {
+    return this.needs ? setup[this.needs] : setup.folder;
+  }
+
+  ready(ctx) {
+    return Boolean(ctx.space) && (!this.needs || Boolean(ctx.setup[this.needs]));
+  }
+
+  load(cx) {
+    const ctx = this.context();
+    // A load still marked busy after STUCK was dropped (a reload or restart mid-load ends its task
+    // without its finally): it no longer blocks the next one, or "Updating…" would stay for good.
+    if (!this.ready(ctx) || (this.busy.has(ctx.key) && Date.now() - (this.started[ctx.key] ?? 0) < STUCK)) return;
+    this.busy.add(ctx.key);
+    this.started[ctx.key] = Date.now();
+    cx.spawn(async (cx) => {
+      const before = this.cache[ctx.key];
+      try {
+        const data = await this.fetch(ctx);
+        this.cache[ctx.key] = { data, error: null, at: Date.now() };
+        const n = this.count?.(data);
+        const name = count(this.id, ctx.profile?.id ?? ctx.space?.id ?? "none");
+        if (typeof n === "number" && shared(name) !== n) setShared(name, n);
+        this.loaded?.(ctx); // a source shown by several copies wakes the others
+      } catch (e) {
+        this.cache[ctx.key] = { data: before?.data ?? null, error: String(e?.message ?? e), at: Date.now() };
+        this.loaded?.(ctx); // the others show the error too
+      } finally {
+        this.busy.delete(ctx.key);
+        cx.notify();
+      }
+    });
+  }
+
+  // First in render: what to show now. A Refresh press, or a space or setup not loaded yet, loads.
+  state(cx) {
+    const ctx = this.context();
+    const r = shared(REFRESH);
+    if (r !== this.seen) { this.seen = r; this.load(cx); }
+    else if (!this.cache[ctx.key]) this.load(cx);
+    return { ...ctx, ...(this.cache[ctx.key] ?? { data: null, error: null, at: 0 }), loading: this.busy.has(ctx.key) };
+  }
+}
+
+// The frame every source draws in: a row of filters and the state on the right, then the body.
+export function frame(t, st, filters, body) {
+  const when = st.at ? ago(st.at) : null;
+  const label = st.loading && !st.data ? "Loading…" : st.loading ? "Updating…" : when === "now" ? "Updated just now" : when ? `Updated ${when} ago` : "";
+  return v_flex().size_full().min_h(0).px(12).pb(12).gap(10).text_size(TEXT).text_color(t.foreground)
+    .child(h_flex().h(32).flex_none().gap(4).items_center()
+      .children(filters ?? [])
+      .child(div().flex_1())
+      .child(div().text_size(SMALL).text_color(t.dim).child(label)))
+    .when(Boolean(st.error), (el) => el.child(notice(t, st.error, t.blocked)))
+    .child(body);
+}
+
+export function notice(t, text, color) {
+  return div().flex_none().px(12).py(10).rounded(10).border_1().border_color(t.border).text_size(SMALL).text_color(color ?? t.muted).child(text);
+}
+
+// A source's "nothing here": ui.js's empty text, centred in the view.
+export const empty = (t, text) => emptyText(t, text, { fill: true });
+
+// A source this space hasn't been set up for: what it would show, and the button to set it up. The
+// profile shown (one picked in the menu, say) is the one set up, not the shown space's.
+export function needsSetup(t, st, what, glyph, line) {
+  const profile = st.profile ?? st.setup?.profile ?? null;
+  if (!st.space && !profile) return empty(t, "No space is shown.");
+  const focus = what.toLowerCase();
+  return v_flex().size_full().items_center().justify_center().gap(6).text_size(TEXT)
+    .child(div().flex().size(40).mb(6).items_center().justify_center().rounded(12).bg(t.raised).border_1().border_color(t.border)
+      .child(icon(chrome(glyph), 18).text_color(t.muted)))
+    .child(div().font_medium().text_color(t.foreground).child(`Connect ${what} to ${profile?.name ?? st.space.name}`))
+    .child(div().max_w(380).text_size(SMALL).text_color(t.dim).text_center().child(line))
+    .child(primaryButton(t, `setup-${what}`, `Set up ${what}`, () => (profile ? openProfile(profile.id, { space: st.space, focus }) : openSetup(st.space, focus))).mt(8));
+}
+
+// Starts (or, if a tab with this name is open, shows) a Claude agent in the space, in its folder.
+// With no space shown (or the one shown then closed since), it gets a new space of its own.
+export function startAgent(st, { name, task, folder, argv }) {
+  const tab = name && spaces().flatMap((s) => s.tabs).find((c) => c.name === name);
+  if (tab) return run("tab.select", { id: tab.id });
+  const where = folder ?? st.setup.folder;
+  if (!st.space || !spaces().some((s) => s.id === st.space.id)) {
+    return run("space.new", { ...(where ? { folder: where } : {}), ...(name ? { tab: name } : {}), argv: argv ?? claudeArgv(st.setup?.profile ?? st.profile), ...(task ? { task } : {}) });
+  }
+  return newTab({
+    space: st.space.id,
+    ...(where ? { folder: where } : {}),
+    ...(name ? { name } : {}),
+    argv: argv ?? claudeArgv(st.setup?.profile ?? st.profile),
+    ...(task ? { task } : {}),
+  });
+}

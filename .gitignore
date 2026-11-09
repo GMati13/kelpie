@@ -1,0 +1,7 @@
+# written by the Herdr app into mod folders
+mods/**/gpui-kit.d.ts
+mods/**/jsconfig.json
+
+# Claude Code: personal permissions and local state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

@@ -1,0 +1,31 @@
+{
+  "global": {
+    "cmd-shift-s": "kelpie.web"
+  },
+  "layout:kelpie": {
+    "cmd-w": "kelpie.close",
+    "cmd-n": "kelpie.new-space",
+    "cmd-alt-d": "kelpie.desk",
+    "cmd-shift-j": "kelpie.next-need",
+    "cmd-shift-k": "kelpie.stories",
+    "cmd-shift-r": "kelpie.start",
+    "cmd-alt-p": "kelpie.pause",
+    "cmd-alt-c": "kelpie.claude",
+    "cmd-alt-t": "kelpie.terminal",
+    "cmd-shift-h": "kelpie.fold",
+    "cmd-b": "layout.toggle:side"
+  },
+  "layout:kelpie-quiet-pages": {
+    "cmd-w": "kelpie.close",
+    "cmd-n": "kelpie.new-space",
+    "cmd-alt-d": "kelpie.desk",
+    "cmd-shift-j": "kelpie.next-need",
+    "cmd-shift-k": "kelpie.stories",
+    "cmd-shift-r": "kelpie.start",
+    "cmd-alt-p": "kelpie.pause",
+    "cmd-alt-c": "kelpie.claude",
+    "cmd-alt-t": "kelpie.terminal",
+    "cmd-shift-h": "kelpie.fold",
+    "cmd-b": "layout.toggle:side"
+  }
+}

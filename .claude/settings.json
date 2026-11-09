@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(herdr-app ls:*)",
+      "Bash(herdr-app status:*)",
+      "Bash(herdr-app commands:*)",
+      "Bash(herdr-app check:*)",
+      "Bash(herdr-app shot:*)",
+      "Bash(herdr-app --skill:*)",
+      "Bash(herdr-app --version:*)",
+      "Bash(hc ls:*)",
+      "Bash(hc get:*)",
+      "Bash(hc read:*)",
+      "Bash(hc templates:*)",
+      "Bash(hc --help:*)",
+      "Bash(node --check:*)",
+      "Bash(gh api:*)",
+      "Bash(gh search:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git status:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
+    ],
+    "ask": [
+      "Bash(hc kill:*)",
+      "Bash(hc rm:*)"
+    ]
+  }
+}
