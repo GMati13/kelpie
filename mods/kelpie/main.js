@@ -35,16 +35,6 @@ function section(t, label, trailing) {
 
 const POLL = 5000;
 
-// Copies each skin's art (png, svg, in subfolders too) from skins/<name>/art to art/<mod>/skins/<name>,
-// and its fonts (ttf, otf) to Herdr's fonts/ folder, when missing or changed: Herdr draws no image
-// reached through stow's symlinks. $1 the skins folder, $2 where art goes, $3 the fonts folder.
-const SKIN_ART = `for d in "$1"/*/art; do [ -d "$d" ] || continue; n=\${d%/art}; n=\${n##*/}
-  (cd "$d" && find . -type f \\( -name '*.png' -o -name '*.svg' \\)) | while IFS= read -r f; do
-    f=\${f#./}; mkdir -p "$2/$n/\$(dirname "$f")"; cmp -s "$d/$f" "$2/$n/$f" || cp "$d/$f" "$2/$n/$f"; done
-done
-for f in "$1"/*/fonts/*.ttf "$1"/*/fonts/*.otf; do [ -f "$f" ] || continue; mkdir -p "$3"; cmp -s "$f" "$3/\${f##*/}" || cp "$f" "$3/"; done
-true`;
-
 // CPU as a share of all cores, memory in use as a share of all of it: on macOS active, wired and
 // compressed pages; on Linux what /proc/meminfo doesn't count as available.
 const STATS = `if [ "$(uname)" = Darwin ]; then
@@ -641,8 +631,9 @@ export default class Quiet extends View {
     // own() points. Once per start, here in the sidebar or footer, which every layout of this mod has.
     cx.spawn(async () => {
       await exec("sh", ["-c", 'mkdir -p "$2" && for f in "$1"/*.svg; do cmp -s "$f" "$2/${f##*/}" || cp "$f" "$2/"; done', "sh", modFile("icons"), `${appHome()}/art/${MOD}/icons`]).catch(() => {});
-      // The skins' art the same way (skins/<name>/art -> art/<mod>/skins/<name>), and their fonts to Herdr's fonts/.
-      await exec("sh", ["-c", SKIN_ART, "sh", modFile("skins"), `${appHome()}/art/${MOD}/skins`, `${appHome()}/fonts`]).catch(() => {});
+      // The skins' art the same way (skins/<name>/art -> art/<mod>/skins/<name>), and their fonts to
+      // Herdr's fonts/: skins/copy-art.sh, which install.sh runs too.
+      await exec("sh", [modFile("skins/copy-art.sh"), modFile("skins"), `${appHome()}/art/${MOD}/skins`, `${appHome()}/fonts`]).catch(() => {});
     });
     this.claude = {}; // agent address -> what claude-statusline.sh saved for it, so switching back shows at once
     this.poll(cx);
