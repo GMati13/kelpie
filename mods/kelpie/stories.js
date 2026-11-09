@@ -22,7 +22,7 @@ import { searchPulls } from "./pulls.js";
 import { adfBlocks, adfLines, adfText } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { alpha } from "./skins/common.js";
+import { alpha, bands } from "./skins/common.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
@@ -1845,15 +1845,35 @@ export class Stories extends Source {
       .when(own.length > 0, (el) => el.child(v_flex().gap(4).px(8).py(8).border_t_1().border_color(t.border).children(own.map((p) => this.pr(t, p, st, it)))))
       .children(it.story ? it.subs.map((s) => sub(s)) : []);
     const overview = v_flex().id("story-overview").flex_1().min_h(0).gap(0).overflow_y_scrollbar()
-      .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
-      .child(h_flex().flex_none().w_full().justify_center().px(40).pb(16).child(rows));
+      .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
+        .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
+        .child(h_flex().flex_none().w_full().justify_center().px(40).pb(16).child(rows)));
+    // A story at work leaves its details a quarter of the column, so they often go on past the
+    // block's edge: a fade over that edge says there's more to scroll to, where text cut off mid-line
+    // looked broken. Only while the content is taller than the view (fits()). Bands, as mods paint no
+    // gradients; not quite opaque, so it sits on a skin's lit background without a seam.
+    const over = (this.fit?.content ?? 0) > (this.fit?.view ?? Infinity) + 1;
+    const fade = bands(Array.from({ length: 10 }, (_, i) => alpha(t.background, ((i + 1) / 10) * 0.9)), { vertical: true })
+      .absolute().left(0).right(0).bottom(0).h(36);
+    const view = div().id("story-overview-view").relative().flex().flex_col().flex_1().min_h(0).on_size_change(this.fits("view"))
+      .child(overview).when(over, (el) => el.child(fade));
     // Under the title row (a block of its own): the status command's line, the note, then the
     // description and subtasks.
     const line = this.statusLine(t, st, it, cx);
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       .when(Boolean(line), (el) => el.child(line))
       .when(Boolean(note), (el) => el.child(note))
-      .child(overview);
+      .child(view);
+  }
+
+  // The story details' height as drawn (`view`) and their content's (`content`), on this copy, for the
+  // fade over a details block that scrolls; redrawn only when one changes.
+  fits(part) {
+    return (size, cx) => {
+      if (Math.abs((this.fit?.[part] ?? -1) - size.height) < 0.5) return;
+      this.fit = { ...(this.fit ?? {}), [part]: size.height };
+      cx.notify();
+    };
   }
 
   // The first line the profile's status command prints for the story, while it has a space: loaded
