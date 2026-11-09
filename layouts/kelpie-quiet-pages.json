@@ -7,6 +7,7 @@
     15
   ],
   "theme": "kelpie-quiet-pages",
+  "preview": "layouts/kelpie-quiet-pages.svg",
   "ui_font": "DM Sans",
   "background": "#1e1c1a",
   "terminal_padding": [
