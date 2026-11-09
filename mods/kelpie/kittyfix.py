@@ -42,6 +42,8 @@ if args[:1] == ['--']:
 if not args:
     sys.exit('usage: kittyfix.py [--log FILE] [--anchor row|origin|cell] -- command ...')
 
+CUR_FOR = 2.0          # seconds an unfinished chunked image may take before it's dropped
+HOLD_MAX = 1 << 20     # bytes of an unterminated graphics command held before it's passed on
 stats = {'padded': 0, 'dropped_deletes': 0, 'deferred_deletes': 0, 'blocks': 0}
 
 def log(msg):
@@ -55,7 +57,8 @@ def parse_ctrl(ctrl):
     out = {}
     for kv in ctrl.split(b','):
         if b'=' in kv:
-            k, v = kv.split(b'=', 1); out[k.decode()] = v.decode()
+            # latin-1 decodes any byte: a stray one must not stop the proxy (and the browser with it)
+            k, v = kv.split(b'=', 1); out[k.decode('latin-1')] = v.decode('latin-1')
     return out
 
 def build_ctrl(d):
@@ -105,6 +108,7 @@ class Rewriter:
         self.buf = b''        # unparsed input
         self.items = []       # parsed, not yet emitted: ('raw', b) | ('img', dict, payload)
         self.cur = None       # chunked transmission being assembled [dict, [payloads]]
+        self.cur_t = 0        # when it began: one never finished is dropped (CUR_FOR)
         self.sync = False
         self.sync_t = 0
 
@@ -126,6 +130,10 @@ class Rewriter:
         tail = self.buf[pos:]
         hold = tail.rfind(b'\x1b')
         rest = tail[hold:] if hold >= 0 else b''
+        if len(rest) > HOLD_MAX:
+            # A graphics command that never ends: pass it on as it is rather than hold it (and
+            # rescan it) forever.
+            hold = -1
         if hold >= 0 and (rest.startswith(b'\x1b_G') or b'\x1b_G'.startswith(rest)
                           or b'\x1b[?2026'.startswith(rest) or (rest.startswith(b'\x1b[?2026') and len(rest) < 8)):
             self.raw(tail[:hold]); self.buf = rest
@@ -145,12 +153,18 @@ class Rewriter:
             if d.get('m', '0') == '0':
                 self.items.append(('img', self.cur[0], b''.join(self.cur[1]))); self.cur = None
             return
+        if self.cur is not None:
+            # Anything but the next chunk means the image being sent was given up (a resize starts
+            # over, say): drop it. Kept, it would hold back all later output, and the browser froze.
+            log('dropped an unfinished image %r' % self.cur[0]); self.cur = None
         if d.get('m') == '1':
-            self.cur = [d, [payload]]; return
+            self.cur = [d, [payload]]; self.cur_t = time.time(); return
         self.items.append(('img', d, payload))
 
     def flush(self, force=False):
         # Emit everything up to the last block end; inside a block, wait for its end.
+        if self.cur is not None and force and time.time() - self.cur_t > CUR_FOR:
+            log('dropped an image never finished %r' % self.cur[0]); self.cur = None
         if self.cur is not None:
             return b''
         if self.sync and not (force and time.time() - self.sync_t > 0.25):
@@ -244,7 +258,11 @@ def main():
                     break
                 if not b:
                     break
-                out = rw.feed(b)
+                try:
+                    out = rw.feed(b)
+                except Exception as e:
+                    log('feed failed, passing through: %r' % e)
+                    out = b; rw.buf = b''; rw.items = []; rw.cur = None; rw.sync = False
                 while out:
                     n = os.write(1, out); out = out[n:]
             if 0 in r:
