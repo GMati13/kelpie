@@ -1,3 +1,4 @@
+<!-- Kelpie's layout preview: install.sh copies it here and replaces it on update -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" fill="none">
 <defs><radialGradient id="lamp" cx="0.5" cy="0" r="0.8"><stop offset="0" stop-color="#e2c27a" stop-opacity="0.22"/><stop offset="1" stop-color="#e2c27a" stop-opacity="0"/></radialGradient></defs>
 <rect width="320" height="200" rx="10" fill="#1e1c1a"/>

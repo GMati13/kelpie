@@ -10,12 +10,15 @@ for d in "$1"/*/art; do
   (cd "$d" && find . -type f \( -name '*.png' -o -name '*.svg' \)) | while IFS= read -r f; do
     f=${f#./}
     mkdir -p "$2/$n/$(dirname "$f")"
+    # A link in the way is replaced, never written through.
+    [ -L "$2/$n/$f" ] && rm "$2/$n/$f"
     cmp -s "$d/$f" "$2/$n/$f" || cp "$d/$f" "$2/$n/$f"
   done
 done
 for f in "$1"/*/fonts/*.ttf "$1"/*/fonts/*.otf; do
   [ -f "$f" ] || continue
   mkdir -p "$3"
+  [ -L "$3/${f##*/}" ] && rm "$3/${f##*/}"
   cmp -s "$f" "$3/${f##*/}" || cp "$f" "$3/"
 done
 true

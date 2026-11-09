@@ -1,3 +1,4 @@
+<!-- Kelpie's layout preview: install.sh copies it here and replaces it on update -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" fill="none">
 <rect width="320" height="200" rx="10" fill="#1a1714"/>
 <path d="M10 0H96V200H10A10 10 0 0 1 0 190V10A10 10 0 0 1 10 0Z" fill="#161310"/>

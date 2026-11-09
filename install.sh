@@ -23,22 +23,29 @@ mkdir -p "$herdr/layouts" "$herdr/themes" "$herdr/mods"
 for l in "$herdr"/layouts/* "$herdr"/themes/*; do
   [ -L "$l" ] || continue
   case "$(readlink "$l")" in "$repo"/*) rm "$l"; continue ;; esac
-  case "${l##*/}" in [Kk]elpie*) [ -e "$l" ] || rm "$l" ;; esac
+  [ -e "$l" ] && continue
+  case "$(readlink "$l")" in */layouts/[Kk]elpie*|*/themes/[Kk]elpie*) rm "$l" ;; esac
 done
 for f in "$repo"/layouts/Kelpie*.json; do link "$f" "$herdr/layouts/${f##*/}"; done
 for f in "$repo"/themes/Kelpie*.json; do link "$f" "$herdr/themes/${f##*/}"; done
 for m in kelpie kelpie-artifacts; do link "$repo/mods/$m" "$herdr/mods/$m"; done
 # The layouts' previews (the settings' layout picker): Herdr draws no image reached through a link.
+# Our own earlier copy (it carries the marker) or a link is replaced; any other file is yours.
 for f in "$repo"/layouts/Kelpie*.svg; do
-  rm -f "$herdr/layouts/${f##*/}"
-  cp "$f" "$herdr/layouts/"
+  dest="$herdr/layouts/${f##*/}"
+  if [ -f "$dest" ] && [ ! -L "$dest" ] && ! grep -q "Kelpie's layout preview" "$dest"; then
+    skipped="$skipped
+  $dest"; continue
+  fi
+  rm -f "$dest"
+  cp "$f" "$dest"
 done
 # The icons, and each skin's art and fonts (the footer copies them too, on each start).
 sh "$repo/mods/kelpie/icons/install.sh" >/dev/null
 sh "$repo/mods/kelpie/skins/copy-art.sh" "$repo/mods/kelpie/skins" "$herdr/art/kelpie/skins" "$herdr/fonts"
 
 if [ -n "$skipped" ]; then
-  echo "Not installed: these are real files or folders, not Kelpie's links. Move them aside and run this again:$skipped" >&2
+  echo "Not installed: these are files or folders of yours, not Kelpie's. Move them aside and run this again:$skipped" >&2
   exit 1
 fi
 echo "Kelpie is installed in $herdr."

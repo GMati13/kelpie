@@ -6,5 +6,9 @@ set -e
 here=$(cd "$(dirname "$0")" && pwd)
 dest="${HERDR_APP_HOME:-$HOME/.config/herdr-app}/art/kelpie/icons"
 mkdir -p "$dest"
-cp "$here"/*.svg "$dest"/
+for f in "$here"/*.svg; do
+  # A link in the way is replaced, never written through.
+  [ -L "$dest/${f##*/}" ] && rm "$dest/${f##*/}"
+  cp "$f" "$dest/"
+done
 echo "icons copied to $dest"
