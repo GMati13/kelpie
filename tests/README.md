@@ -134,7 +134,13 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   `needQueue()`; sinking at the handover column; subtask stages and `progress()`; `prState()`'s order; the
   demo's stories end to end.
 - `next.test.mjs`: `needQueueOf()` (needs you, reviews, the Desk asking, one clean-up item, Claude's
-  picks and when they drop out), `nextIn()`, `applyPicks()`'s rules (Jira lookups faked through `exec`).
+  picks and when they drop out), `nextIn()`, `applyPicks()`'s rules (Jira and GitHub Project lookups faked
+  through `exec`).
+- `issues.test.mjs`: a GitHub Project's issues (issues.js, through board.js) on hand-built data in board.js's
+  header shape: `issueRef()` (malformed keys refused), the description (only an issue page's address,
+  Markdown with only http(s) links), `ticketText`/`lookUp` (one constant query, values as variables; a
+  sub-issue goes to its story), Status options and a move (the mutation's argv, every id checked before gh
+  runs), the status chip (no menu off the Project; the new status shown at once), the demo's answers.
 - `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
   agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.

@@ -156,6 +156,20 @@ describe("applyPicks: Claude's picks checked against the sidebar's rules", () =>
     mock.state.shared.set("kelpie.stories.data", {});
     await assert.rejects(applyPicks(profile, [pick({ key: "CC-1" })]), /haven't loaded/);
   });
+  test("on a GitHub Project: a sub-issue not in the list goes to its story, as GitHub says; an unknown prefix is dropped", async () => {
+    const gp = { id: "g", name: "G", folder: "/g", project: { url: "https://github.com/orgs/acme/projects/3", owner: "acme", ownerType: "org", number: 3 }, github: { owner: "acme" } };
+    const it = (key, parent = null) => ({ key, url: `https://github.com/acme/web/issues/${key.split("-")[1]}`, item: `PVTI_${key.split("-")[1]}`, fields: { summary: `${key} title`, parent: parent ? { key: parent } : null } });
+    mock.state.shared.set("kelpie.stories.data", { g: { data: { site: "https://github.com", columns: [], repos: { WEB: "acme/web" }, mine: [{ key: "WEB-2" }], parents: [it("WEB-1")], children: [it("WEB-2", "WEB-1")] } } });
+    mock.on.exec = (cmd, args) => {
+      if (cmd !== "sh" || !String(args[0]).endsWith("gh.sh")) return undefined;
+      const n = Number(args.find((a) => String(a).startsWith("number="))?.slice(7));
+      const issue = n === 40 ? { number: 40, title: "Sub", body: "", parent: { number: 30, title: "Its story", repository: { nameWithOwner: "acme/web" } } } : null;
+      return { code: 0, stdout: JSON.stringify({ data: { repository: { issue } } }), stderr: "" };
+    };
+    const { kept, dropped } = await applyPicks(gp, [pick({ key: "WEB-2" }), pick({ key: "WEB-40" }), pick({ key: "WEB-99" }), pick({ key: "DOCS-1" })]);
+    assert.deepEqual(kept.map((x) => [x.key, x.title, x.from]), [["WEB-1", "WEB-1 title", "WEB-2"], ["WEB-30", "Its story", "WEB-40"]]);
+    assert.deepEqual(dropped.map((d) => d.item), ["WEB-99", "DOCS-1"]);
+  });
   test("the demo's picks: a story, a pull request and an idea", async () => {
     mock.state.shared.set("kelpie.profiles", { demo: DEMO_PROFILE });
     mock.state.shared.set("kelpie.stories.data", { demo: { data: await demoData() } });

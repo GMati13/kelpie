@@ -10,6 +10,7 @@ import { handlers, texts } from "gpui-kit";
 import { put, tempDir } from "../lib/helpers.mjs";
 import { byId } from "../lib/snapshot.mjs";
 import { StoryBody, StoryList, showPassageRequest } from "../../mods/kelpie/stories.js";
+import { findPassage, markdownBlocks } from "../../mods/kelpie/adf.js";
 
 let stories, home;
 before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); });
@@ -97,4 +98,24 @@ test("another story, or another profile's passage, shows the details as usual", 
   mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
   mock.state.shared.set("kelpie.passage", { profile: "other", key: "ACME-180", quote: "with confirmation numbers", note: "", at: Date.now() });
   assert.equal(byId((await draw(new StoryBody())).el, "passage-bar"), null);
+});
+
+// A GitHub Project's issue description is Markdown (issues.js, markdownBlocks()): a passage is found
+// in it as in a Jira ticket's.
+test("a passage of a Markdown description (a GitHub issue's): found, marked and its block flagged", () => {
+  const blocks = markdownBlocks([
+    "<!-- the template's hint -->",
+    "Travellers open **saved trips** offline.",
+    "## Done when",
+    "- [ ] A trip opened once opens again in airplane mode, within 300 ms",
+    "- [x] An edit made offline shows on [another device](https://example.com/devices) after going back online",
+  ].join("\n"));
+  const r = findPassage(blocks, "an edit made offline shows on another device");
+  assert.equal(r.exact, true);
+  assert.deepEqual(r.blocks.map((b) => Boolean(b.hl)), blocks.map((_, i) => i === r.index));
+  assert.equal(r.blocks[r.index].kind, "list");
+  const marked = JSON.stringify(r.blocks).match(/"text":"[^"]*"(?=[^}]*"mark":true)/g)?.map((s) => s.slice(8, -1)) ?? [];
+  assert.equal(marked.join(""), "An edit made offline shows on another device");
+  assert.equal(findPassage(blocks, "Travellers open saved trips").index, 0, "bold marks are forgiven");
+  assert.equal(findPassage(blocks, "the template's hint"), null, "an HTML comment isn't part of it");
 });

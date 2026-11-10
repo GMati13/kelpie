@@ -20,6 +20,7 @@
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
+import { issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 
 const PAGES = 5; // up to 500 tickets a search
 
@@ -81,36 +82,52 @@ export function ticketUrl(board, data, key) {
   return site ? `${site}/browse/${key}` : null;
 }
 
-// A ticket's description, as the reader's blocks (adf.js).
-export async function description(board, key) {
+// A ticket's description, as the reader's blocks (adf.js). `data`, here and below: what the list
+// loaded, where a Project's issue is found (issues.js); Jira asks by key alone.
+export async function description(board, key, data) {
+  if (board.kind === "project") return issueDescription(board, data, key);
   return adfBlocks((await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description);
 }
 
 // A ticket's summary, its parent's key and its description as text (the review prompt's).
-export async function ticketText(board, key) {
+export async function ticketText(board, key, data) {
+  if (board.kind === "project") return issueText(board, data, key);
   const f = (await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,parent`)).body?.fields ?? {};
   return { summary: f.summary ?? "", parent: f.parent?.key ?? null, text: adfText(adfBlocks(f.description)) };
 }
 
 // A ticket the list doesn't have (Claude's pick of someone else's, say): { key, summary, story } with
 // `story` its story's { key, summary } when it's a subtask (a story's own parent is its epic, never
-// followed), or null when the board doesn't know it.
-export async function lookUp(board, key) {
+// followed; a Project's sub-issue goes to its parent issue), or null when the board doesn't know it.
+export async function lookUp(board, key, data) {
   if (!board) return null;
+  if (board.kind === "project") return issueLookUp(board, data, key);
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${key}?fields=summary,parent,issuetype`).catch(() => null);
   if (!r?.body?.key) return null;
   const parent = r.body.fields?.issuetype?.subtask ? r.body.fields?.parent : null;
   return { key: r.body.key, summary: r.body.fields?.summary ?? "", story: parent?.key ? { key: parent.key, summary: parent.fields?.summary ?? "" } : null };
 }
 
-// Where a ticket can be moved: [{ id, name, to, category }], `to` the status it lands in.
-export async function statusOptions(board, key) {
+// Whether a ticket's status can be changed from its chip: always on Jira (its workflow says where);
+// on a Project only for an issue that's on it (one off it has no Status there).
+export const movable = (board, key, data) => board?.kind !== "project" || Boolean(issueRef(board, data, key)?.item);
+
+// Where a ticket can be moved: [{ id, name, to, category }], `to` the status it lands in. A Project's
+// are its Status options (the loaded columns) but the one it's in; none for an issue off the Project.
+export async function statusOptions(board, key, data) {
+  if (board.kind === "project") {
+    if (!movable(board, key, data)) return [];
+    const columns = data?.columns ?? [], now = loadedIssue(data, key)?.fields?.status?.id;
+    return columns.map((c, i) => ({ id: c.statuses?.[0], name: c.name, to: c.name, category: projectCategory(i, columns.length) }))
+      .filter((o) => o.id && o.id !== now);
+  }
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`);
   return (r.body?.transitions ?? []).filter((x) => x.isAvailable !== false)
     .map((x) => ({ id: x.id, name: x.name, to: x.to?.name ?? x.name, category: x.to?.statusCategory?.key }));
 }
 
 // Moves a ticket by one of statusOptions(), on the person's own click.
-export async function moveStatus(board, key, option) {
+export async function moveStatus(board, key, option, data) {
+  if (board.kind === "project") return setStatus(board, data, key, option);
   await jira(board.cfg, "transition", key, option.id);
 }
