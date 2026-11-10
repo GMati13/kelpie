@@ -4115,6 +4115,13 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
     notify({ title: `${key} wasn't cleaned up`, body: `${capitalize(why.join(", "))}.`, level: "warning" });
     return { moved, failed, cleaned: false, why };
   }
+  // What it left behind: the leftovers check only ever looked at it as a finished story, which it
+  // wasn't until a moment ago, so nothing is known yet and the clean-up command wouldn't run. Look now.
+  if (cleanCommand(s.st.profile)) {
+    const found = await findLeftovers(s.st.profile, [now]).catch(() => ({}));
+    const all = shared(LEFTOVERS) ?? {}, had = all[profile] ?? {};
+    setShared(LEFTOVERS, { ...all, [profile]: { ...had, found: { ...(had.found ?? {}), ...found } } });
+  }
   await cleanUp(s.st.profile, now);
   // cleanUp() leaves its own note ("Cleaned up …"); the moves go before it.
   const after = shared(NOTE);
