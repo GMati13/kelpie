@@ -5,10 +5,10 @@ v_flex [fg=foreground]
         h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
           "Updated just now ↻"
       h_flex
-        div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 2 finished stories with something left"
+        div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 3 stories with something left"
           svg own:brush-cleaning
         div [fg=dim]
-          "2"
+          "3"
     h_flex
       h_flex #count-needs-you [fg=working] tip="1 need you"
         div
@@ -82,7 +82,7 @@ v_flex [fg=foreground]
         Popup.new "desk-new-menu"
           div #desk-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal on the Desk"
             svg chrome:plus
-    h_flex #desk-agent-a6-0 [hover(bg=hover)] {click down:left} tip="Claude Code · idle"
+    h_flex #desk-agent-a7-0 [hover(bg=hover)] {click down:left} tip="Claude Code · idle"
       div
         div
           div [border=muted]
@@ -92,7 +92,7 @@ v_flex [fg=foreground]
       div [fg=muted]
         "In progress"
       div [fg=dim]
-        "7"
+        "8"
     h_flex #story-ACME-142 [hover(bg=hover)] {click} tip="ACME-143's agent needs you"
       div
         div
@@ -236,6 +236,24 @@ v_flex [fg=foreground]
               div [bg=working]
             div [fg=dim]
               "0/1"
+    h_flex #story-ACME-190 [hover(bg=hover)] {click} tip="Reassigned to Jordan Blake · clean up once you're done with it"
+      div
+        div
+          div [border=muted]
+      v_flex
+        div
+          "Remember the last search filters"
+        h_flex
+          div [fg=dim]
+            "ACME-190"
+          div #here-ACME-190 tip="Open here: it has a space on this machine"
+            svg chrome:terminal [fg=dim]
+          div #gone-ACME-190
+            div [bg=ansi5/33 fg=ansi5] tip="Reassigned to Jordan Blake: kept here until you clean it up"
+              "JB"
+      div #clean-ACME-190 {down:left click}
+        div #clean-ACME-190 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-190: closes its space, forgets its paused session"
+          svg own:brush-cleaning
     h_flex
       div [fg=muted]
         "Reviews for you"

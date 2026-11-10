@@ -77,7 +77,13 @@ export async function jira(cfg, ...args) {
   if (r.error === "invalid") throw new Error("The Jira email or token holds a quote, backslash or line break, which a sign-in can't carry. Check the email in this profile.");
   if (r.error === "missing") throw new Error(`No Jira Cloud sign-in${cfg.tokenCommand ? "" : platform() === "macos" ? " in the Keychain" : ""}. ${tokenHelp(cfg)}`);
   if (r.code === 401 || r.code === 403 || (r.code === 200 && r.authed === false)) throw new Error(`Jira Cloud didn't accept the sign-in. ${tokenHelp(cfg)}`);
-  if (r.code < 200 || r.code > 299) throw new Error([...(r.body?.errorMessages ?? []), ...Object.values(r.body?.errors ?? {})].join(" ") || `Jira answered ${r.code || "nothing"}.`);
+  if (r.code < 200 || r.code > 299) {
+    // Its code goes with it: a 400 is a question Jira won't take (a key it doesn't know, say), not a
+    // Jira that couldn't answer (board.js byKeys() tells them apart).
+    const e = new Error([...(r.body?.errorMessages ?? []), ...Object.values(r.body?.errors ?? {})].join(" ") || `Jira answered ${r.code || "nothing"}.`);
+    e.status = r.code;
+    throw e;
+  }
   return r;
 }
 

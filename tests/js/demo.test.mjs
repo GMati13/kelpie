@@ -93,9 +93,19 @@ describe("demoPulls and the local helpers", () => {
     const [p] = await demoPulls("is:open");
     assert.ok(Math.abs(Date.now() - 25 * MIN - Date.parse(p.updatedAt)) < MIN, p.updatedAt);
     const sessions = await demoSessions("/f");
-    assert.deepEqual(sessions.map((s) => s.id), ["demo-s2", "demo-s4", "demo-s1", "demo-s6", "demo-s3", "demo-s5"], "newest first");
+    assert.deepEqual(sessions.map((s) => s.id), ["demo-s2", "demo-s4", "demo-s7", "demo-s1", "demo-s6", "demo-s3", "demo-s5"], "newest first");
     assert.ok(Math.abs(Date.now() - 3 * 60 * MIN - sessions[0].updated) < MIN);
     assert.deepEqual(sessions[0], { ...sessions[0], cwd: "/f", running: false, first: ["ACME-139"], keys: ["ACME-139"], title: "Token bucket per API key" });
+  });
+  test("sessions with the same time keep the fixture's order, however slow the machine", async () => {
+    const real = Date.now;
+    let t = real();
+    Date.now = () => (t += 1); // every read a millisecond later
+    try {
+      const ids = (await demoSessions("/f")).map((s) => s.id);
+      assert.ok(ids.indexOf("demo-s1") < ids.indexOf("demo-s6"), ids.join(" "));
+      assert.ok(ids.indexOf("demo-s4") < ids.indexOf("demo-s7"), ids.join(" "));
+    } finally { Date.now = real; }
   });
   test("a pull request's files, counted, with a sha each; an unknown one has none", async () => {
     const files = await demoPullFiles(PR("web", 418));

@@ -18,7 +18,7 @@ v_flex #space-menu [bg=popover border=border fg=foreground] {down_out key_down}
             svg chrome:spinner [fg=accent] ~spin
           "2"
       div [fg=dim]
-        "7 spaces"
+        "8 spaces"
       div
         svg chrome:check [fg=accent]
     h_flex #menu-profile-side [hover(bg=hover)] {move click} tip="/home/test/code/side"

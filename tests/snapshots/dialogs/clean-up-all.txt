@@ -1,10 +1,17 @@
 v_flex #kelpie-confirm [bg=popover] {key_down}
   div [fg=foreground]
-    "Clean up 2 finished stories?"
+    "Clean up 3 stories?"
   v_flex #confirm-detail
     div [fg=muted]
-      "Each is done or merged, and leaves something behind:"
+      "Each is done, merged or someone else's now, and leaves something behind:"
     v_flex
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-190"
+        div [fg=foreground]
+          "Reassigned to Jordan Blake: closes its space, forgets its paused session"
       h_flex
         div [fg=dim]
           "•"

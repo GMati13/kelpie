@@ -309,6 +309,8 @@ function sendKey(it, key) {
 // A finished story: done on the board, or every pull request of it merged. It may leave things to
 // clean up (cleanable()).
 const finished = (it) => it.category === "done" || (allPrs(it).length > 0 && allPrs(it).every((p) => p.merged));
+// What can be cleaned up here: a finished story, or one someone else has now (reassigned).
+const letGo = (it) => finished(it) || Boolean(it.reassigned);
 const storyKeys = (it) => [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a) => a.indexOf(k) === i);
 
 // What to ask an agent about some pull requests: one button each, by what they need.
@@ -342,6 +344,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     if (p) kids.set(p, [...(kids.get(p) ?? []), c]);
   }
   const mine = new Set(data.mine.map((i) => i.key));
+  const kept = new Set(data.kept ?? []);
   const columns = data.columns ?? [];
   const from = handoverFrom(columns, handover);
   const past = (category, statusId) => category === "done" || (from >= 0 && columns.findIndex((c) => c.statuses.includes(statusId)) >= from);
@@ -363,8 +366,13 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
     });
     const own = children.filter((c) => mine.has(c.key));
+    // Kept only as something of it is here (data.kept, hereKeys()), with nothing of it yours any more:
+    // reassigned, to the people its subtasks are assigned to, else the story's assignee.
+    const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
+    const gone = kept.has(key) && !mine.has(key) && !own.length;
     return {
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
@@ -387,6 +395,22 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
 // with any of those stays, so its broom shows; the others go to the Done group, still reachable.
 const settled = (it, left = new Set()) => it.category === "done" && !it.space && !it.subs.some((s) => s.prs.some((p) => !p.merged))
   && allPaused(it).length === 0 && !left.has(it.key);
+// The keys of the profile's stories something of which is here: a space named after one, a paused
+// agent on one, a story with an open pull request of yours in the last load (`prior`). The load asks
+// the board for those it doesn't give as yours (board.js loadBoard()'s `keep`): a story reassigned to
+// someone else stays listed, marked so, until it's cleaned up. Exported for the tests.
+export function hereKeys(profile, prior) {
+  const keys = new Set([...storySpaces(profile).keys(), ...Object.keys(pausedIn(profile))]);
+  if (prior?.parents) for (const it of build(prior, new Map(), {}, new Map(), null, { all: true })) if (!it.pr && allPrs(it).some((p) => !p.merged)) keys.add(it.key);
+  return [...keys].filter((k) => /^[A-Z][A-Z0-9_]*-\d+$/.test(k));
+}
+// Who has a reassigned story now (the people its subtasks are assigned to, else the story's assignee),
+// in words: "Reassigned to Ana Lima", or with nobody "No longer assigned to you".
+function reassignedWords(it) {
+  const names = it.reassigned?.to ?? [];
+  if (!names.length) return "No longer assigned to you";
+  return `Reassigned to ${names.length > 2 ? `${names[0]} and ${names.length - 1} others` : names.join(" and ")}`;
+}
 // The finished stories the list leaves out, in the board's order, each { it, n } as the list's are:
 // what the sidebar's Done group shows, previewed like a story not open (its details, its merged pull
 // requests, its earlier sessions to resume). Only the sprint's (or, on a board without sprints, the
@@ -530,9 +554,11 @@ function need(it) {
   if (done.length) return [3, pre + (done.length === prs.length ? `Approved, ${done.every((p) => checksOf(p)) ? "checks pass" : done.some((p) => checksOf(p)) ? "checks pass or none" : "no checks"} · ready to merge` : `${done.map(prName).join(", ")} ready to merge`), "done"];
   // One of your pull requests with no ticket, waiting on nothing of yours: where it stands.
   if (it.pull) return [6, pullWords(it.pull), "dim"];
-  if (isPaused(it)) return [7, `Paused · ${progress(it)}`, "dim"];
-  if (allAgents(it).some((a) => a.status === "working")) return [5, `Agent working · ${progress(it)}`, "accent"];
-  return [6, progress(it), "dim"];
+  // A story someone else has now says so first, and that it waits for its clean-up.
+  const gone = it.reassigned ? `${reassignedWords(it)} · ` : "";
+  if (isPaused(it)) return [7, `${gone}Paused · ${progress(it)}`, "dim"];
+  if (allAgents(it).some((a) => a.status === "working")) return [5, `${gone}Agent working · ${progress(it)}`, "accent"];
+  return [6, gone ? `${gone}clean up once you're done with it` : progress(it), "dim"];
 }
 
 // A pull request waiting for your review: after what needs you on your own stories.
@@ -647,7 +673,7 @@ function dismissSuggestion(profile, key) {
 // What a queue item says, in Next and in the queue list.
 const queueLabel = (x) => (x.desk ? "Desk: an agent needs you"
   : x.ask ? x.ask.action
-  : x.clean ? (x.clean.length === 1 ? `${x.clean[0].key}: finished, clean up` : `${x.clean.length} finished stories: clean up all`)
+  : x.clean ? (x.clean.length === 1 ? `${x.clean[0].key}: ${finished(x.clean[0]) ? "finished" : "reassigned"}, clean up` : `${x.clean.length} ${x.clean.every(finished) ? "finished " : ""}stories: clean up all`)
   : x.suggest ? x.suggest.action
   : `${lonePr(x) ? prName(lonePr(x)) : x.key}: ${need(x)[1]}`);
 // Its second line: what it is (the story's title, who asked for the review), or why Claude picked it.
@@ -1784,7 +1810,7 @@ export class Stories extends Source {
     });
   }
 
-  async fetch({ space, setup }) {
+  async fetch({ space, setup, key }) {
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -1801,13 +1827,17 @@ export class Stories extends Source {
     const sessionsP = this.fetchSessions({ space, setup });
     // A GitHub Project's load also says which pull requests close its issues, which repo each key's
     // issues are in, and the Project itself (board.js); Jira's has none of those.
-    const { site, columns, sprints, mine, parents, children, links, repos, project } = await loadBoard(boardOf(setup));
+    // A story of yours stays while something of it is here, even once the board gives it to someone
+    // else (hereKeys()): the board is asked for those by key too.
+    const prior = this.cache?.[key]?.data ?? null;
+    const keep = { keys: hereKeys(setup.profile, prior), projects: prior ? [...projectsOf(prior)] : [], repos: prior?.repos ?? {} };
+    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await loadBoard(boardOf(setup), keep);
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     return {
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
-      ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}),
+      ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     };
@@ -2121,6 +2151,9 @@ export class Stories extends Source {
           // It has a space on this machine: a small terminal after its key (the groups go by the board).
           .when(Boolean(it.space), (el) => el.child(div().id(`here-${it.key}`).flex_none().tooltip("Open here: it has a space on this machine")
             .child(icon(chrome("terminal"), 11).text_color(t.dim))))
+          // Someone else has it now: who, as their avatar (the row's tooltip says it in words).
+          .when(Boolean(it.reassigned), (el) => el.child(div().id(`gone-${it.key}`).flex_none()
+            .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
           .children(badges)))
       // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
       // it; its clicks stay off the row, as the broom's do.
@@ -3657,7 +3690,7 @@ export class StoryList extends Stories {
     const dirty = items.map((x) => x.it).filter((it) => cleanable(st.profile, it).length);
     const cleanAll = dirty.length ? h_flex().flex_none().gap(2).items_center()
       .child(iconButton(t, "stories-clean-all", own("brush-cleaning"), () => askCleanAll(st.profile, dirty),
-        `Clean up ${dirty.length === 1 ? "the finished story" : `all ${dirty.length} finished stories`} with something left`))
+        `Clean up ${dirty.length === 1 ? `the ${finished(dirty[0]) ? "finished" : "reassigned"} story` : `all ${dirty.length} ${dirty.every(finished) ? "finished " : ""}stories`} with something left`))
       .child(div().text_size(SMALL).text_color(t.dim).child(String(dirty.length))) : null;
     return v_flex().size_full().min_h(0).text_size(TEXT).text_color(t.foreground)
       .child(v_flex().flex_none().px(INSET).pb(10).gap(8)
@@ -3940,7 +3973,7 @@ async function findLeftovers(profile, done) {
 }
 function checkLeftovers(profile, items, force = false) {
   if (!cleanCommand(profile) || LEFTOVERS_BUSY.has(profile.id)) return;
-  const done = items.filter(finished);
+  const done = items.filter(letGo);
   // What was asked: a change to it (either command, the finished stories, how they're looked for)
   // looks again at once, not after the 2 minutes, so a changed setting shows right away.
   const ask = `${LEFTOVERS_WAY}|${leftoversCommand(profile) ?? ""}|${cleanCommand(profile)}|${done.map((it) => it.key).sort().join(" ")}`;
@@ -3964,13 +3997,14 @@ function leftoverItems(profile, it) {
 }
 
 // Why a story can't be cleaned up yet, if anything: only work that's done and settled goes. A story
-// must be done on its board (a pull request without a ticket: merged), with no pull request still
+// must be done on its board (a pull request without a ticket: merged) or reassigned to someone else
+// (what's left of it here is the person's to clear), with no pull request still
 // open and no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted
 // work is checked when it's cleaned (cleanUp), as that takes a look at its folders.
 export function cleanBlockers(it) {
   const why = [];
   const lone = it.pull || it.review;
-  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't done on the board");
+  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done" && !it.reassigned) why.push(lone ? "its pull request isn't merged" : "it isn't done on the board");
   if (!lone && allPrs(it).some((p) => !p.merged)) why.push("a pull request of it is still open");
   const live = [...allAgents(it), ...(it.space ? agents().filter((a) => a.space === it.space.id) : [])];
   if (live.some((a) => a.status === "working")) why.push("an agent is working on it");
@@ -3979,7 +4013,7 @@ export function cleanBlockers(it) {
 }
 
 function cleanable(profile, it) {
-  if (!profile || !finished(it) || cleanBlockers(it).length) return [];
+  if (!profile || !letGo(it) || cleanBlockers(it).length) return [];
   const paused = allPaused(it).length;
   const left = cleanCommand(profile) ? leftoversOf(profile, it) : [];
   return [it.space && "closes its space",
@@ -4043,15 +4077,16 @@ export function cleanStoryByKey(key) {
   if (it) return cleanUp(s.st.profile, it);
 }
 
-// The clean-up dialog for a finished story (its broom's): the sentence, then what the clean-up
-// command runs on as a list (the dialog grows with it).
+// The clean-up dialog for a finished or reassigned story (its broom's): the sentence, then what the
+// clean-up command runs on as a list (the dialog grows with it).
 function askCleanUp(profile, it) {
   const parts = cleanable(profile, it);
   const items = leftoverItems(profile, it);
   const said = parts.map((p, i) => (items.length && i === parts.length - 1 ? p.replace(/ \(\d+ things\)$/, "") : p));
+  const why = finished(it) ? `${it.key} is ${it.category === "done" ? "done" : "merged"}` : `${reassignedWords(it)}: ${it.key} isn't yours any more`;
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(items.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${it.key}?`, yes: "Clean up", command: { name: `${MOD}.clean-story-${it.key}` },
-    detail: `${it.key} is ${it.category === "done" ? "done" : "merged"}, nothing of it is open or running. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
+    detail: `${why}, nothing of it is open or running. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
 }
 
 // Move to Done (the header's More): a story and its subtasks to the board's done column in one go.
@@ -4165,12 +4200,14 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
 }
 
 // Clean up all's dialog (the list's broom beside its freshness line, and Next): every finished story
-// with something left, one line each; its button runs kelpie.clean-all (cleanAll()).
+// with something left (and every reassigned one, saying who has it), one line each; its button runs
+// kelpie.clean-all (cleanAll()).
 function askCleanAll(profile, dirty) {
+  const what = dirty.every(finished) ? "finished " : "";
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(dirty.length, 10) * 24), props: {
-    role: "confirm", title: `Clean up ${dirty.length === 1 ? "1 finished story" : `${dirty.length} finished stories`}?`, yes: "Clean up all",
-    command: { name: `${MOD}.clean-all` }, detail: "Each is done or merged, and leaves something behind:",
-    items: dirty.map((it) => ({ key: it.key, text: cleanable(profile, it).join(", ") })) } });
+    role: "confirm", title: `Clean up ${dirty.length === 1 ? `1 ${what}story` : `${dirty.length} ${what}stories`}?`, yes: "Clean up all",
+    command: { name: `${MOD}.clean-all` }, detail: what ? "Each is done or merged, and leaves something behind:" : "Each is done, merged or someone else's now, and leaves something behind:",
+    items: dirty.map((it) => ({ key: it.key, text: `${finished(it) ? "" : `${reassignedWords(it)}: `}${cleanable(profile, it).join(", ")}` })) } });
 }
 
 // The sidebar's Clean up all (`kelpie.clean-all`): every finished story of the shown profile with
