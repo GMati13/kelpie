@@ -331,13 +331,14 @@ export function demoAsks(f, terminalOf = () => null, project = false) {
 
 // The demo profile's board: the fixture's Jira board, or (`board` "project", kelpie.demo-github) the
 // same issues as a GitHub Project. One profile either way, as two would open spaces of the same names.
+// The fixture's profile `solo` (true) makes it a board the person works alone on.
 export function demoBoard(f, board = "jira") {
   const p = f.profile;
   if (board === "project") {
     const number = 1;
-    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}) } };
+    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}) } };
   }
-  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}) }, project: null };
+  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}) }, project: null };
 }
 
 export async function setupDemo(board = "jira") {
