@@ -49,12 +49,35 @@ test("the story list of someone who works alone", async () => {
 });
 
 test("a finished story whose agent is working has no broom", async () => {
-  const el = await list({ agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });
+  // Without ACME-116's paused session, which leaves it to clean up too.
+  const el = await list({ paused: { "ACME-138": FIXTURE.paused["ACME-138"] }, agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });
   const row = byId(el, "story-ACME-122");
   assert.ok(row, "the row is drawn");
   assert.equal(byId(row, "clean-ACME-122"), null, "no broom while its agent works");
   assert.equal(byId(el, "stories-clean-all"), null, "nor Clean up all");
   snap("sidebar/row-finished-busy", row);
+});
+
+// KELPIE-43: a finished story whose space is closed, with only a ticket folder left, used to drop out
+// of the list before the leftovers check looked at it, so it never got a broom.
+test("a finished story with only leftovers left is checked, listed and gets its broom", async () => {
+  setupDemoWorld({ stories, spaces: FIXTURE.spaces.filter((s) => s.name !== "ACME-122"), profile: { commands: { cleanUp: "rm -rf worktrees/{key}" } } });
+  const asked = [];
+  const home = mock.on.exec;
+  mock.on.exec = (cmd, args) => {
+    const script = String(args?.[1] ?? "");
+    if (cmd === "sh" && script.includes("for k; do")) { asked.push(...args.slice(4)); return { code: 0, stdout: args.includes("ACME-123") ? "ACME-123\n" : "", stderr: "" }; }
+    return home(cmd, args);
+  };
+  await draw(new StoryList());
+  // The check runs on after the render (the clock is pinned here, so until() couldn't time out).
+  const found = () => mock.sharedValue("kelpie.clean.leftovers")?.[DEMO]?.found?.["ACME-122"];
+  for (let i = 0; i < 50 && !found(); i++) await new Promise((r) => setImmediate(r));
+  assert.ok(found(), "the leftovers check found its folder");
+  assert.ok(asked.includes("ACME-123"), "the check looked under its subtask's key");
+  const el = (await draw(new StoryList())).el;
+  assert.ok(byId(byId(el, "story-ACME-122"), "clean-ACME-122"), "its row has the broom");
+  assert.ok(byId(el, "stories-clean-all"), "and Clean up all shows");
 });
 
 test("Next with Claude's picks, and the queue opened", async () => {
@@ -215,6 +238,17 @@ test("finished stories stay in a folded Done group", async () => {
   const shut = view.render(cx);
   assert.ok(byId(shut, "done-ACME-118"), "folded, the story shown keeps its row");
   assert.equal(byId(shut, "story-ACME-118"), null);
+});
+
+// KELPIE-43: a finished story that still leaves something to clean up (ACME-116: no space, its
+// subtask's session paused) isn't settled: it stays among the stories, with its broom, not in Done.
+test("a finished story with a paused session left stays listed with its broom, not in Done", async () => {
+  setupDemoWorld({ stories, props: {} });
+  putShared("kelpie.done.open", { [DEMO]: true });
+  const { el } = await draw(new StoryList());
+  assert.ok(byId(byId(el, "story-ACME-116"), "clean-ACME-116"), "listed, with its broom");
+  assert.equal(byId(el, "done-ACME-116"), null, "not in the Done group");
+  assert.ok(byId(el, "done-ACME-118"), "a story with nothing left still is");
 });
 
 // A profile with no board yet: the list asks for one, Jira or a GitHub Project, naming neither as

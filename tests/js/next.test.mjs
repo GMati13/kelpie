@@ -39,6 +39,25 @@ describe("needQueueOf: what Next goes through", () => {
     assert.deepEqual(keys(q), ["clean"]);
     assert.deepEqual(q[0].clean.map((it) => it.key), ["AA-1", "BB-1"]);
   });
+  // A finished story with no space and no open pull request stays listed while something of it is
+  // left to clean up (KELPIE-43: it used to drop out of the list, taking its broom with it).
+  const doneAlone = () => data({ mine: ["GG-1", "GG-2"], parents: [issue("GG-1", "done")], children: [issue("GG-2", "done", "GG-1")] });
+  test("a finished story with only a paused session left is listed and cleaned up", () => {
+    const list = ordered(build(doneAlone(), new Map(), { "GG-2": [{ id: "x" }] }));
+    assert.deepEqual(list.map((x) => x.it.key), ["GG-1"]);
+    assert.deepEqual(needQueueOf(profile, list, []).find((x) => x.key === "clean")?.clean.map((it) => it.key), ["GG-1"]);
+  });
+  test("a finished story with only leftovers left is listed and cleaned up, while there's a clean-up command", () => {
+    const cleaning = { ...profile, commands: { cleanUp: "rm -rf worktrees/{key}" } };
+    mock.state.shared.set("kelpie.clean.leftovers", { w: { found: { "GG-1": { "GG-2": ["a folder named GG-2"] } }, at: Date.now() } });
+    const list = ordered(build(doneAlone(), new Map(), {}, new Map(), null, { left: new Set(["GG-1"]) }));
+    assert.deepEqual(list.map((x) => x.it.key), ["GG-1"]);
+    assert.deepEqual(needQueueOf(cleaning, list, []).find((x) => x.key === "clean")?.clean.map((it) => it.key), ["GG-1"]);
+  });
+  test("a finished story with nothing left isn't listed", () => {
+    assert.deepEqual(build(doneAlone(), new Map()).map((it) => it.key), []);
+    assert.deepEqual(build(doneAlone(), new Map(), {}, new Map(), null, { all: true }).map((it) => it.key), ["GG-1"]);
+  });
   test("a finished story with an agent working in its space isn't cleaned up yet", () => {
     mock.state.agents = [{ space: "s-ee", status: "working", tab_name: "x" }];
     assert.ok(!keys(needQueueOf(profile, items(), [])).includes("clean"));

@@ -72,7 +72,7 @@ describe("build: stories from issues and subtasks", () => {
       parents: [issue("ABC-1", "done"), issue("ABC-5", "doing"), issue("ABC-7", "done"), issue("ABC-8", "done")] });
     const spaces = new Map([["ABC-8", { id: "s8" }]]);
     assert.deepEqual(build(d, new Map(), {}, spaces).map((it) => it.key), ["ABC-5", "ABC-7", "ABC-8"], "an open pull request or a space keeps one in the list");
-    assert.deepEqual(build(d, new Map(), {}, spaces, null, true).map((it) => it.key), ["ABC-1"], "done, nothing open: the Done group's");
+    assert.deepEqual(build(d, new Map(), {}, spaces, null, { done: true }).map((it) => it.key), ["ABC-1"], "done, nothing open: the Done group's");
   });
 });
 
