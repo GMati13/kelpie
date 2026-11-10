@@ -391,11 +391,11 @@ const isPaused = (it) => !allAgents(it).length && allPaused(it).length > 0;
 // Assignees' pictures. Jira gives each person's avatar as a link; Herdr draws images only from its own
 // folder, so each is downloaded once (avatar.sh) into art/<mod>/avatars, named after its link, and
 // drawn from there, with the initials until it's there or when it can't be had. Only links to
-// Gravatar and Atlassian's public avatar host count: the Jira site's own need a sign-in, and nothing
-// here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
+// Gravatar, GitHub's avatar host (a Project's assignees) and Atlassian's public avatar host count:
+// the Jira site's own need a sign-in, and nothing here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
 const AVATARS = "kelpie.avatars";
 const AVATAR_RETRY = 24 * 60 * 60 * 1000; // a picture that failed is tried again a day later
-const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
+const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatars\.githubusercontent\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
 // Exported for the tests.
 export const avatarUrl = (u) => typeof u === "string" && u.length < 1000 && AVATAR_HOST.test(u);
 const avatarName = (url) => `${fnv(url)}${fnv(`${url.length}:${url}`)}`;

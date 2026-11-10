@@ -12,7 +12,7 @@ const ATL = "https://avatar-management--avatars.us-west-2.prod.public.atl-paas.n
 const jiraIssue = (key, url) => ({ key, fields: { summary: key, assignee: { displayName: "Priya Nair", avatarUrls: { "48x48": url, "24x24": "x" } } } });
 
 describe("avatar links", () => {
-  test("only Gravatar's and Atlassian's public avatar host, over https", () => {
+  test("Gravatar's and Atlassian's public avatar host, over https", () => {
     assert.ok(avatarUrl(GRAVATAR));
     assert.ok(avatarUrl(ATL));
     for (const bad of [
@@ -21,6 +21,12 @@ describe("avatar links", () => {
       "https://evil.example/?u=https://secure.gravatar.com/", "https://secure.gravatar.com/avatar/1 -o /tmp/x",
       "https://secure.gravatar.com/avatar/1'\"$(id)", "file:///etc/passwd", "", null, 42,
     ]) assert.equal(avatarUrl(bad), false, String(bad));
+  });
+  test("and GitHub's avatar host, for a GitHub Project's assignees", () => {
+    const GH = "https://avatars.githubusercontent.com/u/583231?u=82a1&v=4&s=48";
+    assert.ok(avatarUrl(GH));
+    for (const bad of ["http://avatars.githubusercontent.com/u/1", "https://avatars.githubusercontent.com.evil.example/u/1", "https://github.com/octocat.png"]) assert.equal(avatarUrl(bad), false, bad);
+    assert.deepEqual(issue(jiraIssue("A-3", GH)).fields.assignee, { displayName: "Priya Nair", avatar: GH });
   });
   test("the list keeps the 48px link only when it's one of those", () => {
     assert.deepEqual(issue(jiraIssue("A-1", ATL)).fields.assignee, { displayName: "Priya Nair", avatar: ATL });

@@ -1,13 +1,13 @@
 #!/bin/sh
 # Downloads one person's picture for their avatar into Herdr's art folder (Herdr draws images only
-# from its own folder, never from the web). The address comes from Jira (an assignee's avatarUrls),
-# so it's checked here too: https only, Gravatar or Atlassian's public avatar host, never the Jira
-# site, as nothing here signs in. The file is kept only when it is a PNG, JPEG, GIF or WebP under
+# from its own folder, never from the web). The address comes from the board (an assignee's
+# avatarUrls, Jira's or a GitHub Project's), so it's checked here too: https only, Gravatar, GitHub's
+# or Atlassian's public avatar host, never the Jira site, as nothing here signs in. The file is kept only when it is a PNG, JPEG, GIF or WebP under
 # 1 MB, saved as <name>.<its type>, and its file name printed. Run by stories.js (fetchAvatars()).
 #   avatar.sh <folder> <name> <url>
 dir=$1 name=$2 url=$3
 case $name in ''|*[!0-9a-z]*) echo "bad name" >&2; exit 2 ;; esac
-printf '%s' "$url" | grep -Eq '^https://(secure\.gravatar\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)/[A-Za-z0-9._~%/?=&+-]*$' || { echo "not an avatar address" >&2; exit 2; }
+printf '%s' "$url" | grep -Eq '^https://(secure\.gravatar\.com|avatars\.githubusercontent\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)/[A-Za-z0-9._~%/?=&+-]*$' || { echo "not an avatar address" >&2; exit 2; }
 mkdir -p "$dir" || exit 1
 tmp=$(mktemp "$dir/.avatar.XXXXXX") || exit 1
 trap 'rm -f "$tmp"' EXIT
