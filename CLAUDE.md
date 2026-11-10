@@ -22,11 +22,15 @@ keys.json                      # the layout:Kelpie* key sections, to merge into 
 install.sh                     # links all of it into ~/.config/herdr-app
 docs/screenshots/               # the README's screenshots, of the demo (Demo below: retake them there, 1440×900, zoom 1)
 .claude/settings.json          # shared Claude Code permissions
+test.sh                        # runs every test suite (tests/README.md)
+tests/                         # stubs/ (herdr, gpui-kit, gpui-base for Node), lib/, js/, shell/, python/
+scripts/pre-commit             # git hook running ./test.sh (enable: git config core.hooksPath scripts)
+.github/workflows/test.yml     # CI: ./test.sh on macOS and Linux, on every push and pull request
 ```
 
 ## Commit Format
 
-`[scope] description`, scopes: `kelpie`, `skins`, `artifacts`, `docs`. Start with a verb (`add`, `update`, `fix`, `remove`), lowercase, concise.
+`[scope] description`, scopes: `kelpie`, `skins`, `artifacts`, `docs`, `tests`. Start with a verb (`add`, `update`, `fix`, `remove`), lowercase, concise.
 
 ## Install
 
@@ -36,6 +40,7 @@ docs/screenshots/               # the README's screenshots, of the demo (Demo be
 
 ## Working routine
 
+- Run `./test.sh` before committing (about 10 s; the hook does it once enabled per clone: `git config core.hooksPath scripts`); nothing reaches main with a test failing (CI runs it on macOS and Linux). Any security-relevant change comes with a test that fails without it: break the protection, see the test fail, put it back. A test that finds a real bug outside the change is marked `{ todo: "BUG: ..." }`, not silently fixed. Writing tests and the stubs' API: `tests/README.md`. A mod's internals may be exported for a test (the `export` keyword only); a shell script a test must run lives in its own file under `mods/kelpie/` (like `skins/copy-art.sh`)
 - After editing a mod, re-create its link so hot reload notices: `ln -sfn "$PWD/mods/kelpie" ~/.config/herdr-app/mods/kelpie` from the repo (same for `kelpie-artifacts`), then `herdr-app check mods/kelpie` and `herdr-app status` (its errors list)
 - A layout file edit often isn't noticed while that layout is shown, even relinked: `herdr-app do layout.switch '{"name":"<another Kelpie layout>"}'` and back reloads it, but closes open Herdr windows (the settings window, say), so tell the user first. `layout.resize`/`layout.show` act live
 - Look before claiming: `node --check --input-type=module < file.js` for syntax, then `herdr-app shot <scratchpad>/x.png` and crop (PIL). For a state hard to reach (a near-limit footer), change the threshold temporarily, shoot, restore, and grep that the restore took
