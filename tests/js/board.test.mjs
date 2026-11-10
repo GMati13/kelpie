@@ -31,7 +31,7 @@ describe("boardOf: a profile's board", () => {
 describe("a ticket's link", () => {
   const board = boardOf({ jira: JIRA });
   test("on the site the list loaded, else the profile's", () => {
-    assert.equal(ticketUrl(board, { site: "https://loaded.atlassian.net" }, "ABC-1"), "https://loaded.atlassian.net/browse/ABC-1");
+    assert.equal(ticketUrl(board, { site: "https://other.atlassian.net" }, "ABC-1"), "https://other.atlassian.net/browse/ABC-1");
     assert.equal(ticketUrl(board, null, "ABC-1"), "https://acme.atlassian.net/browse/ABC-1");
     assert.equal(boardSite(board, {}), "https://acme.atlassian.net");
   });
