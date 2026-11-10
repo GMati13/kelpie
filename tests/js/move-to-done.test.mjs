@@ -326,6 +326,19 @@ describe("Move to Done and clean-up while they run", () => {
     assert.equal(busyOf("ACME-151"), null, "free again once it ends");
   });
 
+  test("once its tickets have moved, no chip spins through the clean-up that follows", async () => {
+    // Move to Done hands its mark to the clean-up (cleanUp's `held`) as it was left by the last move,
+    // naming that ticket as the one moving.
+    setupDemoWorld({ stories: demoStories });
+    const at = Date.now();
+    mock.state.shared.set("kelpie.busy", { "ACME-180": { kind: "done", keys: ["ACME-181", "ACME-180"], step: "Moving to Done… 2 of 2", on: "ACME-180", at, until: at + 60e3 } });
+    await cleanUp(storyItems().st.profile, story("ACME-180"), { held: at });
+    assert.equal(busyOf("ACME-180").kind, "clean", "still held: Move to Done ends it");
+    const el = await header("ACME-180");
+    assert.ok(byId(el, "story-status-menu-more"), "the story's chip is drawn");
+    assert.ok(!walk(byId(el, "story-status-menu-more")).some((n) => n.kind === "svg" && n.args[0].endsWith("spinner.svg")), "and isn't moving");
+  });
+
   test("a story being cleaned up offers nothing to start or move, only its working mark", async () => {
     setupDemoWorld({ stories: demoStories });
     mock.state.shared.set("kelpie.busy", { "ACME-180": { kind: "clean", keys: ["ACME-180", "ACME-181"], step: "Cleaning up ACME-180…", at: Date.now(), until: Date.now() + 60e3 } });

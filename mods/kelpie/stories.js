@@ -63,8 +63,7 @@ function markLaunch(key, entry) {
   setShared(LAUNCHING, entry ? { ...all, [key]: entry } : all);
 }
 async function once(key, fn) {
-  // Nothing starts on a story while it's being cleaned up (its space is closing, its folders going).
-  if (busyOf(key)?.kind === "clean") return say(`${key} is being cleaned up: wait for that to finish.`);
+  if (cleaningNow(key)) return;
   const was = (shared(LAUNCHING) ?? {})[key];
   const now = Date.now();
   if (was && now - was.at < LAUNCH_FOR && (!was.done || now - was.done < HOLD)) return;
@@ -85,6 +84,9 @@ const RUNS = "kelpie.busy"; // { [name]: { kind: "clean" | "done" | "move", keys
 const CLEAN_EACH = 25; // seconds the clean-up command gets per key (cleanUp)
 const BUSY_MARGIN = 60e3; // on top of a run's own limits: the checks before it, a slow board
 const MOVE_FOR = 30e3; // one ticket's move, at most (a single chip's, each of Move to Done's)
+// Nothing starts on a story while it's being cleaned up (its space is closing, its folders going):
+// true then, after saying so.
+const cleaningNow = (key) => busyOf(key)?.kind === "clean" && (say(`${key} is being cleaned up: wait for that to finish.`), true);
 const busyAll = () => Object.entries(shared(RUNS) ?? {}).filter(([, e]) => Date.now() < e.until);
 // Exported for the tests.
 export const busyOf = (name) => busyAll().find(([n]) => n === name)?.[1] ?? null;
@@ -1516,7 +1518,7 @@ const freeName = (base, tabs = []) => {
 // second space; with a space each press is its own tab.
 // Exported for the tests.
 export function openTerminal(profile, it) {
-  if (lonePr(it)) return;
+  if (lonePr(it) || cleaningNow(it.key)) return;
   const open = async () => {
     const folder = (await ticketFolder(profile, it).catch(() => null)) ?? (shared(COUNTS) ?? {})[it.key]?.repo ?? profile.folder;
     const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
@@ -4094,7 +4096,7 @@ async function uncommitted(profile, it) {
 // (Move to Done) already holds the story's mark: its `at`.
 export async function cleanUp(profile, it, { held = null } = {}) {
   const ms = cleanLimit(profile, it);
-  const change = { kind: "clean", keys: storyKeys(it), step: `Cleaning up ${it.key}…` };
+  const change = { kind: "clean", keys: storyKeys(it), step: `Cleaning up ${it.key}…`, on: null };
   if (held) { stepBusy(it.key, held, { ...change, until: Date.now() + ms }); return cleaning(profile, it, held); }
   const at = takeBusy(it.key, change, ms);
   if (!at) return say(busyWhy(it.key));
@@ -4255,6 +4257,8 @@ async function movingToDone(s, it, plan, clean, at) {
   for (const t of plan.mine) await one(t);
   const subsDone = !plan.mine.some((t) => failed.some((f) => f.key === t.key));
   if (plan.story && subsDone) await one(it);
+  // No ticket is moving any more: its chip stops spinning while the stories reload and the clean-up runs.
+  stepBusy(key, at, { on: null, step: clean ? `Moved to Done; checking ${key} before cleaning up…` : `Moved to Done.` });
   if (moved.length) setShared(REFRESH, Date.now());
   const stays = shownDone(it) || failed.some((f) => f.key === key) ? ""
     : plan.others.length ? ` ${key} stays, as ${keyList(plan.others.map((x) => x.key))} ${plan.others.length === 1 ? "is" : "are"} still open.`
