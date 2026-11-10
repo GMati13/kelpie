@@ -38,7 +38,7 @@ case "$FAKE_ANSWER" in
   next) case "$name" in
       next-get) answer '{"ok": true, "profile": "Acme", "items": [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}]}' ;;
       next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
-      next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a Jira key"}]}' ;;
+      next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
     esac ;;
   fail) echo "no Herdr window" >&2; exit 1 ;;
   silent) ;;
@@ -290,7 +290,7 @@ class Server(unittest.TestCase):
         picks = [{"key": "ACME-2", "action": "Start it", "why": "next"}, {"key": "nope", "action": "x"}, "not a pick"]
         text, failed = self.call({"items": picks}, tool="suggest_next", answer="next", env={"KELPIE_PROFILE": "work"})
         self.assertFalse(failed)
-        self.assertEqual(text, "Kelpie shows 1 in Next for Acme: ACME-2: Start it. Dropped: nope (not a Jira key).")
+        self.assertEqual(text, "Kelpie shows 1 in Next for Acme: ACME-2: Start it. Dropped: nope (not a ticket key, like ABC-12).")
         self.assertEqual(self.last(), {"profile": "work", "items": picks[:2]})
         text, failed = self.call({"items": []}, tool="suggest_next", answer="next")
         self.assertTrue(failed)
