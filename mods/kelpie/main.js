@@ -427,7 +427,9 @@ function webChild(root = layout(), assign = false) {
 // zsh-vi-mode garbles what arrives in the browser's leftover keyboard mode). A slot still holding an
 // old shell is replaced once, while the panel shows something else: Herdr rewrites the layout file
 // (stripped, the panel column folded) when a shown terminal is killed or removed.
-const browserLoop = (command) => `while :; do printf '\\033[=0;1u\\033_Ga=d\\033\\\\'; clear; ${command}; sleep 2; done`;
+// (kittyfix.py sends the same reset itself, so a restart needn't wait for a new loop).
+const browserLoop = (command) =>
+  `while :; do printf '\\033\\\\\\033_Gq=2,m=0;\\033\\\\\\033[=0;1u\\033_Ga=d,d=A,q=2\\033\\\\'; clear; ${command}; sleep 2; done`;
 async function ensureBrowser(name, command) {
   const term = terminals().find((x) => x.name === name && x.state === "live");
   let address = term?.address;
