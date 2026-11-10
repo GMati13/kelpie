@@ -493,9 +493,10 @@ export function fillLines(template, names, fields) {
   }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-// "Let me configure it for you": a new Claude on the profile's Desk that reads the setup guide
-// (guides/profile-setup.md, for agents: every setting, how to find and check its value, how to save
-// it through kelpie.apply-profile) and sets up a scope with the person. Scopes: the guide's table.
+// "Let me configure it for you": a new Claude on the profile's Desk sets up a scope with the person.
+// How is the Kelpie plugin's (plugin/skills/configure-profile: the setup guide; plugin/server.py: tools
+// to read and save the profile), so the first message only says what to set up. Scopes: the skill's
+// table.
 export const CONFIGURE_SCOPES = {
   all: "everything, from A to Z",
   general: "General: name, folder, Claude account",
@@ -512,24 +513,40 @@ export const CONFIGURE_SCOPES = {
   status: "Story commands: status only",
 };
 // The message it starts with (prompts.configure; the default isn't saved). Placeholders: {name} {id}
-// (the profile), {scope} (its id) and {about} (what it covers), {guide} (the guide's path), {home}
-// (Herdr's app folder).
-export const CONFIGURE_PROMPT = [
-  "Configure my Kelpie profile \"{name}\" (id {id}). Scope: {scope} ({about}). Herdr's home: {home}",
-  "",
-  "Read {guide} first and follow it: it explains every setting, how to find the right values with me, how to check them, and how to save them.",
-].join("\n");
+// (the profile), {scope} (its id) and {about} (what it covers), {home} (Herdr's app folder). {guide},
+// which pointed at the guide this replaced, still reads in a saved prompt, as the skill's name.
+export const CONFIGURE_PROMPT = 'Configure my Kelpie profile "{name}" (id {id}). Scope: {scope} ({about}).';
 
 export function configureText(profile, scope) {
-  const fields = { name: profile.name, id: profile.id, scope, about: CONFIGURE_SCOPES[scope] ?? scope, guide: modFile("guides/profile-setup.md"), home: appHome() };
+  const fields = { name: profile.name, id: profile.id, scope, about: CONFIGURE_SCOPES[scope] ?? scope, guide: "Kelpie's configure-profile skill", home: appHome() };
   const template = profile.prompts?.configure?.trim() || CONFIGURE_PROMPT;
   return template.replace(/\{(name|id|scope|about|guide|home)\}/g, (_all, name) => fields[name]);
 }
 
+// The plugin, as Claude Code names it (plugin@marketplace: the repo is its own marketplace).
+export const PLUGIN = "kelpie@kelpie";
+// Whether the profile's Claude account has the plugin: installed (its plugins/installed_plugins.json
+// lists it) and not turned off (its settings.json's enabledPlugins). The demo's stand-in needs none.
+export async function hasPlugin(profile) {
+  if (profile?.demo) return true;
+  const script = 'd=${1:-$HOME/.claude}; cat "$d/plugins/installed_plugins.json" 2>/dev/null; printf "\\n\\036\\n"; cat "$d/settings.json" 2>/dev/null; true';
+  const r = await exec("sh", ["-c", script, "sh", claudeConfigOf(profile) ?? ""]).catch(() => null);
+  const [installed, settings] = String(r?.stdout ?? "").split("\n\u001e\n");
+  const json = (text) => { try { return JSON.parse(text); } catch { return null; } };
+  return (json(installed)?.plugins?.[PLUGIN]?.length ?? 0) > 0 && json(settings)?.enabledPlugins?.[PLUGIN] !== false;
+}
+// The Kelpie clone the mod runs from (its marketplace), or null: the mod folder is mods/kelpie in it.
+async function pluginSource() {
+  const r = await exec("sh", ["-c", 'cd -P "$1" 2>/dev/null && cd ../.. && [ -f .claude-plugin/marketplace.json ] && pwd -P', "sh", modFile("")]).catch(() => null);
+  return r?.code === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+}
+
 // Starts that Claude: a new tab on the profile's Desk (opening the Desk if it's closed), on the
 // profile's account, in its folder, and shows it. With `agent` (one of the Desk's Claudes, not one
-// waiting for an answer: the dialog offers only those), the message goes to it instead.
-export function configureOnDesk(profile, scope = "all", agent = null) {
+// waiting for an answer: the dialog offers only those), the message goes to it instead. Without the
+// plugin on the profile's account, it asks to install it first (askPlugin).
+export async function configureOnDesk(profile, scope = "all", agent = null) {
+  if (!(await hasPlugin(profile))) return askPlugin(profile);
   const text = configureText(profile, scope);
   if (agent) {
     sendToClaude(agent.address, text).catch((e) => notify({ title: `Couldn't ask ${agent.tab_name}`, body: String(e?.message ?? e), level: "error", timeout: 8000 }));
@@ -541,9 +558,32 @@ export function configureOnDesk(profile, scope = "all", agent = null) {
   return openDesk(profile, { name, argv: claudeArgv(profile), task: text });
 }
 
+// Says the plugin is needed, with what installs it. Its button installs it (installPlugin), called by
+// the dialog itself (dialogs.js), never a command: an agent could run a command, and installing adds
+// a program Claude runs.
+async function askPlugin(profile) {
+  const source = await pluginSource();
+  const account = claudeKey(claudeConfigOf(profile)) || "~/.claude";
+  openOverlay({ mod: MOD, kind: "dialog", width: 560, height: 300, props: {
+    role: "confirm", installPlugin: source ? profile.id : null,
+    title: "Claude needs Kelpie's plugin for this",
+    detail: `Claude sets up a profile through Kelpie's Claude Code plugin: it gives Claude the setup guide and a safe way to save your profile. It isn't installed on this profile's Claude account (${account}) yet.${source ? " Install it, then press Let me configure it for you again." : " Install it from your Kelpie folder with:"}`,
+    items: [{ text: `claude plugin marketplace add ${source ?? "<your Kelpie folder>"}` }, { text: `claude plugin install ${PLUGIN}` }],
+    yes: source ? "Install it" : "OK" } });
+}
+// The dialog's Install it: both commands in a terminal on the profile's Desk, on its account, so the
+// person sees them run. Values go in as arguments, never into the script.
+export async function installPlugin(id) {
+  const profile = profileById(id);
+  const source = await pluginSource();
+  if (!profile || !source) return;
+  const script = 'root=$1; shift; "$@" plugin marketplace add "$root"; "$@" plugin install "$PLUGIN" && printf "\\nInstalled. Press Let me configure it for you again.\\n"; exec "${SHELL:-/bin/sh}" -l';
+  return openDesk(profile, { name: "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, ...claudeArgv(profile)] });
+}
+
 // kelpie.apply-profile: applies <home>/kelpie/profile-apply.json ({ id, set }), an agent's change to a
 // profile, and writes what happened to profile-apply.result.json ({ ok, error | profile, at }). The
-// guide documents the rules: known keys only, sections merged (a null key or section removed), strings
+// plugin's configure-profile skill documents the rules: known keys only, sections merged (a null key or section removed), strings
 // only, no secrets, and the same checks as the dialog's Save.
 const APPLY_KEYS = ["name", "folder", "jira", "github", "commands", "prompts", "notify", "claude", "web"];
 const SECRET = /token$|^token|password|secret/i;

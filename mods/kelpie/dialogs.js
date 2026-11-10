@@ -12,7 +12,7 @@ import { closeOverlay, openOverlay, props, run } from "herdr";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, primaryButton, textButton } from "./ui.js";
 import { selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
-import { applyPendingProfile } from "./config.js";
+import { applyPendingProfile, installPlugin } from "./config.js";
 
 export const openStoryPicker = () => openOverlay({ mod: MOD, kind: "popup", at: "top", offset: 40, width: 640, height: 520, props: { role: "story-picker" } });
 
@@ -103,10 +103,13 @@ export class Confirm {
   }
 
   // `pendingProfile`: an agent's profile change waiting for the person (config.js). It's applied here,
-  // by this button, never through a command an agent could run itself.
+  // by this button, never through a command an agent could run itself; `installPlugin` (a profile id)
+  // the same way: the Kelpie plugin installed on that profile's Claude account.
   yes(command = props().command) {
     closeOverlay(props().overlay);
     if (props().pendingProfile) return applyPendingProfile(true);
+    if (props().installPlugin) return installPlugin(props().installPlugin);
+    if (!command) return;
     run(command.name, command.args ?? {});
   }
   no() {

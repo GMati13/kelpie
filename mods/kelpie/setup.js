@@ -292,7 +292,7 @@ export class Setup {
   }
 
   // "Let me configure it for you": a new Claude on the Desk sets up `scope` (config.js
-  // CONFIGURE_SCOPES) with the person, from the setup guide. It saves through the profile, so the
+  // CONFIGURE_SCOPES) with the person, through the Kelpie plugin. It saves through the profile, so the
   // dialog's changes are saved first (a new profile too) and the dialog closes.
   configure(scope, cx, agent = null) {
     let profile = this.profile;
@@ -521,7 +521,7 @@ export class Setup {
           "A click on one of Claude's improvement ideas in Next starts a Claude on the Desk with this. {idea} is Claude's brief, {where} the file or area, {why} why it pays off.")),
         group("Setup"),
         promptField("configure", "Let me configure it for you", this.configurePrompt, CONFIGURE_PROMPT,
-          "What a Set up with Claude or Ask Claude button starts a Claude on the Desk with. {name} and {id} are the profile's, {scope} and {about} what to set up, {guide} the setup guide it follows, {home} Herdr's folder."),
+          "What a Set up with Claude or Ask Claude button starts a Claude on the Desk with. {name} and {id} are the profile's, {scope} and {about} what to set up, {home} Herdr's folder. Kelpie's Claude Code plugin does the rest."),
       ],
 
       commands: () => [

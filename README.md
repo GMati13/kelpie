@@ -72,7 +72,7 @@ Then:
 
 ### Profiles
 
-A profile is a folder you work in, plus whatever you connect to it: a Jira board (its sprint becomes the sidebar's stories), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`), a start page for the Web panel. Only the folder is needed. Without Jira, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog.
+A profile is a folder you work in, plus whatever you connect to it: a Jira board (its sprint becomes the sidebar's stories), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`), a start page for the Web panel. Only the folder is needed. Without Jira, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
 
 ### Optional
 
@@ -84,7 +84,7 @@ A profile is a folder you work in, plus whatever you connect to it: a Jira board
 
   It saves the limits for Kelpie and prints nothing, so it replaces a status line you already have. A word after the path names the account in the footer (`… claude-statusline.sh Work`). With `HERDR_APP_HOME`, use that folder in the path.
 - **The Web panel:** run `terminal-browser config set render.presenter patched` once, for its images to draw in place.
-- **Let Claude show you where a story says something:** install Kelpie's Claude Code plugin. Ask the Claude you're talking to "where does the story say…?", and it opens the story in Kelpie with the passage marked in its description, instead of only quoting it. In Claude Code, from anywhere:
+- **Kelpie's Claude Code plugin:** lets Claude set up a profile with you ("Let me configure it for you" in the profile dialog, which offers to install it), and show you where a story says something: ask the Claude you're talking to "where does the story say…?", and it opens the story in Kelpie with the passage marked in its description, instead of only quoting it. Install it on each Claude account a profile uses; in Claude Code, from anywhere:
 
   ```
   /plugin marketplace add <path to your Kelpie clone>

@@ -612,7 +612,7 @@ async function command(c) {
     return requestProfileChange(id, { claude: dir === ".claude" ? null : { config: `${home}/${dir}` } });
     return;
   }
-  // apply-profile: an agent's change to a profile, from a file (guides/profile-setup.md, "Saving").
+  // apply-profile: an agent's change to a profile, from a file (the plugin's save_profile tool writes it).
   if (c === "apply-profile") return applyProfileRequest();
   // edit-profile opens the shown profile's dialog, edit-profile-<tab> on that tab (setup.js TABS).
   if (c === "edit-profile" || c.startsWith("edit-profile-")) { const p = shownProfile(); return p ? openProfile(p.id, { focus: c.slice("edit-profile-".length) || undefined }) : undefined; }

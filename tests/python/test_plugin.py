@@ -1,6 +1,7 @@
-"""plugin/server.py, the Kelpie plugin's MCP server: the MCP handshake and its tool, show_passage, which
-writes Kelpie's request file and runs `herdr-app do kelpie.show-passage`. A fake herdr-app stands in
-for Kelpie, in a temp Herdr home; nothing real is reached."""
+"""plugin/server.py, the Kelpie plugin's MCP server: the MCP handshake and its tools, each writing
+Kelpie's request file and running `herdr-app do kelpie.<command>` (show_passage, save_profile,
+open_profile_page) or reading what Kelpie saved (get_profile, save_status). A fake herdr-app stands
+in for Kelpie, in a temp Herdr home; nothing real is reached."""
 import json
 import os
 import stat
@@ -12,15 +13,24 @@ from kelpie_test import REPO, temp_dir, write
 
 SERVER = os.path.join(REPO, "plugin", "server.py")
 
-# Kelpie as the server sees it: it logs each run, then answers as FAKE_ANSWER says (ok, refuse, silent
-# or fail) and removes the request, as stories.js showPassageRequest does.
+# Kelpie as the server sees it: it logs each run, then answers as FAKE_ANSWER says and removes the
+# request, as stories.js showPassageRequest and config.js applyProfileRequest do. ok, refuse, silent
+# or fail for any command; pending (waits for the person's yes) and badset for apply-profile.
 FAKE = """#!/bin/sh
 dir="$HERDR_APP_HOME/kelpie"
 printf '%s\\n' "$*" >> "$HERDR_APP_HOME/calls.log"
-cp "$dir/passage.json" "$HERDR_APP_HOME/last-request.json" 2>/dev/null
+case "$2" in
+  kelpie.show-passage) name=passage ;;
+  kelpie.apply-profile) name=profile-apply ;;
+  *) name="" ;;
+esac
+[ -n "$name" ] && cp "$dir/$name.json" "$HERDR_APP_HOME/last-request.json" 2>/dev/null
+answer() { [ -n "$name" ] && printf '%s' "$1" > "$dir/$name.result.json"; rm -f "$dir/$name.json"; }
 case "$FAKE_ANSWER" in
-  ok) printf '{"ok": true}' > "$dir/passage.result.json"; rm -f "$dir/passage.json" ;;
-  refuse) printf '{"ok": false, "error": "XYZ-1 isn\\x27t a story in the shown profile\\x27s list."}' > "$dir/passage.result.json"; rm -f "$dir/passage.json" ;;
+  ok) answer '{"ok": true, "profile": {"name": "Work", "folder": "/work"}}' ;;
+  refuse) answer '{"ok": false, "error": "XYZ-1 isn\\u0027t a story in the shown profile\\u0027s list."}' ;;
+  pending) answer '{"ok": false, "pending": true, "error": "Waiting for the person to confirm these changes in Kelpie."}' ;;
+  badset) answer '{"ok": false, "error": "jira.url: a Jira Cloud board\\u0027s address."}' ;;
   fail) echo "no Herdr window" >&2; exit 1 ;;
   silent) ;;
 esac
@@ -43,8 +53,8 @@ class Server(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return [json.loads(line) for line in r.stdout.splitlines() if line.strip()]
 
-    def call(self, args, **kw):
-        [reply] = self.talk({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "show_passage", "arguments": args}}, **kw)
+    def call(self, args, tool="show_passage", **kw):
+        [reply] = self.talk({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args}}, **kw)
         res = reply["result"]
         return res["content"][0]["text"], res["isError"]
 
@@ -58,7 +68,7 @@ class Server(unittest.TestCase):
     def kelpie(self, name):
         return os.path.join(self.home, "kelpie", name)
 
-    def test_the_handshake_lists_one_tool(self):
+    def test_the_handshake_lists_the_tools(self):
         init, listed = self.talk(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}},
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -66,8 +76,11 @@ class Server(unittest.TestCase):
         )
         self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
         self.assertIn("tools", init["result"]["capabilities"])
-        self.assertEqual([t["name"] for t in listed["result"]["tools"]], ["show_passage"])
-        self.assertEqual(listed["result"]["tools"][0]["inputSchema"]["required"], ["key", "quote"])
+        tools = {t["name"]: t for t in listed["result"]["tools"]}
+        self.assertEqual(sorted(tools), ["get_profile", "open_profile_page", "save_profile", "save_status", "show_passage"])
+        self.assertEqual(tools["show_passage"]["inputSchema"]["required"], ["key", "quote"])
+        self.assertEqual(tools["save_profile"]["inputSchema"]["required"], ["id", "set"])
+        self.assertTrue(tools["get_profile"]["annotations"]["readOnlyHint"])
 
     def test_unknown_methods_tools_and_bad_lines_are_errors_not_crashes(self):
         bad, unknown, tool, ping = self.talk(
@@ -140,6 +153,70 @@ class Server(unittest.TestCase):
         self.call({"key": "ABC-12", "quote": "Done when it works"}, answer="silent")
         with open(target) as f:
             self.assertEqual(f.read(), "mine\n")
+
+
+    # --- Profiles -------------------------------------------------------------------------------
+
+    def shared(self, profiles):
+        write(os.path.join(self.home, "shared.json"), json.dumps({"layout": "Kelpie", "kelpie.profiles": profiles}))
+
+    def test_get_profile_lists_profiles_or_shows_one(self):
+        self.shared({"work": {"id": "work", "name": "Work", "folder": "/work", "jira": {"board": 12}}, "home": {"id": "home", "name": "Home", "folder": "/h"}})
+        text, failed = self.call({}, tool="get_profile")
+        self.assertFalse(failed)
+        self.assertEqual(json.loads(text), [{"id": "work", "name": "Work", "folder": "/work"}, {"id": "home", "name": "Home", "folder": "/h"}])
+        text, failed = self.call({"id": "work"}, tool="get_profile")
+        self.assertEqual(json.loads(text)["jira"], {"board": 12})
+        text, failed = self.call({"id": "nope"}, tool="get_profile")
+        self.assertTrue(failed)
+        self.assertIn("work, home", text)
+        self.assertEqual(self.calls(), [], "reading runs nothing")
+
+    def test_get_profile_without_herdrs_state_says_so(self):
+        text, failed = self.call({}, tool="get_profile")
+        self.assertTrue(failed)
+        self.assertIn("can't be read", text)
+
+    def test_save_profile_sends_the_change_and_returns_the_saved_profile(self):
+        text, failed = self.call({"id": "work", "set": {"name": "Work", "jira": {"handover": "QA"}}}, tool="save_profile")
+        self.assertFalse(failed)
+        self.assertTrue(text.startswith("Saved."))
+        self.assertEqual(self.calls(), ["do kelpie.apply-profile"])
+        with open(os.path.join(self.home, "last-request.json")) as f:
+            self.assertEqual(json.load(f), {"id": "work", "set": {"name": "Work", "jira": {"handover": "QA"}}})
+
+    def test_a_change_waiting_for_the_persons_yes_says_so_and_save_status_reads_it_again(self):
+        text, failed = self.call({"id": "work", "set": {"commands": {"status": "make status"}}}, tool="save_profile", answer="pending")
+        self.assertFalse(failed)
+        self.assertIn("waits for the person's yes", text)
+        write(self.kelpie("profile-apply.result.json"), '{"ok": false, "error": "The person said no to these changes: nothing was saved."}')
+        text, failed = self.call({}, tool="save_status")
+        self.assertTrue(failed)
+        self.assertIn("said no", text)
+
+    def test_kelpies_refusal_of_a_change_is_an_error(self):
+        text, failed = self.call({"id": "work", "set": {"jira": {"url": "https://evil.example/boards/1"}}}, tool="save_profile", answer="badset")
+        self.assertTrue(failed)
+        self.assertIn("jira.url", text)
+
+    def test_bad_ids_and_empty_changes_are_refused_before_anything_runs(self):
+        for args in [{"id": "../x", "set": {"name": "x"}}, {"id": "Work", "set": {"name": "x"}}, {"id": "w", "set": {}}, {"id": "w", "set": "name=x"}, {"id": "w"}]:
+            text, failed = self.call(args, tool="save_profile")
+            self.assertTrue(failed, args)
+        self.assertEqual(self.calls(), [])
+
+    def test_save_status_with_nothing_saved_says_so(self):
+        text, failed = self.call({}, tool="save_status")
+        self.assertTrue(failed)
+        self.assertIn("save something first", text)
+
+    def test_open_profile_page_opens_only_a_known_page(self):
+        text, failed = self.call({"page": "jira"}, tool="open_profile_page")
+        self.assertFalse(failed)
+        self.assertEqual(self.calls(), ["do kelpie.edit-profile-jira"])
+        text, failed = self.call({"page": "jira; rm -rf ~"}, tool="open_profile_page")
+        self.assertTrue(failed)
+        self.assertEqual(self.calls(), ["do kelpie.edit-profile-jira"], "nothing else ran")
 
 
 if __name__ == "__main__":

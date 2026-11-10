@@ -77,16 +77,29 @@ const PLUMBING = [/using gh\b/i, /\bgh (api|pr|issue|search|repo|run)\b/, /\bgh\
 describe("no prompt steers Claude to Kelpie's plumbing", () => {
   for (const [name, text] of Object.entries(TEXTS())) {
     test(name, () => {
-      for (const p of PLUMBING) {
-        // The configure prompt points at the guide, which says how to save (apply-profile): allowed there only.
-        if (name.startsWith("configure") && p.source.includes("apply-profile")) continue;
-        assert.doesNotMatch(text, p, `${name} names ${p}`);
-      }
+      for (const p of PLUMBING) assert.doesNotMatch(text, p, `${name} names ${p}`);
     });
   }
 
-  test("the setup guide mentions Kelpie's scripts only to say they're not Claude's to run", () => {
-    const guide = readRepo("mods/kelpie/guides/profile-setup.md");
+  // The plugin's skills are what Kelpie gives Claude too.
+  test("the plugin's skills name no way to reach Jira or GitHub, nor Kelpie's own plumbing", () => {
+    for (const skill of ["configure-profile", "show-in-kelpie"]) {
+      const text = readRepo(`plugin/skills/${skill}/SKILL.md`);
+      for (const p of [/using gh\b/i, /\bgh (api|pr|issue|search|repo|run)\b/, /\bcurl\b/, /jira\.sh/, /--token-command/, /kelpie\.apply-profile/, /herdr-app do/, /shared\.json/]) {
+        assert.doesNotMatch(text, p, `${skill} names ${p}`);
+      }
+      // gh only as the person's own sign-in for Kelpie, in their terminal.
+      for (const line of text.split("\n").filter((l) => /`gh /.test(l))) assert.match(line, /gh auth login/, line);
+    }
+  });
+  test("the setup skill says secrets never pass through Claude, and that Kelpie's yes is the person's", () => {
+    const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
+    assert.match(guide, /Secrets never pass through you/);
+    assert.match(guide, /don't run one yourself/);
+    assert.match(guide, /You can't confirm it for them/);
+  });
+  test("the setup skill mentions Kelpie's scripts only to say they're not Claude's to run", () => {
+    const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
     assert.doesNotMatch(guide, /using gh\b/i);
     assert.doesNotMatch(guide, /\bgh api\b/);
     assert.doesNotMatch(guide, /\bcurl\b/);
