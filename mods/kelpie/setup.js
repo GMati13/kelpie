@@ -722,7 +722,7 @@ export class Setup {
           "The icon beside Merge while a pull request isn't approved yet. The same placeholders; {prs} only the ones not approved."),
         group("When nothing needs you", hasBoard ? null : "Shown once a board is connected"),
         promptField("suggest", "What next?", this.suggestPrompt, SUGGEST_PROMPT,
-          "The magic button in the Next place of the story list, while nothing needs you: a Claude on the Desk that suggests what to do. {snapshot} is what the list knows (sprints, stories, subtasks, pull requests, reviews, agents); {board} the Jira board's address; {owner} the GitHub owner; {name} the profile's. It runs in the background: its answer must end in the JSON block of picks the default asks for (keep that part). Say here what kind of work you pick up (frontend, say)."),
+          "The magic button in the Next place of the story list, while nothing needs you: a Claude on the Desk that suggests what to do. {snapshot} is what the list knows (sprints, stories, subtasks, pull requests, reviews, agents); {board} the board's address; {owner} the GitHub owner; {name} the profile's. It runs in the background: its answer must end in the JSON block of picks the default asks for (keep that part). Say here what kind of work you pick up (frontend, say)."),
         hint("A line whose placeholders all come out empty is left out."),
       ],
 

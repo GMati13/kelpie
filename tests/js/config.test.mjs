@@ -102,7 +102,7 @@ describe("handoverFrom: where your part of a ticket is done", () => {
 describe("prompt templates", () => {
   test("jiraTask: the default, the profile's own, a blank one counting as none", () => {
     const fields = { key: "ABC-1", summary: "Login", url: "https://jira.example.com/browse/ABC-1", type: "Story", status: "To Do", parent: "", subtasks: "ABC-2 — Form (To Do)" };
-    assert.equal(jiraTask(null, fields), "Work on Jira ABC-1: Login\nhttps://jira.example.com/browse/ABC-1");
+    assert.equal(jiraTask(null, fields), "Work on ABC-1: Login\nhttps://jira.example.com/browse/ABC-1");
     assert.equal(jiraTask({ prompt: "{type} {key} ({status})\n{subtasks}\n{other}" }, fields), "Story ABC-1 (To Do)\nABC-2 — Form (To Do)\n{other}");
     assert.equal(jiraTask({ prompt: "   " }, fields), jiraTask(null, fields));
     assert.equal(jiraTask(null, fields, "Orchestrate {key}"), "Orchestrate ABC-1");
