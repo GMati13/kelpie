@@ -7,6 +7,7 @@
 
 import { gh } from "./pulls.js";
 import { demoFixture } from "./demo.js";
+import { GITHUB_LOGIN } from "./ui.js";
 
 const FIELDS = `title url viewerCanUpdate
       status: field(name: "Status") { ... on ProjectV2SingleSelectField { options { id name } } }
@@ -19,12 +20,20 @@ export const CHECK_ORG = `query KelpieCheckOrg($owner: String!, $number: Int!) {
       ${FIELDS} } } }`;
 
 // What the person runs to give gh's sign-in the project scope. gh refreshes only its active account,
-// so a named one is switched to first, and back after (gh auth switch with no account goes back
-// when two are signed in, and asks which when there are more).
-export function scopeCommand(account) {
-  return account
-    ? `gh auth switch -h github.com -u ${account}\ngh auth refresh -h github.com -s project\ngh auth switch -h github.com`
-    : "gh auth refresh -h github.com -s project";
+// so a named one other than `active` (the account gh has active now) is switched to first and back to
+// `active` after; with `active` unknown, gh auth switch with no account goes back when two are signed
+// in, and asks which when there are more.
+const REFRESH = "gh auth refresh -h github.com -s project";
+export function scopeCommand(account, active = null) {
+  if (!account || account === active) return REFRESH;
+  const back = active && GITHUB_LOGIN.test(active) ? ` -u ${active}` : "";
+  return `gh auth switch -h github.com -u ${account}\n${REFRESH}\ngh auth switch -h github.com${back}`;
+}
+// The command, with gh's active account asked only when a named account needs switching to.
+async function fixFor(account) {
+  if (!account) return scopeCommand(null);
+  const r = await gh(null, ["api", "user", "--jq", ".login"]).catch(() => null);
+  return scopeCommand(account, r?.code === 0 ? r.stdout.trim() : null);
 }
 
 // The token's scopes from `gh api -i user`'s headers: "write" (project: read and move items),
@@ -53,22 +62,23 @@ export async function checkProject(cfg, { account = null, demo = false, name = "
   try { body = JSON.parse(r.stdout || "null"); } catch { /* not GitHub's answer: gh failed first */ }
   const p = body?.data?.owner?.projectV2;
   if (!p) {
-    if (scope === "none") return { ok: false, text: `Kelpie can't read that Project: the gh sign-in of ${who} hasn't got the project scope, which Projects need. Add it in a terminal (a browser opens to confirm), then check again:`, fix: scopeCommand(account) };
+    if (scope === "none") return { ok: false, text: `Kelpie can't read that Project: the gh sign-in of ${who} hasn't got the project scope, which Projects need. Add it in a terminal (a browser opens to confirm), then check again:`, fix: await fixFor(account) };
     // gh.sh's own words (not signed in to that account) say what to do; GitHub's errors don't.
     const own = !body && /^gh isn't signed in|^That isn't a GitHub account/.test(r.stderr ?? "") ? ` ${String(r.stderr).trim().split("\n")[0]}` : "";
     return { ok: false, text: `Kelpie can't read that Project. Check the address, and that ${who} can see it on GitHub.${own}` };
   }
+  const fix = scope === "read" ? await fixFor(account) : undefined;
   return described({
     title: p.title ?? "", url: p.url ?? "", canUpdate: p.viewerCanUpdate !== false,
     options: (p.status?.options ?? []).map((o) => ({ id: o.id, name: o.name })),
     iteration: (p.fields?.nodes ?? []).find((f) => f?.__typename === "ProjectV2IterationField")?.name ?? null,
     repos: (p.repositories?.nodes ?? []).map((n) => n?.nameWithOwner).filter(Boolean),
     scopes: scope,
-  }, account);
+  }, fix);
 }
 
 // What a readable Project's check says, in plain words.
-function described(project, account) {
+function described(project, scopeFix) {
   const { title, options, iteration, repos, scopes, canUpdate } = project;
   const lines = [`Found “${title}”: ${options.length ? `${options.length} columns (${options.map((o) => o.name).join(", ")})` : "no Status field, so stories have no columns: add one on GitHub"}, ${repos.length} repo${repos.length === 1 ? "" : "s"}.`];
   lines.push(iteration ? `Stories come from the current iteration of its “${iteration}” field.` : "It has no iteration field, so all of its open work counts, like a Kanban board.");
@@ -76,7 +86,7 @@ function described(project, account) {
   if (scopes === "write") lines.push(canUpdate ? "Kelpie can move its tickets." : "GitHub doesn't let you change this Project, so moving a ticket from Kelpie won't work.");
   else if (scopes === "read") {
     lines.push("Kelpie can read it but not move its tickets: the gh sign-in has read:project, not project. To move tickets from Kelpie, add the project scope in a terminal (a browser opens to confirm):");
-    fix = scopeCommand(account);
+    fix = scopeFix;
   } else lines.push("Kelpie can't tell whether it may move tickets: gh signs in with a token that doesn't list its permissions (a fine-grained token, say). If a move fails, give that token read and write access to Projects.");
   return { ok: true, text: lines.join(" "), ...(fix ? { fix } : {}), project };
 }

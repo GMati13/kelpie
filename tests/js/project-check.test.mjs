@@ -136,3 +136,13 @@ test("a demo profile's Project answers from the fixture, running nothing", async
   assert.equal(r.project.repos.length, 1);
   assert.match(r.project.repos[0], /^kelpie--demo\//);
 });
+
+test("for a named account, the command switches to it and back to the account gh has active", async () => {
+  github({ project: null, scopes: "repo" });
+  const ask = mock.on.exec;
+  mock.on.exec = (cmd, args) => (args[1] === "" && args[2] === "api" && args[3] === "user" ? { code: 0, stdout: "me-home\n", stderr: "" } : ask(cmd, args));
+  const r = await checkProject(CFG, { account: "me-work" });
+  assert.equal(r.fix, "gh auth switch -h github.com -u me-work\ngh auth refresh -h github.com -s project\ngh auth switch -h github.com -u me-home");
+  assert.equal(scopeCommand("me-work", "me-work"), "gh auth refresh -h github.com -s project", "already the active one: no switching");
+  assert.equal(scopeCommand("me-work", "x; rm -rf ~"), "gh auth switch -h github.com -u me-work\ngh auth refresh -h github.com -s project\ngh auth switch -h github.com", "not a login: no name to switch back to");
+});
