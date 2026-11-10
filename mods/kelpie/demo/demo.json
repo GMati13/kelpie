@@ -352,6 +352,20 @@
       ]
     },
     {
+      "repo": "api",
+      "number": 291,
+      "title": "ACME-175 Retry the login test's sign-in once on a slow runner",
+      "updated": "-3d",
+      "merged": true
+    },
+    {
+      "repo": "docs",
+      "number": 61,
+      "title": "ACME-142 Offline mode: how saved trips sync",
+      "updated": "-6h",
+      "checks": "SUCCESS"
+    },
+    {
       "repo": "web",
       "number": 409,
       "title": "ACME-130 Password reset email template",

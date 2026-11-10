@@ -85,6 +85,9 @@ const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state 
 const failing = (p) => ["FAILURE", "ERROR"].includes(checksOf(p));
 const ready = (p) => !p.merged && !p.isDraft && checksOf(p) === "SUCCESS" && p.reviewDecision === "APPROVED";
 const prName = (p) => `${p.repository.name}#${p.number}`;
+// A pull request's state in a few words, for its line (prState's full words are its tooltip).
+const PR_SHORT = { "pr-merged": "Merged", "pr-changes": "Changes requested", "pr-failing": "Checks failing", "pr-approved": "Approved",
+  "pr-draft": "Draft", "pr-running": "Checks running", "pr-review": "In review" };
 const ARMED_FOR = 5000; // how long a careful button stays armed (carefulButton)
 // Pull requests you approved from Kelpie (url -> when, a day at most): until the stories load again
 // after it, the header says Approved from this; after, from GitHub's own word (viewerReview, your
@@ -386,6 +389,8 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
 }
 
 const allPrs = (it) => [...it.prs, ...it.subs.flatMap((s) => s.prs)];
+// Open pull requests first, then the merged, each the most recently changed first.
+const prOrder = (list) => list.slice().sort((a, b) => Number(Boolean(a.merged)) - Number(Boolean(b.merged)) || String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
 const allAgents = (it) => [it.agent, ...it.subs.map((s) => s.agent)].filter(Boolean);
 const allPaused = (it) => [it.paused && it.key, ...it.subs.map((s) => s.paused && s.key)].filter(Boolean);
 // Whether work on the story has begun: a space, an agent, a session or a pull request of its own.
@@ -448,6 +453,15 @@ function progress(it) {
 // while one waits for you), its open pull requests by the most urgent one's state, and its subtasks
 // assigned to you as a bar by where they stand (past testing green, in testing blue, in progress
 // amber, blocked red, to do grey; none when none is yours). Each says itself in a tooltip.
+// Open pull requests as one mark: the most urgent state among them (changes requested, failing
+// checks, approved, running, in review, draft) and a tooltip with each one's state.
+const PR_URGENCY = ["pr-changes", "pr-failing", "pr-approved", "pr-running", "pr-review", "pr-draft"];
+function prSummary(t, open) {
+  const states = open.map((p) => prLook(t, p, checksOf(p)));
+  const worst = states.slice().sort((a, b) => PR_URGENCY.indexOf(a[0]) - PR_URGENCY.indexOf(b[0]))[0];
+  return [worst, open.map((p, i) => `${prName(p)}: ${states[i][1]}`).join("\n")];
+}
+
 function storyBadges(t, it) {
   const out = [];
   const live = allAgents(it);
@@ -457,10 +471,8 @@ function storyBadges(t, it) {
   if (!ask && !busy && isPaused(it)) out.push(countBadge(t, `b-paused-${it.key}`, "paused", allPaused(it).length, "Paused: Resume picks it up"));
   const open = allPrs(it).filter((p) => !p.merged);
   if (open.length) {
-    const states = open.map((p) => prLook(t, p, checksOf(p)));
-    const order = ["pr-changes", "pr-failing", "pr-approved", "pr-running", "pr-review", "pr-draft"];
-    const worst = states.slice().sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))[0];
-    out.push(countBadge(t, `b-pr-${it.key}`, worst[0], open.length, open.map((p, i) => `${prName(p)}: ${states[i][1]}`).join("\n"), worst[2]));
+    const [worst, tip] = prSummary(t, open);
+    out.push(countBadge(t, `b-pr-${it.key}`, worst[0], open.length, tip, worst[2]));
   } else if (allPrs(it).length) out.push(countBadge(t, `b-pr-${it.key}`, "pr-merged", 1, "Every pull request merged"));
   if (it.story) {
     const n = { past: 0, testing: 0, doing: 0, blocked: 0, todo: 0 };
@@ -1122,6 +1134,8 @@ function blocksView(t, id, list, gap = 14, lead = false, color = undefined) {
 // sizes. Folding hides the body, for every story and across restarts (shared state); work.js keeps
 // the blocks in step, and a story not started shows its body anyway (it has nothing else to show).
 const HEAD_FOLDED = "kelpie.storyhead.folded";
+// The sidebar's pull request groups folded by hand (profile id -> "<list>:<story key>" -> true).
+const PR_FOLDS = "kelpie.pulls.folded";
 export const headFolded = () => Boolean(shared(HEAD_FOLDED));
 function foldHead(shut) {
   setShared(HEAD_FOLDED, shut);
@@ -1745,15 +1759,25 @@ export class Stories extends Source {
       { tip: text, confirmTip: `Click again to ask ${key}'s agent to ${kind} ${prs.map(prName).join(", ")}`, filled });
   }
 
+  // A pull request's line: its state's mark and its title (the ticket key it starts with left out,
+  // as the row it's under says it), then where it is, its state in a few words in its colour and how
+  // long since it changed, in columns that line up down the list (column()), and the button for what
+  // it needs. The whole line opens it; a merged one sits back.
   pr(t, p, st, it) {
-    // One mark for its state (its words in the tooltip), then the button for what it needs.
-    const [state, words] = prLook(t, p, checksOf(p));
+    const [state, words, color] = prLook(t, p, checksOf(p));
     const kind = askFor(p);
-    return h_flex().gap(6).items_center().text_size(SMALL)
-      // A merged one sits back: its name dim beside the purple merge icon.
-      .child(h_flex().id(`pr-${prName(p)}`).flex_none().gap(5).items_center().text_color(p.merged ? t.muted : t.foreground).cursor_pointer().hover((s) => s.text_color(t.accent))
-        .tooltip(`${words} · ${p.title}`).on_click(() => open(p.url)).child(mark(t, state, 14)).child(prName(p)))
-      .when(Boolean(kind), (el) => el.child(this.askButton(t, st, it, `ask-${kind}-${prName(p)}`, kind, [p])));
+    const name = prName(p);
+    const title = String(p.title ?? "").replace(/^\s*(?:\[[^\]]*\]|[A-Z][A-Z0-9_]*-\d+)[\s:\u2014-]*/, "") || name;
+    return h_flex().gap(10).items_center().min_w(0).text_size(SMALL)
+      .child(h_flex().id(`pr-${name}`).flex_1().min_w(0).h(CONTROL).gap(8).items_center().cursor_pointer().rounded(6).hover((x) => x.text_color(t.accent))
+        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${words} · ${p.title}`).on_click(() => open(p.url))
+        .child(div().flex_none().child(mark(t, state, 14)))
+        .child(div().flex_1().min_w(0).truncate().text_size(TEXT).child(title))
+        .child(this.column("pr-where", name, h_flex().flex_none().text_color(t.dim).child(name)))
+        .child(this.column("pr-state", name, h_flex().flex_none().gap(6).items_center()
+          .child(div().text_color(p.merged ? t.dim : color).child(PR_SHORT[state] ?? words))
+          .when(Boolean(p.updatedAt), (el) => el.child(div().text_color(t.dim).child(ago(p.updatedAt)))))))
+      .when(Boolean(kind), (el) => el.child(this.askButton(t, st, it, `ask-${kind}-${name}`, kind, [p])));
   }
 
   // A story in the list: its title, then its key and what it needs. A sunk one is drawn quieter, as
@@ -1977,7 +2001,7 @@ export class Stories extends Source {
       .on_click((_e, cx) => { if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key); cx.notify(); }).child(s.title);
     // A subtask's row: its key, title, state and agent buttons, then its pull requests. A ticket with
     // no subtasks has no row: its state and actions are the header's, only its pull requests show.
-    this.colRows = new Set(it.subs.map((s) => s.key));
+    this.colRows = new Set([...it.subs.map((s) => s.key), ...allPrs(it).map(prName)]);
     // A calm list: at rest a row shows what you read (who it's assigned to, key, title, its agent's
     // mark, its status); its actions show on the row hovered, laid over the end of its title, so they
     // keep no room at rest and the title has the row. Peek stays while the agent asks something.
@@ -2028,10 +2052,10 @@ export class Stories extends Source {
     // Its pull requests and subtasks sit in a centred column of their own (ROWS wide), so a row's
     // status stays near its key and title on a very wide screen.
     const rows = v_flex().relative().w_full().min_w(0).max_w(ROWS).child(this.colProbe())
-      .when(it.prs.length > 0, (el) => el.child(v_flex().gap(4).px(8).py(8).border_t_1().border_color(t.border)
-        .child(div().text_size(SMALL).font_semibold().text_color(t.muted).child("On the story itself"))
-        .children(it.prs.map((p) => this.pr(t, p, st, it)))))
-      .when(own.length > 0, (el) => el.child(v_flex().gap(4).px(8).py(8).border_t_1().border_color(t.border).children(own.map((p) => this.pr(t, p, st, it)))))
+      // Pull requests naming the story's own key, and a ticket's with no subtasks, under a heading
+      // like the subtasks' groups; open ones first, newest first, then the merged.
+      .when(it.prs.length > 0, (el) => el.child(heading("prs-story", "On the story itself")).children(prOrder(it.prs).map((p) => this.pr(t, p, st, it).px(8))))
+      .when(own.length > 0, (el) => el.child(heading("prs-own", own.length === 1 ? "Pull request" : `Pull requests · ${own.length}`)).children(prOrder(own).map((p) => this.pr(t, p, st, it).px(8))))
       .children(it.story ? subGroups(it.subs) : []);
     const overview = v_flex().id("story-overview").flex_1().min_h(0).gap(0).overflow_y_scrollbar()
       .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
@@ -3070,14 +3094,34 @@ export class StoryList extends Stories {
         .when(waiting.length > 0, (el) => el.child(taskMenu(g, "approval", waiting)))
         .child(taskMenu(g, "merge", g.list));
     };
-    const storyHead = (g, id) => h_flex().id(`${id}-${g.key || "none"}`).flex_none().px(8).pt(10).pb(2).gap(8).items_center().text_size(SMALL).text_color(t.dim)
-      .when(Boolean(g.story), (el) => el.cursor_pointer().hover((s) => s.text_color(t.foreground)).tooltip(`Show ${g.key}`).on_click(() => selectStory(st.profile, g.story)))
-      .child(skinFont(div().flex_none(), "key").child(g.key || "No ticket"))
-      .child(div().flex_1().min_w(0).truncate().child(g.story?.title ?? ""))
-      // Its menus for a story's pull requests, and for those naming no ticket (the Desk's); not for a
-      // ticket of another board.
-      .when(id === "mine-story" && (Boolean(g.story) || !g.key), (el) => el.child(div().flex_none().child(plan(g))));
-    const grouped = (list, prOf, row, id) => byStory(list, prOf).flatMap((g) => [storyHead(g, id), ...g.list.map(row)]);
+    // A group folds by its chevron, so a story with many pull requests doesn't push the rest down;
+    // folded, its heading says how many and the most urgent state among them. Kept per profile.
+    const folds = (shared(PR_FOLDS) ?? {})[st.profile.id] ?? {};
+    const foldId = (g, id) => `${id}:${g.key || "none"}`;
+    const fold = (g, id) => {
+      const all = shared(PR_FOLDS) ?? {}, mine = { ...(all[st.profile.id] ?? {}) };
+      if (mine[foldId(g, id)]) delete mine[foldId(g, id)]; else mine[foldId(g, id)] = true;
+      setShared(PR_FOLDS, { ...all, [st.profile.id]: mine });
+    };
+    const storyHead = (g, id, prOf) => {
+      const shut = Boolean(folds[foldId(g, id)]);
+      const open = g.list.map(prOf).filter((p) => !p.merged);
+      const [worst, tip] = open.length ? prSummary(t, open) : [null, ""];
+      const what = g.key || "pull requests without a ticket";
+      return h_flex().id(`${id}-${g.key || "none"}`).flex_none().px(8).pt(10).pb(2).gap(8).items_center().text_size(SMALL).text_color(t.dim)
+        .when(Boolean(g.story), (el) => el.cursor_pointer().hover((s) => s.text_color(t.foreground)).tooltip(`Show ${g.key}`).on_click(() => selectStory(st.profile, g.story)))
+        .child(div().id(`${id}-fold-${g.key || "none"}`).flex_none().flex().size(16).items_center().justify_center().rounded(4).cursor_pointer()
+          .hover((s) => s.bg(t.hover)).tooltip(shut ? `Show ${what}'s pull requests` : `Fold ${what}'s pull requests`)
+          .on_mouse_down("left", stop).on_click((e, cx) => { stop(e, cx); fold(g, id); })
+          .child(icon(chrome(shut ? "chevron-right" : "chevron-down"), 12).text_color(t.dim)))
+        .child(skinFont(div().flex_none(), "key").child(g.key || "No ticket"))
+        .child(div().flex_1().min_w(0).truncate().child(g.story?.title ?? ""))
+        .when(shut && Boolean(worst), (el) => el.child(div().flex_none().child(countBadge(t, `${id}-sum-${g.key || "none"}`, worst[0], open.length, tip, worst[2]).when(open.length === 1, (x) => x.child("1")))))
+        // Its menus for a story's pull requests, and for those naming no ticket (the Desk's); not for a
+        // ticket of another board.
+        .when(id === "mine-story" && (Boolean(g.story) || !g.key), (el) => el.child(div().flex_none().child(plan(g))));
+    };
+    const grouped = (list, prOf, row, id) => byStory(list, prOf).flatMap((g) => [storyHead(g, id, prOf), ...(folds[foldId(g, id)] ? [] : g.list.map(row))]);
     // The profile's spaces that aren't a story's, nor its Desk.
     const keys = new Set(items.map(({ it }) => it.key));
     const others = spacesOf(st.profile).filter((s) => !keys.has(keyOf(s.name)) && s.id !== desk?.id);

@@ -116,9 +116,10 @@ v_flex [fg=foreground]
             div
               div [bg=working/40] ~loop(opacity)
                 div [bg=working]
-          h_flex #b-pr-ACME-142 [fg=accent] tip="web#418: In review, checks pass"
+          h_flex #b-pr-ACME-142 [fg=accent] tip="docs#61: In review, checks pass\nweb#418: In review, checks pass"
             div
               svg own:git-pull-request [fg=accent]
+            "2"
           h_flex #b-subs-ACME-142 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 3 subtasks · 1 in review · 1 to do · 1 done"
             h_flex [bg=raised]
               div [bg=working]
@@ -270,7 +271,7 @@ v_flex [fg=foreground]
       div [font="DM Sans" fg=muted]
         "YOUR PULL REQUESTS"
       div [font="DM Mono" fg=dim]
-        "6"
+        "7"
       div
         div
           div [bg=dim/f2] ×32 … [bg=dim/1a]
@@ -324,6 +325,16 @@ v_flex [fg=foreground]
             "ACME-143 Cache trips in IndexedDB for offline use"
         div [fg=muted]
           "web#418 · 25m"
+    h_flex #mine-docs#61 [hover(bg=hover)] {click} tip="In review, checks pass. Show ACME-142 on its Changes"
+      div
+        div
+          svg own:git-pull-request [fg=accent]
+      v_flex
+        h_flex
+          div [font="DM Sans"]
+            "ACME-142 Offline mode: how saved trips sync"
+        div [fg=muted]
+          "docs#61 · 6h"
     h_flex #mine-story-ACME-151 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-151"
       div [font="DM Mono"]
         "ACME-151"

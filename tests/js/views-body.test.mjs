@@ -199,3 +199,21 @@ test("subtasks: yours first, then everyone else's", async () => {
   const allMine = (await body({ preview: "ACME-151" })).el;
   assert.deepEqual(order(allMine), ["sub-row-ACME-152", "sub-row-ACME-153"]);
 });
+
+// A pull request's line says what it is: its title without the ticket key, where it is, its state in a
+// few words and its age; open ones first, then the merged. A ticket with no subtasks lists its own
+// under a heading, a story the ones naming its own key under "On the story itself".
+test("pull request lines: title, where, state and age, open ones first", async () => {
+  const task = (await body({ preview: "ACME-175" })).el;
+  assert.deepEqual(texts(byId(task, "prs-own")), ["Pull requests · 2"]);
+  const lines = render(task, skinTheme()).split("\n").map((l) => /#pr-([a-z]+#\d+)\b/.exec(l)?.[1]).filter(Boolean);
+  assert.deepEqual(lines, ["web#423", "api#291"], "open first, then merged");
+  const open = texts(byId(task, "pr-web#423"));
+  assert.ok(open.includes("Wait for the session cookie in the login test"), open.join(" | "));
+  assert.ok(!open.some((x) => /ACME-175/.test(x)), "no ticket key in the title");
+  assert.ok(open.includes("web#423") && open.includes("Checks running") && open.some((x) => /^(now|\d+[mhd])$/.test(x)), open.join(" | "));
+  assert.ok(texts(byId(task, "pr-api#291")).includes("Merged"));
+  const story = (await body({ preview: "ACME-142" })).el;
+  assert.deepEqual(texts(byId(story, "prs-story")), ["On the story itself"]);
+  assert.ok(texts(byId(story, "pr-docs#61")).includes("Offline mode: how saved trips sync"));
+});

@@ -75,6 +75,24 @@ div
             h_flex
               v_flex
                 div #sub-cols-zoom-probe {size_change}
+                div #prs-story [fg=muted]
+                  "On the story itself"
+                h_flex
+                  h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-142 Offline mode: how saved trips sync"
+                    div
+                      div
+                        svg own:git-pull-request [fg=accent]
+                    div
+                      "Offline mode: how saved trips sync"
+                    h_flex
+                      h_flex #sub-pr-where-cell-docs#61 [fg=dim] {size_change}
+                        "docs#61"
+                    h_flex
+                      h_flex #sub-pr-state-cell-docs#61 {size_change}
+                        div [fg=accent]
+                          "In review"
+                        div [fg=dim]
+                          "now"
                 div #subs-mine [fg=muted]
                   "Assigned to you"
                 v_flex #sub-row-ACME-143 [border=border hover(bg=hover)] {hover}
@@ -109,10 +127,21 @@ div
                                 div
                                   div [bg=#7fb3ae]
                   h_flex
-                    h_flex #pr-web#418 [fg=foreground hover(fg=accent)] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use"
+                    h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use"
                       div
-                        svg own:git-pull-request [fg=accent]
-                      "web#418"
+                        div
+                          svg own:git-pull-request [fg=accent]
+                      div
+                        "Cache trips in IndexedDB for offline use"
+                      h_flex
+                        h_flex #sub-pr-where-cell-web#418 [fg=dim] {size_change}
+                          "web#418"
+                      h_flex
+                        h_flex #sub-pr-state-cell-web#418 {size_change}
+                          div [fg=accent]
+                            "In review"
+                          div [fg=dim]
+                            "now"
                 v_flex #sub-row-ACME-144 [border=border hover(bg=hover)] {hover}
                   h_flex
                     div #sub-assignee-ACME-144
