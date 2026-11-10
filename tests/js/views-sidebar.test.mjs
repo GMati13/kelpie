@@ -192,6 +192,6 @@ test("a profile with no board asks for one, whichever kind", async () => {
   const words = texts(el).join("\n");
   assert.match(words, /Connect a board to /);
   assert.match(words, /Jira or a GitHub Project/);
-  handlers(el).find((h) => h.id === "setup-a board").fn({}, cx);
+  handlers(el).find((h) => h.id === "setup-jira").fn({}, cx);
   assert.equal(mock.of("openOverlay").at(-1)[0].props.focus, "jira", "the Board tab");
 });

@@ -110,7 +110,7 @@ export function needsSetup(t, st, what, glyph, line, focus = what.toLowerCase())
       .child(icon(chrome(glyph), 18).text_color(t.muted)))
     .child(div().font_medium().text_color(t.foreground).child(`Connect ${what} to ${profile?.name ?? st.space.name}`))
     .child(div().max_w(380).text_size(SMALL).text_color(t.dim).text_center().child(line))
-    .child(primaryButton(t, `setup-${what}`, `Set up ${what}`, () => (profile ? openProfile(profile.id, { space: st.space, focus }) : openSetup(st.space, focus))).mt(8));
+    .child(primaryButton(t, `setup-${focus.replace(/\W+/g, "-")}`, `Set up ${what}`, () => (profile ? openProfile(profile.id, { space: st.space, focus }) : openSetup(st.space, focus))).mt(8));
 }
 
 // Starts (or, if a tab with this name is open, shows) a Claude agent in the space, in its folder.

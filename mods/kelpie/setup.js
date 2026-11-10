@@ -616,12 +616,12 @@ export class Setup {
     ];
     // The Board page's form for a GitHub Project: its address, read as the profile's GitHub account
     // (no sign-in of its own), then each repo's key prefix.
-    const who = this.githubAccount ? `the GitHub account ${this.githubAccount}, chosen on the GitHub page` : "the account gh has active (the GitHub page can name another)";
+    const who = this.githubAccount ? `the GitHub account ${this.githubAccount} (set on the GitHub page)` : "the GitHub account you're signed in to with gh (the GitHub page can name another)";
     const prefixRows = this.prefixList();
     const example = prefixRows.find((r) => !r.error)?.prefix ?? "WEB";
     const projectForm = () => [
       field("Project address", row(grow(input(this.projectUrl)), textButton(t, "setup-project-check", "Check", (_e, cx) => this.checkProject(cx), { tip: "Reads the Project and what Kelpie may do there" })),
-        `Open the Project on GitHub and copy its address. Kelpie reads it as ${who}, through gh.`),
+        `Open the Project on GitHub and copy its address. Kelpie reads it as ${who}.`),
       check("project"),
       group("Ticket keys"),
       prefixRows.length

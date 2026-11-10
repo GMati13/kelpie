@@ -2053,7 +2053,7 @@ export class Stories extends Source {
     // A story not opened always shows its details (they're all there is), so it has no fold.
     const folds = viewOf(st.profile, it) !== "start";
     const lone = lonePr(it);
-    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: `Open in ${boardOf(st.setup)?.name ?? "the board"}`, url: ticketUrl(boardOf(st.setup), st.data, it.key) };
+    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: boardOf(st.setup)?.kind === "project" ? "Open on GitHub" : `Open in ${boardOf(st.setup)?.name ?? "the board"}`, url: ticketUrl(boardOf(st.setup), st.data, it.key) };
     const { actions, tasks = [], clean, more } = this.headActions(t, st, it, cx);
     // A skin may draw the story's subtasks as a meter (none by default).
     const subMeter = it.story ? skinMeter(t, { kind: "subtasks", label: "Subtasks", done: it.subs.filter((s) => s.category === "done").length, total: it.subs.length }) : null;

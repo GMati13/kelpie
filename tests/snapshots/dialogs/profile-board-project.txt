@@ -113,7 +113,7 @@ v_flex #work-setup [bg=popover fg=foreground] {key_down}
           h_flex #setup-project-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Reads the Project and what Kelpie may do there"
             "Check"
         div [fg=dim]
-          "Open the Project on GitHub and copy its address. Kelpie reads it as the account gh has active (the GitHub page can name another), through gh."
+          "Open the Project on GitHub and copy its address. Kelpie reads it as the GitHub account you're signed in to with gh (the GitHub page can name another)."
       div [fg=done]
         "Found “Acme”: 5 columns (To Do, In Progress, Review, QA, Done), 1 repo. Stories come from the current iteration of its “Sprint” field. Kelpie can move its tickets."
       v_flex
