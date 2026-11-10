@@ -1,0 +1,237 @@
+{
+  "tools": [
+    {
+      "name": "show_passage",
+      "title": "Show a passage in Kelpie",
+      "description": "Opens a Jira story in Kelpie, the person's story view, with a passage of its description scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description (not a summary or paraphrase; a few sentences at most, '…' for words left out). `key` is the story's own key: a subtask's description isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says whether it found the passage; tell the person what happened.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The story's Jira key, like ABC-123."
+          },
+          "quote": {
+            "type": "string",
+            "description": "The passage, word for word from the description."
+          },
+          "note": {
+            "type": "string",
+            "description": "A few words on what the passage is, shown above it."
+          }
+        },
+        "required": [
+          "key",
+          "quote"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_profile",
+      "title": "Read a Kelpie profile",
+      "description": "The person's Kelpie profiles as saved. With `id`, that profile's settings (name, folder, claude, jira, github, web, prompts, notify, commands); without, every profile's id, name and folder. Read-only. Fields not in the profile dialog (sources, seen) are old or internal: leave them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The profile's id, like work."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "save_profile",
+      "title": "Save a change to a Kelpie profile",
+      "description": "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only what changes: name and folder replace; a section (jira, github, web, prompts, notify, commands, claude) given as an object is merged into the saved one; a key or section set to null is removed. Values are strings, except jira.board (a number) and notify.pulls (true/false). An id that doesn't exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token or password are refused. Changes that can run commands, steer agents or move the Jira sign-in (commands, prompts, claude, web, the jira sign-in and address, the github prompts) aren't saved until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at Kelpie, and call save_status once they've answered. Save only what the person agreed to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The profile's id."
+          },
+          "set": {
+            "type": "object",
+            "description": "The settings to change, as described."
+          }
+        },
+        "required": [
+          "id",
+          "set"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "save_status",
+      "title": "What happened to the last profile change",
+      "description": "Kelpie's answer to the last save_profile: saved, an error, still waiting for the person's yes, or their no. Call it after they've answered Kelpie's confirm dialog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "open_profile_page",
+      "title": "Open the profile dialog on a page",
+      "description": "Opens Kelpie's profile dialog, for the profile Kelpie shows, on one page: general, jira, github, web, prompts, messages or commands. Use it for the person to press a Check button (Jira's checks their sign-in and lists the board's columns; GitHub's checks their pull requests) or to look over what you saved. It only opens the dialog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "string",
+            "enum": [
+              "general",
+              "jira",
+              "github",
+              "web",
+              "prompts",
+              "messages",
+              "commands"
+            ]
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_next",
+      "title": "Read Kelpie's Next queue",
+      "description": "The person's Next queue in Kelpie: what needs them across all their stories and agents, in the order they'd take it. Use it whenever they ask what needs them, what's on their plate, what's waiting or what to do next, rather than piecing it together from Jira and GitHub: Kelpie already ranks it as they see it. Order: stories that need them (an agent waiting, changes requested, checks failing, ready to merge), what agents asked of them, pull requests waiting for their review, the Desk's agent waiting, finished stories to clean up, then Claude's suggestions. Each with its kind, key, what to do, a detail line and its link. For your own profile in Kelpie (the one of the space you run in), else the one Kelpie shows. Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_to_next",
+      "title": "Ask the person something through Next",
+      "description": "Adds a line to the person's Next queue in Kelpie, from you. They run many agents and work from Next, so a question left at the end of your turn in your own terminal is easy to miss: Kelpie flags an agent only while a permission prompt waits, not one that finished its turn with a question. Use it when you end a turn and can't go on well without them: a choice only they can make, a plan to read before you build, a pull request of yours to look at. Not for reporting that you're done, for questions you can settle yourself, or for permission prompts (Kelpie shows those). It shows under your tab's name; a click takes them to its story or link, and to you; it goes once they've clicked or dropped it, or when your terminal closes. Three at most from you; the same `action` again replaces it. Still ask the question in your reply: this only points them to it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What to do, a verb first, under 60 characters: what Next shows."
+          },
+          "why": {
+            "type": "string",
+            "description": "One short line on why or what it's about, shown under it."
+          },
+          "key": {
+            "type": "string",
+            "description": "The Jira key it's about, like ABC-123 (a subtask's counts for its story)."
+          },
+          "url": {
+            "type": "string",
+            "description": "A link to open instead: a GitHub page or the profile's Jira."
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "suggest_next",
+      "title": "Hand Kelpie suggestions for Next",
+      "description": "The Kelpie tool for suggestions: hands your picks of what the person could do next to Kelpie, which shows them in Next as suggested by Claude, replacing earlier ones. Use it only when asked to fill or refresh Kelpie's suggestions (What next? asks this way): a person asking you what to work on wants your answer in the chat, and calling it would replace the picks they have. All picks in one call, best first, 8 at most. Each is one of: `key`, a Jira key (a subtask's goes to its story; one pick per story); `url`, a GitHub pull request link; `idea`, a short brief for an agent, with `where` (no ticket: something to make better, 3 at most, after the rest). Each has `action`, what Next shows (a verb first, under 60 characters), and `why`, one short line on why now. Kelpie checks each and says what it kept and what it dropped, and why. It changes only what Kelpie suggests: nothing in Jira, GitHub or any file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "idea": {
+                  "type": "string"
+                },
+                "where": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}

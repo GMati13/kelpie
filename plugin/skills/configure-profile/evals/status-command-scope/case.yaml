@@ -2,3 +2,5 @@ schema_version: "1.1"
 name: status-command-scope
 expected_outcome: |
   Reads the profile, looks at how the folder is laid out, proposes a status command (with a sample of the line it prints) and asks the person before saving anything; no save_profile in this first turn.
+context:
+  scaffold_script: place-files.sh

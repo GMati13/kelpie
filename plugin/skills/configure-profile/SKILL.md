@@ -88,7 +88,7 @@ Jira Cloud only (`https://<name>.atlassian.net`). Server and Data Center sign in
     ```
     That's zsh; in bash, `read -rsp "Jira token: " t` instead of `read -rs "t?…"`.
   - **A token command** (`jira.tokenCommand` and `jira.email`): one that prints the token from a password manager (`op read op://…`, `pass show …`, `secret-tool lookup …`). For systems without the Keychain, or when it's kept there already. Set, it wins over the Keychain item.
-- **Check it** in Kelpie, not yourself: once saved, `open_profile_page` with `jira` and ask the person to press Check. It signs in with what they stored and says whether it worked and which board it found.
+- **Check it** in Kelpie, not yourself: once the sign-in is in place (saved, or stored by the person in their own terminal), ask them to press Check on the Jira page (`open_profile_page` with `jira`), rather than only offering to: it's the step that tells them it works. It signs in with what they stored and says whether it worked and which board it found.
 - **Your part** (`jira.handover`, scope `handover`): the board column from which the person's part of a ticket is done (usually the first testing or review column). A story whose subtasks assigned to them are all there or further right waits on others, so it sinks to the end of their list. Find the board's columns through your own Jira access if you have it, else ask: after Check, the Jira page's "My part is done from column" lists them. Save the column's exact name. Unset, Kelpie picks the first column named like test, QA or verify, else the last.
 
 ### 3. GitHub
@@ -104,7 +104,7 @@ Jira Cloud only (`https://<name>.atlassian.net`). Server and Data Center sign in
 
 All optional. Each runs through the person's shell in the profile's folder, with `{key}` replaced by a ticket key (`ABC-123`). The leftovers check and clean-up run **once per key of a story: its own and each of its subtasks'**, as work is often done under a subtask's key, so a command only ever deals with the key it's given: never look up a story's subtasks yourself. The status command gets the story's key.
 
-First look at how the folder is laid out: clones, worktrees, folders per ticket (a folder named exactly after a key, one or two levels down, is a convention Kelpie already understands). Then ask what should count before writing anything. Simple commands can be inline; longer ones belong in a script the person keeps (ask where). Try each on a real key before saving.
+First look at how the folder is laid out: clones, worktrees, folders per ticket (a folder named exactly after a key, one or two levels down, is a convention Kelpie already understands). Then propose a first draft from what you found, the command itself with `{key}` and a sample of the line it would print for a real key, and ask whether that's what should count: a concrete draft is quicker to say yes to, or to correct, than an open question. Write no script and save nothing until they agree. Simple commands can be inline; longer ones belong in a script the person keeps (ask where). Try each on a real key before saving.
 
 **What these commands print is shown as it comes**: Kelpie can't pick out what matters from a tool's raw output, so it never tries. It shows the lines in the clean-up dialog's list, a note after a clean-up, a line in the story header; it only tidies the leftovers check's lines (paths under the profile's folder relative, the home folder as `~`, runs of spaces as one). So:
 
