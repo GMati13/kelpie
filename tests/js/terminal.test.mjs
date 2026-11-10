@@ -43,6 +43,13 @@ describe("a story's Terminal", () => {
     await openTerminal(profile, { key: "ABC-1", subs: [], space: { id: "s1" } });
     assert.equal(newTabs()[0].folder, "/work/acme/worktrees/ABC-1");
   });
+  test("none opens while the story is being cleaned up, as its space is closing", async () => {
+    mock.state.spaces = [{ id: "s1", name: "ABC-1", folder: "/work/acme", active: true, tabs: [] }];
+    mock.state.shared.set("kelpie.busy", { "ABC-1": { kind: "clean", keys: ["ABC-1"], step: "Cleaning up ABC-1…", at: Date.now(), until: Date.now() + 60e3 } });
+    await openTerminal(profile, { key: "ABC-1", subs: [], space: { id: "s1" } });
+    assert.equal(newTabs().length, 0);
+    assert.equal(mock.sharedValue("kelpie.stories.note")?.text, "ABC-1 is being cleaned up: wait for that to finish.");
+  });
   test("a story with no space gets one, with its terminal as the first tab", async () => {
     openTerminal(profile, { key: "ABC-1", subs: [] });
     const [, args] = await until(() => mock.of("run").find(([n]) => n === "space.new"), 3000, "space.new");

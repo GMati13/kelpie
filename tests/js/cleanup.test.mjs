@@ -3,9 +3,9 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { git, put, tempDir } from "../lib/helpers.mjs";
+import { git, put, tempDir, until } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { cleanBlockers, cleanUp } from "../../mods/kelpie/stories.js";
+import { busyOf, cleanBlockers, cleanUp } from "../../mods/kelpie/stories.js";
 import { removeDemo } from "../../mods/kelpie/demo.js";
 
 beforeEach(() => mock.reset());
@@ -107,6 +107,72 @@ describe("cleanUp", () => {
     await cleanUp(profile, story());
     assert.match(note(), /wasn't cleaned up: uncommitted work in its folders \(couldn't check them: boom\)/);
     assert.deepEqual(cleanRuns(), []);
+  });
+});
+
+// One clean-up of a story at a time (#78): a second press while the first ran once ran the clean-up
+// command twice at once. The clean-up command is a stand-in that answers only when the test lets it.
+describe("cleanUp: one at a time", () => {
+  let profile, runs, waiting;
+  const note = () => mock.sharedValue("kelpie.stories.note")?.text ?? "";
+  const release = () => waiting.shift()({ code: 0, stdout: "removed", stderr: "" });
+  beforeEach(() => {
+    profile = { id: "w", name: "W", folder: tempDir(), commands: { cleanUp: "slow-clean {key}" } };
+    mock.state.shared.set("kelpie.profiles", { w: profile });
+    mock.state.shared.set("kelpie.clean.leftovers", { w: { found: { "ABC-1": { "ABC-1": ["a"], "ABC-2": ["b"] } } } });
+    runs = []; waiting = [];
+    mock.on.exec = (cmd, args) => {
+      if (cmd === "python3") return { code: 0, stdout: "[]", stderr: "" };
+      const line = cmd === "sh" ? String(args[3] ?? "") : "";
+      if (line.startsWith("slow-clean ")) { runs.push(line); return new Promise((r) => waiting.push(r)); }
+      return undefined;
+    };
+  });
+
+  test("a second clean-up of the same story while the first runs is refused", async () => {
+    const first = cleanUp(profile, story());
+    await until(() => runs.length === 1, 3000, "the first run");
+    const busy = busyOf("ABC-1");
+    assert.equal(busy?.kind, "clean");
+    assert.equal(busy.step, "Cleaning up ABC-1: 1 of 2…");
+    assert.equal(busy.until - busy.at, 2 * 25000 + 60000, "its limit is the whole run's: each key's, plus a margin");
+    await cleanUp(profile, story());
+    assert.equal(note(), "ABC-1 is already being cleaned up.");
+    release();
+    await until(() => runs.length === 2, 3000, "the second key");
+    release();
+    await first;
+    assert.deepEqual(runs, ["slow-clean ABC-1", "slow-clean ABC-2"], "the command ran once per key, not twice");
+    assert.equal(busyOf("ABC-1"), null, "the story is free again");
+  });
+
+  test("a mark past its time limit doesn't hold the story", async () => {
+    mock.state.shared.set("kelpie.busy", { "ABC-1": { kind: "clean", keys: ["ABC-1"], step: "Cleaning up ABC-1…", at: Date.now() - 600e3, until: Date.now() - 1 } });
+    const run = cleanUp(profile, story());
+    await until(() => runs.length === 1, 3000, "the run");
+    release();
+    await until(() => runs.length === 2, 3000, "the second key");
+    release();
+    await run;
+    assert.match(note(), /^Cleaned up ABC-1/);
+  });
+
+  test("a clean-up that fails still frees the story", async () => {
+    mock.on.exec = (cmd) => (cmd === "python3" ? { code: 1, stdout: "", stderr: "boom" } : undefined);
+    await cleanUp(profile, story());
+    assert.match(note(), /wasn't cleaned up/);
+    assert.equal(busyOf("ABC-1"), null);
+  });
+
+  test("a command stopped at its time limit says which key, and to try again or clean it by hand", async () => {
+    const line = (args) => String(args[3] ?? "");
+    mock.on.exec = (cmd, args) => (cmd === "python3" ? { code: 0, stdout: "[]", stderr: "" }
+      : cmd === "sh" && line(args) === "slow-clean ABC-2" ? { code: 143, stdout: "waiting for a lock", stderr: "" }
+      : cmd === "sh" && line(args).startsWith("slow-clean") ? { code: 0, stdout: "removed", stderr: "" } : undefined);
+    await cleanUp(profile, story());
+    assert.equal(note(), "ABC-1 wasn't fully cleaned up: the clean-up command for ABC-2 took longer than 25 s and was stopped (waiting for a lock). Kelpie looks again at what's left: try again, or clean it up by hand.");
+    assert.ok(mock.of("notify").some(([n]) => n.title === "Clean-up of ABC-2 took too long" && n.level === "warning"));
+    assert.equal(busyOf("ABC-1"), null);
   });
 });
 

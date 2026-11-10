@@ -8,13 +8,13 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts, walk } from "gpui-kit";
 import { byId } from "../lib/snapshot.mjs";
-import { Stories, StoryList, build, donePlan, moveStoryToDone, storyItems } from "../../mods/kelpie/stories.js";
+import { Stories, StoryList, build, busyOf, cleanUp, donePlan, moveStoryToDone, storyItems } from "../../mods/kelpie/stories.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { doneOption } from "../../mods/kelpie/board.js";
 import { boardOf } from "../../mods/kelpie/config.js";
 import { demoJira } from "../../mods/kelpie/demo.js";
 import { COLUMNS, data, issue } from "../lib/stories.mjs";
-import { bodyOf, readRepo } from "../lib/helpers.mjs";
+import { bodyOf, readRepo, until } from "../lib/helpers.mjs";
 
 const statusOf = async (key) => (await demoJira(["get", `/rest/api/3/issue/${key}`])).body.fields.status.name;
 const note = () => mock.sharedValue("kelpie.stories.note")?.text ?? "";
@@ -87,9 +87,11 @@ describe("doneOption: the move into the board's done column", () => {
   });
 });
 
+// The demo's stories as the list loads them, once for the file's Jira describes.
+let demoStories = null;
 describe("Move to Done on the demo's board", async () => {
   setupDemoWorld();
-  const stories = await loadStories(StoryList);
+  const stories = (demoStories = await loadStories(StoryList));
 
   test("the header has its own icon, and its dialog lists each ticket and what stays", async () => {
     setupDemoWorld({ stories });
@@ -277,5 +279,92 @@ describe("Move to Done on the demo's GitHub Project", () => {
     const r = await moveStoryToDone({ profile: DEMO, key: "ACME-171" });
     assert.deepEqual(r, { moved: ["ACME-172", "ACME-173", "ACME-171"], failed: [] });
     assert.equal(await statusOf("ACME-171"), FIXTURE.board.columns.at(-1).statuses[0].name);
+  });
+});
+
+// While a story is being moved or cleaned up (#78), it shows, and what would clash with it is refused.
+// The moves are a real Jira board's, answered by a stand-in that holds each transition until let go.
+describe("Move to Done and clean-up while they run", () => {
+  // demoStories is read when the tests run: the describe above has loaded it by then.
+  let waiting;
+  function slowBoard() {
+    setupDemoWorld({ profile: { jira: { site: "https://acme.atlassian.net", board: 7, keychain: "k" } } });
+    mock.state.shared.set("kelpie.stories.data", { [DEMO]: { ...demoStories, key: new Stories().context().key } });
+    waiting = [];
+    mock.on.exec = (_cmd, args) => {
+      const [what] = args.slice(3);
+      if (what === "get") return { code: 0, stdout: JSON.stringify({ code: 200, authed: true, body: { transitions: [{ id: "41", name: "Done", to: { id: "10001", name: "Done", statusCategory: { key: "done" } } }] } }), stderr: "" };
+      if (what === "transition") return new Promise((r) => waiting.push(() => r({ code: 0, stdout: JSON.stringify({ code: 204, authed: true, body: null }), stderr: "" })));
+      return undefined;
+    };
+  }
+  const header = async (key) => {
+    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: key });
+    return (await draw(new Stories())).el;
+  };
+
+  test("a Move to Done in progress says how far it got, and a second one or a clean-up of it is refused", async () => {
+    slowBoard();
+    const first = moveStoryToDone({ profile: DEMO, key: "ACME-151" });
+    await until(() => waiting.length === 1, 3000, "the first move");
+    const el = await header("ACME-151");
+    assert.ok(texts(byId(el, "story-finish")).includes("Moving to Done… 1 of 2"), "the header says how far it got");
+    assert.ok(walk(byId(el, "story-finish")).some((n) => n.kind === "svg" && n.args[0].endsWith("spinner.svg")), "the working mark");
+    assert.ok(!handlers(el).some((h) => h.id === "story-finish"), "nothing to click");
+    assert.ok(!handlers(el).some((h) => h.id === "story-status-menu-more"), "the story's chip is held while it waits its turn");
+    assert.ok(handlers(el).some((h) => /^story-(main|peek|pause|ask-)/.test(h.id)), "its agents' actions aren't what it clashes with");
+    assert.equal(await moveStoryToDone({ profile: DEMO, key: "ACME-151" }), null);
+    assert.equal(note(), "ACME-151 is moving to Done: wait for that to finish.");
+    await cleanUp(storyItems().st.profile, story("ACME-151"));
+    assert.equal(note(), "ACME-151 is moving to Done: wait for that to finish.");
+    waiting.shift()();
+    await until(() => waiting.length === 1, 3000, "the second move");
+    assert.equal(busyOf("ACME-151").step, "Moving to Done… 2 of 2");
+    waiting.shift()();
+    // Which two depends on what an earlier test here moved (shown as moved for a minute).
+    const r = await first;
+    assert.equal(r.moved.length, 2);
+    assert.deepEqual(r.failed, []);
+    assert.equal(busyOf("ACME-151"), null, "free again once it ends");
+  });
+
+  test("once its tickets have moved, no chip spins through the clean-up that follows", async () => {
+    // Move to Done hands its mark to the clean-up (cleanUp's `held`) as it was left by the last move,
+    // naming that ticket as the one moving.
+    setupDemoWorld({ stories: demoStories });
+    const at = Date.now();
+    mock.state.shared.set("kelpie.busy", { "ACME-180": { kind: "done", keys: ["ACME-181", "ACME-180"], step: "Moving to Done… 2 of 2", on: "ACME-180", at, until: at + 60e3 } });
+    await cleanUp(storyItems().st.profile, story("ACME-180"), { held: at });
+    assert.equal(busyOf("ACME-180").kind, "clean", "still held: Move to Done ends it");
+    const el = await header("ACME-180");
+    assert.ok(byId(el, "story-status-menu-more"), "the story's chip is drawn");
+    assert.ok(!walk(byId(el, "story-status-menu-more")).some((n) => n.kind === "svg" && n.args[0].endsWith("spinner.svg")), "and isn't moving");
+  });
+
+  test("a story being cleaned up offers nothing to start or move, only its working mark", async () => {
+    setupDemoWorld({ stories: demoStories });
+    mock.state.shared.set("kelpie.busy", { "ACME-180": { kind: "clean", keys: ["ACME-180", "ACME-181"], step: "Cleaning up ACME-180…", at: Date.now(), until: Date.now() + 60e3 } });
+    const el = await header("ACME-180");
+    assert.ok(texts(byId(el, "story-clean")).includes("Cleaning up ACME-180…"));
+    for (const id of ["story-main", "story-finish", "story-more"]) assert.equal(byId(el, id), null, id);
+    assert.ok(!handlers(el).some((h) => h.id === "story-status-menu-more"), "its chip can't be picked");
+  });
+
+  test("a status chip spins while its ticket moves, and a second pick is refused", async () => {
+    slowBoard();
+    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-151" });
+    const { view, cx } = await draw(new Stories());
+    const st = view.context();
+    view.move(st, "ACME-151", { id: "41", to: "Done", category: "done" }, cx);
+    await until(() => waiting.length === 1, 3000, "the move");
+    const el = view.render(cx);
+    assert.ok(walk(byId(el, "story-status-menu-more")).some((n) => n.kind === "svg" && n.args[0].endsWith("spinner.svg")));
+    view.move(st, "ACME-151", { id: "41", to: "Done", category: "done" }, cx);
+    assert.equal(note(), "ACME-151 is still moving: wait for that to finish.");
+    waiting.shift()();
+    await cx.settle(10);
+    assert.equal(waiting.length, 0, "one move only");
+    assert.equal(note(), "ACME-151 moved to Done.");
+    assert.equal(busyOf("move:ACME-151"), null);
   });
 });

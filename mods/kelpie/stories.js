@@ -63,6 +63,7 @@ function markLaunch(key, entry) {
   setShared(LAUNCHING, entry ? { ...all, [key]: entry } : all);
 }
 async function once(key, fn) {
+  if (cleaningNow(key)) return;
   const was = (shared(LAUNCHING) ?? {})[key];
   const now = Date.now();
   if (was && now - was.at < LAUNCH_FOR && (!was.done || now - was.done < HOLD)) return;
@@ -70,6 +71,63 @@ async function once(key, fn) {
   markLaunch(key, { at, done: null });
   let ok = false;
   try { const r = await fn(); ok = true; return r; } finally { markLaunch(key, ok ? { at, done: Date.now() } : null); }
+}
+
+// What's busy on the board's tickets: a story being cleaned up or moved to done (by its key), one
+// ticket's status moving (`move:<key>`), Clean up all (`all:<profile id>`). While it runs, every copy
+// shows it (a spinner) and refuses what would clash with it: a second clean-up of a story once ran
+// its clean-up command twice at once, closing its space and dropping its entries in a race. `keys`
+// are the tickets whose status chips it locks, `step` what it's doing now, in words. Each entry ends
+// by `until`, the whole run's own time limit, so a reload mid-run or a command that never returns
+// can't keep a story locked.
+const RUNS = "kelpie.busy"; // { [name]: { kind: "clean" | "done" | "move", keys, step, at, until } }
+const CLEAN_EACH = 25; // seconds the clean-up command gets per key (cleanUp)
+const BUSY_MARGIN = 60e3; // on top of a run's own limits: the checks before it, a slow board
+const MOVE_FOR = 30e3; // one ticket's move, at most (a single chip's, each of Move to Done's)
+// Nothing starts on a story while it's being cleaned up (its space is closing, its folders going):
+// true then, after saying so.
+const cleaningNow = (key) => busyOf(key)?.kind === "clean" && (say(`${key} is being cleaned up: wait for that to finish.`), true);
+const busyAll = () => Object.entries(shared(RUNS) ?? {}).filter(([, e]) => Date.now() < e.until);
+// Exported for the tests.
+export const busyOf = (name) => busyAll().find(([n]) => n === name)?.[1] ?? null;
+// What holds a ticket's chip: its own move, or a run on its story.
+const ticketBusy = (key) => busyAll().map(([, e]) => e).find((e) => e.keys?.includes(key)) ?? null;
+function setBusy(name, entry) {
+  const all = Object.fromEntries(busyAll().filter(([n]) => n !== name));
+  setShared(RUNS, entry ? { ...all, [name]: entry } : all);
+}
+// Takes `name` for a run (null when it's taken), changes what it says, and ends it: only the run that
+// took it ends it (one whose time ran out may have been followed by another).
+function takeBusy(name, entry, ms) {
+  if (busyOf(name)) return null;
+  const at = Date.now();
+  setBusy(name, { ...entry, at, until: at + ms });
+  return at;
+}
+function stepBusy(name, at, change) {
+  const e = busyOf(name);
+  if (e && e.at === at) setBusy(name, { ...e, ...change });
+}
+function endBusy(name, at) {
+  if (busyOf(name)?.at === at) setBusy(name, null);
+}
+// What it's doing, for its spinner's tip and the header: its step, and how long it's taken once
+// that's more than a few seconds.
+const busyText = (e) => {
+  const s = Math.floor((Date.now() - e.at) / 1000);
+  return s < 5 ? e.step : `${e.step} (${s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`})`;
+};
+// Why a story can't be cleaned up or moved to done right now (busyOf its key), in words; null if it can.
+const busyWhy = (key) => {
+  const e = busyOf(key);
+  return !e ? null : e.kind === "clean" ? `${key} is already being cleaned up.` : `${key} is moving to Done: wait for that to finish.`;
+};
+// A busy run's mark, in a button's place: the working spinner, what it's doing as its tip, and with
+// `words` (the header) in words beside it too. Nothing to click.
+function busyMark(t, id, e, { words = false } = {}) {
+  return h_flex().id(id).flex_none().gap(6).items_center().tooltip(busyText(e))
+    .child(div().flex().flex_none().size(CONTROL).items_center().justify_center().child(mark(t, "working", 14)))
+    .when(words, (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(busyText(e))));
 }
 
 const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null;
@@ -579,7 +637,7 @@ const needQueue = (items, reviews) => [...items.filter((x) => x.n[0] <= NEEDS_YO
 const DESK_ITEM = { key: "desk", desk: true };
 const needQueueOf = (profile, items, reviews = []) => {
   const needs = [...needQueue(items, []), ...asksIn(profile, items), ...reviews, ...(deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [])];
-  const dirty = items.map((x) => x.it).filter((it) => cleanable(profile, it).length);
+  const dirty = items.map((x) => x.it).filter((it) => cleanable(profile, it).length && !busyOf(it.key));
   const clean = dirty.length ? [{ key: "clean", clean: dirty }] : [];
   return [...needs, ...clean, ...suggestedIn(profile, items, new Set(needs.map((x) => x.key)))];
 };
@@ -1486,7 +1544,7 @@ const freeName = (base, tabs = []) => {
 // second space; with a space each press is its own tab.
 // Exported for the tests.
 export function openTerminal(profile, it) {
-  if (lonePr(it)) return;
+  if (lonePr(it) || cleaningNow(it.key)) return;
   const open = async () => {
     const folder = (await ticketFolder(profile, it).catch(() => null)) ?? (shared(COUNTS) ?? {})[it.key]?.repo ?? profile.folder;
     const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
@@ -1934,13 +1992,19 @@ export class Stories extends Source {
 
   // Clean up, a broom icon (the header's, and each row in the list), only while a finished story
   // leaves something to clean (cleanable()); it asks first in a dialog, which says what goes.
+  // While it's being cleaned up, the working mark in its place (busyMark).
   cleanButton(t, st, it, id = "story-clean") {
+    const busy = busyOf(it.key);
+    if (busy?.kind === "clean") return busyMark(t, id, busy);
     return iconButton(t, id, own("brush-cleaning"), () => askCleanUp(st.profile, it), `Clean up ${it.key}: ${cleanable(st.profile, it).join(", ")}`);
   }
 
   // Move to Done, a double check (the header's icons, and each Built / Waiting on others row in the
   // list), while something of the story is yours to move; it asks first in a dialog listing each ticket.
-  finishButton(t, st, it, id = "story-finish") {
+  // While it moves, the working mark in its place, with how far it got in the header (`words`).
+  finishButton(t, st, it, id = "story-finish", { words = false } = {}) {
+    const busy = busyOf(it.key);
+    if (busy?.kind === "done") return busyMark(t, id, busy, { words });
     const done = doneName(st.data);
     return iconButton(t, id, own("check-check"), () => askMoveToDone(st, it),
       it.story ? `Move to ${done}: your subtasks of ${it.key}, then the story` : `Move ${it.key} to ${done}`);
@@ -1976,6 +2040,13 @@ export class Stories extends Source {
   statusChip(t, st, key, status, category, id, cx) {
     const moved = MOVED[key];
     const shown = moved && moved.status !== status && Date.now() - moved.at < 60 * 1000 ? moved : { status, category };
+    // Moving (its own move, or Move to Done on it now): the working mark in the lozenge's place. Held
+    // by a run on its story (waiting its turn in Move to Done, or a clean-up): the lozenge alone.
+    const busy = ticketBusy(key);
+    if (busy && (busy.kind === "move" || busy.on === key)) {
+      return div().id(`${id}-more`).flex_none().p(2).tooltip(busy.kind === "move" ? busy.step : `Moving ${key} to Done…`).child(mark(t, "working", 14));
+    }
+    if (busy) return div().id(`${id}-more`).flex_none().p(2).tooltip(busyText(busy)).child(lozenge(t, shown.status, shown.category));
     if (!movable(boardOf(st.setup), key, st.data)) {
       return div().id(`${id}-more`).flex_none().p(2).tooltip("Not on the board's Project, so its status can't be changed here").child(lozenge(t, shown.status, shown.category));
     }
@@ -2006,7 +2077,12 @@ export class Stories extends Source {
     return MOVES[key];
   }
 
+  // One move per ticket at a time (busyOf `move:<key>`, its chip spinning meanwhile): a second pick
+  // before the first answers is refused, as is one while a run on its story holds it.
   move(st, key, x, cx) {
+    const held = ticketBusy(key);
+    if (held) return say(`${key} ${{ move: "is still moving", done: "is moving to Done", clean: "is being cleaned up" }[held.kind]}: wait for that to finish.`);
+    const at = takeBusy(`move:${key}`, { kind: "move", keys: [key], step: `Moving ${key} to ${x.to}…` }, MOVE_FOR);
     say(`Moving ${key} to ${x.to}…`);
     cx.spawn(async (cx) => {
       try {
@@ -2018,6 +2094,7 @@ export class Stories extends Source {
       } catch (e) {
         say(`Couldn't move ${key} to ${x.to}: ${String(e?.message ?? e)}`);
       }
+      endBusy(`move:${key}`, at);
       cx.notify();
     });
   }
@@ -2137,6 +2214,7 @@ export class Stories extends Source {
     const [, line, color] = n;
     const quiet = sunk(it, n);
     const state = storyState(it, n);
+    const busy = busyOf(it.key);
     const sign = statusMark(t, state, { where: "row", size: 8, color: t[color] });
     // The second line is the key and its badges; the sentence of what it needs is the row's tooltip.
     const badges = storyBadges(t, it);
@@ -2157,10 +2235,12 @@ export class Stories extends Source {
           .children(badges)))
       // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
       // it; its clicks stay off the row, as the broom's do.
-      .when(Boolean(st) && quiet && finishes(st?.setup) && canMoveToDone(it), (el) => el.child(div().id(`finish-${it.key}`).flex_none().mt(2)
+      // While it moves, the working mark in its place.
+      .when(Boolean(st) && quiet && finishes(st?.setup) && (canMoveToDone(it) || busy?.kind === "done") && busy?.kind !== "clean", (el) => el.child(div().id(`finish-${it.key}`).flex_none().mt(2)
         .on_mouse_down("left", stop).on_click(stop).child(this.finishButton(t, st, it, `finish-${it.key}-button`))))
-      // A finished story's broom, at hand without opening it; its clicks stay off the row.
-      .when(Boolean(st) && cleanable(st?.profile, it).length > 0, (el) => el.child(div().id(`clean-${it.key}`).flex_none().mt(2)
+      // A finished story's broom, at hand without opening it; its clicks stay off the row. While it's
+      // being cleaned up, the working mark in its place (it may have nothing left to clean by then).
+      .when(Boolean(st) && (cleanable(st?.profile, it).length > 0 || busy?.kind === "clean"), (el) => el.child(div().id(`clean-${it.key}`).flex_none().mt(2)
         .on_mouse_down("left", stop).on_click(stop).child(this.cleanButton(t, st, it, `clean-${it.key}`)))),
       { selected: on, state, story: it, now: new Date() });
   }
@@ -2218,6 +2298,15 @@ export class Stories extends Source {
   // (⋯, `more`, drawn with headRow's icons) for the rest. Per-agent Show and Pause stay on the subtask
   // rows; the key and headRow's open icon open Jira.
   headActions(t, st, it, cx) {
+    // A run on the story (a clean-up, Move to Done): its mark says how far it got and how long it's
+    // taken, so the header redraws each second meanwhile (one timer per copy).
+    const busy = busyOf(it.key);
+    if (busy && cx && !this.busyTick) {
+      this.busyTick = true;
+      cx.timer.after(1000, (cx) => { this.busyTick = false; cx.notify(); });
+    }
+    // Being cleaned up: nothing to start or change on it until that ends, only its mark.
+    if (busy?.kind === "clean") return { actions: [], tasks: [], clean: busyMark(t, "story-clean", busy, { words: true }), more: null };
     if (it.review) return { actions: this.reviewActions(t, st, it), more: null };
     if (it.pull) return { actions: this.pullActions(t, st, it), more: null };
     const live = allAgents(it);
@@ -2284,7 +2373,7 @@ export class Stories extends Source {
     const clean = cleanable(st.profile, it).length ? this.cleanButton(t, st, it) : null;
     // Working alone, nobody can approve: no Request approval.
     const tasks = [unapproved.length && !worksAlone(st.setup) ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null,
-      finishes(st.setup) && canMoveToDone(it) ? this.finishButton(t, st, it) : null].filter(Boolean);
+      finishes(st.setup) && (canMoveToDone(it) || busy?.kind === "done") ? this.finishButton(t, st, it, "story-finish", { words: true }) : null].filter(Boolean);
     return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
 
@@ -3687,11 +3776,13 @@ export class StoryList extends Stories {
       .when(Boolean(st.error), (el) => el.child(div().flex_1().min_w(0).truncate().tooltip(st.error).child(`· ${st.error}`)));
     // Clean up all: a broom and how many finished stories have something left to clean, beside the
     // freshness line; one dialog lists them, its Clean up runs `kelpie.clean-all`.
+    // While Clean up all (or a story's clean-up) runs, the working mark in the broom's place.
     const dirty = items.map((x) => x.it).filter((it) => cleanable(st.profile, it).length);
-    const cleanAll = dirty.length ? h_flex().flex_none().gap(2).items_center()
-      .child(iconButton(t, "stories-clean-all", own("brush-cleaning"), () => askCleanAll(st.profile, dirty),
+    const sweeping = busyOf(`all:${st.profile.id}`) ?? items.map((x) => busyOf(x.it.key)).find((e) => e?.kind === "clean") ?? null;
+    const cleanAll = dirty.length || sweeping ? h_flex().flex_none().gap(2).items_center()
+      .child(sweeping ? busyMark(t, "stories-clean-all", sweeping) : iconButton(t, "stories-clean-all", own("brush-cleaning"), () => askCleanAll(st.profile, dirty),
         `Clean up ${dirty.length === 1 ? `the ${finished(dirty[0]) ? "finished" : "reassigned"} story` : `all ${dirty.length} ${dirty.every(finished) ? "finished " : ""}stories`} with something left`))
-      .child(div().text_size(SMALL).text_color(t.dim).child(String(dirty.length))) : null;
+      .when(dirty.length > 0, (el) => el.child(div().text_size(SMALL).text_color(t.dim).child(String(dirty.length)))) : null;
     return v_flex().size_full().min_h(0).text_size(TEXT).text_color(t.foreground)
       .child(v_flex().flex_none().px(INSET).pb(10).gap(8)
         .child(h_flex().flex_none().gap(8).items_center().child(div().flex_1().min_w(0).child(fresh)).when(Boolean(cleanAll), (el) => el.child(cleanAll)))
@@ -4034,8 +4125,20 @@ async function uncommitted(profile, it) {
 
 // Cleans up a finished story (the confirm dialog's Clean up): closes its space, forgets what shared
 // state kept of it, runs the clean-up command when it left something (once per key it was found under,
-// 25 s each), then looks again, so the broom goes once nothing's left.
-export async function cleanUp(profile, it) {
+// CLEAN_EACH seconds each), then looks again, so the broom goes once nothing's left. One clean-up of a
+// story at a time (busyOf its key), with nothing else started on it meanwhile; `held` when the caller
+// (Move to Done) already holds the story's mark: its `at`.
+export async function cleanUp(profile, it, { held = null } = {}) {
+  const ms = cleanLimit(profile, it);
+  const change = { kind: "clean", keys: storyKeys(it), step: `Cleaning up ${it.key}…`, on: null };
+  if (held) { stepBusy(it.key, held, { ...change, until: Date.now() + ms }); return cleaning(profile, it, held); }
+  const at = takeBusy(it.key, change, ms);
+  if (!at) return say(busyWhy(it.key));
+  try { return await cleaning(profile, it, at); } finally { endBusy(it.key, at); }
+}
+// How long a clean-up may hold its story: each key's run of the clean-up command, and the checks before.
+const cleanLimit = (profile, it) => (cleanCommand(profile) ? leftoverKeys(profile, it).length : 0) * CLEAN_EACH * 1000 + BUSY_MARGIN;
+async function cleaning(profile, it, at) {
   // Checked again now: an agent may have started, or a pull request opened, since the dialog showed.
   const why = cleanBlockers(it);
   if (why.length) return say(`${it.key} wasn't cleaned up: ${why.join(", ")}.`);
@@ -4050,9 +4153,12 @@ export async function cleanUp(profile, it) {
   forgetStory(profile, it);
   if (!folder) return say(`Cleaned up ${it.key}.`);
   // Each key's run, one after another: { key, code, out } (code null: it couldn't run).
-  const runs = [];
-  for (const k of leftoverKeys(profile, it)) {
-    const r = await runCommand(profile, command, k, 25, on).catch((e) => ({ code: null, out: String(e?.message ?? e) }));
+  const runs = [], keys = leftoverKeys(profile, it);
+  for (const [i, k] of keys.entries()) {
+    const step = keys.length > 1 ? `Cleaning up ${k}: ${i + 1} of ${keys.length}…` : `Cleaning up ${it.key}: running the clean-up command…`;
+    stepBusy(it.key, at, { step });
+    if (keys.length > 1) say(step);
+    const r = await runCommand(profile, command, k, CLEAN_EACH, on).catch((e) => ({ code: null, out: String(e?.message ?? e) }));
     runs.push({ key: k, ...r });
   }
   const lastLine = (r) => r.out.split("\n").filter(Boolean).pop() ?? "";
@@ -4061,8 +4167,13 @@ export async function cleanUp(profile, it) {
   if (!failed) {
     const said = runs.map((r) => lastLine(r) && `${keysSaid(r)}${lastLine(r)}`).filter(Boolean).join("; ");
     say(`Cleaned up ${it.key}${said ? `: ${said}` : "."}`, runs.map((r) => r.out).filter(Boolean).join("\n") || null);
+  } else if (failed.code === 143) {
+    // Stopped at its time limit (runCommand): it may have hung on a prompt or a lock. What's left is
+    // looked for again below, so the broom stays for it.
+    say(`${it.key} wasn't fully cleaned up: the clean-up command for ${failed.key} took longer than ${CLEAN_EACH} s and was stopped${lastLine(failed) ? ` (${lastLine(failed)})` : ""}. Kelpie looks again at what's left: try again, or clean it up by hand.`, failed.out || null);
+    notify({ title: `Clean-up of ${failed.key} took too long`, body: `It was stopped after ${CLEAN_EACH} s. Try again, or clean it up by hand.${failed.out ? `\n${failed.out.split("\n").slice(-4).join("\n")}` : ""}`, level: "warning" });
   } else {
-    const why = failed.code === null ? "couldn't run" : failed.code === 143 ? "took too long and was stopped" : `failed (${failed.code})`;
+    const why = failed.code === null ? "couldn't run" : `failed (${failed.code})`;
     say(`Cleaned up ${it.key}, but the clean-up command ${why}${runs.length > 1 ? ` for ${failed.key}` : ""}${lastLine(failed) ? `: ${lastLine(failed)}` : ""}`, failed.out || null);
     if (failed.code !== null) notify({ title: `Clean-up command failed for ${failed.key}`, body: failed.out.split("\n").slice(-6).join("\n"), level: "warning" });
   }
@@ -4080,6 +4191,7 @@ export function cleanStoryByKey(key) {
 // The clean-up dialog for a finished or reassigned story (its broom's): the sentence, then what the
 // clean-up command runs on as a list (the dialog grows with it).
 function askCleanUp(profile, it) {
+  if (busyOf(it.key)) return say(busyWhy(it.key));
   const parts = cleanable(profile, it);
   const items = leftoverItems(profile, it);
   const said = parts.map((p, i) => (items.length && i === parts.length - 1 ? p.replace(/ \(\d+ things\)$/, "") : p));
@@ -4118,6 +4230,7 @@ const keyList = (keys) => (keys.length < 3 ? keys.join(" and ") : `${keys.slice(
 // button moves them itself (dialogs.js Confirm, `doneStory`): no command runs it, as any agent can
 // run a command and this writes to the board.
 function askMoveToDone(st, it) {
+  if (busyOf(it.key)) return say(busyWhy(it.key));
   const plan = donePlan(it), done = doneName(st.data);
   const whose = (x) => (x.assignee ? `${x.assignee}'s` : "unassigned");
   const items = [
@@ -4151,9 +4264,21 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
   const plan = donePlan(it);
   if (!plan) { say(`Nothing was moved: ${key} isn't among the shown profile's stories any more.`); return null; }
   if (!finishes(s.st.setup)) { say("Nothing was moved: Move to Done is turned off for this profile."); return null; }
+  // One run on a story at a time (busyOf its key): another Move to Done, or a clean-up, waits for it.
+  // It locks only what clashes with it (the clean-up, its tickets' chips), not starting an agent.
+  const keys = [...plan.mine.map((t) => t.key), ...(plan.story ? [key] : [])];
+  const at = takeBusy(key, { kind: "done", keys, step: `Moving to Done… 1 of ${keys.length}`, on: keys[0] ?? null },
+    keys.length * MOVE_FOR + BUSY_MARGIN + (clean ? cleanLimit(s.st.profile, it) : 0));
+  if (!at) { say(busyWhy(key)); return null; }
+  try { return await movingToDone(s, it, plan, clean, at); } finally { endBusy(key, at); }
+}
+async function movingToDone(s, it, plan, clean, at) {
+  const { key } = it, profile = s.st.profile.id;
   const board = boardOf(s.st.setup), data = s.st.data, done = doneName(data);
   const moved = [], failed = [];
+  const all = [...plan.mine, ...(plan.story ? [it] : [])].length;
   const one = async (t) => {
+    stepBusy(key, at, { step: `Moving to Done… ${moved.length + failed.length + 1} of ${all}`, on: t.key });
     try {
       const o = await doneOption(board, t.key, data);
       await moveStatus(board, t.key, o, data);
@@ -4167,6 +4292,8 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
   for (const t of plan.mine) await one(t);
   const subsDone = !plan.mine.some((t) => failed.some((f) => f.key === t.key));
   if (plan.story && subsDone) await one(it);
+  // No ticket is moving any more: its chip stops spinning while the stories reload and the clean-up runs.
+  stepBusy(key, at, { on: null, step: clean ? `Moved to Done; checking ${key} before cleaning up…` : `Moved to Done.` });
   if (moved.length) setShared(REFRESH, Date.now());
   const stays = shownDone(it) || failed.some((f) => f.key === key) ? ""
     : plan.others.length ? ` ${key} stays, as ${keyList(plan.others.map((x) => x.key))} ${plan.others.length === 1 ? "is" : "are"} still open.`
@@ -4192,7 +4319,7 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
     const all = shared(LEFTOVERS) ?? {}, had = all[profile] ?? {};
     setShared(LEFTOVERS, { ...all, [profile]: { ...had, found: { ...(had.found ?? {}), ...found } } });
   }
-  await cleanUp(s.st.profile, now);
+  await cleanUp(s.st.profile, now, { held: at });
   // cleanUp() leaves its own note ("Cleaned up …"); the moves go before it.
   const after = shared(NOTE);
   if (after?.text) say(`${text} ${after.text}`, after.full ?? null);
@@ -4203,6 +4330,9 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
 // with something left (and every reassigned one, saying who has it), one line each; its button runs
 // kelpie.clean-all (cleanAll()).
 function askCleanAll(profile, dirty) {
+  if (busyOf(`all:${profile.id}`)) return say("Clean up all is already running.");
+  dirty = dirty.filter((it) => !busyOf(it.key));
+  if (!dirty.length) return say("Those stories are already being cleaned up.");
   const what = dirty.every(finished) ? "finished " : "";
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(dirty.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${dirty.length === 1 ? `1 ${what}story` : `${dirty.length} ${what}stories`}?`, yes: "Clean up all",
@@ -4211,12 +4341,22 @@ function askCleanAll(profile, dirty) {
 }
 
 // The sidebar's Clean up all (`kelpie.clean-all`): every finished story of the shown profile with
-// something left to clean, one after another.
+// something left to clean, one after another. One at a time per profile (a second press is refused),
+// each story under its own mark, so one already being cleaned up is skipped.
 export async function cleanAll() {
   const s = storyItems();
   if (!s) return;
-  const dirty = s.items.map((x) => x.it).filter((it) => cleanable(s.st.profile, it).length);
-  for (const it of dirty) await cleanUp(s.st.profile, it);
+  const profile = s.st.profile, name = `all:${profile.id}`;
+  const dirty = s.items.map((x) => x.it).filter((it) => cleanable(profile, it).length && !busyOf(it.key));
+  if (!dirty.length) return;
+  const at = takeBusy(name, { kind: "clean", keys: [], step: "Cleaning up…" }, dirty.reduce((n, it) => n + cleanLimit(profile, it), 0));
+  if (!at) return say("Clean up all is already running.");
+  try {
+    for (const [i, it] of dirty.entries()) {
+      stepBusy(name, at, { step: `Cleaning up ${it.key}: ${i + 1} of ${dirty.length} stories…` });
+      await cleanUp(profile, it);
+    }
+  } finally { endBusy(name, at); }
   if (dirty.length > 1) say(`Cleaned up ${dirty.length} stories: ${dirty.map((it) => it.key).join(", ")}.`);
 }
 
