@@ -105,10 +105,17 @@ export class Confirm {
   // `pendingProfile`: an agent's profile change waiting for the person (config.js). It's applied here,
   // by this button, never through a command an agent could run itself; `installPlugin` (a profile id)
   // the same way: the Kelpie plugin installed on that profile's Claude account.
-  yes(command = props().command) {
-    closeOverlay(props().overlay);
+  // Installing runs in a task of this dialog's, which closes the dialog once the Desk's terminal is
+  // open: a closed dialog's tasks are cancelled, so closing first left Install it doing nothing.
+  yes(command = props().command, cx = null) {
+    const { overlay, installPlugin: install, installThen: then = null } = props();
+    if (install) {
+      if (!cx) return installPlugin(install, then).finally(() => closeOverlay(overlay));
+      cx.spawn(async () => { await installPlugin(install, then).catch(() => null); closeOverlay(overlay); });
+      return;
+    }
+    closeOverlay(overlay);
     if (props().pendingProfile) return applyPendingProfile(true);
-    if (props().installPlugin) return installPlugin(props().installPlugin);
     if (!command) return;
     run(command.name, command.args ?? {});
   }
@@ -122,7 +129,7 @@ export class Confirm {
     const p = props() ?? {};
     return decor("blockDecor", t, v_flex().id("kelpie-confirm").track_focus(this.handle).size_full().min_h(0).p(DIALOG.pad).gap(DIALOG.gap).bg(t.popover).text_size(TEXT)
       .on_key_down((e, cx) => {
-        if (e.key === "enter") this.yes();
+        if (e.key === "enter") this.yes(undefined, cx);
         else if (e.key === "escape") this.no();
         else return;
         cx.stop_propagation();
@@ -138,7 +145,7 @@ export class Confirm {
           .child(div().flex_1().min_w(0).text_color(t.foreground).child(x.text)))))))
       .child(h_flex().justify_end().gap(DIALOG.gap)
         .child(textButton(t, "confirm-no", "Cancel", () => this.no()))
-        .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, () => this.yes(p.alt.command))))
-        .child(primaryButton(t, "confirm-yes", p.yes ?? "Confirm", () => this.yes()))), { role: "confirm", now: new Date() });
+        .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, (_e, cx) => this.yes(p.alt.command, cx))))
+        .child(primaryButton(t, "confirm-yes", p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx)))), { role: "confirm", now: new Date() });
   }
 }

@@ -284,7 +284,7 @@ describe("the pending change", () => {
     for (const f of ["main.js", "stories.js", "work.js", "workside.js", "setup.js", "desk.js", "demo.js", "source.js", "ui.js", "sprint.js", "pulls.js", "sessions.js", "panes.js"]) {
       assert.doesNotMatch(readRepo("mods/kelpie", f), /applyPendingProfile/, f);
     }
-    assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command) {"), /if \(props\(\)\.pendingProfile\) return applyPendingProfile\(true\);/);
+    assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /if \(props\(\)\.pendingProfile\) return applyPendingProfile\(true\);/);
   });
 
   // `kelpie.claude-<profile>--<folder>` (main.js command()) can be run by any agent (`herdr-app do`),

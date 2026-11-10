@@ -15,7 +15,7 @@ import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
-import { ASK_PROMPTS, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { githubAccounts, searchPulls } from "./pulls.js";
@@ -426,7 +426,11 @@ export class Setup {
   // "Let me configure it for you": a new Claude on the Desk sets up `scope` (config.js
   // CONFIGURE_SCOPES) with the person, through the Kelpie plugin. It saves through the profile, so the
   // dialog's changes are saved first (a new profile too) and the dialog closes.
+  // Whether the plugin is there is asked in a task of this dialog's, which closes the dialog last;
+  // without it, the dialog saying so opens over this one first. A closed dialog's tasks are cancelled,
+  // so closing first left the button doing nothing.
   configure(scope, cx, agent = null) {
+    const overlay = props().overlay;
     let profile = this.profile;
     if (!profile || this.dirty()) {
       const { error, profile: draft } = this.draft();
@@ -435,8 +439,12 @@ export class Setup {
       saveProfile(id, draft);
       profile = profileById(id);
     }
-    closeOverlay(props().overlay);
-    configureOnDesk(profile, scope, agent);
+    cx.spawn(async () => {
+      const ready = await hasPlugin(profile).catch(() => false);
+      if (ready) await configureOnDesk(profile, scope, agent);
+      else await askPlugin(profile, "configure", scope);
+      closeOverlay(overlay);
+    });
   }
 
   // A careful press: the first arms it (the button says what a second does), a second within

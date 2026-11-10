@@ -609,7 +609,7 @@ async function pluginSource() {
 // waiting for an answer: the dialog offers only those), the message goes to it instead. Without the
 // plugin on the profile's account, it asks to install it first (askPlugin).
 export async function configureOnDesk(profile, scope = "all", agent = null) {
-  if (!(await hasPlugin(profile))) return askPlugin(profile);
+  if (!(await hasPlugin(profile))) return askPlugin(profile, "configure", scope);
   const text = configureText(profile, scope);
   if (agent) {
     sendToClaude(agent.address, text).catch((e) => notify({ title: `Couldn't ask ${agent.tab_name}`, body: String(e?.message ?? e), level: "error", timeout: 8000 }));
@@ -623,30 +623,37 @@ export async function configureOnDesk(profile, scope = "all", agent = null) {
 
 // Says the plugin is needed, with what installs it. Its button installs it (installPlugin), called by
 // the dialog itself (dialogs.js), never a command: an agent could run a command, and installing adds
-// a program Claude runs. `use`: what needs it (PLUGIN_USES), for what the dialog says.
+// a program Claude runs. `use`: what needs it (PLUGIN_USES), for what the dialog says; for
+// Let me configure it for you, `scope` (CONFIGURE_SCOPES) is what the Claude started once it's
+// installed sets up.
 const PLUGIN_USES = {
   configure: ["Claude sets up a profile through Kelpie's Claude Code plugin: it gives Claude the setup guide and a safe way to save your profile.", "Let me configure it for you"],
   "what-next": ["What next? gets Claude's suggestions through Kelpie's Claude Code plugin: Claude hands them to Kelpie with it.", "Conjure what's next"],
 };
-export async function askPlugin(profile, use = "configure") {
+export async function askPlugin(profile, use = "configure", scope = "all") {
   const source = await pluginSource();
   const account = claudeKey(claudeConfigOf(profile)) || "~/.claude";
   const [why, again] = PLUGIN_USES[use] ?? PLUGIN_USES.configure;
+  const configure = use === "configure" && source;
+  const then = configure ? " Install it, and a Claude on the Desk then starts setting it up with you." : ` Install it, then press ${again} again.`;
   openOverlay({ mod: MOD, kind: "dialog", width: 560, height: 300, props: {
-    role: "confirm", installPlugin: source ? profile.id : null,
+    role: "confirm", installPlugin: source ? profile.id : null, ...(configure ? { installThen: Object.hasOwn(CONFIGURE_SCOPES, scope) ? scope : "all" } : {}),
     title: "Claude needs Kelpie's plugin for this",
-    detail: `${why} It isn't installed on this profile's Claude account (${account}) yet.${source ? ` Install it, then press ${again} again.` : " Install it from your Kelpie folder with:"}`,
+    detail: `${why} It isn't installed on this profile's Claude account (${account}) yet.${source ? then : " Install it from your Kelpie folder with:"}`,
     items: [{ text: `claude plugin marketplace add ${source ?? "<your Kelpie folder>"}` }, { text: `claude plugin install ${PLUGIN}` }],
     yes: source ? "Install it" : "OK" } });
 }
 // The dialog's Install it: both commands in a terminal on the profile's Desk, on its account, so the
-// person sees them run. Values go in as arguments, never into the script.
-export async function installPlugin(id) {
+// person sees them run. With `scope` (Let me configure it for you's), a successful install goes on
+// into that Claude, with its first message, in the same terminal. Values go in as arguments, never
+// into the script.
+export async function installPlugin(id, scope = null) {
   const profile = profileById(id);
   const source = await pluginSource();
   if (!profile || !source) return;
-  const script = 'root=$1; shift; "$@" plugin marketplace add "$root"; "$@" plugin install "$PLUGIN" && printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; exec "${SHELL:-/bin/sh}" -l';
-  return openDesk(profile, { name: "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, ...claudeArgv(profile)] });
+  const task = scope && Object.hasOwn(CONFIGURE_SCOPES, scope) ? configureText(profile, scope) : "";
+  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
+  return openDesk(profile, { name: task ? "Configure" : "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, task, ...claudeArgv(profile)] });
 }
 
 // kelpie.apply-profile: applies <home>/kelpie/profile-apply.json ({ id, set }), an agent's change to a
