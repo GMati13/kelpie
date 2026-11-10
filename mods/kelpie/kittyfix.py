@@ -143,13 +143,17 @@ class Probes:
     frame (old frames showed during video). Its answers are dropped: the program never asked."""
 
     def __init__(self):
-        self.n, self.sent = 0, {}
+        self.n, self.sent, self.last_end = 0, {}, None
 
-    def mark(self, items, now, queued):
+    def mark(self, items, now, queued, began=None):
         self.n += 1
         imgs = [it for it in items if it[0] == 'img' and it[1].get('a') == 'T']
         size = sum(len(it[2]) for it in imgs)
-        self.sent[PROBE + self.n] = (now, len(imgs), size, queued)
+        # how long the program took to write the frame, and how long it paused before it
+        took = now - began if began else 0.0
+        pause = began - self.last_end if began and self.last_end else 0.0
+        self.last_end = now
+        self.sent[PROBE + self.n] = (now, len(imgs), size, queued, took, pause)
         if len(self.sent) > 10000:  # a terminal that never answers mustn't grow it for ever
             self.sent.pop(next(iter(self.sent)))
         return b'\x1b_Gi=%d,a=q,t=d,f=24,s=1,v=1;AAAA\x1b\\' % (PROBE + self.n)
@@ -160,9 +164,10 @@ class Probes:
         for m in PROBE_REPLY.finditer(data):
             got = self.sent.pop(int(m.group(1)), None)
             if got:
-                t, imgs, size, queued = got
-                lines.append('frame %d: %d images, %d KB, %d KB queued before it, answered after %.3f s'
-                             % (int(m.group(1)) - PROBE, imgs, size // 1024, queued // 1024, now - t))
+                t, imgs, size, queued, took, pause = got
+                lines.append('frame %d: %d images, %d KB, written over %.3f s after a pause of %.3f s, '
+                             '%d KB queued before it, answered after %.3f s'
+                             % (int(m.group(1)) - PROBE, imgs, size // 1024, took, pause, queued // 1024, now - t))
         return PROBE_REPLY.sub(b'', data), lines
 
 class Cells:
@@ -229,6 +234,7 @@ class Rewriter:
         self.sync = False
         self.sync_t = 0
         self.mark = None      # called with each finished frame's items: bytes to send after it
+        self.began = collections.deque()  # when each frame not yet marked began (for the probes)
         # Every image goes out under a fresh id: an id sent again with a new picture showed its old
         # picture for a moment, on top (old video frames flicking in). The one it replaces goes a
         # frame later, when the new one is drawn, so nothing blinks in between.
@@ -253,6 +259,7 @@ class Rewriter:
                 on = m.group(3) == b'h'
                 if on:
                     self.raw(m.group(0)); self.sync = True; self.sync_t = time.time()
+                    self.began.append(self.sync_t)
                 else:
                     self.sync = False; self.raw(m.group(0), end_block=True)
                 continue
@@ -318,7 +325,9 @@ class Rewriter:
             if it[0] == 'end':
                 out.append(self.process(block, ended=True))
                 if self.mark:
-                    out.append(self.mark(block))
+                    out.append(self.mark(block, self.began.popleft() if self.began else None))
+                else:
+                    self.began.clear()
                 block = []
             else:
                 block.append(it)
@@ -441,7 +450,7 @@ def main():
     # while logging, each frame is timed through the terminal (Probes)
     probes = Probes() if logf else None
     if probes:
-        rw.mark = lambda items: probes.mark(items, time.time(), len(toterm))
+        rw.mark = lambda items, began: probes.mark(items, time.time(), len(toterm), began)
     stalled = None
     try:
         while True:

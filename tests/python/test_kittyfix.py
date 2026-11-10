@@ -266,7 +266,7 @@ class FreshIds(unittest.TestCase):
 class FrameProbes(unittest.TestCase):
     def test_each_frame_is_followed_by_its_numbered_query(self):
         rw, probes = kf.Rewriter(), kf.Probes()
-        rw.mark = lambda items: probes.mark(items, 1.0, 0)
+        rw.mark = lambda items, began: probes.mark(items, 1.0, 0, began)
         frame = b"\x1b[?2026h" + apc(b"a=T,f=100,i=5,p=1", b"AAAA") + b"\x1b[?2026l"
         out = rw.feed(frame + frame)
         q = lambda n: b"\x1b_Gi=%d,a=q,t=d,f=24,s=1,v=1;AAAA\x1b\\" % (kf.PROBE + n)
@@ -281,7 +281,15 @@ class FrameProbes(unittest.TestCase):
         theirs = b"\x1b_Gi=4207;OK\x1b\\"
         data, lines = probes.answer(b"k" + mine + theirs, 1.25)
         self.assertEqual(data, b"k" + theirs)
-        self.assertEqual(lines, ["frame 1: 1 images, 2 KB, 4 KB queued before it, answered after 0.250 s"])
+        self.assertEqual(lines, ["frame 1: 1 images, 2 KB, written over 0.000 s after a pause of 0.000 s, "
+                                 "4 KB queued before it, answered after 0.250 s"])
+
+    def test_it_says_how_long_a_frame_took_to_write_and_the_pause_before_it(self):
+        probes = kf.Probes()
+        probes.mark([], 1.0, 0, began=0.9)
+        probes.mark([], 1.5, 0, began=1.3)
+        _, lines = probes.answer(b"\x1b_Gi=%d;OK\x1b\\" % (kf.PROBE + 2), 1.6)
+        self.assertIn("written over 0.200 s after a pause of 0.300 s", lines[0])
 
 
 class NeverBlocks(unittest.TestCase):
