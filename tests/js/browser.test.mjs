@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fakeBin, put, sh, tempDir } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { profileDir, resetBrowser } from "../../mods/kelpie/main.js";
+import { browserCommand, profileDir, resetBrowser } from "../../mods/kelpie/main.js";
 
 // Runs resetBrowser for profile `id` and returns { reset: [script, "sh", id, flag], loop }: the reset
 // script and its arguments, and the browser loop the panel then starts.
@@ -23,7 +23,8 @@ async function capture(id, signOut) {
   await resetBrowser(signOut);
   const reset = mock.of("exec").find(([c, a]) => c === "sh" && String(a[1]).includes("pkill"));
   const run = mock.of("hc").map(([a]) => a).find((a) => a[0] === "run");
-  return { reset: reset[1].slice(1), loop: run?.[run.length - 1] };
+  const script = run ? run.indexOf("-c") + 1 : -1;
+  return { reset: reset[1].slice(1), loop: run?.[script], loopArgs: run?.slice(script + 1) };
 }
 
 // Runs a script in `home` with the fakes on PATH.
@@ -35,7 +36,7 @@ describe("Restart browser: which processes end", () => {
   let home, pattern, lines;
   before(async () => {
     home = tempDir();
-    const { reset, loop } = await capture("acme", false);
+    const { reset, loop, loopArgs } = await capture("acme", false);
     // The pattern pkill gets, from the script as main.js runs it.
     const f = fakes();
     assert.equal(runIn(home, f, ["-c", ...reset]).code, 0);
@@ -46,14 +47,14 @@ describe("Restart browser: which processes end", () => {
     assert.ok(loop?.startsWith("while :; do"), "the panel starts the browser loop");
     const command = loop.slice(loop.indexOf("clear; ") + "clear; ".length, loop.lastIndexOf("; sleep 2; done"));
     const g = fakes();
-    runIn(home, g, ["-c", command]);
+    runIn(home, g, ["-c", command, ...loopArgs]);
     const kittyfix = g.calls("python3")[0].argv;
     const web = `${home}/.local/share/kelpie/web`;
     lines = {
       kittyfix: ["python3", ...kittyfix].join(" "),
       frameworkPython: ["/Library/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python", ...kittyfix].join(" "),
       electron: `/opt/terminal-browser/Electron --type=renderer --user-data-dir=${web}/acme/data/electron --lang=en`,
-      loopShell: `/bin/sh -c ${loop}`,
+      loopShell: ["/bin/sh", "-c", loop, ...loopArgs].join(" "),
       otherKittyfix: ["python3", ...kittyfix].join(" ").replaceAll("/web/acme/", "/web/acme-2/"),
       otherElectron: `/opt/terminal-browser/Electron --user-data-dir=${web}/acme-2/data/electron`,
       prefixElectron: `/opt/terminal-browser/Electron --user-data-dir=${web}/acmeX/data`,
@@ -108,5 +109,37 @@ describe("Sign out of all sites: what's deleted", () => {
     assert.equal(profileDir(), "---x-y");
     const { reset } = await capture("../../..", true);
     assert.match(reset[2], /^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe("the browser's command: the start page and kittyfix's path are arguments, never script", () => {
+  const ODD = `https://example.com/?q='a'"b"$(touch pwned)\`touch pwned\`;touch pwned`;
+  // Runs the browser loop's command once (no loop), as its shell gets it, with fake python3 and
+  // terminal-browser in a temp HOME and folder: { python3, browser, pwned }.
+  const once = ({ command, args }, cwd = tempDir()) => {
+    const f = fakeBin().add("python3").add("terminal-browser");
+    sh("/bin/sh", ["-c", command, "sh", ...args], { cwd, env: { HOME: tempDir(), PATH: f.path } });
+    return { python3: f.calls("python3")[0]?.argv, browser: f.calls("terminal-browser")[0]?.argv, pwned: existsSync(join(cwd, "pwned")) };
+  };
+
+  test("an odd start page and kittyfix path arrive as they are and nothing in them runs", () => {
+    mock.reset();
+    mock.state.appHome = `/h/it's "x" $(touch pwned);touch pwned/.config/herdr-app`;
+    const cmd = browserCommand(ODD, true);
+    assert.equal(cmd.command, browserCommand("https://other.example/", true).command, "the script is the same whatever the values");
+    assert.ok(!cmd.command.includes("example.com") && !cmd.command.includes("pwned"));
+    const r = once(cmd);
+    assert.equal(r.python3[0], `${mock.state.appHome}/mods/kelpie/kittyfix.py`);
+    assert.equal(r.python3.at(-1), ODD);
+    assert.equal(r.pwned, false);
+  });
+  test("without python3 the browser runs alone, with the start page; with none, no page at all", () => {
+    mock.reset();
+    const alone = once(browserCommand(ODD, false));
+    assert.equal(alone.python3, undefined);
+    assert.deepEqual(alone.browser, [ODD]);
+    assert.equal(alone.pwned, false);
+    assert.deepEqual(once(browserCommand("", false)).browser, []);
+    assert.equal(once(browserCommand("", true)).python3.at(-1), "terminal-browser");
   });
 });

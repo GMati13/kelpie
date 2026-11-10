@@ -50,6 +50,10 @@ export const GH_FUNCTION = `gh() {
 }`;
 
 const TAB_W = 200;
+// The dialog's card in the window it fills (config.js openProfile()): at most `w` wide and `h` tall,
+// shrinking to the window less `margin` on each side, so on a laptop (1440×900, zoomed too) Save and
+// Cancel stay on screen and the page and the side tabs scroll instead. Exported for the tests.
+export const FIT = { w: 820, h: 900, margin: 24 };
 
 // The dialog's side tabs, one section each, in groups (a heading over each but the first). `focus`
 // in props may name one (jira, github…). Each tab's second line says what's set (`tabStatus()`).
@@ -557,13 +561,13 @@ export class Setup {
     // A page's heading: its title (with Set up with Claude for the whole page) and what it's for.
     const page = (title, about, scope = this.tab) => v_flex().pb(4).gap(4)
       .child(h_flex().items_center().gap(8)
-        .child(div().flex_1().text_size(TITLE).font_semibold().child(title))
+        .child(div().flex_1().min_w(0).text_size(TITLE).font_semibold().child(title))
         .child(ask(scope, "Set up with Claude")))
       .child(div().text_size(SMALL).text_color(t.dim).child(about));
     const group = (title, note, scope) => v_flex().pt(28).gap(2)
       .child(h_flex().pb(6).min_h(20).border_b_1().border_color(t.border).items_center().gap(8)
-        .child(div().flex_1().text_size(TEXT).font_medium().child(title))
-        .when(Boolean(note), (el) => el.child(div().text_size(SMALL).text_color(t.dim).child(note)))
+        .child(div().flex_1().min_w(0).text_size(TEXT).font_medium().child(title))
+        .when(Boolean(note), (el) => el.child(div().min_w(0).text_size(SMALL).text_color(t.dim).child(note)))
         .when(Boolean(scope), (el) => el.child(ask(scope))));
     // A field: its label (with a Reset at the right when `reset` is given, and Ask Claude for a
     // `scope`), the control, a hint.
@@ -781,26 +785,30 @@ export class Setup {
     const discarding = this.armedOn("discard");
     const deleting = this.armedOn("delete");
 
-    return v_flex().id("work-setup").track_focus(this.handle)
+    // The window, then the card in its middle (FIT): the card is the dialog's frame.
+    return div().id("work-setup-fit").size_full().flex().items_center().justify_center().p(FIT.margin).child(v_flex().id("work-setup").track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { this.close(cx); cx.stop_propagation(); } })
-      .size_full().min_h(0).bg(t.popover).text_color(t.foreground).text_size(TEXT)
+      .w_full().max_w(FIT.w).h_full().max_h(FIT.h).min_h(0).overflow_hidden().rounded(12).border_1().border_color(t.border).shadow_lg()
+      .bg(t.popover).text_color(t.foreground).text_size(TEXT)
       .child(h_flex().flex_1().min_h(0)
-        // The side: the profile's name over its tabs.
-        .child(v_flex().w(TAB_W).flex_none().h_full().p(DIALOG.gap).pt(DIALOG.pad).gap(2).bg(t.background).border_r_1().border_color(t.border)
-          .child(v_flex().px(10).pb(DIALOG.section).gap(2)
-            .child(div().text_size(SMALL).text_color(t.dim).child(this.profile ? "Profile" : "New profile"))
-            .child(div().truncate().text_size(TITLE).font_semibold().child(this.name.value().trim() || "Untitled")))
-          .children(TABS.flatMap((x) => [
-            x.group ? div().px(10).pt(DIALOG.section).pb(4).text_size(SMALL).font_medium().text_color(t.dim).child(x.group) : null,
-            tabRow(x),
-          ].filter(Boolean)))
-          .child(div().flex_1())
-          .child(open.length
+        // The side: the profile's name over its tabs, which scroll when the window is short, and the
+        // configure card kept at the bottom.
+        .child(v_flex().w(TAB_W).flex_none().h_full().min_h(0).rounded_tl(11).bg(t.background).border_r_1().border_color(t.border)
+          .child(v_flex().id("setup-tabs").flex_1().min_h(0).p(DIALOG.gap).pt(DIALOG.pad).gap(2).overflow_y_scrollbar()
+            .child(v_flex().px(10).pb(DIALOG.section).gap(2)
+              .child(div().text_size(SMALL).text_color(t.dim).child(this.profile ? "Profile" : "New profile"))
+              .child(div().truncate().text_size(TITLE).font_semibold().child(this.name.value().trim() || "Untitled")))
+            .children(TABS.flatMap((x) => [
+              x.group ? div().px(10).pt(DIALOG.section).pb(4).text_size(SMALL).font_medium().text_color(t.dim).child(x.group) : null,
+              tabRow(x),
+            ].filter(Boolean))))
+          .child(div().flex_none().p(DIALOG.gap).pt(4).child(open.length
             ? menuButton(this.menus, t, "setup-configure-all", "", askRows("all"), { anchor: "bottom_left", width: 340, trigger: (toggle) => configureCard("setup-configure-all-more", toggle) })
-            : configureCard("setup-configure-all", (_e, cx) => this.configure("all", cx))))
+            : configureCard("setup-configure-all", (_e, cx) => this.configure("all", cx)))))
         // The shown tab's page; its own scroll, from the top on each tab.
         .child(v_flex().id(`work-setup-body-${this.tab}`).flex_1().min_w(0).h_full().min_h(0).px(DIALOG.pad + 8).pt(DIALOG.pad).pb(DIALOG.pad + 8).overflow_y_scrollbar()
           .children(pages[this.tab]().filter(Boolean))))
+      // Save and Cancel: outside both scrolls, always on screen.
       .child(h_flex().flex_none().px(DIALOG.pad).py(12).gap(DIALOG.gap).items_center().border_t_1().border_color(t.border)
         .when(Boolean(this.profile), (el) => el.child(deleting
           ? primaryButton(t, "setup-remove", `Delete ${this.profile.name}`, (_e, cx) => this.careful("delete", () => { saveProfile(this.profile.id, null); closeOverlay(props().overlay); }, cx)).bg(t.blocked)
@@ -810,6 +818,6 @@ export class Setup {
           .child(div().size(6).rounded_full().bg(t.working))
           .child(discarding ? "Press again to discard your changes" : "Unsaved changes")))
         .child(textButton(t, "setup-cancel", discarding ? "Discard" : "Cancel", (_e, cx) => this.close(cx), { tip: "Esc" }))
-        .child(primaryButton(t, "setup-save", "Save", (_e, cx) => this.save(cx))));
+        .child(primaryButton(t, "setup-save", "Save", (_e, cx) => this.save(cx)))));
   }
 }

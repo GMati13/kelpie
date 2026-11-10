@@ -259,13 +259,11 @@ export function claudeArgv(profile, ...args) {
 // Claude account already chosen (CLAUDE_CONFIG_DIR set, or cleared for Claude's own ~/.claude) and
 // CLAUDE_ACCOUNT_CHOSEN=1, so a `claude` typed there runs on the profile's account whatever the folder
 // (a shell function choosing by folder should leave either alone), and its GitHub account named
-// (githubEnv in ui.js), passed as an argument, not written into the script.
+// (githubEnv in ui.js). Both are passed as arguments ("$@"), never written into the script.
 export function shellArgv(profile) {
   const dir = claudeConfigOf(profile);
-  const account = dir && !isOwnClaude(dir) ? `CLAUDE_CONFIG_DIR='${dir.replace(/'/g, "'\\''")}'` : "-u CLAUDE_CONFIG_DIR";
-  const github = githubEnv(profile?.github?.account);
-  if (!github.length) return ["/bin/sh", "-c", `exec env ${account} CLAUDE_ACCOUNT_CHOSEN=1 "\${SHELL:-/bin/sh}" -l`];
-  return ["/bin/sh", "-c", `exec env ${account} CLAUDE_ACCOUNT_CHOSEN=1 "$@" "\${SHELL:-/bin/sh}" -l`, "sh", ...github];
+  const account = dir && !isOwnClaude(dir) ? [`CLAUDE_CONFIG_DIR=${dir}`] : ["-u", "CLAUDE_CONFIG_DIR"];
+  return ["/bin/sh", "-c", 'exec env "$@" CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l', "sh", ...account, ...githubEnv(profile?.github?.account)];
 }
 // The same folder however it was written: "" for Claude's own (unset, or ~/.claude), else the path.
 export const claudeKey = (dir) => (!dir || isOwnClaude(dir) ? "" : String(dir).replace(/\/+$/, ""));
@@ -845,8 +843,11 @@ export async function runCommand(profile, command, key, seconds, on = null) {
 }
 
 // The profile dialog: a profile to edit (its id), or a new one (null), starting from a space's folder.
+// It opens as the whole window with no frame and draws its own card in the middle, no bigger than
+// the window (setup.js, `FIT`): a dialog's size is only px or a share of the window, and neither
+// alone is comfortable on a big screen and still fits a laptop's.
 export function openProfile(id, { space, focus } = {}) {
-  openOverlay({ mod: MOD, kind: "dialog", modal: true, width: 820, height: 0.85, props: { role: "setup", profile: id ?? null, space: space?.id ?? null, focus } });
+  openOverlay({ mod: MOD, kind: "dialog", modal: true, frame: "none", width: 1, height: 1, props: { role: "setup", profile: id ?? null, space: space?.id ?? null, focus } });
 }
 
 // The setup of a space: its profile, or a new profile in its folder.
