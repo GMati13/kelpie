@@ -3513,3 +3513,7 @@ export function showNotified(id) {
   const x = s?.items.find((x) => x.it.key === n.key);
   if (x) selectStory(s.st.profile, x.it);
 }
+
+// Exported for the tests only (tests/js/stories.test.mjs, next.test.mjs, diff.test.mjs, demo.test.mjs):
+// the logic the views rely on, pinned there. Nothing in the mods imports these.
+export { agentsByKey, applyPicks, build, changeSquares, diffRows, fileStatus, finished, issue, keyIn, lastSessions, need, needQueue, needQueueOf, nextIn, ordered, patchHash, progress, projectsOf, pull, pullsOf, sunk, syntaxOf, syntaxSpans, wordChanges };

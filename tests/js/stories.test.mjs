@@ -1,0 +1,297 @@
+// Story building (stories.js build() and what it feeds: keyIn, need, ordered, sunk, progress) and the
+// pull request states (ui.js prState): what the sidebar lists, in which order, and what it says.
+import { beforeEach, describe, test } from "node:test";
+import assert from "node:assert/strict";
+import { mock } from "herdr";
+import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, ordered, progress, projectsOf, pullsOf, sunk } from "../../mods/kelpie/stories.js";
+import { prState } from "../../mods/kelpie/ui.js";
+import { COLUMNS, data, demoData, issue, pr } from "../lib/stories.mjs";
+
+beforeEach(() => mock.reset());
+
+const byKey = (items) => Object.fromEntries(items.map((it) => [it.key, it]));
+const keys = (list) => list.map((x) => x.it?.key ?? x.key);
+
+describe("keyIn: the ticket a title names", () => {
+  const known = new Set(["ABC"]);
+  test("a key of one of the board's projects counts, the first one", () => {
+    assert.equal(keyIn("ABC-12 and ABC-13: fix login", known), "ABC-12");
+    assert.equal(keyIn("Fix login (ABC-7)", known), "ABC-7");
+  });
+  test("UTF-8 or SHA-256 in a title isn't a ticket once the projects are known", () => {
+    assert.equal(keyIn("Read UTF-8 names", known), null);
+    assert.equal(keyIn("Use SHA-256 for ABC-4", known), "ABC-4");
+  });
+  test("a leading [KEY] counts whatever its project", () => {
+    assert.equal(keyIn("[OPS-3] Rotate the keys", known), "OPS-3");
+    assert.equal(keyIn("  [OPS-3] ABC-1", known), "OPS-3");
+    assert.equal(keyIn("Rotate the keys [OPS-3]", known), null, "only a leading tag");
+  });
+  test("with no project known yet, any key counts", () => {
+    assert.equal(keyIn("Read UTF-8 names", new Set()), "UTF-8");
+    assert.equal(keyIn("Read UTF-8 names"), "UTF-8");
+    assert.equal(keyIn(null, known), null);
+  });
+  test("projectsOf: the projects of every issue the load has", () => {
+    const d = data({ mine: ["ABC-2"], parents: [issue("ABC-1")], children: [issue("XY-9", "todo", "ABC-1")] });
+    assert.deepEqual([...projectsOf(d)].sort(), ["ABC", "XY"]);
+  });
+});
+
+describe("build: stories from issues and subtasks", () => {
+  const board = (over = {}) => data({
+    mine: ["ABC-2", "ABC-3", "ABC-10"],
+    parents: [issue("ABC-1", "doing"), issue("ABC-10", "doing")],
+    children: [issue("ABC-2", "doing", "ABC-1"), issue("ABC-3", "todo", "ABC-1"), issue("ABC-4", "done", "ABC-1")],
+    ...over,
+  });
+  test("a story holds its subtasks, in order, marking yours", () => {
+    const { "ABC-1": s } = byKey(build(board(), new Map()));
+    assert.equal(s.story, true);
+    assert.equal(s.title, "ABC-1 title");
+    assert.deepEqual(s.subs.map((x) => [x.key, x.mine]), [["ABC-2", true], ["ABC-3", true], ["ABC-4", false]]);
+  });
+  test("a task without subtasks stands alone, as its own single sub", () => {
+    const { "ABC-10": t } = byKey(build(board(), new Map()));
+    assert.equal(t.story, false);
+    assert.deepEqual(t.subs.map((x) => x.key), ["ABC-10"]);
+  });
+  test("the board's order is kept", () => {
+    assert.deepEqual(build(board(), new Map()).map((it) => it.key), ["ABC-1", "ABC-10"]);
+  });
+  test("a finished story leaves, unless it has a space or an open pull request", () => {
+    const d = (prs = []) => data({ mine: ["ABC-1"], parents: [issue("ABC-1", "done")], prs });
+    assert.deepEqual(build(d(), new Map()), []);
+    assert.deepEqual(build(d([pr("ABC-1 x", { merged: true })]), new Map()), []);
+    assert.equal(build(d([pr("ABC-1 x")]), new Map()).length, 1);
+    assert.equal(build(d(), new Map(), {}, new Map([["ABC-1", { id: "s1" }]])).length, 1);
+  });
+});
+
+describe("build: pull requests attach by the key in their title", () => {
+  const d = (prs) => data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "doing", "ABC-1")], prs });
+  test("a subtask's key attaches to that subtask, the story's to the story", () => {
+    const [s] = build(d([pr("ABC-2 Login form", { number: 1 }), pr("ABC-1: shared bits", { number: 2 })]), new Map());
+    assert.deepEqual(s.subs[0].prs.map((p) => [p.number, p.key]), [[1, "ABC-2"]]);
+    assert.deepEqual(s.prs.map((p) => [p.number, p.key]), [[2, "ABC-1"]]);
+  });
+  test("a task's pull requests go on its single sub", () => {
+    const [t] = build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", "doing")], prs: [pr("ABC-9 fix")] }), new Map());
+    assert.equal(t.prs.length, 0);
+    assert.equal(t.subs[0].prs.length, 1);
+  });
+  test("an open one for a ticket not in the list is its own row, after the board's, never sunk", () => {
+    const items = build(d([pr("ABC-77 Elsewhere", { number: 7 }), pr("[OPS-3] Rotate keys", { number: 8 })]), new Map());
+    assert.deepEqual(items.map((it) => it.key), ["ABC-1", "ABC-77", "OPS-3"]);
+    const { "OPS-3": ops } = byKey(items);
+    assert.equal(ops.title, "Rotate keys", "the [KEY] tag is left out of the title");
+    assert.deepEqual([ops.pr, ops.sunk, ops.story, ops.type], [true, false, false, "Pull request"]);
+  });
+  test("a merged one for a ticket not in the list makes no row", () => {
+    assert.deepEqual(build(d([pr("ABC-77 Elsewhere", { merged: true })]), new Map()).map((it) => it.key), ["ABC-1"]);
+  });
+  test("a title naming no ticket of the board (UTF-8) attaches nowhere and shows on its own", () => {
+    const dd = d([pr("Read UTF-8 file names", { number: 5 })]);
+    const [s] = build(dd, new Map());
+    assert.equal(s.subs[0].prs.length + s.prs.length, 0);
+    assert.deepEqual(pullsOf(dd).map((it) => it.key), ["pull:api#5"]);
+  });
+});
+
+describe("build and agentsByKey: agents and sessions", () => {
+  const profile = { id: "w", name: "W", folder: "/w" };
+  beforeEach(() => {
+    mock.state.shared.set("kelpie.profiles", { w: profile });
+    mock.state.spaces = [{ id: "s1", name: "ABC-1", folder: "/w", tabs: [] }, { id: "s2", name: "Elsewhere", folder: "/other", tabs: [] }];
+  });
+  test("an agent counts for the key its tab names, else for its space's story", () => {
+    mock.state.agents = [{ space: "s1", tab_name: "ABC-2", status: "idle" }, { space: "s1", tab_name: "Terminal", status: "working" }];
+    const map = agentsByKey(profile);
+    assert.equal(map.get("ABC-2").status, "idle");
+    assert.equal(map.get("ABC-1").status, "working");
+  });
+  test("a blocked agent outranks the others on its key", () => {
+    mock.state.agents = [{ space: "s1", tab_name: "x", status: "working" }, { space: "s1", tab_name: "y", status: "blocked" }, { space: "s1", tab_name: "z", status: "done" }];
+    assert.equal(agentsByKey(profile).get("ABC-1").status, "blocked");
+  });
+  test("another profile's spaces don't count", () => {
+    mock.state.agents = [{ space: "s2", tab_name: "ABC-2", status: "working" }];
+    assert.equal(agentsByKey(profile).size, 0);
+  });
+  test("build puts each agent on its key; one open hides that key's paused entry and last session", () => {
+    const d = data({ mine: ["ABC-2", "ABC-3"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "doing", "ABC-1"), issue("ABC-3", "doing", "ABC-1")],
+      sessions: [{ id: "a", title: "x", first: ["ABC-2"], updated: 2 }, { id: "b", title: "Work on ABC-3", first: [], updated: 1 }] });
+    const agent = { status: "working" };
+    const [s] = build(d, new Map([["ABC-2", agent]]), { "ABC-2": [{ sessionId: "p" }], "ABC-3": [{ sessionId: "q" }] });
+    assert.equal(s.subs[0].agent, agent);
+    assert.equal(s.subs[0].paused, null);
+    assert.equal(s.subs[0].last, null);
+    assert.deepEqual(s.subs[1].paused, [{ sessionId: "q" }]);
+    assert.equal(s.subs[1].last, null, "a paused key offers Resume, not its last session");
+  });
+  test("lastSessions: the newest not-running session on each key, from its first message or its title", () => {
+    const list = [{ id: "run", running: true, first: ["ABC-1"] }, { id: "new", first: ["ABC-1"], title: "" }, { id: "old", first: ["ABC-1"] }, { id: "t", first: [], title: "Look at ABC-2 and UTF-8" }];
+    const map = lastSessions(list, new Set(["ABC"]));
+    assert.equal(map.get("ABC-1").id, "new");
+    assert.equal(map.get("ABC-2").id, "t");
+    assert.equal(map.has("UTF-8"), false);
+  });
+});
+
+describe("need: what a story needs from you, most urgent first", () => {
+  const story = (prs = [], agent = null, paused = null) => build(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "doing", "ABC-1")], prs }),
+    agent ? new Map([["ABC-2", agent]]) : new Map(), paused ? { "ABC-2": paused } : {})[0];
+  const rank = (it) => need(it)[0];
+  test("an agent waiting for you comes first, whatever its pull requests say", () => {
+    const it = story([pr("ABC-2 x", { review: "CHANGES_REQUESTED", checks: "FAILURE" })], { status: "blocked" });
+    assert.deepEqual(need(it), [0, "ABC-2's agent needs you", "working"]);
+  });
+  test("changes requested before failing checks, before ready to merge", () => {
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "FAILURE", number: 1 }), pr("ABC-2 y", { review: "CHANGES_REQUESTED", number: 2 })])), 1);
+    assert.match(need(story([pr("ABC-2 y", { review: "CHANGES_REQUESTED", number: 2 })]))[1], /^Changes requested on ABC-2 \(api#2\)$/);
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "FAILURE", number: 1 }), pr("ABC-2 y", { checks: "SUCCESS", review: "APPROVED", number: 2 })])), 2);
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "ERROR" })])), 2);
+    assert.deepEqual(need(story([pr("ABC-2 x", { checks: "SUCCESS", review: "APPROVED" })])), [3, "Approved, checks pass · ready to merge", "done"]);
+  });
+  test("ready to merge needs checks passing, an approval and no draft", () => {
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "PENDING", review: "APPROVED" })])), 6);
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "SUCCESS", review: "APPROVED", draft: true })])), 6);
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "SUCCESS" })])), 6);
+  });
+  test("merged pull requests need nothing", () => {
+    assert.equal(rank(story([pr("ABC-2 x", { checks: "FAILURE", merged: true })])), 6);
+  });
+  test("then an agent working, the rest, and paused stories", () => {
+    assert.equal(rank(story([], { status: "working" })), 5);
+    assert.deepEqual(need(story()), [6, "1 subtask · 1 in progress", "dim"]);
+    assert.equal(rank(story([], null, [{ sessionId: "p" }])), 7);
+    assert.match(need(story([pr("ABC-2 x", { checks: "FAILURE" })], null, [{ sessionId: "p" }]))[1], /^Paused · Checks failing/);
+  });
+});
+
+describe("ordered and needQueue: the list's order and Next's", () => {
+  // In board order: A (nothing), B (ready to merge), C (sunk), D (changes requested), E (agent waiting).
+  const items = () => build(data({
+    mine: ["AA-1", "BB-1", "CC-1", "DD-1", "EE-1"],
+    parents: [issue("AA-1", "doing"), issue("BB-1", "doing"), issue("CC-1", "qa"), issue("DD-1", "doing"), issue("EE-1", "doing")],
+    prs: [pr("BB-1 x", { checks: "SUCCESS", review: "APPROVED", number: 1 }), pr("DD-1 y", { review: "CHANGES_REQUESTED", number: 2 })],
+  }), new Map([["EE-1", { status: "blocked" }]]));
+  test("what needs you first, then the rest, then what's sunk, each in the board's order", () => {
+    assert.deepEqual(keys(ordered(items())), ["BB-1", "DD-1", "EE-1", "AA-1", "CC-1"]);
+  });
+  test("Next goes by urgency, then the reviews", () => {
+    const review = { key: "review:web#3" };
+    assert.deepEqual(keys(needQueue(ordered(items()), [review])), ["EE-1", "DD-1", "BB-1", "review:web#3"]);
+  });
+  test("a sunk story that needs you isn't sunk", () => {
+    const [it] = build(data({ mine: ["CC-1"], parents: [issue("CC-1", "qa")], prs: [pr("CC-1 x", { checks: "FAILURE" })] }), new Map());
+    assert.equal(it.sunk, true);
+    assert.equal(sunk(it), false);
+    assert.deepEqual(keys(ordered([it])), ["CC-1"]);
+  });
+});
+
+describe("sinking at the handover column", () => {
+  const story = (statuses, { handover = null, mine = statuses.map((_, i) => `ABC-${i + 2}`) } = {}) => build(data({
+    mine, parents: [issue("ABC-1", "doing")], children: statuses.map((s, i) => issue(`ABC-${i + 2}`, s, "ABC-1")),
+  }), new Map(), {}, new Map(), handover)[0];
+  test("by default the first column sounding like testing (QA here)", () => {
+    assert.equal(story(["qa", "done"]).sunk, true);
+    assert.equal(story(["qa", "doing"]).sunk, false);
+  });
+  test("the profile's handover column instead", () => {
+    assert.equal(story(["qa"], { handover: "Done" }).sunk, false);
+    assert.equal(story(["doing"], { handover: "In Progress" }).sunk, true);
+    assert.equal(story(["done"], { handover: "Done" }).sunk, true);
+  });
+  test("only subtasks assigned to you count", () => {
+    assert.equal(story(["qa", "todo"], { mine: ["ABC-2"] }).sunk, true);
+  });
+  test("with none of yours, by the story's own status; a task by its own", () => {
+    assert.equal(story(["todo"], { mine: [] }).sunk, false, "the story is In Progress");
+    const task = (s) => build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", s)] }), new Map())[0];
+    assert.equal(task("qa").sunk, true);
+    assert.equal(task("doing").sunk, false);
+  });
+  test("a done status always counts, even with no columns known", () => {
+    const [it] = build(data({ columns: [], mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "done", "ABC-1")] }), new Map());
+    assert.equal(it.sunk, true);
+  });
+  test("with no testing column, the board's last", () => {
+    const columns = [{ name: "To Do", statuses: ["1"] }, { name: "Doing", statuses: ["2", "3"] }, { name: "Shipped", statuses: ["4"] }];
+    const [it] = build(data({ columns, mine: ["ABC-9"], parents: [issue("ABC-9", "qa")] }), new Map());
+    assert.equal(it.sunk, false);
+  });
+});
+
+describe("progress: where a story's subtasks are", () => {
+  test("each subtask has a stage by its column, for the row's bar", () => {
+    const [s] = build(data({
+      mine: ["ABC-2", "ABC-3", "ABC-4", "ABC-5", "ABC-6"], parents: [issue("ABC-1", "doing")],
+      children: [issue("ABC-2", "todo", "ABC-1"), issue("ABC-3", "doing", "ABC-1"), issue("ABC-4", "blocked", "ABC-1"), issue("ABC-5", "qa", "ABC-1"), issue("ABC-6", "done", "ABC-1")],
+    }), new Map());
+    assert.deepEqual(s.subs.map((x) => x.stage), ["todo", "doing", "blocked", "testing", "past"]);
+  });
+  test("a column right of the handover one is past it", () => {
+    const [s] = build(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1")] }), new Map(), {}, new Map(), "In Progress");
+    assert.equal(s.subs[0].stage, "past");
+  });
+  test("the words: subtasks by state, a task by its pull requests", () => {
+    const [s] = build(data({
+      mine: ["ABC-2"], parents: [issue("ABC-1", "doing")],
+      children: [issue("ABC-2", "doing", "ABC-1"), issue("ABC-3", "doing", "ABC-1"), issue("ABC-4", "todo", "ABC-1"), issue("ABC-5", "done", "ABC-1")],
+      prs: [pr("ABC-2 x")],
+    }), new Map());
+    assert.equal(progress(s), "4 subtasks · 1 in review · 1 in progress · 1 to do · 1 done");
+    const task = (prs) => progress(build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", "doing")], prs }), new Map())[0]);
+    assert.equal(task([]), "No PR yet");
+    assert.equal(task([pr("ABC-9 a", { number: 1 })]), "PR in review");
+    assert.equal(task([pr("ABC-9 a", { number: 1 }), pr("ABC-9 b", { number: 2 })]), "2 PRs in review");
+    assert.equal(task([pr("ABC-9 a", { merged: true })]), "Merged");
+  });
+  test("finished: done in Jira, or every pull request merged", () => {
+    const it = (status, prs) => build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", status)], prs }), new Map(), {}, new Map([["ABC-9", { id: "s" }]]))[0];
+    assert.equal(finished(it("done", [])), true);
+    assert.equal(finished(it("doing", [pr("ABC-9 a", { merged: true })])), true);
+    assert.equal(finished(it("doing", [pr("ABC-9 a", { merged: true, number: 1 }), pr("ABC-9 b", { number: 2 })])), false);
+    assert.equal(finished(it("doing", [])), false);
+  });
+});
+
+describe("prState: a pull request's mark", () => {
+  const t = mock.state.theme;
+  const state = (o) => prState(t, { merged: false, isDraft: false, reviewDecision: null, ...o }, o.checks ?? null)[0];
+  test("changes requested outranks failing checks, failing an approval, an approval the rest", () => {
+    assert.equal(state({ reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE" }), "pr-changes");
+    assert.equal(state({ reviewDecision: "APPROVED", checks: "FAILURE" }), "pr-failing");
+    assert.equal(state({ checks: "ERROR" }), "pr-failing");
+    assert.equal(state({ reviewDecision: "APPROVED", checks: "PENDING" }), "pr-approved", "approved even while checks run");
+    assert.equal(state({ reviewDecision: "APPROVED", isDraft: true }), "pr-approved");
+    assert.equal(state({ isDraft: true, checks: "PENDING" }), "pr-draft");
+    assert.equal(state({ checks: "PENDING" }), "pr-running");
+    assert.equal(state({ checks: "EXPECTED" }), "pr-running");
+    assert.equal(state({ checks: "SUCCESS" }), "pr-review");
+    assert.equal(state({ merged: true, reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE" }), "pr-merged");
+  });
+  test("its words say both when changes are requested and checks fail", () => {
+    assert.equal(prState(t, { reviewDecision: "CHANGES_REQUESTED" }, "FAILURE")[1], "Changes requested, and checks failing");
+    assert.equal(prState(t, { reviewDecision: "APPROVED" }, "SUCCESS")[1], "Approved, checks pass: ready to merge");
+  });
+});
+
+describe("the demo's stories, as the list builds them", () => {
+  test("its stories, in the list's order, with what each needs", async () => {
+    const d = await demoData();
+    const list = ordered(build(d, new Map(), {}, new Map(), null));
+    assert.deepEqual(list.map((x) => [x.it.key, x.n[0], sunk(x.it, x.n)]), [
+      ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
+      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-180", 6, false],
+      ["ACME-129", 6, true],
+    ]);
+  });
+  test("the done story with no space has left; the PR naming no ticket shows on its own", async () => {
+    const d = await demoData();
+    assert.ok(!build(d, new Map()).some((it) => it.key === "ACME-122"));
+    assert.deepEqual(pullsOf(d).map((it) => it.key), ["pull:docs#58"]);
+  });
+});
