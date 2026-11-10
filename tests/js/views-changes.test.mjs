@@ -47,20 +47,21 @@ function shown(view, cx) {
   throw new Error("the diff never showed");
 }
 
-// A render spends at most PARSE_FOR ms on patches (here the clock moves 10 ms per file): it shows how
-// far it got and a timer asks for the next render, which goes on from there until all are read.
+// A render spends at most PARSE_FOR ms on patches (here the clock moves 1 ms each time it's read: once
+// per file and once per removed line marked): it shows how far it got and a timer asks for the next
+// render, which goes on from there until all are read.
 test("changes: a big pull request is read over a few renders, then shown", async (t) => {
   const { view, cx } = await changes(Array.from({ length: 140 }, (_, i) => file(i, 40)));
   const timers = [];
   cx.timer = { every() {}, after: (_ms, fn) => timers.push(fn) };
   let clock = Date.now();
-  t.mock.method(Date, "now", () => (clock += 5));
+  t.mock.method(Date, "now", () => (clock += 1));
   const first = view.render(cx);
   assert.match(texts(first)[0], /^Reading the changes: \d+ of 140 files…$/);
   assert.equal(virtualList(first), null, "no rows built in that render");
   assert.equal(timers.length, 1, "a timer asks for the next render");
   let renders = 1, el = first;
-  while (!virtualList(el) && renders < 200) {
+  while (!virtualList(el) && renders < 2000) {
     const now = timers.splice(0);
     assert.equal(now.length, 1);
     const before = cx.notified;
@@ -70,10 +71,31 @@ test("changes: a big pull request is read over a few renders, then shown", async
     renders++;
   }
   t.mock.restoreAll();
-  assert.ok(renders > 2 && renders < 200, `${renders} renders`);
+  assert.ok(renders > 2 && renders < 2000, `${renders} renders`);
   // The section heading, then each file: its header, a band, its 80 lines in items of up to 30
   // (a new one 3 lines above each run of changes: here every line is one), the band after them.
   assert.equal(virtualList(el).args[1], 1 + 140 * (1 + 1 + Math.ceil(80 / 30) + 1));
+});
+
+// Marking what changed inside each line (a token LCS per pair) is the slow part, and one file of many
+// changed lines took longer than a whole render in Herdr: it was cut off inside that file every time
+// and never showed. Marking now stops when the render's time is up and goes on where it stopped.
+test("changes: one file of many changed lines is marked over several renders, never starting over", async (t) => {
+  const big = file(5000, 300);
+  const { view, cx } = await changes([big]);
+  const timers = [];
+  cx.timer = { every() {}, after: (_ms, fn) => timers.push(fn) };
+  let clock = Date.now();
+  t.mock.method(Date, "now", () => (clock += 1));
+  const first = view.render(cx);
+  assert.match(texts(first)[0], /^Reading the changes: 0 of 1 file…$/, "the render stopped inside the file");
+  let renders = 1, el = first;
+  while (!virtualList(el) && renders < 100) { timers.splice(0).forEach((fn) => fn(cx)); el = view.render(cx); renders++; }
+  t.mock.restoreAll();
+  // 300 removed lines at ~30 a render: about 10 renders. Starting over each time would never end.
+  assert.ok(renders > 5 && renders < 100, `${renders} renders`);
+  const rows = diffRows(big.patch);
+  assert.ok(rows.filter((r) => r.kind === "del").every((r) => r.marks?.length), "every pair marked");
 });
 
 test("changes: a small change shows at once", async () => {
