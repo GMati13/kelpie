@@ -71,3 +71,18 @@ test("a review's details show its description", async () => {
   assert.match(words, /Share a trip with a read-only link that works for 14 days/);
   assert.doesNotMatch(words, /Describe how you tested it/);
 });
+
+// A subtask with an earlier session shows one action, Resume, so its title keeps the room: starting
+// fresh and every session (with its age) are in the ▾ beside it, and no age sits in the row.
+test("a subtask's Resume is a split button: Start fresh and the sessions in its menu", async () => {
+  const { el, view, cx } = await body({ preview: "ACME-180" });
+  const row = render(byId(el, "sub-row-ACME-181"), skinTheme());
+  assert.doesNotMatch(row, /"last session|"Start fresh"/);
+  assert.match(row, /"Resume"/);
+  press(el, "sub-agent-ACME-181-more", cx);
+  const menu = render(byId(view.render(cx), "sub-agent-ACME-181-menu-list"), skinTheme());
+  assert.match(menu, /"Start fresh"/);
+  assert.match(menu, /"Resume the session"|"Resume one of \d+ sessions"/);
+  assert.match(menu, /"Sketch the PDF itinerary layout"[\s\S]*"2d ago"/);
+  view.menu = null;
+});

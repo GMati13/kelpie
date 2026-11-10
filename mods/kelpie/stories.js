@@ -1657,11 +1657,6 @@ export class Stories extends Source {
       action: () => once(it.key, () => resumeSession(st.profile, it, key, x)) }));
   }
 
-  // Every earlier session on a key, to pick one to resume: a small "▾" beside Resume.
-  sessionMenu(t, st, it, id, key, list) {
-    return this.menuButton(t, id, "▾", this.sessionRows(st, it, key, list), `All ${list.length} sessions on ${key}`);
-  }
-
   // What can be done with the agent on a key of story `it`: show or pause the one running (one at
   // work asks first), resume a paused one or an earlier session, or start one with the profile's
   // ticket prompt. Agents start in the story's space; a story not started yet gets its space then.
@@ -1678,13 +1673,17 @@ export class Stories extends Source {
     if (paused) return [b("resume", "Resume", () => once(it.key, () => resume(st.profile, it, key)), `Bring back ${paused.length === 1 ? "its session" : `its ${paused.length} sessions`} where ${paused.length === 1 ? "it" : "they"} left off`)];
     const start = () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key) }));
     const word = it.space ? "agent" : "work";
+    // One visible action, Resume, so the row's title keeps its room: starting fresh and the other
+    // sessions (each with its age) are in the ▾ beside it, held to it as one split button.
     if (last) {
       const all = sessionsFor(st.data, key);
-      return [
-        b("resume", "Resume", () => once(it.key, () => resumeSession(st.profile, it, key, last)), `Continue "${last.title}" (${ago(last.updated)} ago)`),
-        ...(all.length > 1 ? [this.sessionMenu(t, st, it, id, key, all)] : []),
-        b("new", it.space ? "New agent" : "Start fresh", start, `Start a fresh Claude agent on ${key}`),
+      const rows = [
+        { label: it.space ? "New agent" : "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start },
+        { header: all.length > 1 ? `Resume one of ${all.length} sessions` : "Resume the session" }, ...this.sessionRows(st, it, key, all),
       ];
+      return [h_flex().flex_none().items_center()
+        .child(b("resume", "Resume", () => once(it.key, () => resumeSession(st.profile, it, key, last)), `Continue "${last.title || "the last session"}" (${ago(last.updated)} ago)`))
+        .child(this.menuButton(t, id, "▾", rows, `Start fresh, or resume another session on ${key}`))];
     }
     return [b("start", `Start ${word}`, start, `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`)];
   }
@@ -1957,7 +1956,6 @@ export class Stories extends Source {
         .when(Boolean(s.agent), (el) => el.child(statusMark(t, agentState(s.agent.status), { where: "sub", size: 8, color: t[AGENT[s.agent.status][1]], agent: s.agent })
           ?? div().id(`sub-mark-${s.key}`).flex_none().tooltip(`Agent: ${AGENT[s.agent.status][0]}`).child(mark(t, agentState(s.agent.status) ?? "idle", 14))))
         .when(Boolean(s.paused), (el) => el.child(div().id(`sub-paused-${s.key}`).flex_none().tooltip("Paused: Resume picks it up").child(mark(t, "paused", 14))))
-        .when(Boolean(s.last) && !s.agent && !s.paused, (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(`last session ${ago(s.last.updated)} ago`)))
         .when(s.category !== "done" || Boolean(s.agent || s.paused || s.last), (el) => el.children(this.agentButtons(t, st, it, `sub-agent-${s.key}`, s.key, s.agent, s.paused, s.last))))
       .when(Boolean(about), (el) => el.child(div().pl(94).pb(2).child(about)))
       .children(s.prs.map((p) => this.pr(t, p, st, it).pl(94)));

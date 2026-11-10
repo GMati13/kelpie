@@ -27,12 +27,12 @@ div #story-overview-view {size_change}
                     div
                       div
                         div [border=dim]
-              div [fg=dim]
-                "last session 2d ago"
-              h_flex #sub-agent-ACME-181-resume [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Continue \"Sketch the PDF itinerary layout\" (2d ago)"
-                "Resume"
-              h_flex #sub-agent-ACME-181-new [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start a fresh Claude agent on ACME-181"
-                "Start fresh"
+              h_flex
+                h_flex #sub-agent-ACME-181-resume [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Continue \"Sketch the PDF itinerary layout\" (2d ago)"
+                  "Resume"
+                Popup.new "sub-agent-ACME-181-menu"
+                  h_flex #sub-agent-ACME-181-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start fresh, or resume another session on ACME-181"
+                    "▾"
           v_flex #sub-row-ACME-182 [border=border hover(bg=hover)]
             h_flex
               div [font="DM Mono" fg=dim]
