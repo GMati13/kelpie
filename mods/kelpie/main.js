@@ -395,7 +395,7 @@ const quote = (text) => `'${text.replace(/'/g, `'\\''`)}'`;
 // reopens (XDG_DATA_HOME): each profile's browser gets its own of all three, so signing in or out
 // in one leaves the others, and none shares terminal-browser's own defaults. Without python3 it runs
 // without kittyfix.py (Herdr's image glitches return; the browser still works).
-const profileDir = () => (shownProfile()?.id ?? "none").replace(/[^A-Za-z0-9_-]/g, "-");
+export const profileDir = () => (shownProfile()?.id ?? "none").replace(/[^A-Za-z0-9_-]/g, "-");
 const browserCommand = (url, python) => {
   const dir = `$HOME/.local/share/kelpie/web/${profileDir()}`;
   const env = `env XDG_RUNTIME_DIR="${dir}/run" TERMINAL_BROWSER_APPDATA="${dir}/data" XDG_DATA_HOME="${dir}/share" `;
@@ -453,7 +453,7 @@ async function ensureBrowser(name, command) {
 // folder, so no other profile's; never the loop's shell, whose command names that folder too: its
 // terminal would end while shown), forgets the page it would reopen (a stuck one would freeze it again),
 // and with `signOut` deletes its cookies and site data; then the panel starts it again.
-async function resetBrowser(signOut) {
+export async function resetBrowser(signOut) {
   const root = layout();
   const slot = webChild(root);
   const id = profileDir();
