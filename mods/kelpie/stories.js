@@ -16,7 +16,7 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
@@ -2249,7 +2249,8 @@ export class Stories extends Source {
     ];
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
     const clean = cleanable(st.profile, it).length ? this.cleanButton(t, st, it) : null;
-    const tasks = [unapproved.length ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null,
+    // Working alone, nobody can approve: no Request approval.
+    const tasks = [unapproved.length && !worksAlone(st.setup) ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null,
       finishes(st.setup) && canMoveToDone(it) ? this.finishButton(t, st, it) : null].filter(Boolean);
     return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
@@ -2319,7 +2320,7 @@ export class Stories extends Source {
     const ask = kind ? this.carefulButton(t, `pull-ask-${kind}`, ASK[kind], kind === "merge", () => askPull(st.profile, p, kind),
       { tip: `${askOf(st.profile, kind, [p])}${agent ? "" : " (a new agent on the Desk)"}`, confirmTip: `Click again to ask ${agent ? agent.tab_name : "a new agent on the Desk"} to merge ${prName(p)}`, filled: true }) : null;
     const show = agent ? (ask ? textButton : primaryButton)(t, "pull-show", "Show agent", () => showPullAgent(p), { tip: `Show ${agent.tab_name} on the Desk ⌘⇧R` }) : null;
-    const waiting = !p.isDraft && p.reviewDecision !== "APPROVED" && !kind;
+    const waiting = !p.isDraft && p.reviewDecision !== "APPROVED" && !kind && !worksAlone(st.setup);
     const approval = waiting ? textButton(t, "pull-approval", "Request approval", () => startDeskTask("approval", st.profile, [prLine(t, p)]),
       { tip: "Find out what it waits on and draft a request to its reviewers, with a new agent on the Desk" }) : null;
     return [ask, show, approval].filter(Boolean);
@@ -3536,9 +3537,14 @@ export class StoryList extends Stories {
           .when(Boolean(badge), (el) => el.child(div().flex_none().child(badge))))
         .child(div().truncate().text_size(SMALL).text_color(t.muted).child(line)));
     const approvedChip = (p) => (!p.merged && p.reviewDecision === "APPROVED" ? div().id(`approved-${prName(p)}`).tooltip("Approved").child(mark(t, "pr-approved", 14)) : null);
-    // With a GitHub owner set, Reviews for you and Your pull requests always show (empty ones say so).
+    // With a GitHub owner set, Reviews for you and Your pull requests always show (empty ones say so),
+    // unless the person works alone: then nobody on their team asks for reviews, and a story's own pull
+    // requests are on the story, so each shows only with something in it (or to say pull requests
+    // didn't load), and Your pull requests holds only the ones on no story here.
     const owner = st.setup.github?.owner;
     const noPulls = st.data.prError ? "Pull requests didn't load, Refresh to try again" : null;
+    const alone = worksAlone(st.setup);
+    const always = Boolean(owner) && (!alone || Boolean(noPulls));
     // Every open pull request of yours, whatever its title: one naming a ticket of the list shows that
     // story on its Changes (the pull request's files); any other opens on GitHub.
     const known = projectsOf(st.data);
@@ -3546,7 +3552,7 @@ export class StoryList extends Stories {
       const k = prKey(p, st.data, known);
       return k ? items.find(({ it }) => it.key === k || it.subs.some((s) => s.key === k))?.it ?? null : null;
     };
-    const minePrs = (st.data.prs ?? []).filter((p) => !p.merged).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
+    const minePrs = (st.data.prs ?? []).filter((p) => !p.merged && !(alone && storyOf(p))).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
     // A pull request of yours: its state as the mark before it (the words in its tooltip).
     const myPull = (p) => {
       const story = storyOf(p);
@@ -3584,7 +3590,7 @@ export class StoryList extends Stories {
     const plan = (g) => {
       const waiting = g.list.filter((p) => !p.merged && !p.isDraft && p.reviewDecision !== "APPROVED");
       return h_flex().flex_none().gap(2).items_center()
-        .when(waiting.length > 0, (el) => el.child(taskMenu(g, "approval", waiting)))
+        .when(waiting.length > 0 && !alone, (el) => el.child(taskMenu(g, "approval", waiting)))
         .child(taskMenu(g, "merge", g.list));
     };
     // A group folds by its chevron, so a story with many pull requests doesn't push the rest down;
@@ -3650,11 +3656,11 @@ export class StoryList extends Stories {
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
         .when(going.length > 0, (el) => el.child(group("In progress", going.length)).children(rows(going)))
-        .when(Boolean(owner) || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))
+        .when(always || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))
           .when(reviews.length === 0, (x) => x.child(empty(t, noPulls ?? "Nothing waiting for your review.")))
           .children(grouped(reviews, (r) => r.review, (r) => plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
             () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`), "review-story")))
-        .when(Boolean(owner) || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
+        .when(always || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
           .when(minePrs.length === 0, (x) => x.child(empty(t, noPulls ?? "No open pull requests of yours.")))
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
         .child(group("To do", toDo.length))

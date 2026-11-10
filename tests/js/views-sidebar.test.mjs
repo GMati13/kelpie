@@ -48,6 +48,38 @@ test("the story list of someone who works alone", async () => {
   assert.ok(!words.includes("Waiting on others"), "nobody else to wait on");
 });
 
+// Working alone (#75): nobody on the team asks for reviews or approves, and a story's own pull
+// requests are on the story, so the pull request groups keep only what shows nowhere else.
+test("working alone: Reviews for you shows only with a review asked for", async () => {
+  const alone = { jira: { ...demoProfile().jira, solo: true } };
+  const asked = await list({ profile: alone });
+  assert.ok(byId(asked, "review-web#421"), "a review someone asked for still shows");
+  const none = { ...stories, data: { ...stories.data, reviews: [] } };
+  setupDemoWorld({ stories: none, profile: alone });
+  const el = await sharedCopy();
+  assert.ok(!texts(el).some((x) => /reviews for you/i.test(x)), "no empty group");
+  setupDemoWorld({ stories: none });
+  assert.ok(texts(await sharedCopy()).includes("Nothing waiting for your review."), "a team's still says so");
+});
+
+test("working alone: Your pull requests holds only the ones on no story, without Request approval", async () => {
+  const el = await list({ profile: { jira: { ...demoProfile().jira, solo: true } } });
+  assert.ok(byId(el, "mine-docs#58"), "a pull request naming no ticket stays");
+  assert.equal(byId(el, "mine-web#418"), null, "ACME-142's is on its story");
+  assert.equal(byId(el, "mine-web#423"), null, "ACME-175's too");
+  assert.equal(byId(el, "approval-wrap-none"), null, "nobody to ask for an approval");
+  assert.ok(!handlers(el).some((h) => /^approval-/.test(h.id)), "no Request approval menu at all");
+  const team = await list();
+  assert.ok(byId(team, "mine-web#418") && byId(team, "approval-wrap-ACME-142"), "a team's keeps every story's");
+});
+
+test("working alone with no pull request off a story: no Your pull requests", async () => {
+  const onStories = { ...stories, data: { ...stories.data, prs: stories.data.prs.filter((p) => !/docs#58|docs\/pull\/58/.test(p.url ?? "")) } };
+  setupDemoWorld({ stories: onStories, profile: { jira: { ...demoProfile().jira, solo: true } } });
+  const el = await sharedCopy();
+  assert.ok(!texts(el).some((x) => /your pull requests/i.test(x)));
+});
+
 test("a finished story whose agent is working has no broom", async () => {
   // Without ACME-116's paused session, which leaves it to clean up too.
   const el = await list({ paused: { "ACME-138": FIXTURE.paused["ACME-138"] }, agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });

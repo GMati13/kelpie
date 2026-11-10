@@ -1,7 +1,7 @@
 // What the story's title row draws (stories.js Stories: headRow, headActions, reviewActions,
 // pullActions), pinned as snapshots (tests/README.md, Snapshots): the main action for each state, Pause,
 // the icons after the line, a review's header before and while its agent runs.
-import { DEMO, FIXTURE, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
+import { DEMO, FIXTURE, demoProfile, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
@@ -135,6 +135,21 @@ test("header: Confirm approve is dropped on another review, and after 5 s", asyn
 
 test("header: a pull request of yours with no ticket", async () => {
   snap("header/pull-no-ticket", (await header({ preview: "pull:docs#58" })).el);
+});
+
+// Working alone (#75), nobody can approve: no Request approval, a story's or a lone pull request's.
+test("header: working alone, no Request approval", async () => {
+  const alone = { jira: { ...demoProfile().jira, solo: true } };
+  assert.ok(byId((await header({ space: "ACME-160" })).el, "story-approval-more"), "a team's story offers it");
+  assert.equal(byId((await header({ space: "ACME-160", profile: alone })).el, "story-approval-more"), null);
+  // docs#58 waiting on reviewers, nothing else to do: a team's header offers Request approval.
+  const waiting = { ...stories, data: { ...stories.data, prs: stories.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } };
+  const prev = stories;
+  stories = waiting;
+  try {
+    assert.ok(byId((await header({ preview: "pull:docs#58" })).el, "pull-approval"), "a team's lone pull request offers it");
+    assert.equal(byId((await header({ preview: "pull:docs#58", profile: alone })).el, "pull-approval"), null);
+  } finally { stories = prev; }
 });
 
 test("Kelpie-Plain: the header of a story whose agent needs you", async () => {
