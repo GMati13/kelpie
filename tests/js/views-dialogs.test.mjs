@@ -1,7 +1,7 @@
 // What Kelpie's dialogs draw (dialogs.js Confirm and StoryPicker), opened the way the views open them,
 // pinned as snapshots (tests/README.md, Snapshots): the clean-up confirm with its leftovers, Clean up
-// all, the close dialog of a story's last tab, an agent's profile change waiting for a yes, and the
-// story picker.
+// all, the close dialog of a story's last tab, an agent's profile change waiting for a yes, the
+// story picker, and the profile dialog's Agents and GitHub pages (accounts, with their guides).
 import { DEMO, fakeCx, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +10,7 @@ import { handlers, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { StoryList } from "../../mods/kelpie/stories.js";
 import { Confirm, StoryPicker } from "../../mods/kelpie/dialogs.js";
+import { Setup } from "../../mods/kelpie/setup.js";
 import { requestProfileChange } from "../../mods/kelpie/config.js";
 import Quiet from "../../mods/kelpie/main.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -97,4 +98,28 @@ test("Kelpie-Plain: the story picker and a confirm", () => {
   snap("plain/dialogs/story-picker", picker.render(fakeCx()));
   requestProfileChange(DEMO, { commands: { status: "git -C {key} status --short" } });
   snap("plain/dialogs/profile-change", lastDialog().el);
+});
+
+// The profile dialog opened on a page, as `herdr-app do kelpie.edit-profile-<page>` opens it.
+function profilePage(focus, profile = {}) {
+  setupDemoWorld({ stories, profile, props: { role: "setup", profile: DEMO, focus, overlay: "overlay-1" } });
+  const d = new Setup();
+  const cx = fakeCx();
+  d.init(cx);
+  return d.render(cx);
+}
+
+test("the profile dialog's Agents page: the Claude account, and how to add another", () => {
+  const el = profilePage("agents");
+  const words = texts(el).join("\n");
+  for (const s of ["Claude account", "Another Claude account", "CLAUDE_CONFIG_DIR=~/.claude-demo claude", "claude-statusline.sh", "CLAUDE_ACCOUNT_CHOSEN"]) assert.ok(words.includes(s), s);
+  snap("dialogs/profile-agents", el);
+});
+
+test("the profile dialog's GitHub page: with an account picked, the shell function to copy and its check", () => {
+  const el = profilePage("github", { github: { owner: "kelpie--demo", demo: true, account: "kelpie-demo" } });
+  const words = texts(el).join("\n");
+  for (const s of ["GitHub account", "KELPIE_GH_ACCOUNT=kelpie-demo", "Check my shell"]) assert.ok(words.includes(s), s);
+  assert.ok(byId(el, "setup-gh-copy"));
+  snap("dialogs/profile-github", el);
 });

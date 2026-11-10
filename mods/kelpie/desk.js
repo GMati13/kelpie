@@ -58,7 +58,7 @@ export function deskRows(t, host, profile, { on = false, sessions = null } = {})
   const menu = earlier.length ? menuButton(host, t, "desk-sessions", "", [
     { header: "Continue on the Desk" },
     ...earlier.map((s) => ({ label: s.title || "Untitled session", hint: `${ago(s.updated)} ago`, tip: s.cwd,
-      action: () => { openDesk(profile, { folder: s.cwd, argv: resumeArgv(s.id, s.config) }); } })),
+      action: () => { openDesk(profile, { folder: s.cwd, argv: resumeArgv(s.id, s.config, profile?.github?.account) }); } })),
   ], { tip: "Earlier sessions with no ticket", iconPath: chrome("clock"), width: 320 }) : null;
   const head = h_flex().flex_none().items_end().gap(4)
     .child(div().flex_1().min_w(0).child(groupHeader(t, "Desk", here.length || null)))

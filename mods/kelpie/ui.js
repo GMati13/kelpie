@@ -359,12 +359,23 @@ export async function claudeSession(address) {
   return rec?.sessionId ? { ...rec, config: out.slice(0, at) || null } : null;
 }
 
-// The argv that resumes a Claude session, on the account (config folder) it ran on. No config (the
-// session is in Claude's own ~/.claude): plain claude, which uses ~/.claude as herdr-core's environment
-// sets no CLAUDE_CONFIG_DIR. The demo's made-up sessions (demo.js, ids "demo-…"; Claude's are UUIDs)
-// resume as its stand-in agent.
-export const resumeArgv = (id, config) => (String(id).startsWith("demo-") ? ["sh", modFile("demo/agent.sh"), "idle", ""]
-  : [...(config ? ["env", `CLAUDE_CONFIG_DIR=${config}`] : []), "claude", "--resume", id]);
+// A GitHub login: letters, digits and single hyphens, not starting with one (gh.sh checks it too).
+export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
+// The environment telling a profile's agents and terminals its GitHub account: KELPIE_GH_ACCOUNT, a
+// name, never a token. Kelpie can't make their gh use it (shell startup puts gh's own folder first in
+// PATH, and a shell function doesn't reach programs started from it): a gh() function in the person's
+// own shell setup reads it (README, "Several accounts"; the profile dialog's GitHub page has it to
+// copy). None set: nothing, so gh acts as it always has.
+export const githubEnv = (account) => (account && GITHUB_LOGIN.test(account) ? [`KELPIE_GH_ACCOUNT=${account}`] : []);
+// The argv that resumes a Claude session, on the account (config folder) it ran on, with the profile's
+// GitHub account (githubEnv). No config (the session is in Claude's own ~/.claude): no
+// CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids
+// "demo-…"; Claude's are UUIDs) resume as its stand-in agent.
+export function resumeArgv(id, config, github = null) {
+  if (String(id).startsWith("demo-")) return ["sh", modFile("demo/agent.sh"), "idle", ""];
+  const env = [...(config ? [`CLAUDE_CONFIG_DIR=${config}`] : []), ...githubEnv(github)];
+  return [...(env.length ? ["env", ...env] : []), "claude", "--resume", id];
+}
 
 // The agent whose limits to show: the focused one, else the shown tab's, else the last one shown.
 export function shownAgent(last) {

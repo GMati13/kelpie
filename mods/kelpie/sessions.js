@@ -61,7 +61,7 @@ export class Sessions extends Source {
     return h_flex().id(`session-${s.id}`).flex_none().px(10).py(7).gap(10).items_center().rounded(10).cursor_pointer()
       .hover((x) => x.bg(t.hover))
       .tooltip(s.running ? "Show the running agent" : s.prompt ? `Continue where you left off. Last prompt: ${s.prompt.slice(0, 200)}` : "Continue where you left off")
-      .on_click(() => (s.running ? focusRunning(s.id) : startAgent(st, { folder: s.cwd, argv: resumeArgv(s.id, s.config) })))
+      .on_click(() => (s.running ? focusRunning(s.id) : startAgent(st, { folder: s.cwd, argv: resumeArgv(s.id, s.config, (st.setup ?? st.profile)?.github?.account) })))
       // A running session glows green where the others show a clock.
       .child(s.running
         ? div().flex().flex_none().size(14).items_center().justify_center().child(div().size(7).rounded_full().bg(t.done).loop("opacity", { from: 0.45, to: 1, period: 1600 }))

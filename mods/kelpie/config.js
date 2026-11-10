@@ -10,7 +10,9 @@
 //            template for agents started on a ticket (none: DEFAULT_PROMPT), an optional one for an agent
 //            that runs a whole story through its subtasks (none: no "Start orchestrator"), and the board
 //            column from which your part of a ticket is done (none: handoverFrom() picks one)
-//   github   { owner }: an organisation or user whose pull requests show
+//   github   { owner, account }: an organisation or user whose pull requests show; `account`, optional,
+//            the GitHub account (a login gh is signed in to) Kelpie's own gh calls act as, named to its
+//            agents and terminals as KELPIE_GH_ACCOUNT
 //   commands { leftovers, cleanUp, status }: optional shell commands run in its folder for a story
 //            ({key} is its key; cleanUp was saved as wrapUp before): one printing what a finished
 //            story left behind (its worktrees, say; nothing printed: nothing to clean), one when a
@@ -24,7 +26,7 @@
 // The older per-space setups ("kelpie.spaces") become profiles the first time they're read.
 
 import { appHome, exec, hc, notify, openOverlay, panes, setShared, shared, spaces, run } from "herdr";
-import { MOD, modFile } from "./ui.js";
+import { GITHUB_LOGIN, MOD, githubEnv, modFile } from "./ui.js";
 
 const PROFILES = "kelpie.profiles";
 const OLD = "kelpie.spaces";
@@ -236,22 +238,26 @@ export const claudeConfigOf = (profile) => profile?.claude?.config || null;
 // Claude's own folder, ~/.claude, chosen by name: no CLAUDE_CONFIG_DIR at all, as set it would read its
 // global config (.claude.json) and sign-in from elsewhere.
 export const isOwnClaude = (dir) => base(dir) === ".claude";
-// The argv that starts a new Claude agent for a profile (any extra arguments after "claude").
+// The argv that starts a new Claude agent for a profile (any extra arguments after "claude"), on its
+// Claude account and with its GitHub account named (githubEnv in ui.js).
 // A demo profile's (demo.js) start the demo's stand-in agent instead, waiting for its first message.
 export function claudeArgv(profile, ...args) {
   if (profile?.demo) return ["sh", modFile("demo/agent.sh"), "idle", ""];
   const dir = claudeConfigOf(profile);
-  if (!dir) return ["claude", ...args];
-  return ["env", ...(isOwnClaude(dir) ? ["-u", "CLAUDE_CONFIG_DIR"] : [`CLAUDE_CONFIG_DIR=${dir}`]), "claude", ...args];
+  const env = [...(!dir ? [] : isOwnClaude(dir) ? ["-u", "CLAUDE_CONFIG_DIR"] : [`CLAUDE_CONFIG_DIR=${dir}`]), ...githubEnv(profile?.github?.account)];
+  return [...(env.length ? ["env", ...env] : []), "claude", ...args];
 }
 // The argv of a plain terminal for a profile: the user's own login shell, started with the profile's
 // Claude account already chosen (CLAUDE_CONFIG_DIR set, or cleared for Claude's own ~/.claude) and
 // CLAUDE_ACCOUNT_CHOSEN=1, so a `claude` typed there runs on the profile's account whatever the folder
-// (a shell function choosing by folder should leave either alone).
+// (a shell function choosing by folder should leave either alone), and its GitHub account named
+// (githubEnv in ui.js), passed as an argument, not written into the script.
 export function shellArgv(profile) {
   const dir = claudeConfigOf(profile);
   const account = dir && !isOwnClaude(dir) ? `CLAUDE_CONFIG_DIR='${dir.replace(/'/g, "'\\''")}'` : "-u CLAUDE_CONFIG_DIR";
-  return ["/bin/sh", "-c", `exec env ${account} CLAUDE_ACCOUNT_CHOSEN=1 "\${SHELL:-/bin/sh}" -l`];
+  const github = githubEnv(profile?.github?.account);
+  if (!github.length) return ["/bin/sh", "-c", `exec env ${account} CLAUDE_ACCOUNT_CHOSEN=1 "\${SHELL:-/bin/sh}" -l`];
+  return ["/bin/sh", "-c", `exec env ${account} CLAUDE_ACCOUNT_CHOSEN=1 "$@" "\${SHELL:-/bin/sh}" -l`, "sh", ...github];
 }
 // The same folder however it was written: "" for Claude's own (unset, or ~/.claude), else the path.
 export const claudeKey = (dir) => (!dir || isOwnClaude(dir) ? "" : String(dir).replace(/\/+$/, ""));
@@ -494,7 +500,9 @@ export function fillLines(template, names, fields) {
 // table.
 export const CONFIGURE_SCOPES = {
   all: "everything, from A to Z",
-  general: "General: name, folder, Claude account",
+  general: "General: name, folder",
+  agents: "Agents: the accounts they run on",
+  claude: "Agents: the Claude account only",
   jira: "Jira: board, sign-in, your part",
   "jira-signin": "Jira sign-in only",
   handover: "Jira: your part (the handover column) only",
@@ -670,8 +678,7 @@ export function buildProfile(id, set) {
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). The rest (name, folder, owner, handover, notify) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
-// A GitHub login: letters, digits and single hyphens, not starting with one (gh.sh checks it too).
-export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
+export { GITHUB_LOGIN };
 export function needsYes(id, set) {
   const saved = profileById(id) ?? {};
   const out = [];

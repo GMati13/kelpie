@@ -1,0 +1,168 @@
+v_flex #work-setup [bg=popover fg=foreground] {key_down}
+  h_flex
+    v_flex [bg=background border=border]
+      v_flex
+        div [fg=dim]
+          "Profile"
+        div
+          "Untitled"
+      h_flex #setup-tab-general [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg own:house
+        v_flex
+          div [fg=muted]
+            "General"
+          div [fg=dim]
+            "No folder yet"
+      div [fg=dim]
+        "Connections"
+      h_flex #setup-tab-jira [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg chrome:layers
+        v_flex
+          div [fg=muted]
+            "Jira"
+          div [fg=dim]
+            "Not connected"
+      h_flex #setup-tab-github [bg=selected hover(bg=selected)] {click}
+        div [fg=foreground]
+          svg own:git-pull-request
+        v_flex
+          div [fg=foreground]
+            "GitHub"
+          div [fg=dim]
+            "Not connected"
+      h_flex #setup-tab-web [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg own:globe
+        v_flex
+          div [fg=muted]
+            "Web"
+          div [fg=dim]
+            "Blank page"
+      div [fg=dim]
+        "Agents"
+      h_flex #setup-tab-agents [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg own:bot
+        v_flex
+          div [fg=muted]
+            "Agents"
+          div [fg=dim]
+            "Claude: default account"
+      h_flex #setup-tab-prompts [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg chrome:file-text
+        v_flex
+          div [fg=muted]
+            "Prompts"
+          div [fg=dim]
+            "5 changed"
+      h_flex #setup-tab-messages [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg own:message-square
+        v_flex
+          div [fg=muted]
+            "Messages"
+          div [fg=dim]
+            "7 changed"
+      h_flex #setup-tab-commands [hover(bg=hover)] {click}
+        div [fg=dim]
+          svg chrome:terminal
+        v_flex
+          div [fg=muted]
+            "Story commands"
+          div [fg=dim]
+            "None set"
+      div
+      Popup.new "setup-configure-all-menu"
+        v_flex #setup-configure-all-more [border=border bg=popover hover(bg=hover)] {click} tip="Asks a Claude on the Desk to set this up with you"
+          h_flex
+            div [fg=accent]
+              svg own:message-square
+            div
+              "Let me configure it for you"
+          div [fg=dim]
+            "A Claude on the Desk goes through every setting with you, checks them and saves them."
+    v_flex #work-setup-body-github
+      v_flex
+        h_flex
+          div
+            "GitHub"
+          Popup.new "setup-ask-github-menu"
+            h_flex #setup-ask-github-more [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
+              "Set up with Claude"
+        div [fg=dim]
+          "The owner whose pull requests show, yours and the ones waiting on your review, through gh."
+      v_flex
+        h_flex
+          div [fg=muted]
+            "Owner"
+        h_flex
+          div
+            Input.new [border=input bg=background fg=foreground]
+          h_flex #setup-github-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Looks for your open pull requests there"
+            "Check"
+        div [fg=dim]
+          "An organisation or a user."
+      v_flex
+        h_flex
+          div [fg=muted]
+            "GitHub account"
+        h_flex
+          h_flex #setup-github-account-0 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="The account gh has active"
+            "Default"
+          h_flex #setup-github-account-1 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click}
+            "kelpie-demo"
+        div [fg=dim]
+          "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change."
+      v_flex
+        div [fg=dim]
+          "For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=kelpie-demo. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account:"
+        h_flex [bg=background border=border]
+          v_flex [fg=muted]
+            div
+              "gh() {"
+            div
+              "  if [ -n \"$KELPIE_GH_ACCOUNT\" ] && [ \"$1\" != auth ]; then"
+            div
+              "    local t"
+            div
+              "    t=$(command gh auth token --hostname github.com --user \"$KELPIE_GH_ACCOUNT\") \\"
+            div
+              "      || { echo \"gh isn't signed in as $KELPIE_GH_ACCOUNT: gh auth login\" >&2; return 1; }"
+            div
+              "    GH_TOKEN=$t command gh \"$@\""
+            div
+              "  else"
+            div
+              "    command gh \"$@\""
+            div
+              "  fi"
+            div
+              "}"
+          h_flex #setup-gh-copy [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+            "Copy"
+        h_flex
+          h_flex #setup-gh-shell-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Starts your shell as an agent's starts and asks GitHub who its gh is"
+            "Check my shell"
+        div
+      h_flex #setup-notify-pulls {click}
+        v_flex
+          div
+            "Notify about pull requests"
+          div [fg=dim]
+            "When one of yours starts failing its checks, gets changes requested, or becomes ready to merge. Agents that need you notify anyway."
+        h_flex [bg=accent]
+          div [bg=accent_foreground]
+  h_flex [border=border]
+    h_flex #setup-remove [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks once more"
+      "Delete profile"
+    div
+    h_flex #setup-cancel [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Esc"
+      "Cancel"
+    h_flex #setup-save [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+      "Save"
+      div
+        div
+          div [bg=#7fb3ae]

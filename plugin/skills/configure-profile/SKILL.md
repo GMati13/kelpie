@@ -55,7 +55,9 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 | Scope | Covers |
 |---|---|
 | `all` | Everything, in the order below |
-| `general` | Name, folder, Claude account |
+| `general` | Name, folder |
+| `agents` | The accounts agents run on: Claude account |
+| `claude` | Claude account only |
 | `jira` | Board, sign-in, your part (the handover column) |
 | `jira-signin` | Jira sign-in only |
 | `handover` | Your part (the handover column) only |
@@ -74,7 +76,7 @@ For `all`, go in this order, skipping what the person doesn't use: ask early whe
 
 - **Name** (`name`): what this work is called, e.g. the team or client. Short.
 - **Folder** (`folder`): an absolute path. Does the current one hold the work's repos (git clones, directly or one level down)? Too broad (the home folder) makes every space this profile's; too narrow misses repos. Suggest the closest folder holding all of them.
-- **Claude account** (`claude.config`): the candidates are the `~/.claude*` folders with a `settings.json` or `projects/` (`ls -d ~/.claude*`). No `claude` section means Claude's own `~/.claude`. Ask which account this work runs on; it affects new agents only, resumed sessions keep theirs. The Kelpie plugin must be installed on that account too, for this setup to work from it.
+- **Claude account** (`claude.config`, on the dialog's Agents page, which also guides adding an account): the candidates are the `~/.claude*` folders with a `settings.json` or `projects/` (`ls -d ~/.claude*`). No `claude` section means Claude's own `~/.claude`. Ask which account this work runs on; it affects new agents only, resumed sessions keep theirs. With several accounts, a folder of each (`CLAUDE_CONFIG_DIR=~/.claude-work claude`, signed in once) is what makes them pickable here; the README's "Several accounts" guides both this and the GitHub account. The Kelpie plugin must be installed on that account too, for this setup to work from it.
 
 ### 2. Jira
 
@@ -94,7 +96,7 @@ Jira Cloud only (`https://<name>.atlassian.net`). Server and Data Center sign in
 ### 3. GitHub
 
 - **Owner** (`github.owner`): the organisation (or user) whose repositories hold the work. Find it through your own GitHub access if you have it (their organisations, where their pull requests are), else ask. Kelpie reads GitHub through the GitHub CLI signed in as the person (`gh auth login`, in a terminal of theirs); the GitHub page's Check button (`open_profile_page` with `github`) says whether it finds their pull requests.
-- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret.
+- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret. Kelpie's own lists use it at once, but the `gh` its agents and terminals run uses it only once the person's shell setup has the small `gh()` function Kelpie gives for it (agents and terminals start with `KELPIE_GH_ACCOUNT` set; the function reads it). After it's saved, open the GitHub page (`open_profile_page` with `github`): it shows the lines to copy and a Check my shell button that says whether it works. The shell setup is the person's own: add it there only if they ask you to, and then have them press Check my shell. Without it, `gh` in their agents acts as whichever account gh has active, which can be someone else.
 - **Notifications** (`notify.pulls`, default true): a notification when one of their pull requests starts failing checks, gets changes requested, or becomes ready to merge.
 
 ### 4. Web

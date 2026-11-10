@@ -1,6 +1,6 @@
 // Profiles, spaces and what agents start with (config.js): which profile a space belongs to, the
 // Desk, the handover column, prompt templates filled (placeholders, dropped lines) and the argv of
-// new, resumed and plain-terminal agents on a profile's Claude account.
+// new, resumed and plain-terminal agents on a profile's Claude account and with its GitHub account.
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
@@ -8,6 +8,7 @@ import {
   DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
+import { fakeBin, sh } from "../lib/helpers.mjs";
 
 const W = { id: "w", name: "Work", folder: "/code/work" };
 const SUB = { id: "sub", name: "Sub", folder: "/code/work/client" };
@@ -153,5 +154,22 @@ describe("the argv agents start with", () => {
     assert.deepEqual(resumeArgv("abc", null), ["claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("abc", "/h/.claude-work"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("demo-s2", "/h/.claude-work"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
+  });
+  test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only", () => {
+    const gh = { github: { owner: "acme", account: "work-me" } };
+    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude"]);
+    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", "claude", "-p"]);
+    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", "claude", "--resume", "abc"]);
+    // A name that isn't a GitHub login is left out, never passed on.
+    for (const bad of ["-u", "a b", "x;y"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["claude"], bad);
+  });
+  test("shellArgv: the GitHub account reaches the login shell's environment as an argument, never as script", () => {
+    const argv = shellArgv({ github: { owner: "acme", account: "work-me" } });
+    assert.ok(!argv[2].includes("work-me"));
+    const fakes = fakeBin().add("show-env", 'env | grep -E "^(KELPIE_GH_ACCOUNT|CLAUDE_ACCOUNT_CHOSEN)=" | sort');
+    const r = sh(argv[0], argv.slice(1), { env: { SHELL: `${fakes.bin}/show-env` } });
+    assert.equal(r.stdout, "CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\n");
+    assert.deepEqual(shellArgv({ github: { owner: "acme" } }), shellArgv(null));
   });
 });

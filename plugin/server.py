@@ -33,7 +33,7 @@ KEY = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 # The profile dialog's pages (mods/kelpie/setup.js TABS).
-TABS = ["general", "jira", "github", "web", "prompts", "messages", "commands"]
+TABS = ["general", "jira", "github", "web", "agents", "prompts", "messages", "commands"]
 TERMINAL = re.compile(r"^[\w-]{1,40}$")
 # Seconds Kelpie has to answer (it runs commands between frames); the tests shorten it. Picks may wait
 # on Jira (a key the list doesn't hold is looked up), so they get longer.
@@ -131,7 +131,7 @@ TOOLS = [
         "title": "Open the profile dialog on a page",
         "description": (
             "Opens Kelpie's profile dialog, for the profile Kelpie shows, on one page: general, jira, github, "
-            "web, prompts, messages or commands. Use it for the person to press a Check button (Jira's checks "
+            "web, agents, prompts, messages or commands. Use it for the person to press a Check button (Jira's checks "
             "their sign-in and lists the board's columns; GitHub's checks their pull requests) or to look over "
             "what you saved. It only opens the dialog."
         ),

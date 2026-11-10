@@ -253,7 +253,7 @@ async function launch(profile, it, { name, folder, argv, task }) {
   return spaceFor(profile, it, before);
 }
 
-const resumeSession = (profile, it, key, s, task) => launch(profile, it, { name: key, folder: s.cwd, argv: resumeArgv(s.id, s.config), task });
+const resumeSession = (profile, it, key, s, task) => launch(profile, it, { name: key, folder: s.cwd, argv: resumeArgv(s.id, s.config, profile?.github?.account), task });
 
 // What's said when a story's new space didn't show up, so the agents after the first can't open in it.
 const noSpace = (it, left) => say(`${it.key}'s new space didn't show up in time, so ${left.join(", ")} ${left.length === 1 ? "stays" : "stay"} paused: Resume again once it's there.`);
@@ -268,7 +268,7 @@ async function resume(profile, it, key, task, after = []) {
   for (const [i, p] of [...left].entries()) {
     let id;
     try {
-      id = await launch(profile, story, { name: p.name, folder: p.cwd, argv: resumeArgv(p.sessionId, p.config), ...(i === 0 && task ? { task } : {}) });
+      id = await launch(profile, story, { name: p.name, folder: p.cwd, argv: resumeArgv(p.sessionId, p.config, profile?.github?.account), ...(i === 0 && task ? { task } : {}) });
     } catch {
       break;
     }

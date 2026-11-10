@@ -233,7 +233,7 @@ export class WorkSide {
           .child(div().flex_1().min_w(0).child(groupHeader(t, "Earlier sessions", recent.length)))
           .child(icon(chrome(folded ? "chevron-right" : "chevron-down"), 12).text_color(t.dim).mr(8).mb(7)))
         .when(!folded, (x) => x.children(recent.map((s) => row(`plain-session-${s.id}`, false, div().size(7).rounded_full().border_1().border_color(t.dim), s.title,
-          `Continue · ${ago(s.updated)} ago`, () => startAgent(st, { folder: s.cwd, argv: resumeArgv(s.id, s.config) }))))));
+          `Continue · ${ago(s.updated)} ago`, () => startAgent(st, { folder: s.cwd, argv: resumeArgv(s.id, s.config, (st.setup ?? st.profile)?.github?.account) }))))));
   }
 
 }

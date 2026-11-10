@@ -10,7 +10,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState, Textarea, TextareaState } from "gpui-base";
 import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from "herdr";
 import { skinTheme } from "./skins/index.js";
-import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, own, platform, primaryButton, textButton } from "./ui.js";
+import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
 import { ASK_PROMPTS, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile } from "./config.js";
 
@@ -28,6 +28,23 @@ const singleQuoted = (s) => s.replace(/'/g, "'\\''");
 const storeCommand = (item, email) =>
   `read -rs "t?Jira token: " && printf '${singleQuoted(formatText(`add-generic-password -U -s ${securityArg(item)} -a ${securityArg(email)} -w `))}%s\\n' "$t" | security -i; unset t; echo`;
 
+// The shell function that makes gh act as a profile's GitHub account in its agents and terminals:
+// Kelpie starts them with KELPIE_GH_ACCOUNT (githubEnv in ui.js), and this, in the person's own shell
+// setup, asks gh for that account's token for each run (Kelpie can't put it there: a function doesn't
+// reach programs, and shell startup puts gh's own folder first in PATH). `gh auth …` and shells
+// without the variable run gh as it is. The README's "Several accounts" shows the same lines (a test
+// checks they match). zsh and bash; fish needs its own.
+export const GH_FUNCTION = `gh() {
+  if [ -n "$KELPIE_GH_ACCOUNT" ] && [ "$1" != auth ]; then
+    local t
+    t=$(command gh auth token --hostname github.com --user "$KELPIE_GH_ACCOUNT") \\
+      || { echo "gh isn't signed in as $KELPIE_GH_ACCOUNT: gh auth login" >&2; return 1; }
+    GH_TOKEN=$t command gh "$@"
+  else
+    command gh "$@"
+  fi
+}`;
+
 const TAB_W = 200;
 
 // The dialog's side tabs, one section each, in groups (a heading over each but the first). `focus`
@@ -37,12 +54,13 @@ const TABS = [
   { id: "jira", label: "Jira", icon: chrome("layers"), group: "Connections" },
   { id: "github", label: "GitHub", icon: own("git-pull-request") },
   { id: "web", label: "Web", icon: own("globe") },
-  { id: "prompts", label: "Prompts", icon: chrome("file-text"), group: "Agents" },
+  { id: "agents", label: "Agents", icon: own("bot"), group: "Agents" },
+  { id: "prompts", label: "Prompts", icon: chrome("file-text") },
   { id: "messages", label: "Messages", icon: own("message-square") },
   { id: "commands", label: "Story commands", icon: chrome("terminal") },
 ];
 // Which tab a check's part is on.
-const TAB_OF = { name: "general", jira: "jira", github: "github", web: "web" };
+const TAB_OF = { name: "general", jira: "jira", github: "github", "github-shell": "github", web: "web" };
 // The messages a review's buttons send (the rest are a pull request's), in config.js ASK_PROMPTS.
 const REVIEW_ASKS = ["post", "approve", "changes"];
 // The message a What next? idea starts its Desk agent with: in a group of its own.
@@ -235,6 +253,21 @@ export class Setup {
     });
   }
 
+  // Starts the person's shell as an agent's starts, with the account named, and asks GitHub whom its
+  // gh acts as (gh-shell-check.sh): whether GH_FUNCTION is in their setup and the account signed in.
+  checkShell(cx) {
+    const account = this.githubAccount;
+    if (!account) return;
+    this.result("github-shell", null, "Starting your shell and asking GitHub…", cx);
+    cx.spawn(async (cx) => {
+      const r = await exec("sh", [modFile("gh-shell-check.sh"), account]).catch(() => ({ code: 1, stdout: "" }));
+      const login = (r.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
+      if (login === account) return this.result("github-shell", true, `Set up: gh in this profile's agents and terminals acts as ${account}.`, cx);
+      if (login) return this.result("github-shell", false, `Your shell's gh acts as ${login}, not ${account}. Add the function below to your shell setup, then check again.`, cx);
+      this.result("github-shell", false, `Your shell's gh didn't answer. Is the function below in your shell setup, and gh signed in to ${account}? (gh auth login)`, cx);
+    });
+  }
+
   chooseFolder(cx) {
     cx.spawn(async (cx) => {
       const picked = await pickFolder({ prompt: `Where ${this.name.value().trim() || "this profile"}'s agents start` });
@@ -340,6 +373,7 @@ export class Setup {
         const folder = this.folder.value().trim().replace(/\/+$/, "").split("/").pop();
         return folder || "No folder yet";
       }
+      case "agents": return `Claude: ${this.claudeConfig ? this.claudeConfig.replace(/\/+$/, "").split("/").pop() : "default account"}`;
       case "jira": {
         const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
         return parsed ? `${parsed.site.replace(/^https:\/\//, "").split(".")[0]} · board ${parsed.board}` : "Not connected";
@@ -369,6 +403,12 @@ export class Setup {
     // The parts of a tab's page: a heading with what the tab is for, groups of fields under small
     // headings, and fields (a label, the control, a hint under it).
     const hint = (text) => div().pt(6).text_size(SMALL).text_color(t.dim).child(text);
+    // A step of a guide: what to do, then the lines to run or paste, with Copy.
+    const step = (id, text, code) => v_flex().pt(DIALOG.section)
+      .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(text))
+      .when(Boolean(code), (el) => el.child(h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
+        .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(String(code).split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
+        .child(textButton(t, `${id}-copy`, "Copy", (_e, cx) => cx.write_to_clipboard(code)))));
     const input = (state) => Input.new(state).h(34).px(10).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(TEXT).text_color(t.foreground);
     const textarea = (state) => Textarea.new(state).px(10).py(8).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(TEXT).text_color(t.foreground);
     const row = (...children) => h_flex().gap(8).items_center().children(children.filter(Boolean));
@@ -456,10 +496,22 @@ export class Setup {
         check("name"),
         field("Folder", row(grow(input(this.folder)), textButton(t, "setup-folder-pick", "Choose…", (_e, cx) => this.chooseFolder(cx))),
           "Its agents start here and its Claude sessions show; spaces opened in it, or under it, belong to this profile."),
+      ],
+
+      agents: () => [
+        page("Agents", "The accounts this profile's agents run on, so work and personal accounts stay apart."),
+        group("Claude", null, "claude"),
         field("Claude account", choice("setup-claude", [
           { label: "Default", value: null, on: !this.claudeConfig, tip: "Claude's own folder, ~/.claude" },
           ...dirs.map((d) => ({ label: dirName(d), value: d, on: this.claudeConfig === d, tip: d })),
-        ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR). Lists your ~/.claude* folders that have a settings.json or projects/ (any you've run Claude with via CLAUDE_CONFIG_DIR). Resuming a session keeps the account it ran on."),
+        ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR): its agents, What next? and its terminals, where a claude you type uses it too. Lists your ~/.claude* folders that have a settings.json or projects/. Resuming a session keeps the account it ran on."),
+        group("Another Claude account"),
+        step("setup-claude-new", "Give it a config folder of its own and sign in there once, in a terminal. Then open this page again: the folder is listed above.",
+          `CLAUDE_CONFIG_DIR=~/.claude-${this.profile?.id ?? "work"} claude`),
+        step("setup-claude-limits", "For its usage limits in the footer, add this to that folder's settings.json (a word after the path names the account there):",
+          `"statusLine": { "type": "command", "command": "sh ${modFile("claude-statusline.sh")}" }`),
+        step("setup-claude-plugin", "Kelpie's Claude Code plugin goes on each account a profile uses: Kelpie offers to install it the first time it's needed (Let me configure it for you, What next?)."),
+        step("setup-claude-shell", "Does your own shell pick a Claude account, by folder say (a claude function of yours)? Have it leave the choice alone when CLAUDE_ACCOUNT_CHOSEN is set: Kelpie's terminals set it, with the profile's account already chosen."),
       ],
 
       jira: () => [
@@ -494,7 +546,15 @@ export class Setup {
         field("GitHub account", choice("setup-github-account", [
           { label: "Default", value: null, on: !this.githubAccount, tip: "The account gh has active" },
           ...ghAccounts.map((a) => ({ label: a, value: a, on: this.githubAccount === a })),
-        ], (v) => { this.githubAccount = v; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change."),
+        ], (v) => { this.githubAccount = v; delete this.checks["github-shell"]; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change."),
+        this.githubAccount && v_flex().pt(DIALOG.section)
+          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account:`))
+          .child(h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
+            .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(GH_FUNCTION.split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
+            .child(textButton(t, "setup-gh-copy", "Copy", (_e, cx) => cx.write_to_clipboard(GH_FUNCTION))))
+          .child(h_flex().pt(DIALOG.gap).gap(DIALOG.gap).items_center()
+            .child(textButton(t, "setup-gh-shell-check", "Check my shell", (_e, cx) => this.checkShell(cx), { tip: "Starts your shell as an agent's starts and asks GitHub who its gh is" })))
+          .child(check("github-shell") ?? div()),
         toggle("setup-notify-pulls", "Notify about pull requests", this.notifyPulls, (_e, cx) => { this.notifyPulls = !this.notifyPulls; cx.notify(); },
           "When one of yours starts failing its checks, gets changes requested, or becomes ready to merge. Agents that need you notify anyway."),
       ],

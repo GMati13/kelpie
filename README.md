@@ -72,7 +72,29 @@ Then:
 
 ### Profiles
 
-A profile is a folder you work in, plus whatever you connect to it: a Jira board (its sprint becomes the sidebar's stories), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`), a start page for the Web panel. Only the folder is needed. Without Jira, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
+A profile is a folder you work in, plus whatever you connect to it: a Jira board (its sprint becomes the sidebar's stories), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`) and a GitHub account (below, Several accounts), a start page for the Web panel. Only the folder is needed. Without Jira, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
+
+### Several accounts
+
+Each profile can run on its own Claude account and its own GitHub account, so work and personal (or two clients) never mix.
+
+- **Claude:** give each account a config folder of its own and sign in there once, for example `CLAUDE_CONFIG_DIR=~/.claude-work claude`. Pick it as the profile's Claude account (the profile dialog's Agents page, which walks through all of this, commands to copy included). For its usage limits in the footer, give that folder's `settings.json` the status line below (Optional), and install Kelpie's plugin on it too. The profile's new agents, What next? and its terminals start with `CLAUDE_CONFIG_DIR` set, so a `claude` you type there uses it too; a resumed session keeps the account it ran on. If your shell picks a Claude account by folder (a `claude` function of your own), have it leave the choice alone when `CLAUDE_ACCOUNT_CHOSEN` is set, as Kelpie's terminals set it.
+- **GitHub:** sign in to each account with `gh auth login` (gh keeps them all; `gh auth status` lists them) and pick one as the profile's GitHub account (the GitHub page). Kelpie's own pull request lists, files and Approve use it. The profile's agents and terminals start with `KELPIE_GH_ACCOUNT=<account>`; for the `gh` they run to act as it too, add this to your shell setup, `~/.zshrc` or `~/.bashrc` (the GitHub page has it to copy, and its Check my shell tries it):
+
+  ```sh
+  gh() {
+    if [ -n "$KELPIE_GH_ACCOUNT" ] && [ "$1" != auth ]; then
+      local t
+      t=$(command gh auth token --hostname github.com --user "$KELPIE_GH_ACCOUNT") \
+        || { echo "gh isn't signed in as $KELPIE_GH_ACCOUNT: gh auth login" >&2; return 1; }
+      GH_TOKEN=$t command gh "$@"
+    else
+      command gh "$@"
+    fi
+  }
+  ```
+
+  Without it, gh there acts as gh's active account, and gh keeps one active sign-in for the whole machine: signing in to another account, anywhere, can switch it. Git itself (push, fetch) signs in its own way, over SSH or a credential helper, and neither setting changes it.
 
 ### Optional
 
