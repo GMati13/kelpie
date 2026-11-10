@@ -123,7 +123,7 @@ export async function demoJira(args) {
   if (!i) return { site: f.profile.site, code: 404, body: { errorMessages: ["Issue does not exist in the demo."] } };
   if (m[2]) {
     const now = MOVED[i.key] ?? i.status;
-    return ok({ transitions: statuses(f).filter((s) => s.name !== now).map((s) => ({ id: s.id, name: s.name, isAvailable: true, to: { name: s.name, statusCategory: { key: s.category } } })) });
+    return ok({ transitions: statuses(f).filter((s) => s.name !== now).map((s) => ({ id: s.id, name: s.name, isAvailable: true, to: { id: s.id, name: s.name, statusCategory: { key: s.category } } })) });
   }
   return ok({ key: i.key, fields: { ...fields(f, i), description: adfOf(i.description) } });
 }
