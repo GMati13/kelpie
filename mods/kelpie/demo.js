@@ -5,6 +5,8 @@
 // fixture's spaces, whose tabs run demo/agent.sh: a stand-in that reports itself to Herdr as a Claude
 // agent in the state the fixture asks for (OSC 7501) and draws a still screen. Edit the fixture and
 // press Refresh to see another situation; run the command again to open spaces that were closed.
+// `kelpie.demo-github` turns the same profile's board into a GitHub Project made of the same issues
+// (demoProject()); `kelpie.demo` puts Jira back.
 //   Only what Kelpie asks is answered: the board's configuration, active sprint, JQL searches (yours,
 //   and `parent in (...)`), an issue's fields and transitions, a transition (kept until a reload of
 //   the mod), pull request searches and files, uncommitted work, sessions and the footer's limits.
@@ -134,6 +136,79 @@ export async function demoMoveTo(key, column) {
   MOVED[key] = c.statuses[0].name;
 }
 
+// --- GitHub Project ---------------------------------------------------------------------------
+// The same issues as a GitHub Project's (fixture `project`: its title, the repo every issue is in,
+// the iteration field's name): issue #175 of that repo is ACME-175, each board column a Status option
+// (`opt-<n>`, named as the column) holding the issues whose status is in it, the sprint the current
+// iteration. A pull request with `closes` is linked to that issue as GitHub's closing reference.
+// project.js's queries are answered by their operation name, their variables read from gh's -f/-F.
+
+const PROJECT_ID = "PVT_demo";
+const nodeId = (key) => `I_${key}`;
+const numberOf = (key) => Number(String(key).split("-").pop());
+const dayStr = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// The column an issue is in: by the column's name (a Status option's, as a move on the Project
+// records it) or a Jira status's.
+const columnOf = (f, name) => {
+  const cols = f.board.columns;
+  const at = cols.findIndex((c) => c.name === name);
+  return at >= 0 ? at : Math.max(0, cols.findIndex((c) => c.statuses.some((s) => s.name === statusNamed(f, name).name)));
+};
+const login = (name) => String(name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function ghIssue(f, i) {
+  const repo = f.project.repo;
+  const column = columnOf(f, MOVED[i.key] ?? i.status);
+  const closed = column === f.board.columns.length - 1;
+  const who = i.assignee ?? (i.mine ? f.profile.meName : null);
+  const parent = i.parent && issueById(f).get(i.parent);
+  return {
+    id: nodeId(i.key), number: numberOf(i.key), title: i.summary, url: `https://github.com/${repo}/issues/${numberOf(i.key)}`,
+    state: closed ? "CLOSED" : "OPEN", closedAt: closed ? new Date(when("-2d")).toISOString() : null, repository: { nameWithOwner: repo },
+    assignees: { nodes: who ? [{ login: i.mine ? f.profile.me : login(who), name: who, avatarUrl: null }] : [] },
+    parent: parent ? { id: nodeId(parent.key), number: numberOf(parent.key), repository: { nameWithOwner: repo } } : null,
+    closedByPullRequestsReferences: { nodes: f.pulls.filter((p) => p.closes === i.key).map((p) => ({ url: prUrl(f, p) })) },
+    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name } }] },
+  };
+}
+// The variables of a gh graphql call: -f/-F name=value, `name[]` gathered into a list.
+function variables(args) {
+  const out = {};
+  for (let n = 0; n < args.length - 1; n++) {
+    if (args[n] !== "-f" && args[n] !== "-F") continue;
+    const [, name, value] = /^([^=]+)=(.*)$/s.exec(args[++n]) ?? [];
+    if (!name) continue;
+    if (name.endsWith("[]")) (out[name.slice(0, -2)] ??= []).push(value); else out[name] = value;
+  }
+  return out;
+}
+// project.js's GraphQL for a demo profile: { data } as GitHub answers.
+export async function demoProject(args) {
+  const f = await demoFixture();
+  if (!f.project) throw new Error("The demo's fixture has no GitHub Project.");
+  const v = variables(args);
+  const op = /^query\s+(\w+)/.exec(v.query ?? "")?.[1];
+  if (op === "KelpieStories") {
+    const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
+    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };
+  }
+  if (op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
+  const sprint = f.sprints?.[0];
+  const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(when("-7d")), duration: 14 } : null;
+  const field = { id: "PVTIF_demo", name: f.project.iteration ?? "Sprint", configuration: { iterations: iteration ? [iteration] : [] } };
+  const project = {
+    id: PROJECT_ID, title: f.project.title, url: `https://github.com/${op === "KelpieProjectOrg" ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
+    field: { id: "PVTSSF_demo", options: f.board.columns.map((c, n) => ({ id: `opt-${n}`, name: c.name })) },
+    fields: { nodes: [{}, field] },
+    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter((i) => i.mine).map((i) => ({
+      id: `PVTI_${i.key}`, type: "ISSUE", isArchived: false,
+      fieldValues: { nodes: iteration ? [{}, { iterationId: iteration.id, field: { id: field.id } }] : [] },
+      content: ghIssue(f, i),
+    })) },
+  };
+  return { data: op === "KelpieProjectOrg" ? { organization: { projectV2: project } } : { user: { projectV2: project } } };
+}
+
 // --- GitHub -----------------------------------------------------------------------------------
 
 const prUrl = (f, p) => `https://github.com/${f.profile.owner}/${p.repo}/pull/${p.number}`;
@@ -243,16 +318,29 @@ async function waitForSpace(name, before) {
 // paused agents it lists. Spaces already open are left as they are.
 // The fixture's asks of agents (`asks`), as the plugin's add_to_next keeps them (stories.js addAsk):
 // each from the agent of its `tab` (`terminalOf(tab)`, its terminal; left out while there's none, as
-// an ask nobody waits on goes), a story's key linking to Jira.
-export function demoAsks(f, terminalOf = () => null) {
+// an ask nobody waits on goes), a story's key linking to its ticket: on Jira, or with `project` on the
+// GitHub Project's repo.
+export function demoAsks(f, terminalOf = () => null, project = false) {
+  const link = (key) => (project ? `https://github.com/${f.project.repo}/issues/${numberOf(key)}` : `${f.profile.site}/browse/${key}`);
   return (f.asks ?? []).flatMap((a, i) => {
     const terminal = terminalOf(a.tab);
     return terminal ? [{ id: `demo-${i}`, at: when(a.at ?? "-5m"), action: a.action, why: a.why ?? "", terminal, tab: a.tab,
-      ...(a.key ? { key: a.key, url: `${f.profile.site}/browse/${a.key}` } : {}) }] : [];
+      ...(a.key ? { key: a.key, url: link(a.key) } : {}) }] : [];
   });
 }
 
-export async function setupDemo() {
+// The demo profile's board: the fixture's Jira board, or (`board` "project", kelpie.demo-github) the
+// same issues as a GitHub Project. One profile either way, as two would open spaces of the same names.
+export function demoBoard(f, board = "jira") {
+  const p = f.profile;
+  if (board === "project") {
+    const number = 1;
+    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}) } };
+  }
+  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}) }, project: null };
+}
+
+export async function setupDemo(board = "jira") {
   const f = await demoFixture();
   const home = await homeOf();
   const p = f.profile;
@@ -260,8 +348,7 @@ export async function setupDemo() {
   await exec("mkdir", ["-p", folder]);
   const was = profileById(DEMO_ID);
   saveProfile(DEMO_ID, {
-    ...(was ?? {}), name: p.name, folder, demo: true, claude: null,
-    jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}) },
+    ...(was ?? {}), name: p.name, folder, demo: true, claude: null, ...demoBoard(f, board),
     github: { owner: p.owner, demo: true },
   });
   const owned = { ...(shared("kelpie.space.profile") ?? {}) };
@@ -282,7 +369,7 @@ export async function setupDemo() {
   const paused = {};
   for (const [key, list] of Object.entries(f.paused ?? {})) paused[key] = list.map((x, n) => ({ sessionId: x.id ?? `demo-paused-${key}-${n}`, cwd: folder, name: x.name ?? key, at: when(x.at ?? "-3h") }));
   setShared("kelpie.paused", { ...(shared("kelpie.paused") ?? {}), [DEMO_ID]: paused });
-  setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address) });
+  setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address, board === "project") });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
 }
 

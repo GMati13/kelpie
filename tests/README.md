@@ -119,7 +119,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 
 - `demoData(profile = DEMO_PROFILE)`: what the story list's load gives for the demo profile
   (`StoryList.fetch`, each request answered by demo.js from `mods/kelpie/demo/demo.json`), ready for
-  `build()`. Nothing runs: no exec, no network.
+  `build()`. Nothing runs: no exec, no network. `demoData(DEMO_PROJECT_PROFILE)` loads the same demo
+  with its board a GitHub Project (kelpie.demo-github), answered by demo.js `demoProject()`; the parity
+  test in `project.test.mjs` checks both build the same stories.
 - `issue(key, status, parent)`, `pr(title, { checks, review, merged, draft, repo, number })` and
   `data({ parents, children, mine, prs, sessions, reviews, columns })`: hand-built data in the shapes the
   list keeps, on a board `COLUMNS` of To Do, In Progress, QA (the default handover column) and Done.
@@ -150,6 +152,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   the board's questions answered for the demo (`loadBoard`, `description`, `ticketText`, `statusOptions`,
   `lookUp`), that no view but board.js calls `jira()` or reads a profile's `jira` section itself; a GitHub
   Project's board, `parseProject()` and the key prefixes (`defaultPrefix`, `parsePrefixes`, `prefixFor`).
+- `project.test.mjs`: a GitHub Project's load (project.js) on a faked gh: the iteration scope, no
+  iteration field, none running, sub-issues off the Project, drafts and pull request items skipped,
+  paging, user and organisation queries, every call a constant query with its values as variables (and
+  bad owners, numbers and node ids refused), keys and prefixes (collisions, repos with none), pull
+  requests attached by closing links (a title's key wins), a Project issue's link, and the demo loaded as
+  a Project building the same stories as the Jira demo (the parity test).
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.

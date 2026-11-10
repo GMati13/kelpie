@@ -44,6 +44,9 @@ function keyIn(text, known) {
   for (const [, k] of s.matchAll(KEYS)) if (!known?.size || known.has(k.split("-")[0])) return k;
   return null;
 }
+// The ticket a pull request belongs to: the key its title names, else the board's link to it (a
+// GitHub Project's issue it closes, data.links), so a key in the title still wins.
+const prKey = (p, data, known) => keyIn(p.title, known) ?? data?.links?.[p.url] ?? null;
 
 // Starting, resuming and opening agents for a story takes a moment (a space is made, sessions are
 // read) while the button still shows: a second click inside that time would start a second one, or a
@@ -325,7 +328,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
   const lastOf = (k) => (byAgent.has(k) || paused[k] ? null : last.get(k) ?? null);
   const prs = new Map();
   for (const p of data.prs) {
-    const k = keyIn(p.title, known);
+    const k = prKey(p, data, known);
     if (k) prs.set(k, [...(prs.get(k) ?? []), { ...p, key: k }]);
   }
   const used = new Set();
@@ -391,11 +394,11 @@ const isPaused = (it) => !allAgents(it).length && allPaused(it).length > 0;
 // Assignees' pictures. Jira gives each person's avatar as a link; Herdr draws images only from its own
 // folder, so each is downloaded once (avatar.sh) into art/<mod>/avatars, named after its link, and
 // drawn from there, with the initials until it's there or when it can't be had. Only links to
-// Gravatar and Atlassian's public avatar host count: the Jira site's own need a sign-in, and nothing
-// here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
+// Gravatar, GitHub's avatar host (a Project's assignees) and Atlassian's public avatar host count:
+// the Jira site's own need a sign-in, and nothing here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
 const AVATARS = "kelpie.avatars";
 const AVATAR_RETRY = 24 * 60 * 60 * 1000; // a picture that failed is tried again a day later
-const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
+const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatars\.githubusercontent\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
 // Exported for the tests.
 export const avatarUrl = (u) => typeof u === "string" && u.length < 1000 && AVATAR_HOST.test(u);
 const avatarName = (url) => `${fnv(url)}${fnv(`${url.length}:${url}`)}`;
@@ -707,7 +710,7 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
-const issue = (i) => ({ key: i.key, fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -742,7 +745,7 @@ const pullItem = (p) => ({
 });
 const pullsOf = (data) => {
   const known = projectsOf(data ?? {});
-  return (data?.prs ?? []).filter((p) => !p.merged && !keyIn(p.title, known)).map(pullItem);
+  return (data?.prs ?? []).filter((p) => !p.merged && !prKey(p, data, known)).map(pullItem);
 };
 // The pull request an item is, when it's shown on its own (a review, or one of yours with no ticket).
 const lonePr = (it) => it?.review ?? it?.pull ?? null;
@@ -1038,7 +1041,7 @@ function knownKeys() {
     if (!d) continue;
     const known = projectsOf(d);
     for (const i of [...(d.parents ?? []), ...(d.children ?? [])]) keys.add(i.key);
-    for (const p of d.prs ?? []) keys.add(keyIn(p.title, known) ?? `pull:${prName(p)}`);
+    for (const p of d.prs ?? []) keys.add(prKey(p, d, known) ?? `pull:${prName(p)}`);
     // Items shown on their own keep theirs by their own key.
     for (const p of d.reviews ?? []) keys.add(`review:${prName(p)}`);
   }
@@ -1534,7 +1537,7 @@ async function checkoutReview(profile, p) {
 // own description ("Story KEY: summary" and the story's), as subtasks often say little themselves.
 async function reviewTicket(profile, p) {
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
-  const ticket = keyIn(p.title, data ? projectsOf(data) : null);
+  const ticket = data ? prKey(p, data, projectsOf(data)) : keyIn(p.title, null);
   const board = boardOf(profile);
   if (!ticket || !board) return ticket ? { ticket } : {};
   try {
@@ -1722,12 +1725,15 @@ export class Stories extends Source {
     // What doesn't wait on Jira runs beside it.
     const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account }).catch(() => []) : Promise.resolve([]);
     const sessionsP = this.fetchSessions({ space, setup });
-    const { site, columns, sprints, mine, parents, children } = await loadBoard(boardOf(setup));
+    // A GitHub Project's load also says which pull requests close its issues, which repo each key's
+    // issues are in, and the Project itself (board.js); Jira's has none of those.
+    const { site, columns, sprints, mine, parents, children, links, repos, project } = await loadBoard(boardOf(setup));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     return {
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
+      ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}),
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     };
@@ -3410,7 +3416,7 @@ export class StoryList extends Stories {
     // story on its Changes (the pull request's files); any other opens on GitHub.
     const known = projectsOf(st.data);
     const storyOf = (p) => {
-      const k = keyIn(p.title, known);
+      const k = prKey(p, st.data, known);
       return k ? items.find(({ it }) => it.key === k || it.subs.some((s) => s.key === k))?.it ?? null : null;
     };
     const minePrs = (st.data.prs ?? []).filter((p) => !p.merged).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
@@ -3419,7 +3425,7 @@ export class StoryList extends Stories {
       const story = storyOf(p);
       const [state, words, color] = prLook(t, p, checksOf(p));
       // One naming no ticket of the board is shown on its own (pullItem), on its Changes too.
-      const lone = story || keyIn(p.title, known) ? null : pullItem(p);
+      const lone = story || prKey(p, st.data, known) ? null : pullItem(p);
       const target = story ?? lone;
       return plain(`mine-${prName(p)}`, Boolean(lone) && lone.key === shown?.key, color, p.title.replace(/^\s*\[[^\]]*\]\s*/, ""), `${prName(p)}${p.updatedAt ? ` · ${ago(Date.parse(p.updatedAt))}` : ""}`,
         () => { if (target) { selectStory(st.profile, target); setView(st.profile, target, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
@@ -3431,7 +3437,7 @@ export class StoryList extends Stories {
     const byStory = (list, prOf) => {
       const groups = new Map();
       for (const x of list) {
-        const p = prOf(x), story = storyOf(p), key = story?.key ?? keyIn(p.title, known) ?? "";
+        const p = prOf(x), story = storyOf(p), key = story?.key ?? prKey(p, st.data, known) ?? "";
         if (!groups.has(key)) groups.set(key, { key, story, list: [] });
         groups.get(key).list.push(x);
       }

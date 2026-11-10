@@ -32,6 +32,12 @@ describe("avatar.sh", () => {
     assert.deepEqual(argv.slice(-2), ["--", ATL]);
     assert.equal(setup(JPEG).run("abc", ATL).stdout.trim(), "abc.jpg");
   });
+  test("takes GitHub's avatar host too (a GitHub Project's assignees)", () => {
+    const { run } = setup(PNG);
+    const r = run("gh1", "https://avatars.githubusercontent.com/u/583231?u=82a1&v=4&s=48");
+    assert.equal(r.code, 0, r.stderr);
+    for (const url of ["http://avatars.githubusercontent.com/u/1", "https://avatars.githubusercontent.com.evil.example/u/1", "https://github.com/octocat.png"]) assert.equal(run("abc", url).code, 2, url);
+  });
   test("anything that isn't an image is thrown away", () => {
     const { dir, run } = setup("<html>sign in</html>");
     assert.notEqual(run("abc", ATL).code, 0);
