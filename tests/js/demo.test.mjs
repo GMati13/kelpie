@@ -4,7 +4,7 @@ import { before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readRepo } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { demoAccounts, demoBlob, demoFixture, demoJira, demoLocal, demoPullFiles, demoPulls, demoSessions } from "../../mods/kelpie/demo.js";
+import { demoAccounts, demoBlob, demoBoard, demoFixture, demoJira, demoLocal, demoPullFiles, demoPulls, demoSessions } from "../../mods/kelpie/demo.js";
 import { jira } from "../../mods/kelpie/sprint.js";
 import { searchPulls } from "../../mods/kelpie/pulls.js";
 import { adfBlocks, adfText } from "../../mods/kelpie/adf.js";
@@ -77,7 +77,7 @@ describe("demoPulls and the local helpers", () => {
   test("yours open, yours merged, and the reviews waiting for you", async () => {
     const mine = await searchPulls("user:kelpie--demo is:pr is:open author:@me", { demo: true });
     assert.deepEqual(mine.map((p) => `${p.repository.name}#${p.number}`), ["web#418", "payments#97", "search#233", "charts#58", "web#415", "web#423", "docs#58", "docs#61"]);
-    assert.deepEqual((await demoPulls("user:kelpie--demo is:pr is:merged author:@me merged:>=2026-01-01")).map((p) => p.number), [291, 409, 412, 298]);
+    assert.deepEqual((await demoPulls("user:kelpie--demo is:pr is:merged author:@me merged:>=2026-01-01")).map((p) => p.number), [291, 409, 412, 298, 287]);
     const reviews = await demoPulls("user:kelpie--demo is:pr is:open review-requested:@me");
     assert.deepEqual(reviews.map((p) => [p.number, p.author.login]), [[421, "priya-n"], [305, "tomas-r"]]);
   });
@@ -93,7 +93,7 @@ describe("demoPulls and the local helpers", () => {
     const [p] = await demoPulls("is:open");
     assert.ok(Math.abs(Date.now() - 25 * MIN - Date.parse(p.updatedAt)) < MIN, p.updatedAt);
     const sessions = await demoSessions("/f");
-    assert.deepEqual(sessions.map((s) => s.id), ["demo-s2", "demo-s4", "demo-s1", "demo-s3"], "newest first");
+    assert.deepEqual(sessions.map((s) => s.id), ["demo-s2", "demo-s4", "demo-s1", "demo-s3", "demo-s5"], "newest first");
     assert.ok(Math.abs(Date.now() - 3 * 60 * MIN - sessions[0].updated) < MIN);
     assert.deepEqual(sessions[0], { ...sessions[0], cwd: "/f", running: false, first: ["ACME-139"], keys: ["ACME-139"], title: "Token bucket per API key" });
   });
@@ -216,5 +216,15 @@ describe("the demo through Kelpie's own loaders", () => {
     await jira({ demo: true }, "get", "/rest/agile/1.0/board/7/configuration");
     await searchPulls("is:open author:@me", { demo: true });
     assert.deepEqual(mock.of("exec"), []);
+  });
+});
+
+describe("demoBoard: the demo profile's board", () => {
+  test("a team's by default; the fixture's solo makes it a board worked alone, Jira or Project", async () => {
+    const f = await demoFixture();
+    assert.equal(demoBoard(f).jira.solo, undefined);
+    const alone = { ...f, profile: { ...f.profile, solo: true } };
+    assert.equal(demoBoard(alone).jira.solo, true);
+    assert.equal(demoBoard(alone, "project").project.solo, true);
   });
 });

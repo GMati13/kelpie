@@ -92,6 +92,17 @@ test("the story picker: every story, then filtered", () => {
   snap("dialogs/story-picker-filtered", byId(filtered, "sp-list"));
 });
 
+test("the story picker finds a finished story the list left out, saying it's done", () => {
+  setupDemoWorld({ stories, props: { role: "story-picker", overlay: "overlay-1" } });
+  const picker = new StoryPicker();
+  const cx = fakeCx();
+  picker.init(cx);
+  picker.filter = "currency";
+  const row = byId(picker.render(cx), "sp-ACME-118");
+  assert.ok(row, "ACME-118 is found");
+  assert.ok(texts(row).includes("Done"));
+});
+
 test("Kelpie-Plain: the story picker and a confirm", () => {
   setupDemoWorld({ stories, layout: "Kelpie-Plain", props: { role: "story-picker", overlay: "overlay-1" } });
   const picker = new StoryPicker();
@@ -189,6 +200,23 @@ test("choosing a GitHub Project: Save keeps it and drops Jira, the board's promp
   press(d.render(cx), "setup-board-kind-0", cx);
   assert.equal(d.draft().profile.project, null);
   assert.equal(d.draft().profile.jira.prompt, "Do {key}");
+});
+
+test("I work alone: the Board page's toggle saves solo with the board, and off drops it", () => {
+  const { d, cx } = profileDialog("jira", {}, { filled: true });
+  assert.equal(d.draft().profile.jira.solo, undefined, "a team by default");
+  press(d.render(cx), "setup-solo", cx);
+  assert.equal(d.draft().profile.jira.solo, true);
+  assert.equal(d.dirty(), true);
+  assert.ok(texts(d.render(cx)).some((x) => x.includes('they\'re under "Built"')), "the hint names what the list will say");
+  // It moves with the board, as the handover column does.
+  press(d.render(cx), "setup-board-kind-1", cx);
+  d.projectUrl.set_value(DEMO_PROJECT.url);
+  assert.equal(d.draft().profile.project.solo, true);
+  press(d.render(cx), "setup-board-kind-0", cx);
+  press(d.render(cx), "setup-solo", cx);
+  assert.equal(d.draft().profile.jira.solo, undefined);
+  assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, solo: true } }).d.solo, true, "a saved one opens on");
 });
 
 test("a Project's address that isn't one, and prefixes that can't be keys, stop Save with a reason", () => {

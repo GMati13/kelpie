@@ -246,6 +246,21 @@
       "parent": "ACME-122",
       "status": "Done",
       "mine": true
+    },
+    {
+      "key": "ACME-118",
+      "assignee": "Priya Nair",
+      "summary": "Show prices in the traveller's currency",
+      "type": "Story",
+      "status": "Done",
+      "description": "Prices show in euros whatever the traveller's home currency, so most of them convert in their head before booking.\n\nShow every price in the currency of the traveller's account, converted at the day's rate, with the original price in a tooltip."
+    },
+    {
+      "key": "ACME-119",
+      "summary": "Convert prices in the price service",
+      "parent": "ACME-118",
+      "status": "Done",
+      "mine": true
     }
   ],
   "pulls": [
@@ -413,6 +428,13 @@
       "merged": true
     },
     {
+      "repo": "api",
+      "number": 287,
+      "title": "ACME-119 Convert prices to the traveller's currency",
+      "updated": "-6d",
+      "merged": true
+    },
+    {
       "repo": "web",
       "number": 421,
       "title": "ACME-166 Share a trip with a link",
@@ -489,6 +511,12 @@
       "title": "Compare map libraries by size",
       "first": [],
       "updated": "-1d"
+    },
+    {
+      "id": "demo-s5",
+      "title": "Currency conversion in the price service",
+      "first": ["ACME-119"],
+      "updated": "-6d"
     }
   ],
   "spaces": [

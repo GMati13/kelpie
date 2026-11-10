@@ -1,0 +1,18 @@
+h_flex #done-ACME-118 [hover(bg=hover)] {click} tip="Done on the board · 1 subtask · 1 done. Show its details, pull requests and earlier sessions"
+  div
+    div
+      svg chrome:check [fg=done]
+  v_flex
+    div [font="DM Sans" fg=muted]
+      "Show prices in the traveller's currency"
+    h_flex [opacity=0.6]
+      div [font="DM Mono" fg=dim]
+        "ACME-118"
+      h_flex #b-pr-ACME-118 [fg=muted] tip="Every pull request merged"
+        div
+          svg own:git-merged [fg=ansi4]
+      h_flex #b-subs-ACME-118 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+        h_flex [bg=raised]
+          div [bg=done]
+        div [fg=dim]
+          "1/1"

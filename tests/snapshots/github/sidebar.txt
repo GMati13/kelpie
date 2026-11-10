@@ -521,3 +521,14 @@ v_flex [fg=foreground]
               div [bg=ansi4]
             div [fg=dim]
               "0/1"
+    div #stories-done {click} tip="Show the stories finished this sprint"
+      div
+        div [font="DM Sans" fg=muted]
+          "DONE"
+        div [font="DM Mono" fg=dim]
+          "1"
+        div
+          svg chrome:chevron-right [fg=dim]
+        div
+          div
+            div [bg=dim/f2] ×32 … [bg=dim/1a]

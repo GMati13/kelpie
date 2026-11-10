@@ -36,6 +36,8 @@ const CASES = [
   ["paused", { preview: "ACME-138" }, "Resume"],
   ["not-open", { preview: "ACME-180" }, "Start work"],
   ["finished", { space: "ACME-122" }, null],
+  // Done and cleaned up (no space): previewed from the sidebar's Done group.
+  ["done", { preview: "ACME-118" }, null],
 ];
 for (const [name, opts, main, todo] of CASES) {
   test(`header: ${name}`, { todo }, async () => {
@@ -44,6 +46,14 @@ for (const [name, opts, main, todo] of CASES) {
     snap(`header/${name}`, el);
   });
 }
+
+// A done story out of the list has nothing to start as its main action; More still starts one afresh.
+test("header: a done story offers a fresh start only under More", async () => {
+  const { el, view, cx } = await header({ preview: "ACME-118" });
+  assert.equal(byId(el, "story-main"), null, "no filled Start work");
+  view.menu = "story-more";
+  assert.ok(texts(view.render(cx)).includes("Start fresh"));
+});
 
 test("header: folded, and its More menu open", async () => {
   const { el, view, cx } = await header({ preview: "ACME-138", shared: { "kelpie.storyhead.folded": true } });
