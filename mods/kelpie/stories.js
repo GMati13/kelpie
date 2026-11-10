@@ -85,6 +85,7 @@ const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state 
 const failing = (p) => ["FAILURE", "ERROR"].includes(checksOf(p));
 const ready = (p) => !p.merged && !p.isDraft && checksOf(p) === "SUCCESS" && p.reviewDecision === "APPROVED";
 const prName = (p) => `${p.repository.name}#${p.number}`;
+const ARMED_FOR = 5000; // how long a careful button stays armed (carefulButton)
 // Pull requests you approved from Kelpie (url -> when, a day at most): until the stories load again
 // after it, the header says Approved from this; after, from GitHub's own word (viewerReview, your
 // latest review), so a later change request or a dismissed approval shows too.
@@ -1514,12 +1515,19 @@ export class Stories extends Source {
   }
 
   // A button for what can't be taken back: when `careful`, its first click arms it ("Confirm …") and
-  // a second within a few seconds does it.
+  // a second within ARMED_FOR does it. It's armed only for what was shown when it was pressed (the
+  // same ids are on every story's header, so another story shown would have inherited it), and a
+  // timer disarms it, as nothing else may redraw the view.
   // With `filled`, it's the view's main action (primaryButton).
   carefulButton(t, id, label, careful, action, { tip, confirmTip, filled = false } = {}) {
-    const armed = this.armed === id && Date.now() - this.armedAt < 6000;
+    const armed = this.armed === id && this.armedFor === this.shownKey && Date.now() - this.armedAt < ARMED_FOR;
     return (filled ? primaryButton : textButton)(t, id, armed ? `Confirm ${label.toLowerCase()}` : label, (_e, cx) => {
-      if (careful && !armed) { this.armed = id; this.armedAt = Date.now(); cx.notify(); return; }
+      if (careful && !armed) {
+        const at = (this.armedAt = Date.now());
+        this.armed = id; this.armedFor = this.shownKey;
+        cx.timer.after(ARMED_FOR, (cx) => { if (this.armedAt === at && this.armed === id) { this.armed = null; cx.notify(); } });
+        cx.notify(); return;
+      }
       this.armed = null;
       action(cx);
     }, { on: armed, tip: careful && !armed ? confirmTip ?? tip : tip });
@@ -2571,6 +2579,8 @@ export class Stories extends Source {
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
     const shown = findItem(items, loneOf(st.data), previewIn(st.profile)) ?? inStory;
+    // What's shown, for carefulButton: a button armed on one story isn't armed on the next.
+    this.shownKey = `${st.profile.id}:${shown?.key ?? ""}`;
     return { st, t, items, reviews, shown };
   }
 

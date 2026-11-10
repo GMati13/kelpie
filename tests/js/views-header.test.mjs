@@ -103,6 +103,25 @@ test("header: a review you approved elsewhere says Approved", async () => {
   assert.deepEqual(texts(byId(el, "review-approve-self")), ["Approved"]);
 });
 
+// A careful button armed on one review isn't armed on the next one shown (every header has the
+// same ids), and a timer disarms it after 5 s, redrawing, even when nothing else changes.
+test("header: Confirm approve is dropped on another review, and after 5 s", async () => {
+  const { el, view, cx } = await header({ preview: "review:api#305" });
+  const timers = [];
+  cx.timer = { every() {}, after: (ms, fn) => timers.push({ ms, fn }) };
+  handlers(el).find((h) => h.id === "review-approve-self").fn({}, cx);
+  assert.deepEqual(texts(byId(view.render(cx), "review-approve-self")), ["Confirm approve"]);
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "review:web#421" });
+  assert.deepEqual(texts(byId(view.render(cx), "review-approve-self")), ["Approve"], "another review: not armed");
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "review:api#305" });
+  assert.deepEqual(texts(byId(view.render(cx), "review-approve-self")), ["Confirm approve"], "still armed for the first within 5 s");
+  assert.deepEqual(timers.map((x) => x.ms), [5000]);
+  const before = cx.notified;
+  timers[0].fn(cx);
+  assert.equal(cx.notified, before + 1, "the timer redraws");
+  assert.deepEqual(texts(byId(view.render(cx), "review-approve-self")), ["Approve"], "disarmed after 5 s");
+});
+
 test("header: a pull request of yours with no ticket", async () => {
   snap("header/pull-no-ticket", (await header({ preview: "pull:docs#58" })).el);
 });
