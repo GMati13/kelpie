@@ -631,6 +631,8 @@ async function command(c) {
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
   if (c === "what-next") return whatNext();
   // demo: the demo profile and its spaces, from mods/kelpie/demo/demo.json (demo.js); demo-remove undoes it.
+  // demo-github: the same profile with its board a GitHub Project of the same issues (demo puts Jira back).
+  if (c === "demo-github") return setupDemo("project").catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo-remove") return removeDemo().catch((e) => notify({ title: "The demo wasn't removed", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo") return setupDemo().catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   const work = storyNow();

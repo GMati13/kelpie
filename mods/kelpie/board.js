@@ -20,6 +20,7 @@
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
+import { loadProject } from "./project.js";
 
 const PAGES = 5; // up to 500 tickets a search
 
@@ -47,6 +48,7 @@ async function search(cfg, jql) {
 // issues still as the board gave them (the list trims them). The stories are the parents of your
 // subtasks and your own issues, in the board's order, with all of their subtasks.
 export async function loadBoard(board) {
+  if (board.kind === "project") return loadProject(board);
   const cfg = board.cfg;
   // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
   const [config, active] = await Promise.all([
@@ -75,8 +77,16 @@ export async function loadBoard(board) {
 // the list loaded or else the profile's: "" when neither says.
 export const boardSite = (board, data) => data?.site ?? board?.cfg?.site ?? "";
 
-// A ticket's page on the board, or null when there's no address to make it from.
+// A ticket's page on the board, or null when there's no address to make it from. A Project's issue:
+// the page the load gave it, else made from its key's repo (data.repos) when that's known.
 export function ticketUrl(board, data, key) {
+  if (board?.kind === "project") {
+    const loaded = [...(data?.parents ?? []), ...(data?.children ?? [])].find((i) => i.key === key)?.url;
+    if (loaded) return loaded;
+    const m = /^([A-Z][A-Z0-9]+)-(\d+)$/.exec(key ?? "");
+    const repo = m && data?.repos?.[m[1]];
+    return repo ? `https://github.com/${repo}/issues/${m[2]}` : null;
+  }
   const site = boardSite(board, data);
   return site ? `${site}/browse/${key}` : null;
 }
