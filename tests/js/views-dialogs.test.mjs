@@ -2,17 +2,17 @@
 // pinned as snapshots (tests/README.md, Snapshots): the clean-up confirm with its leftovers, Clean up
 // all, the close dialog of a story's last tab, an agent's profile change waiting for a yes, the
 // story picker, and the profile dialog's Agents, GitHub and Board pages (accounts, with their guides; Jira
-// or a GitHub Project).
+// or a GitHub Project), and how the profile dialog fits the window it opens in.
 import { DEMO, demoProfile, fakeCx, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { handlers, texts } from "gpui-kit";
+import { handlers, isElement, nodeOf, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryList } from "../../mods/kelpie/stories.js";
 import { Confirm, StoryPicker } from "../../mods/kelpie/dialogs.js";
-import { Setup } from "../../mods/kelpie/setup.js";
-import { requestProfileChange } from "../../mods/kelpie/config.js";
+import { FIT, Setup } from "../../mods/kelpie/setup.js";
+import { openProfile, requestProfileChange } from "../../mods/kelpie/config.js";
 import Quiet from "../../mods/kelpie/main.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
@@ -273,4 +273,52 @@ test("saved prefixes come back as the inputs, and saving unchanged keeps them", 
   assert.equal(d.prefixes["kelpie--demo/acme"].state.value(), "AC");
   assert.equal(d.dirty(), false);
   assert.equal(d.draft().profile.project.prefixes, "kelpie--demo/acme=AC");
+});
+
+// The profile dialog fits the window it opens in (issue #44: on a 1440×900 laptop it didn't): it
+// opens as the whole window and draws its card there, at most FIT's size and never past the window,
+// with the page and the side tabs scrolling, and Save and Cancel outside both, always on screen.
+// The path of elements from `x` down to the one with `id` (itself last), or null.
+function pathTo(x, id, up = []) {
+  if (Array.isArray(x)) { for (const v of x) { const f = pathTo(v, id, up); if (f) return f; } return null; }
+  if (!isElement(x)) return null;
+  const n = nodeOf(x), here = [...up, n];
+  if (n.calls.some(([m, a]) => m === "id" && a[0] === id)) return here;
+  for (const a of n.args) { const f = pathTo(a, id, here); if (f) return f; }
+  for (const [, a] of n.calls) for (const v of a) { const f = pathTo(v, id, here); if (f) return f; }
+  return null;
+}
+const calls = (n, name) => n.calls.filter(([m]) => m === name).map(([, a]) => a);
+const scrolls = (n) => calls(n, "overflow_y_scrollbar").length > 0;
+
+test("the profile dialog opens as a share of the window, never a fixed size that can be bigger", () => {
+  setupDemoWorld({ stories });
+  openProfile(DEMO, { focus: "agents" });
+  const [spec] = mock.of("openOverlay").at(-1);
+  assert.equal(spec.props.role, "setup");
+  assert.equal(spec.frame, "none", "the dialog draws its own card");
+  assert.ok(spec.width <= 1 && spec.height <= 1, `a share of the window, not px: ${spec.width}×${spec.height}`);
+});
+
+test("the profile dialog's card shrinks to the window, its page and tabs scroll, Save and Cancel stay outside", () => {
+  for (const focus of ["general", "jira", "github", "web", "agents", "prompts", "messages", "commands"]) {
+    const el = profilePage(focus);
+    const card = byId(el, "work-setup");
+    assert.ok(card, focus);
+    const c = nodeOf(card);
+    assert.deepEqual(calls(c, "max_w"), [[FIT.w]], "at most FIT.w wide");
+    assert.deepEqual(calls(c, "max_h"), [[FIT.h]], "at most FIT.h tall");
+    assert.equal(calls(c, "w").length + calls(c, "h").length + calls(c, "size").length, 0, "no fixed size of its own");
+    assert.equal(calls(c, "w_full").length, 1);
+    assert.equal(calls(c, "h_full").length, 1);
+    assert.ok(calls(nodeOf(el), "p").some(([m]) => m === FIT.margin), "a margin to the window's edges");
+    assert.ok(pathTo(el, `work-setup-body-${focus}`).at(-1).calls.some(([m]) => m === "overflow_y_scrollbar"), `${focus}: the page scrolls`);
+    assert.ok(scrolls(pathTo(el, "setup-tabs").at(-1)), "the side tabs scroll");
+    assert.ok(pathTo(el, `setup-tab-${focus}`).some(scrolls), "each tab is inside that scroll");
+    for (const id of ["setup-save", "setup-cancel"]) {
+      const path = pathTo(el, id);
+      assert.ok(path, id);
+      assert.equal(path.filter(scrolls).length, 0, `${id} is outside every scroll`);
+    }
+  }
 });

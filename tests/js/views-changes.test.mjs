@@ -3,7 +3,7 @@
 // starting over never showed anything); the rest waits for the next render, and what's parsed stays.
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
-import { isElement, nodeOf, texts } from "gpui-kit";
+import { handlers, isElement, nodeOf, texts, walk } from "gpui-kit";
 import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { StoryList, StoryView, diffRows } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
@@ -154,4 +154,143 @@ test("changes: the file list's width can be dragged", async () => {
   const panels = split.calls.filter(([m]) => m === "child").map(([, [p]]) => nodeOf(p));
   assert.deepEqual(panels.map((p) => p.kind), ["resizable_panel", "resizable_panel"]);
   assert.deepEqual(panels[0].calls.filter(([m]) => m === "size" || m === "size_range").map(([m, a]) => [m, ...a]), [["size", 260], ["size_range", 180, 640]]);
+});
+
+// A file header's actions (Copy path, Open on GitHub or Show in Finder, Ask agent) and its Viewed box
+// are told apart by where the press was, as rows of Herdr's virtual list take no click handlers.
+// Herdr reports that press as drawn, zoom included, while the header is laid out at zoom 1: a click on
+// an action used to land on another, or on none, which folded the file (issue #52).
+const STORY = "ACME-184";
+const prGroup = { label: "ACME-184 · web#409", key: STORY, repo: "web#409", url: "https://github.com/kelpie--demo/web/pull/409", merged: false, title: "A pull request", files: [file(6000, 3), file(6001, 3)] };
+const localGroup = { label: "ACME-184 · api · not committed", key: STORY, repo: "api", path: "/home/test/acme/api", files: [{ ...file(6002, 3), id: "local:/home/test/acme/api:src/file6002.ts" }] };
+// Each call's files get a version of their own (`sha`): whether a file is folded outlives a view, by
+// file and version, so one test's fold doesn't carry into the next.
+let version = 0;
+async function storyChanges(groups, { all = true } = {}) {
+  setupDemoWorld({ stories });
+  mock.state.shared.delete("kelpie.viewed");
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: STORY });
+  mock.state.shared.set("kelpie.view", { [`preview:${DEMO}`]: "changes" });
+  const { view, cx } = await draw(new StoryView());
+  version++;
+  view.extra[STORY] = { groups: groups.map((g) => ({ ...g, files: g.files.map((f) => ({ ...f, sha: `${f.sha}-${version}` })) })), at: Date.now() };
+  const clip = [];
+  cx.write_to_clipboard = (s) => clip.push(s);
+  shown(view, cx);
+  // All files or one at a time: the switch under the file list's progress line (the choice outlives a view).
+  handlers(view.render(cx)).find((h) => h.id === (all ? "diff-all" : "diff-one")).fn({}, cx);
+  shown(view, cx);
+  return { view, cx, clip };
+}
+const byId = (el, id) => walk(el).find((n) => n.calls.some(([m, a]) => m === "id" && a[0] === id));
+const call = (n, method) => n.calls.find(([m]) => m === method)?.[1].find((v) => typeof v === "function");
+// Herdr at `zoom`: the probe reports its size as drawn, then a press at `x` and `y` (as laid out, at
+// zoom 1) lands where Herdr draws it, and the click goes to the list's row `key`.
+function clickAt({ view, cx }, zoom, x, key, y = 200) {
+  const el = view.render(cx);
+  const probe = byId(el, "diff-zoom-probe");
+  if (probe) call(probe, "on_size_change")({ width: 100 * zoom, height: 0 }, cx);
+  const press = walk(el).find((n) => n.calls.some(([m]) => m === "on_scroll_wheel") && n.calls.some(([m]) => m === "on_mouse_down"));
+  call(press, "on_mouse_down")({ button: "left", click_count: 1, position: { x: x * zoom, y: y * zoom }, local_position: { x: x * zoom, y: y * zoom } }, cx);
+  call(virtualList(el), "on_item_click")(String(key), cx);
+}
+const headerOf = (view, fi) => view.diffView.entries.findIndex((e) => e.r.kind === "file" && e.fi === fi);
+const rowCount = ({ view, cx }) => virtualList(view.render(cx)).args[1];
+// Where each part of a header is, as laid out: the Viewed box at 32 (74 wide), then the actions 10
+// after it, 2 apart: Copy path (26), Open on GitHub or Show in Finder (26), Ask agent (84).
+const CENTRE = { viewed: 32 + 37, copy: 116 + 13, open: 144 + 13, ask: 172 + 42 };
+
+for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
+  for (const all of [true, false]) {
+    const mode = all ? "All files" : "One file";
+    test(`changes: at zoom ${zoom} in ${mode}, Copy path only copies the path`, async () => {
+      const s = await storyChanges([prGroup], { all });
+      const rows = rowCount(s);
+      clickAt(s, zoom, CENTRE.copy, headerOf(s.view, 0));
+      assert.deepEqual(s.clip, ["src/file6000.ts"]);
+      assert.equal(rowCount(s), rows, "the file didn't fold");
+      assert.equal(s.view.sending ?? null, null);
+    });
+    test(`changes: at zoom ${zoom} in ${mode}, Open on GitHub only opens the pull request's files`, async () => {
+      const s = await storyChanges([prGroup], { all });
+      const rows = rowCount(s);
+      mock.calls.length = 0;
+      clickAt(s, zoom, CENTRE.open, headerOf(s.view, 0));
+      assert.ok(mock.of("exec").some(([, args]) => args.includes(`${prGroup.url}/files`)), "it opened the pull request's files");
+      assert.deepEqual(s.clip, []);
+      assert.equal(rowCount(s), rows, "the file didn't fold");
+    });
+    test(`changes: at zoom ${zoom} in ${mode}, Show in Finder only shows the uncommitted file`, async () => {
+      const s = await storyChanges([localGroup], { all });
+      const rows = rowCount(s);
+      mock.calls.length = 0;
+      clickAt(s, zoom, CENTRE.open, headerOf(s.view, 0));
+      assert.ok(mock.of("exec").some(([, args]) => args.some((a) => String(a).includes("/home/test/acme/api/src/file6002.ts"))), "it showed the file");
+      assert.equal(rowCount(s), rows, "the file didn't fold");
+    });
+    test(`changes: at zoom ${zoom} in ${mode}, Ask agent only opens the bar`, async () => {
+      const s = await storyChanges([prGroup], { all });
+      const rows = rowCount(s);
+      // Near its right end too, which a press not divided by the zoom missed past zoom 1.
+      clickAt(s, zoom, CENTRE.ask + 38, headerOf(s.view, 0));
+      assert.equal(s.view.sending, `diff:${prGroup.files[0].id}`);
+      assert.equal(rowCount(s), rows, "the file didn't fold");
+      assert.deepEqual(s.clip, []);
+    });
+    // One file at a time, the file shown already counts as viewed, so there the click unticks it.
+    test(`changes: at zoom ${zoom} in ${mode}, Viewed only ticks or unticks the file`, async () => {
+      const s = await storyChanges([prGroup], { all });
+      const ticked = () => Object.keys(mock.state.shared.get("kelpie.viewed") ?? {}).some((k) => k.includes("src/file6000.ts"));
+      const was = ticked();
+      assert.equal(was, !all);
+      clickAt(s, zoom, CENTRE.viewed + 30, headerOf(s.view, 0));
+      assert.equal(ticked(), !was, "the tick changed");
+      assert.deepEqual(s.clip, []);
+      assert.equal(s.view.sending ?? null, null);
+    });
+  }
+}
+
+// Between the Viewed box and the first action, or just past the last, a slightly missed press does
+// nothing: it doesn't fold the file.
+test("changes: a press just beside a header's actions doesn't fold the file", async () => {
+  const s = await storyChanges([prGroup]);
+  const rows = rowCount(s);
+  for (const x of [113, 172 + 84 + 4]) {
+    clickAt(s, 1, x, headerOf(s.view, 0));
+    assert.equal(rowCount(s), rows, `a press at ${x} didn't fold the file`);
+  }
+  assert.deepEqual(s.clip, []);
+  assert.equal(s.view.sending ?? null, null);
+  // Elsewhere on the header (its name) still folds it.
+  clickAt(s, 1, 400, headerOf(s.view, 0));
+  assert.ok(rowCount(s) < rows, "a press on the name folds it");
+});
+
+// Ask agent's bar is laid over the top of the diff: opening it takes no room above the list, so the
+// page doesn't move; and a press on the bar isn't a press on the row under it.
+test("changes: Ask agent's bar is laid over the diff, not above it", async () => {
+  const s = await storyChanges([prGroup]);
+  // The diff's side of the split: the box holding the list (and, before, the bar above it).
+  const pane = (el) => {
+    const split = walk(el).find((n) => n.kind === "h_resizable");
+    const panel = nodeOf(split.calls.filter(([m]) => m === "child")[1][1][0]);
+    return nodeOf(panel.calls.find(([m]) => m === "child")[1][0]);
+  };
+  const kids = (n) => n.calls.filter(([m]) => m === "child" || m === "children").flatMap(([m, a]) => (m === "children" ? [...a[0]] : [a[0]]));
+  const before = kids(pane(s.view.render(s.cx))).length;
+  clickAt(s, 1.2, CENTRE.ask, headerOf(s.view, 0));
+  const el = s.view.render(s.cx);
+  assert.match(texts(el).join(" "), /Ask the agent about/);
+  assert.equal(kids(pane(el)).length, before, "nothing above the list");
+  const bar = byId(el, "ask-bar");
+  assert.ok(bar && bar.calls.some(([m]) => m === "absolute"), "the bar is laid over the list");
+  // The bar is 60 tall as drawn: a press in it is the bar's, one under it the list's.
+  call(bar, "on_size_change")({ width: 600, height: 60 * 1.2 }, s.cx);
+  const rows = rowCount(s);
+  clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 30);
+  assert.deepEqual(s.clip, [], "a press on the bar doesn't reach the header under it");
+  assert.equal(rowCount(s), rows, "nor fold it");
+  clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 100);
+  assert.deepEqual(s.clip, ["src/file6000.ts"]);
 });

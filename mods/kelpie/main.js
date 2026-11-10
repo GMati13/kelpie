@@ -392,18 +392,21 @@ const SLOTS = ["web", "web-1", "web-2", "web-3"];
 const webSlots = (body) => SLOTS.filter((id) => find(body, id));
 const isSlot = (id) => SLOTS.includes(id);
 const profileKey = () => shownProfile()?.id ?? "none";
-const quote = (text) => `'${text.replace(/'/g, `'\\''`)}'`;
 // terminal-browser runs every window in one background process (its socket under XDG_RUNTIME_DIR),
 // with one cookie folder (TERMINAL_BROWSER_APPDATA) and one store of history and the last page it
 // reopens (XDG_DATA_HOME): each profile's browser gets its own of all three, so signing in or out
 // in one leaves the others, and none shares terminal-browser's own defaults. Without python3 it runs
 // without kittyfix.py (Herdr's image glitches return; the browser still works).
 export const profileDir = () => (shownProfile()?.id ?? "none").replace(/[^A-Za-z0-9_-]/g, "-");
-const browserCommand = (url, python) => {
+// The start page and kittyfix's path reach the loop's shell as arguments ("$1", "$2"), never as
+// script (only the profile's folder name is, made of letters, digits, - and _): `command` is what
+// browserLoop runs, `args` what its shell gets after the script. Exported for the tests.
+export const browserCommand = (url, python) => {
   const dir = `$HOME/.local/share/kelpie/web/${profileDir()}`;
   const env = `env XDG_RUNTIME_DIR="${dir}/run" TERMINAL_BROWSER_APPDATA="${dir}/data" XDG_DATA_HOME="${dir}/share" `;
-  const fix = python ? `python3 ${quote(modFile("kittyfix.py"))} -- ` : "";
-  return `mkdir -p "${dir}/run" "${dir}/data" "${dir}/share" && ${fix}${env}terminal-browser${url ? ` ${quote(url)}` : ""}`;
+  const fix = python ? 'python3 "$1" -- ' : "";
+  const command = `mkdir -p "${dir}/run" "${dir}/data" "${dir}/share" && ${fix}${env}terminal-browser \${2:+"$2"}`;
+  return { command, args: [python ? modFile("kittyfix.py") : "", url || ""] };
 };
 
 // The shown profile's slot (made its own when `assign`, from the free ones or ones of deleted
@@ -433,7 +436,7 @@ function webChild(root = layout(), assign = false) {
 // (kittyfix.py sends the same reset itself, so a restart needn't wait for a new loop).
 const browserLoop = (command) =>
   `while :; do printf '\\033\\\\\\033_Gq=2,m=0;\\033\\\\\\033[=0;1u\\033_Ga=d,d=A,q=2\\033\\\\'; clear; ${command}; sleep 2; done`;
-async function ensureBrowser(name, command) {
+async function ensureBrowser(name, { command, args }) {
   const term = terminals().find((x) => x.name === name && x.state === "live");
   let address = term?.address;
   // A slot terminal not running the loop (an older one, a shell or a browser typed into it) is
@@ -447,7 +450,7 @@ async function ensureBrowser(name, command) {
       await hc(["kill", name]).catch(() => {});
       await exec("sleep", ["0.5"]);
     }
-    const started = await hc(["run", "--bg", "--json", "--name", name, "--no-parent", "--outlive-parent", "--", "/bin/sh", "-c", browserLoop(command)]);
+    const started = await hc(["run", "--bg", "--json", "--name", name, "--no-parent", "--outlive-parent", "--", "/bin/sh", "-c", browserLoop(command), "sh", ...args]);
     address = JSON.parse(started.stdout || "{}").address;
   }
   // Right-clicks go to the browser's own menu (shift+right-click is still Herdr's).

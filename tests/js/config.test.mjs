@@ -8,7 +8,9 @@ import {
   DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
-import { fakeBin, sh } from "../lib/helpers.mjs";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { fakeBin, sh, tempDir } from "../lib/helpers.mjs";
 
 const W = { id: "w", name: "Work", folder: "/code/work" };
 const SUB = { id: "sub", name: "Sub", folder: "/code/work/client" };
@@ -145,10 +147,23 @@ describe("the argv agents start with", () => {
   test("claudeArgv: a demo profile starts the demo's stand-in agent", () => {
     assert.deepEqual(claudeArgv({ demo: true, claude: { config: "/x/.claude-work" } }, "-p"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
   });
-  test("shellArgv: the login shell with the profile's account chosen, quoted", () => {
-    assert.deepEqual(shellArgv(null), ["/bin/sh", "-c", 'exec env -u CLAUDE_CONFIG_DIR CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l']);
+  test("shellArgv: the login shell with the profile's account chosen", () => {
+    assert.deepEqual(shellArgv(null), ["/bin/sh", "-c", 'exec env "$@" CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l', "sh", "-u", "CLAUDE_CONFIG_DIR"]);
     assert.deepEqual(shellArgv({ claude: { config: "/h/.claude" } }), shellArgv(null));
-    assert.equal(shellArgv({ claude: { config: "/h/it's/.claude-x" } })[2], `exec env CLAUDE_CONFIG_DIR='/h/it'\\''s/.claude-x' CLAUDE_ACCOUNT_CHOSEN=1 "\${SHELL:-/bin/sh}" -l`);
+    assert.deepEqual(shellArgv({ claude: { config: "/h/.claude-x" } }).slice(3), ["sh", "CLAUDE_CONFIG_DIR=/h/.claude-x"]);
+  });
+  test("shellArgv: the Claude config folder is an argument, never script, whatever it holds", () => {
+    const dir = `/h/it's "odd" $(touch pwned) \`touch pwned\`; touch pwned\n/.claude-x`;
+    const argv = shellArgv({ claude: { config: dir } });
+    assert.equal(argv[2], shellArgv(null)[2], "the script is the same for every folder");
+    const cwd = tempDir();
+    const fakes = fakeBin().add("show-env", 'printf "%s|%s|%s" "$CLAUDE_CONFIG_DIR" "$CLAUDE_ACCOUNT_CHOSEN" "$1"');
+    const r = sh(argv[0], argv.slice(1), { cwd, env: { SHELL: `${fakes.bin}/show-env` } });
+    assert.equal(r.stdout, `${dir}|1|-l`);
+    assert.equal(existsSync(join(cwd, "pwned")), false, "nothing in the folder's name ran");
+    // Claude's own folder, or none: CLAUDE_CONFIG_DIR cleared from the shell's environment.
+    const own = shellArgv(null);
+    assert.equal(sh(own[0], own.slice(1), { env: { SHELL: `${fakes.bin}/show-env`, CLAUDE_CONFIG_DIR: "/elsewhere" } }).stdout, "|1|-l");
   });
   test("resumeArgv: on the session's own account; demo- sessions start the stand-in", () => {
     assert.deepEqual(resumeArgv("abc", null), ["claude", "--resume", "abc"]);

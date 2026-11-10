@@ -2970,7 +2970,8 @@ export class Stories extends Source {
     // The list's one click handler: a file's header folds or unfolds it, a band's button opens its gap.
     const clickRow = (key, cx) => {
       const e = entries[Number(key)];
-      if (!e) return;
+      // A press on Ask agent's bar, laid over the list, isn't a press on the row under it.
+      if (!e || this.pressOnBar) return;
       const f = all[e.fi];
       if (e.r.kind === "group") { if (f.group.url) open(f.group.url); return; }
       if (e.r.kind === "file") {
@@ -3006,20 +3007,22 @@ export class Stories extends Source {
     // bold and its folder dim, what happened to it when not just modified, its count and GitHub's
     // squares, and why it's folded.
     const VIEW_X = 32, VIEW_W = 74;
-    // Each file's own actions in its header, right after the Viewed box at fixed places, so a click
-    // finds them by where the press was: copy its path, open it on GitHub (or show it on disk), and
-    // ask the story's agent about it.
-    const ACT_X = VIEW_X + VIEW_W + 11, ACT_GAP = 2;
+    // Each file's own actions in its header, right after the Viewed box (the header's gap of 10) at
+    // fixed places, so a click finds them by where the press was: copy its path, open it on GitHub
+    // (or show it on disk), and ask the story's agent about it.
+    const ACT_X = VIEW_X + VIEW_W + 10, ACT_GAP = 2;
     const fullPath = (f) => (f.group.path ? `${f.group.path}/${f.path}` : f.path);
     const headActs = (f) => [
       { kind: "copy", w: 26 },
       ...(f.group.url ? [{ kind: "github", w: 26 }] : f.group.path ? [{ kind: "reveal", w: 26 }] : []),
       ...(lonePr(it) ? [] : [{ kind: "ask", w: 84 }]),
     ];
+    // Which action a press at `x` (zoom taken out) is on. A press in the gaps between them, or just
+    // past their ends, is on none ("none"), so a slightly missed action never folds the file.
     const headHit = (f, x) => {
       let at = ACT_X;
-      for (const a of headActs(f)) { if (x >= at && x < at + a.w) return a.kind; at += a.w + ACT_GAP; }
-      return null;
+      for (const a of headActs(f)) { if (x >= at - ACT_GAP / 2 && x < at + a.w + ACT_GAP / 2) return a.kind; at += a.w + ACT_GAP; }
+      return x >= VIEW_X + VIEW_W && x < at + 8 ? "none" : null;
     };
     // A pull request's (or uncommitted repo's) section heading on the page of all files: well clear of
     // the file above, its icon, repo and number large, its title, merged / not committed, how many of
@@ -3123,6 +3126,7 @@ export class Stories extends Source {
       if (by && this.stepFile(it.key, by)) { this.changeAt = null; if (whole) this.pendingJump = this.file[it.key]; cx.stop_propagation(); cx.notify(); }
     };
     const progress = all.filter(seen).length;
+    const ask = this.askBar(t, st, it, all), askShown = ask.length > 0;
     const keycap = (k) => div().flex_none().min_w(16).h(16).px(4).rounded(4).border_1().border_color(t.border).text_size(10.5).line_height("14px").text_center().text_color(t.muted).child(k);
     // Each side scrolls on its own: the files in their column, the diff both ways. Every box down
     // to the scrolling ones has a definite height (h_full / flex_1 with min_h(0)). The file list's
@@ -3176,15 +3180,22 @@ export class Stories extends Source {
       // The diff: both modes are the same list (one at a time it holds one file), each file under the
       // same header with its own actions, so there's no bar above it.
       .child(resizable_panel().child(v_flex().size_full().min_w(0).min_h(0)
-        // Asking the agent about a file: a bar above the diff naming it, while it's open.
-        .children(this.askBar(t, st, it, all))
         .child(div().flex_1().min_h(0).relative()
+          // Sizes and positions come back as drawn (zoom included) while the header's are set at zoom
+          // 1: a probe 100 wide says the zoom, and a press's x is divided by it.
+          .child(div().id("diff-zoom-probe").absolute().top(0).left(0).w(100).h(0).on_size_change((size) => { if (size.width > 0) this.diffZoom = size.width / 100; }))
           .child(div().id("diff-x").size_full().overflow_x_scrollbar()
             // Where a press lands, for the band buttons and the Viewed box (and the press gives the diff
             // the keys); a scroll asks the page which file it's on, and n / p start from where it is.
             .child(div().w_full().min_w(width).h_full()
               .when(Boolean(this.diffFocus), (el) => el.track_focus(this.diffFocus).on_key_down(keys(false)))
-              .on_mouse_down("left", (e) => { this.pressX = e.local_position?.x ?? null; this.diffFocus?.focus(); })
+              .on_mouse_down("left", (e) => {
+                // Over Ask agent's bar (laid on top of the list, and as drawn too): the bar's, not the list's.
+                this.pressOnBar = askShown && (e.local_position?.y ?? Infinity) < (this.askBarH ?? 0);
+                if (this.pressOnBar) return;
+                this.pressX = e.local_position ? e.local_position.x / (this.diffZoom || 1) : null;
+                this.diffFocus?.focus();
+              })
               .on_scroll_wheel((_e, cx) => { this.changeAt = null; if (whole && this.track(it.key)) cx.notify(); })
               .child(v_virtual_list(list, entries.length, view.sizes, (i) => String(i), (range) => {
                 // Drawn during layout: it may only note what's on screen, not ask for a redraw.
@@ -3198,7 +3209,10 @@ export class Stories extends Source {
                   return drawn <= DRAW_FIRST ? line(e) : div().w_full().h(view.sizes[range.start + k] ?? ROW);
                 });
               }).size_full().on_item_click(clickRow).when(Boolean(scroller), (el) => el.track_scroll(scroller)))))
-          .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0()))));
+          .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0())
+          // Asking the agent about a file: a bar naming it, while it's open, laid over the top of the
+          // diff, so opening or closing it doesn't move the page.
+          .children(ask))));
   }
 
   // On the page of all files, after a scroll: the file at the top of what was last drawn becomes
@@ -3723,15 +3737,18 @@ export class StoryView extends Stories {
     this.diffFocus = cx.focus_handle(); // the diff itself, for n / p, ] / [ and v
   }
 
-  // While a file's Ask agent (in its header) is open, a bar above the diff naming it, with
-  // the note (Enter sends, Esc closes); what the latest send led to shows under it.
+  // While a file's Ask agent (in its header) is open, a bar over the top of the diff naming it, with
+  // the note (Enter sends, Esc closes); what the latest send led to shows under it. It's laid over the
+  // list (absolute), so it takes no room and the page stays where it was; its height as drawn
+  // (`this.askBarH`) tells a press on it from one on the list under it.
   askBar(t, st, it, all) {
     const f = this.sending?.startsWith("diff:") ? all.find((x) => `diff:${x.id}` === this.sending) : null;
     const rows = this.sendBar(t, st, it, f ? this.sending : "", f?.group.key ?? it.key, f ? (f.group.url
       ? `About ${f.path} in ${f.group.repo} (${f.group.url}/files):`
       : `About ${f.path} in ${f.group.repo} (${f.group.path}/${f.path}, not committed):`) : "");
     if (!rows.length) return [];
-    return [v_flex().flex_none().px(10).py(8).gap(6).border_b_1().border_color(t.border)
+    return [v_flex().id("ask-bar").absolute().top(0).left(0).right(0).px(10).py(8).gap(6).bg(t.background).border_b_1().border_color(t.border)
+      .on_size_change((size) => { this.askBarH = size.height; })
       .when(Boolean(f), (el) => el.child(h_flex().gap(6).items_center().text_size(SMALL).text_color(t.muted)
         .child(icon(own("send"), 13)).child("Ask the agent about")
         .child(div().font_medium().text_color(t.foreground).child(f.path.split("/").pop()))
