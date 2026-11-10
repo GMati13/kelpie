@@ -21,7 +21,7 @@ v_flex #work-setup [bg=popover fg=foreground] {key_down}
           svg chrome:layers
         v_flex
           div [fg=muted]
-            "Jira"
+            "Board"
           div [fg=dim]
             "Not connected"
       h_flex #setup-tab-github [bg=selected hover(bg=selected)] {click}

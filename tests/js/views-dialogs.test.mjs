@@ -1,8 +1,9 @@
 // What Kelpie's dialogs draw (dialogs.js Confirm and StoryPicker), opened the way the views open them,
 // pinned as snapshots (tests/README.md, Snapshots): the clean-up confirm with its leftovers, Clean up
 // all, the close dialog of a story's last tab, an agent's profile change waiting for a yes, the
-// story picker, and the profile dialog's Agents and GitHub pages (accounts, with their guides).
-import { DEMO, fakeCx, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
+// story picker, and the profile dialog's Agents, GitHub and Board pages (accounts, with their guides; Jira
+// or a GitHub Project).
+import { DEMO, demoProfile, fakeCx, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
@@ -101,11 +102,26 @@ test("Kelpie-Plain: the story picker and a confirm", () => {
 });
 
 // The profile dialog opened on a page, as `herdr-app do kelpie.edit-profile-<page>` opens it.
-function profilePage(focus, profile = {}) {
+// `filled`: the stub's inputs start empty (gpui-base's InputState and TextareaState ignore `value`),
+// so each is given the value the dialog started it with, and the dialog's starting point is taken
+// again, as init() takes it in Herdr.
+function profileDialog(focus, profile = {}, { filled = false } = {}) {
   setupDemoWorld({ stories, profile, props: { role: "setup", profile: DEMO, focus, overlay: "overlay-1" } });
   const d = new Setup();
   const cx = fakeCx();
   d.init(cx);
+  if (filled) {
+    const states = [...Object.values(d), ...Object.values(d.asks), ...Object.values(d.prefixes).map((x) => x.state)];
+    for (const s of states) {
+      const start = s?.__state?.args?.[0]?.value;
+      if (typeof start === "string" && !s.value()) s.set_value(start);
+    }
+    d.initial = JSON.stringify(d.draft().profile);
+  }
+  return { d, cx };
+}
+function profilePage(focus, profile = {}) {
+  const { d, cx } = profileDialog(focus, profile);
   return d.render(cx);
 }
 
@@ -122,4 +138,80 @@ test("the profile dialog's GitHub page: with an account picked, the shell functi
   for (const s of ["GitHub account", "KELPIE_GH_ACCOUNT=kelpie-demo", "Check my shell"]) assert.ok(words.includes(s), s);
   assert.ok(byId(el, "setup-gh-copy"));
   snap("dialogs/profile-github", el);
+});
+
+// The Board page: Jira or a GitHub Project (tab id `jira`, also opened as `board` or `project`).
+const DEMO_PROJECT = { url: "https://github.com/users/kelpie--demo/projects/1", owner: "kelpie--demo", ownerType: "user", number: 1, demo: true };
+
+test("the profile dialog's Board page on Jira: the choice of board, then Jira's form", () => {
+  const { d: board, cx: bcx } = profileDialog("jira", {}, { filled: true });
+  const el = board.render(bcx);
+  assert.equal(texts(byId(el, "setup-tab-jira"))[0], "Board");
+  assert.deepEqual(texts(byId(el, "setup-board-kind-0")), ["Jira"]);
+  assert.deepEqual(texts(byId(el, "setup-board-kind-1")), ["GitHub Project"]);
+  assert.ok(byId(el, "setup-jira-check"));
+  assert.equal(byId(el, "setup-project-check"), null);
+  snap("dialogs/profile-board-jira", el);
+});
+
+test("the profile dialog's Board page on a GitHub Project: after a Check, each repo's key prefix and the Status options", async () => {
+  const { d, cx } = profileDialog("project", { jira: null, project: DEMO_PROJECT }, { filled: true });
+  assert.equal(d.tab, "jira");
+  press(d.render(cx), "setup-project-check", cx);
+  await cx.settle();
+  assert.equal(mock.of("exec").filter(([, a]) => String(a?.[0] ?? "").endsWith("gh.sh")).length, 0, "the demo runs nothing");
+  const el = d.render(cx);
+  const words = texts(el).join("\n");
+  for (const s of ["Project address", "Ticket keys", "kelpie--demo/acme", "Done from column", "GitHub · Acme"]) assert.ok(words.includes(s), s);
+  assert.equal(byId(el, "setup-jira-check"), null);
+  assert.equal(d.checks.project.ok, true);
+  snap("dialogs/profile-board-project", el);
+});
+
+test("the Board page's other names open it", () => {
+  for (const focus of ["board", "project", "jira"]) assert.equal(profileDialog(focus).d.tab, "jira", focus);
+  // A profile with Jira stays on Jira's form, even opened as `project`.
+  assert.equal(profileDialog("project").d.boardKind, "jira");
+});
+
+test("choosing a GitHub Project: Save keeps it and drops Jira, the board's prompt moving with it", () => {
+  const { d, cx } = profileDialog("jira", { jira: { ...demoProfile().jira, prompt: "Do {key}", handover: "QA" } }, { filled: true });
+  assert.equal(d.dirty(), false);
+  press(d.render(cx), "setup-board-kind-1", cx);
+  d.projectUrl.set_value(`${DEMO_PROJECT.url}/views/3`);
+  const { error, profile } = d.draft();
+  assert.equal(error, null);
+  assert.equal(profile.jira, null);
+  assert.deepEqual(profile.project, { url: `${DEMO_PROJECT.url}/views/3`, owner: "kelpie--demo", ownerType: "user", number: 1, prompt: "Do {key}", handover: "QA", demo: true });
+  assert.equal(d.dirty(), true);
+  assert.equal(d.tabStatus("jira"), "GitHub · kelpie--demo/1");
+  // And back: Jira again, the Project dropped.
+  press(d.render(cx), "setup-board-kind-0", cx);
+  assert.equal(d.draft().profile.project, null);
+  assert.equal(d.draft().profile.jira.prompt, "Do {key}");
+});
+
+test("a Project's address that isn't one, and prefixes that can't be keys, stop Save with a reason", () => {
+  const { d } = profileDialog("project", { jira: null, project: DEMO_PROJECT }, { filled: true });
+  d.projectUrl.set_value("https://github.com/kelpie--demo/acme");
+  assert.deepEqual(d.draft().error, ["project", "That isn't a GitHub Project's address: https://github.com/users/<you>/projects/<number>, or /orgs/<org>/projects/<number>."]);
+  d.projectUrl.set_value(DEMO_PROJECT.url);
+  d.addPrefix("kelpie--demo/acme");
+  d.addPrefix("kelpie--demo/web");
+  assert.equal(d.draft().error, null);
+  assert.equal(d.draft().profile.project.prefixes, undefined, "a repo's own prefix isn't saved");
+  d.prefixes["kelpie--demo/web"].state.set_value("acme");
+  assert.deepEqual(d.draft().error, ["project", "The key prefix of kelpie--demo/web: kelpie--demo/acme has ACME too: give one of them its own."]);
+  d.prefixes["kelpie--demo/web"].state.set_value("w_b");
+  assert.match(d.draft().error[1], /a letter, then letters or digits/);
+  d.prefixes["kelpie--demo/web"].state.set_value("site");
+  assert.equal(d.draft().error, null);
+  assert.equal(d.draft().profile.project.prefixes, "kelpie--demo/web=SITE");
+});
+
+test("saved prefixes come back as the inputs, and saving unchanged keeps them", () => {
+  const { d } = profileDialog("project", { jira: null, project: { ...DEMO_PROJECT, prefixes: "kelpie--demo/acme=AC" } }, { filled: true });
+  assert.equal(d.prefixes["kelpie--demo/acme"].state.value(), "AC");
+  assert.equal(d.dirty(), false);
+  assert.equal(d.draft().profile.project.prefixes, "kelpie--demo/acme=AC");
 });

@@ -1,7 +1,8 @@
 // A profile, as a dialog (props: { profile, space, overlay, focus }): its name, the folder its agents
-// start in (spaces in it belong to it), its Jira Cloud board (a pasted board URL and how to sign in:
-// a Keychain item on macOS, or a command that prints the API token, with the email; the prompts, and
-// the column where your part of a ticket is done),
+// start in (spaces in it belong to it), its board, one of two: a Jira Cloud board (a pasted board URL
+// and how to sign in: a Keychain item on macOS, or a command that prints the API token, with the
+// email) or a GitHub Project (its address, read as the profile's GitHub account, and each repo's key
+// prefix), with the board's prompts and the column where your part of a ticket is done,
 // its GitHub owner and account (whether its pull requests notify; the gh() function its agents'
 // shell setup needs, with a check), its Agents page (the accounts agents run on: Claude's, with a
 // guide to adding another) and its optional story commands. No profile id: a new one, starting from
@@ -14,10 +15,11 @@ import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
-import { ASK_PROMPTS, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile } from "./config.js";
+import { ASK_PROMPTS, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { githubAccounts, searchPulls } from "./pulls.js";
+import { checkProject as readProject } from "./project-check.js";
 
 
 // Stores a token without the 128-character limit of `security`'s own prompt, and without it ever
@@ -53,7 +55,8 @@ const TAB_W = 200;
 // in props may name one (jira, github…). Each tab's second line says what's set (`tabStatus()`).
 const TABS = [
   { id: "general", label: "General", icon: own("house") },
-  { id: "jira", label: "Jira", icon: chrome("layers"), group: "Connections" },
+  // The board: Jira or a GitHub Project. Its id stays `jira`, as kelpie.edit-profile-jira opens it.
+  { id: "jira", label: "Board", icon: chrome("layers"), group: "Connections" },
   { id: "github", label: "GitHub", icon: own("git-pull-request") },
   { id: "web", label: "Web", icon: own("globe") },
   { id: "agents", label: "Agents", icon: own("bot"), group: "Agents" },
@@ -61,8 +64,13 @@ const TABS = [
   { id: "messages", label: "Messages", icon: own("message-square") },
   { id: "commands", label: "Story commands", icon: chrome("terminal") },
 ];
+// Other names `focus` may give a tab by.
+const TAB_ALIAS = { board: "jira", project: "jira" };
 // Which tab a check's part is on.
-const TAB_OF = { name: "general", jira: "jira", github: "github", "github-shell": "github", web: "web" };
+const TAB_OF = { name: "general", jira: "jira", project: "jira", github: "github", "github-shell": "github", web: "web" };
+const NOT_PROJECT = "That isn't a GitHub Project's address: https://github.com/users/<you>/projects/<number>, or /orgs/<org>/projects/<number>.";
+// A Project as the dialog compares them: the same owner and number is the same Project.
+const projectKey = (p) => (p ? `${p.ownerType}/${String(p.owner).toLowerCase()}/${p.number}` : "");
 // The messages a review's buttons send (the rest are a pull request's), in config.js ASK_PROMPTS.
 const REVIEW_ASKS = ["post", "approve", "changes"];
 // The message a What next? idea starts its Desk agent with: in a group of its own.
@@ -88,6 +96,17 @@ export class Setup {
     this.name = field(saved.name ?? folderName.replace(/^./, (c) => c.toUpperCase()), "What to call it, e.g. the team or client");
     this.folder = field(saved.folder ?? liveFolder(space), "The folder its agents start in; spaces in it belong to it");
     this.board = field(saved.jira?.url, "Paste the board's URL: https://<site>.atlassian.net/jira/software/…/boards/<id>");
+    // The board is Jira's or a GitHub Project's, one or the other: Save keeps the one chosen.
+    this.boardKind = saved.project && !saved.jira ? "project" : "jira";
+    this.projectUrl = field(saved.project?.url, "https://github.com/users/<you>/projects/<n>, or /orgs/<org>/projects/<n>");
+    // Each repo's key prefix, an input each (repo, lowercased -> { repo, state }): the saved ones,
+    // then the repos a Check finds. Only prefixes other than the repo's own are saved.
+    this.prefixes = {};
+    let own = {};
+    try { own = parsePrefixes(saved.project?.prefixes); } catch { /* a malformed saved value: the inputs start from the repos' own */ }
+    for (const [repo, prefix] of Object.entries(own)) this.addPrefix(repo, prefix);
+    // What the last Check found ({ key, title, options, … }, project-check.js), for its Project only.
+    this.projectFound = null;
     // Sign-in: the macOS Keychain item by default, or a command that prints the token (any system),
     // with the email then saved beside it (a Keychain item keeps its own).
     this.mac = platform() === "macos";
@@ -111,12 +130,14 @@ export class Setup {
       const found = await githubAccounts().catch(() => []);
       if (found.length) { this.githubAccounts = found; cx.notify(); }
     });
-    // The ticket prompt shows the default until changed; the default itself isn't saved.
-    this.prompt = TextareaState.new({ value: saved.jira?.prompt || DEFAULT_PROMPT });
+    // The ticket prompt shows the default until changed; the default itself isn't saved. It, the
+    // orchestrator and the handover column belong to whichever board is chosen.
+    const board = saved.jira ?? saved.project ?? null;
+    this.prompt = TextareaState.new({ value: board?.prompt || DEFAULT_PROMPT });
     this.prompt.set_auto_grow(3, 10);
     this.prompt.on("change", (_e, cx) => cx.notify());
     // The orchestrator prompt is empty unless set: then a story offers "Start orchestrator".
-    this.orchestrator = TextareaState.new({ value: saved.jira?.orchestrator ?? "", placeholder: "Optional, e.g. Run {key}: {summary} through its subtasks, one agent each:\n{subtasks}" });
+    this.orchestrator = TextareaState.new({ value: board?.orchestrator ?? "", placeholder: "Optional, e.g. Run {key}: {summary} through its subtasks, one agent each:\n{subtasks}" });
     this.orchestrator.set_auto_grow(2, 10);
     this.orchestrator.on("change", (_e, cx) => cx.notify());
     // The review prompt: the default until changed, which isn't saved, as the ticket prompt.
@@ -155,14 +176,19 @@ export class Setup {
     // An item that already exists knows the email it signs in with.
     this.keychain.on("blur", (_e, cx) => this.fillEmail(cx));
     // The handover column (a name; none: handoverFrom() picks one), chosen from the board's columns:
-    // the ones the stories last loaded, until a Check asks the board itself. For that board only.
-    this.handover = saved.jira?.handover ?? null;
-    const columns = saved.jira ? loadedColumns(this.profile) : [];
-    this.columns = columns.length ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
-    this.checks = {}; // part -> { ok, text }
+    // the ones the stories last loaded, until a Check asks the board itself. For that board only: a
+    // Project's are its Status options.
+    this.handover = board?.handover ?? null;
+    const columns = board ? loadedColumns(this.profile) : [];
+    this.columns = columns.length && saved.jira ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
+    this.projectColumns = columns.length && saved.project && !saved.jira ? { key: projectKey(saved.project), list: columns } : null;
+    this.checks = {}; // part -> { ok, text, fix }
     this.handle = cx.focus_handle();
     // The side tab shown: a section of the dialog (TABS), the one `focus` asks for, else Profile.
-    this.tab = TABS.some((x) => x.id === props()?.focus) ? props().focus : "general";
+    // `project` opens the Board on the Project's form, unless the profile has a Jira board.
+    const focus = TAB_ALIAS[props()?.focus] ?? props()?.focus;
+    if (props()?.focus === "project" && !saved.jira) this.boardKind = "project";
+    this.tab = TABS.some((x) => x.id === focus) ? focus : "general";
     this.focusTab();
     // Delete or Discard waiting for its second press ({ id, at }); it lapses after ARMED_MS.
     this.armed = null;
@@ -199,7 +225,7 @@ export class Setup {
   // Puts the focus on the shown tab's first field (the dialog itself where it has none), so a hidden
   // field never keeps it and Esc still reaches the dialog.
   focusTab() {
-    const first = { general: this.profile ? null : this.name, jira: this.board, github: this.owner, web: this.webHome, commands: this.leftovers }[this.tab];
+    const first = { general: this.profile ? null : this.name, jira: this.boardKind === "project" ? this.projectUrl : this.board, github: this.owner, web: this.webHome, commands: this.leftovers }[this.tab];
     (first ?? this.handle).focus();
   }
 
@@ -211,8 +237,9 @@ export class Setup {
   }
 
   // A check's outcome; a failed one shows its tab, as Save's checks can fail on a tab not shown.
-  result(part, ok, text, cx) {
-    this.checks[part] = { ok, text };
+  // `fix`: a command for the person to run themselves, shown under it to copy.
+  result(part, ok, text, cx, fix = null) {
+    this.checks[part] = { ok, text, ...(fix ? { fix } : {}) };
     const tab = TAB_OF[part];
     if (ok === false && tab && this.tab !== tab) { this.tab = tab; this.focusTab(); }
     cx.notify();
@@ -236,6 +263,57 @@ export class Setup {
         this.result("jira", true, `Signed in. Board “${r.body?.name}” (${r.body?.type ?? "board"}${r.body?.location?.projectKey ? `, ${r.body.location.projectKey}` : ""}).`, cx);
       } catch (e) {
         this.result("jira", false, String(e?.message ?? e), cx);
+      }
+    });
+  }
+
+  // A repo's key prefix input, kept once per repo (names compared as GitHub does, ignoring case).
+  addPrefix(repo, prefix = null) {
+    const key = String(repo).toLowerCase();
+    if (this.prefixes[key]) return;
+    const state = InputState.new({ value: prefix ?? defaultPrefix(repo) ?? "", placeholder: "A prefix, e.g. WEB" });
+    state.on("change", (_e, cx) => cx.notify());
+    this.prefixes[key] = { repo, state };
+  }
+
+  // Each repo's prefix as typed (else its own), whether it's its own, and what's wrong with it: not
+  // one a key can start with, or one an earlier repo has too (keys must say which repo they're in).
+  prefixList() {
+    const rows = Object.entries(this.prefixes).map(([key, { repo, state }]) => {
+      const fallback = defaultPrefix(repo);
+      const prefix = state.value().trim().toUpperCase() || fallback;
+      const error = !prefix ? "Its name doesn't make a prefix: give it one."
+        : !PREFIX.test(prefix) ? "A prefix is a letter, then letters or digits: 2 to 20 of them."
+        : null;
+      return { key, repo, state, prefix, own: prefix && prefix !== fallback ? prefix : null, error };
+    });
+    const taken = new Map();
+    for (const r of rows.filter((x) => !x.error)) {
+      if (taken.has(r.prefix)) r.error = `${taken.get(r.prefix)} has ${r.prefix} too: give one of them its own.`;
+      else taken.set(r.prefix, r.repo);
+    }
+    return rows;
+  }
+
+  // Reads the Project as the profile's GitHub account (project-check.js): what it holds, and whether
+  // Kelpie may move its tickets. Its repos get a prefix each; its Status options become the columns.
+  checkProject(cx) {
+    const demo = Boolean(this.profile?.demo);
+    const parsed = parseProject(this.projectUrl.value(), { demo });
+    if (!parsed) return this.result("project", false, NOT_PROJECT, cx);
+    this.result("project", null, "Checking…", cx);
+    cx.spawn(async (cx) => {
+      try {
+        const r = await readProject(parsed, { account: this.githubAccount, demo, name: this.name.value().trim() });
+        if (r.project) {
+          const key = projectKey(parsed);
+          this.projectFound = { key, ...r.project };
+          for (const repo of r.project.repos) this.addPrefix(repo);
+          if (r.project.options.length) this.projectColumns = { key, list: r.project.options.map((o) => ({ name: o.name, statuses: [o.id] })) };
+        }
+        this.result("project", r.ok, r.text, cx, r.fix);
+      } catch (e) {
+        this.result("project", false, String(e?.message ?? e), cx);
       }
     });
   }
@@ -300,8 +378,18 @@ export class Setup {
     const home = this.webHome.value().trim();
     const name = this.name.value().trim();
     const folder = this.folder.value().trim();
-    const error = url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
-      : parsed && missing ? ["jira", missing]
+    // One board: the one chosen is saved, the other dropped (its fields keep their text until then).
+    const onJira = this.boardKind === "jira";
+    const projectUrl = this.projectUrl.value().trim();
+    const project = onJira ? null : parseProject(projectUrl, { demo: Boolean(this.profile?.demo) });
+    const prefixRows = project ? this.prefixList() : [];
+    const badPrefix = prefixRows.find((r) => r.error);
+    const prefixes = prefixRows.filter((r) => r.own).map((r) => `${r.key}=${r.own}`).join(", ");
+    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
+    const error = onJira && url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
+      : onJira && parsed && missing ? ["jira", missing]
+      : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
+      : badPrefix ? ["project", `The key prefix of ${badPrefix.repo}: ${badPrefix.error}`]
       : home && !/^https?:\/\//.test(home) ? ["web", "Start it with https://."]
       : !name ? ["name", "Give it a name."]
       : !folder ? ["name", "Choose its folder: spaces in it belong to it."]
@@ -312,7 +400,8 @@ export class Setup {
         ...(this.profile ?? {}),
         name,
         folder,
-        jira: parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
+        jira: onJira && parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...boardParts } : null,
+        project: project ? { url: projectUrl, ...project, ...(prefixes ? { prefixes } : {}), ...boardParts } : null,
         github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
@@ -377,6 +466,14 @@ export class Setup {
       }
       case "agents": return `Claude: ${this.claudeConfig ? this.claudeConfig.replace(/\/+$/, "").split("/").pop() : "default account"}`;
       case "jira": {
+        if (this.boardKind === "project") {
+          const p = parseProject(this.projectUrl.value(), { demo: Boolean(this.profile?.demo) });
+          if (!p) return "Not connected";
+          // Its title once a Check or the stories read it, else its owner and number.
+          const loaded = projectKey(this.profile?.project) === projectKey(p) ? (shared(STORIES) ?? {})[this.profile.id]?.data?.project?.title : null;
+          const title = (this.projectFound?.key === projectKey(p) ? this.projectFound.title : null) || loaded;
+          return `GitHub · ${title || `${p.owner}/${p.number}`}`;
+        }
         const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
         return parsed ? `${parsed.site.replace(/^https:\/\//, "").split(".")[0]} · board ${parsed.board}` : "Not connected";
       }
@@ -405,19 +502,23 @@ export class Setup {
     // The parts of a tab's page: a heading with what the tab is for, groups of fields under small
     // headings, and fields (a label, the control, a hint under it).
     const hint = (text) => div().pt(6).text_size(SMALL).text_color(t.dim).child(text);
+    // Lines to run or paste, with Copy.
+    const codeBlock = (id, code) => h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
+      .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(String(code).split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
+      .child(textButton(t, `${id}-copy`, "Copy", (_e, cx) => cx.write_to_clipboard(code)));
     // A step of a guide: what to do, then the lines to run or paste, with Copy.
     const step = (id, text, code) => v_flex().pt(DIALOG.section)
       .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(text))
-      .when(Boolean(code), (el) => el.child(h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
-        .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(String(code).split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
-        .child(textButton(t, `${id}-copy`, "Copy", (_e, cx) => cx.write_to_clipboard(code)))));
+      .when(Boolean(code), (el) => el.child(codeBlock(id, code)));
     const input = (state) => Input.new(state).h(34).px(10).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(TEXT).text_color(t.foreground);
     const textarea = (state) => Textarea.new(state).px(10).py(8).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(TEXT).text_color(t.foreground);
     const row = (...children) => h_flex().gap(8).items_center().children(children.filter(Boolean));
     const grow = (el) => div().flex_1().min_w(0).child(el);
     const check = (part) => {
       const c = this.checks[part];
-      return c ? div().pt(DIALOG.gap).text_size(SMALL).text_color(c.ok === true ? t.done : c.ok === false ? t.blocked : t.dim).child(c.text) : null;
+      if (!c) return null;
+      const said = div().pt(DIALOG.gap).text_size(SMALL).text_color(c.ok === true ? t.done : c.ok === false ? t.blocked : t.dim).child(c.text);
+      return c.fix ? v_flex().child(said).child(div().pt(6).child(codeBlock(`setup-${part}-fix`, c.fix))) : said;
     };
     // "Ask Claude" for one scope (CONFIGURE_SCOPES): a Claude on the Desk sets it up with you, a new
     // one or, from a menu while the Desk has Claudes open (not one waiting for your answer), one of those.
@@ -479,21 +580,63 @@ export class Setup {
     const email = this.email.value().trim() || "<jira email>";
     const tokenCommand = this.tokenCommand.value().trim();
     // The handover choice shows once the board in the field is the one whose columns are known.
+    // For a Project, its Status options, once a Check or the stories read them for this Project.
+    const onJira = this.boardKind === "jira";
     const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
-    const columns = this.columns && parsed?.site === this.columns.site && parsed?.board === this.columns.board ? this.columns.list : null;
+    const project = parseProject(this.projectUrl.value(), { demo: Boolean(this.profile?.demo) });
+    const columns = onJira
+      ? (this.columns && parsed?.site === this.columns.site && parsed?.board === this.columns.board ? this.columns.list : null)
+      : (project && this.projectColumns?.key === projectKey(project) ? this.projectColumns.list : null);
     const from = columns ? handoverFrom(columns, this.handover) : -1;
     // Claude accounts by folder name; a saved folder no longer found still shows, so it can be changed.
     const dirName = (d) => d.replace(/\/+$/, "").split("/").pop();
     const dirs = [...new Set([...this.claudeDirs, ...[this.claudeConfig].filter(Boolean)])].filter((d) => !isOwnClaude(d));
     // GitHub accounts gh knows; a saved one no longer signed in still shows, so it can be changed.
     const ghAccounts = [...new Set([...this.githubAccounts, ...[this.githubAccount].filter(Boolean)])];
-    const hasJira = Boolean(parsed), hasGithub = Boolean(this.owner.value().trim());
+    const hasBoard = Boolean(onJira ? parsed : project), hasGithub = Boolean(this.owner.value().trim());
     const dirty = this.dirty();
     const fields = (list) => `Fills in ${list.map((f) => `{${f}}`).join(" ")}.`;
 
+    // The Board page's form for Jira: the board's address and how to sign in.
+    const jiraForm = () => [
+      field("Board URL", input(this.board), "Open the board in Jira and copy the address: it ends in /boards/<number>."),
+      group("Sign in", null, "jira-signin"),
+      this.mac && field("Keychain item", input(this.keychain), "Where the API token is kept on this Mac."),
+      field(this.mac ? "Or a token command" : "Token command", input(this.tokenCommand),
+        `A shell command that prints the API token, from a password manager (op read …, pass …, secret-tool lookup …). It runs for each request${this.mac ? ", instead of the Keychain when set" : ""}; the token only goes to curl, through a pipe.`),
+      field(tokenCommand ? "Jira email" : "Jira email, for storing the token", input(this.email), null),
+      this.mac && !tokenCommand && v_flex().pt(DIALOG.section)
+        .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a terminal and paste it at the prompt:"))
+        .child(h_flex().p(8).gap(8).items_center().rounded(8).bg(t.background).border_1().border_color(t.border)
+          .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email)))
+          .child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email))))),
+      h_flex().pt(DIALOG.section).gap(DIALOG.gap).items_center()
+        .child(textButton(t, "setup-jira-check", "Check connection", (_e, cx) => this.checkJira(cx), { tip: "Signs in and reads the board" })),
+      check("jira"),
+    ];
+    // The Board page's form for a GitHub Project: its address, read as the profile's GitHub account
+    // (no sign-in of its own), then each repo's key prefix.
+    const who = this.githubAccount ? `the GitHub account ${this.githubAccount}, chosen on the GitHub page` : "the account gh has active (the GitHub page can name another)";
+    const prefixRows = this.prefixList();
+    const example = prefixRows.find((r) => !r.error)?.prefix ?? "WEB";
+    const projectForm = () => [
+      field("Project address", row(grow(input(this.projectUrl)), textButton(t, "setup-project-check", "Check", (_e, cx) => this.checkProject(cx), { tip: "Reads the Project and what Kelpie may do there" })),
+        `Open the Project on GitHub and copy its address. Kelpie reads it as ${who}, through gh.`),
+      check("project"),
+      group("Ticket keys"),
+      prefixRows.length
+        ? v_flex().children(prefixRows.map((r) => v_flex().pt(DIALOG.gap)
+          .child(row(div().flex_1().min_w(0).truncate().text_size(TEXT).child(r.repo), div().w(160).flex_none().child(input(r.state))))
+          .when(Boolean(r.error), (el) => el.child(div().pt(4).text_size(SMALL).text_color(t.blocked).child(r.error)))))
+        : null,
+      hint(prefixRows.length
+        ? `An issue's key is its repo's prefix and its number, like ${example}-42, and names its space and ticket folder. A prefix is a letter, then letters or digits; change one to make keys shorter.`
+        : "Check the Project to list its repos and the key prefix each gives its issues."),
+    ];
+
     const pages = {
       general: () => [
-        page("General", "A piece of work with its own folder, and with Jira its board: every space opened in its folder belongs to it, and each story you start becomes a space of its own."),
+        page("General", "A piece of work with its own folder, and maybe a board: every space opened in its folder belongs to it, and each story you start becomes a space of its own."),
         field("Name", input(this.name), null),
         check("name"),
         field("Folder", row(grow(input(this.folder)), textButton(t, "setup-folder-pick", "Choose…", (_e, cx) => this.chooseFolder(cx))),
@@ -516,28 +659,25 @@ export class Setup {
         step("setup-claude-shell", "Does your own shell pick a Claude account, by folder say (a claude function of yours)? Have it leave the choice alone when CLAUDE_ACCOUNT_CHOSEN is set: Kelpie's terminals set it, with the profile's account already chosen."),
       ],
 
+      // The board: which kind, then that kind's form, then your part (either board's).
       jira: () => [
-        page("Jira", "The board its stories come from: your part of its active sprints, or of a Kanban board's open work. Jira Cloud only (an atlassian.net site)."),
-        field("Board URL", input(this.board), "Open the board in Jira and copy the address: it ends in /boards/<number>."),
-        group("Sign in", null, "jira-signin"),
-        this.mac && field("Keychain item", input(this.keychain), "Where the API token is kept on this Mac."),
-        field(this.mac ? "Or a token command" : "Token command", input(this.tokenCommand),
-          `A shell command that prints the API token, from a password manager (op read …, pass …, secret-tool lookup …). It runs for each request${this.mac ? ", instead of the Keychain when set" : ""}; the token only goes to curl, through a pipe.`),
-        field(tokenCommand ? "Jira email" : "Jira email, for storing the token", input(this.email), null),
-        this.mac && !tokenCommand && v_flex().pt(DIALOG.section)
-          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a terminal and paste it at the prompt:"))
-          .child(h_flex().p(8).gap(8).items_center().rounded(8).bg(t.background).border_1().border_color(t.border)
-            .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email)))
-            .child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email))))),
-        h_flex().pt(DIALOG.section).gap(DIALOG.gap).items_center()
-          .child(textButton(t, "setup-jira-check", "Check connection", (_e, cx) => this.checkJira(cx), { tip: "Signs in and reads the board" })),
-        check("jira"),
+        page("Board", onJira
+          ? "The board its stories come from: your part of its active sprints, or of a Kanban board's open work. Jira Cloud only (an atlassian.net site)."
+          : "The GitHub Project its stories come from: your issues in its current iteration, or in all of its open work when it has no iteration field. On github.com.",
+        onJira ? "jira" : "project"),
+        field("Where its stories come from", choice("setup-board-kind", [
+          { label: "Jira", value: "jira", on: onJira, tip: "A board on a Jira Cloud site" },
+          { label: "GitHub Project", value: "project", on: !onJira, tip: "A Project on github.com, its issues as tickets" },
+        ], (v) => { this.boardKind = v; this.focusTab(); }),
+        onJira ? (this.projectUrl.value().trim() ? "A profile has one board: saving drops the GitHub Project." : null)
+          : (this.board.value().trim() ? "A profile has one board: saving drops the Jira board." : null)),
+        ...(onJira ? jiraForm() : projectForm()),
         group("Your part", null, "handover"),
         columns
           ? field("Done from column", choice("setup-handover", columns.map((c, i) => ({ label: c.name, value: c.name, on: i === from })), (v) => { this.handover = v; }),
             `A story whose subtasks of yours are all in ${columns[from]?.name ?? "it"} or further right waits on others: it sinks to the end of your list.${this.handover ? "" : " Not chosen: the first testing column, else the board's last."}`,
             this.handover ? { id: "setup-handover-reset", action: (_e, cx) => { this.handover = null; cx.notify(); } } : null)
-          : hint("Check the connection to choose the column where your part of a story is done."),
+          : hint(onJira ? "Check the connection to choose the column where your part of a story is done." : "Check the Project to choose the column where your part of a story is done."),
       ],
 
       github: () => [
@@ -569,7 +709,7 @@ export class Setup {
 
       prompts: () => [
         page("Prompts", "The first message each kind of agent gets. Each starts as a default; Reset brings it back."),
-        group("Stories", hasJira ? null : "Saved once Jira is connected"),
+        group("Stories", hasBoard ? null : "Saved once a board is connected"),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,
           `${fields(PROMPT_FIELDS)} {parent} is the story a sub-task belongs to; {subtasks} lists a story's subtasks, a line each.`),
         field("Orchestrator", textarea(this.orchestrator), "For one agent that runs a whole story through its subtasks. Set, a story offers Start orchestrator beside Start work; the same placeholders."),
@@ -580,7 +720,7 @@ export class Setup {
           `The Merge icon on a story's heading under Your pull requests: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
         promptField("approval", "Request approval", this.approvalPrompt, DEFAULT_APPROVAL_PROMPT,
           "The icon beside Merge while a pull request isn't approved yet. The same placeholders; {prs} only the ones not approved."),
-        group("When nothing needs you", hasJira ? null : "Shown once Jira is connected"),
+        group("When nothing needs you", hasBoard ? null : "Shown once a board is connected"),
         promptField("suggest", "What next?", this.suggestPrompt, SUGGEST_PROMPT,
           "The magic button in the Next place of the story list, while nothing needs you: a Claude on the Desk that suggests what to do. {snapshot} is what the list knows (sprints, stories, subtasks, pull requests, reviews, agents); {board} the Jira board's address; {owner} the GitHub owner; {name} the profile's. It runs in the background: its answer must end in the JSON block of picks the default asks for (keep that part). Say here what kind of work you pick up (frontend, say)."),
         hint("A line whose placeholders all come out empty is left out."),
