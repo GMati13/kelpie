@@ -843,8 +843,11 @@ export async function runCommand(profile, command, key, seconds, on = null) {
 }
 
 // The profile dialog: a profile to edit (its id), or a new one (null), starting from a space's folder.
+// It opens as the whole window with no frame and draws its own card in the middle, no bigger than
+// the window (setup.js, `FIT`): a dialog's size is only px or a share of the window, and neither
+// alone is comfortable on a big screen and still fits a laptop's.
 export function openProfile(id, { space, focus } = {}) {
-  openOverlay({ mod: MOD, kind: "dialog", modal: true, width: 820, height: 0.85, props: { role: "setup", profile: id ?? null, space: space?.id ?? null, focus } });
+  openOverlay({ mod: MOD, kind: "dialog", modal: true, frame: "none", width: 1, height: 1, props: { role: "setup", profile: id ?? null, space: space?.id ?? null, focus } });
 }
 
 // The setup of a space: its profile, or a new profile in its folder.
