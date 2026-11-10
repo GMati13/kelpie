@@ -19,7 +19,7 @@ import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { PREVIEWS, STORIES, chooseProfile, claudeArgv, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
 import { approvePull, pullBody, searchPulls } from "./pulls.js";
-import { adfBlocks, adfLines, adfText, markdownBlocks } from "./adf.js";
+import { adfBlocks, adfLines, adfText, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix } from "./skins/common.js";
@@ -1089,7 +1089,7 @@ function inline(t, id, runs, color = tint(t.foreground, "c4")) {
     .child(skinFont(text(key, [{ ...r, code: false }]).font_family("JetBrains Mono"), "mono").text_size(DOC.mono).line_height("18px").text_color(t.foreground));
   return v_flex().min_w(0).children(lines.map((line, n) => {
     if (!line.length) return div().child(" ");
-    if (!line.some((r) => r.code)) return text(`${id}-text-${n}`, line);
+    if (!line.some((r) => r.code || r.mark)) return text(`${id}-text-${n}`, line);
     const words = [];
     let joined = false; // the last word ran on without a space
     for (const r of line) {
@@ -1101,8 +1101,18 @@ function inline(t, id, runs, color = tint(t.foreground, "c4")) {
       }
     }
     let k = 0;
-    const seg = (r) => (r.code ? code(`${id}-w-${n}-${k++}`, r) : div().flex_none().child(text(`${id}-w-${n}-${k++}`, [r])));
-    return h_flex().flex_wrap().gap_x(4).gap_y(2).children(words.map((w) => (w.length === 1 ? seg(w[0]) : h_flex().flex_none().children(w.map(seg)))));
+    const seg = (r) => (r.code ? code(`${id}-w-${n}-${k++}`, r) : div().flex_none().child(text(`${id}-w-${n}-${k++}`, [r]).when(Boolean(r.mark), (el) => el.text_color(t.foreground))));
+    const word = (w) => (w.length === 1 ? seg(w[0]) : h_flex().flex_none().children(w.map(seg)));
+    if (!line.some((r) => r.mark)) return h_flex().flex_wrap().gap_x(4).gap_y(2).children(words.map(word));
+    // A passage pointed to (findPassage) is marked as one run: the space after a marked word is inside
+    // its mark when the next word is marked too, so the words flow with no gaps in it.
+    const marked = (w) => Boolean(w?.some((r) => r.mark));
+    return h_flex().flex_wrap().gap_y(2).children(words.map((w, i) => {
+      if (!marked(w)) return div().flex_none().pr(4).child(word(w));
+      const on = marked(words[i + 1]);
+      return div().flex_none().when(!on, (el) => el.pr(4)).child(h_flex().flex_none().pl(marked(words[i - 1]) ? 0 : 3).pr(on ? 4 : 3).bg(tint(t.accent, "40"))
+        .when(!marked(words[i - 1]), (el) => el.rounded_l(3)).when(!on, (el) => el.rounded_r(3)).child(word(w)));
+    }));
   }));
 }
 
@@ -1142,6 +1152,52 @@ export const headFolded = () => Boolean(shared(HEAD_FOLDED));
 function foldHead(shut) {
   setShared(HEAD_FOLDED, shut);
   run(shut ? "layout.hide" : "layout.show", { id: "story-body" });
+}
+
+// A passage of a story's description someone pointed to (Claude, asked where a ticket says something):
+// { profile, key, quote, note, at }. Shown in the story's details (StoryBody.reader) until Back to the
+// story, another story, or PASSAGE_FOR.
+const PASSAGE = "kelpie.passage";
+const PASSAGE_FOR = 60 * 60 * 1000;
+function passageFor(profile, key) {
+  const p = shared(PASSAGE);
+  return p && p.profile === profile?.id && p.key === key && Date.now() - p.at < PASSAGE_FOR ? p : null;
+}
+// Shows the story `key` of the shown profile with `quote` found and marked in its description; false
+// when the list doesn't hold that story. Its details unfold, as they're what's shown.
+export function showPassage({ key, quote, note = "" }) {
+  const s = storyItems();
+  const it = s && s.items.find((x) => x.it.key === key)?.it;
+  if (!it) return false;
+  setShared(PASSAGE, { profile: s.st.profile.id, key, quote, note, at: Date.now() });
+  if (headFolded()) foldHead(false);
+  selectStory(s.st.profile, it);
+  return true;
+}
+
+// kelpie.show-passage: a request to show a passage, from `<home>/kelpie/passage.json` ({ key, quote,
+// note }), as any program can run the command. It only moves what's shown, so nothing waits for a
+// yes; values are checked (a ticket key, text of sensible length, no control characters) and the
+// outcome goes to passage.result.json beside it, the request removed.
+const passageText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
+export async function showPassageRequest() {
+  const dir = `${appHome()}/kelpie`;
+  const file = `${dir}/passage.json`;
+  let result;
+  try {
+    const read = await exec("cat", [file]);
+    if (read.code) throw new Error(`No request at ${file}.`);
+    const req = JSON.parse(read.stdout);
+    const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a Jira key, like ABC-12.");
+    if (quote.length < 3) throw new Error("quote: the passage's words, as the description has them.");
+    result = showPassage({ key, quote, note }) ? { ok: true } : { ok: false, error: `${key} isn't a story in the shown profile's list.` };
+  } catch (e) {
+    result = { ok: false, error: String(e?.message ?? e) };
+  }
+  const out = JSON.stringify({ ...result, at: new Date().toISOString() }, null, 2);
+  await exec("sh", ["-c", 'mkdir -p "$1" && printf "%s\\n" "$2" > "$1/passage.result.json" && rm -f "$3"', "sh", dir, out, file]).catch(() => {});
+  return result;
 }
 
 // What the last action said (pausing, asking, cleaning up), shown under the story's title row. In
@@ -2077,10 +2133,69 @@ export class Stories extends Source {
     // Under the title row (a block of its own): the status command's line, the note, then the
     // description and subtasks.
     const line = this.statusLine(t, st, it, cx);
+    const hl = passageFor(st.profile, it.key);
+    if (hl) return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8).child(this.reader(t, st, it, hl, cx));
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       .when(Boolean(line), (el) => el.child(line))
       .when(Boolean(note), (el) => el.child(note))
       .child(view);
+  }
+
+  // A passage pointed to (showPassage) in the story's description: the whole description as a list
+  // of its blocks, scrolled so the passage is in the middle, the passage marked, under a line saying
+  // what it is with a way back. A virtual list, as only one can be scrolled from here; it places rows
+  // by heights given, so each block is first drawn in an invisible copy of the column and measured
+  // there (`this.readerH`, as drawn, so divided by the zoom when used). Herdr reports a size only when
+  // it changes, so each passage's copy has ids of its own and is measured afresh.
+  reader(t, st, it, hl, cx) {
+    const d = this.descriptionOf(st, it.key, cx);
+    if (d.blocks && (this.passage?.at !== hl.at || this.passage.of !== d.blocks)) this.passage = { at: hl.at, of: d.blocks, found: findPassage(d.blocks, hl.quote) };
+    const found = d.blocks ? this.passage.found : null;
+    // A list's entries are items of their own (each a one-entry list, numbered on), so the one
+    // holding the passage is what's scrolled to, not the middle of a long list.
+    const lit = (x) => /"mark":true|"marked":true/.test(JSON.stringify(x));
+    const blocks = (found?.blocks ?? d.blocks ?? []).flatMap((b) => (b.kind !== "list" ? [b]
+      : b.items.map((item, n) => ({ ...b, start: (b.start ?? 1) + n, items: [item], hl: b.hl && (!found.exact || lit(item)), next: n > 0 }))));
+    const said = !d.blocks ? (d.error ? "The description didn't load" : "Loading the description…")
+      : !found ? "Couldn't find this passage in the description" : found.exact ? "Here in the description" : "Closest match in the description";
+    const bar = h_flex().id("passage-bar").flex_none().w_full().gap(10).items_center().px(8).py(6).rounded(7).bg(tint(t.accent, "14"))
+      .child(div().flex_none().text_size(SMALL).font_semibold().text_color(found ? t.accent : t.dim).child(said))
+      .child(div().flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.muted).tooltip(`“${hl.quote}”`).child(hl.note || (found?.exact ? "" : `“${hl.quote}”`)))
+      .child(textButton(t, "passage-back", "Back to the story", (_e, cx) => { setShared(PASSAGE, null); cx.notify(); }));
+    const item = (i) => {
+      const b = blocks[i];
+      const block = blocksView(t, `rd-${i}`, [b], 14, i === 0);
+      const box = b.hl ? div().px(12).py(8).rounded(8).bg(tint(t.accent, "12")).border_l_2().border_color(t.accent).child(block) : div().px(12).child(block);
+      return h_flex().w_full().justify_center().px(28).pt(i === 0 ? 24 : b.kind === "h" ? 20 : b.next ? 2 : 6).pb(i === blocks.length - 1 ? 32 : b.kind === "list" ? 2 : 6)
+        .child(skinFont(div(), "reading").w_full().min_w(0).max_w(DOC.width + 24).text_size(DOC.size).line_height(`${LINE}px`).text_color(tint(t.foreground, "c4")).child(box));
+    };
+    const sig = `${hl.at}:${blocks.length}`;
+    if (this.readerSig !== sig) { this.readerSig = sig; this.readerH = {}; this.readerAt = null; }
+    const sizes = blocks.map((_, i) => this.readerH[i] / (this.readerZoom || 1));
+    const measured = blocks.length > 0 && sizes.every((h) => h > 0);
+    const target = found ? Math.max(0, blocks.findIndex((b) => b.hl)) : -1;
+    if (measured && target >= 0 && this.readerAt !== sig) {
+      this.readerAt = sig;
+      this.readerScroll.scroll_to_item(target, "center");
+    }
+    // The measuring copy: the same rows at the same width, drawn under the list and never seen.
+    const measure = v_flex().id(`story-reader-measure-${sig}`).absolute().top(0).left(0).right(0).invisible()
+      .child(div().id("story-reader-zoom").absolute().top(0).left(0).w(100).h(0).on_size_change((size, cx) => {
+        const z = size.width / 100;
+        if (z && Math.abs((this.readerZoom ?? 0) - z) > 0.001) { this.readerZoom = z; cx.notify(); }
+      }))
+      .children(blocks.map((_, i) => div().id(`rd-m-${sig}-${i}`).w_full().child(item(i)).on_size_change((size, cx) => {
+        const h = size.height;
+        if (Math.abs((this.readerH[i] ?? 0) - h) < 0.5) return;
+        this.readerH = { ...this.readerH, [i]: h };
+        cx.notify();
+      })));
+    return v_flex().flex_1().min_h(0).gap(6).child(bar)
+      .child(v_flex().relative().flex_1().min_h(0).overflow_hidden().child(measure)
+        .when(measured, (el) => el
+          .child(v_virtual_list("story-reader", blocks.length, sizes, (i) => `rd-${sig}-${i}`, (range) => blocks.slice(range.start, range.end).map((_, k) => item(range.start + k)))
+            .track_scroll(this.readerScroll).size_full())
+          .child(Scrollbar.vertical("story-reader").viewport_from_layout().absolute().inset_0())));
   }
 
   // The story details' height as drawn (`view`) and their content's (`content`), on this copy, for the
@@ -2837,6 +2952,10 @@ export class Stories extends Source {
 
 // Under the title row: the story's note line, status line, description and subtasks.
 export class StoryBody extends Stories {
+  init(cx) {
+    super.init(cx);
+    this.readerScroll = VirtualListScrollHandle.new(); // the passage reader, scrolled to the passage
+  }
   render(cx) {
     const { st, t, early, shown } = this.prepare(cx);
     if (early) return early;

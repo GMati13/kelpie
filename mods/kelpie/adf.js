@@ -182,3 +182,99 @@ function mdRuns(text) {
   if (at < text.length) out.push({ text: text.slice(at) });
   return out.map((r) => ({ bold: false, italic: false, code: false, link: null, ...r }));
 }
+
+// A passage someone pointed to (Claude, quoting a ticket) found in the blocks, so the view can show it
+// where it is instead of as a quote. Matching forgives what quoting changes: case, runs of spaces and
+// line breaks, double quotes (a quote's own), curly quotes and dashes, Markdown's * _ ` marks, and "…" for left-out words (each piece
+// found in order). `{ index, exact, blocks }`: the first top-level block it's in, whether the words
+// were found as they are, and a copy of the blocks with the passage's runs marked (`mark: true`; a
+// code block wholly, `marked`) and each top-level block it touches flagged `hl`. A passage not found
+// word for word falls back to the block holding most of its words (`exact: false`, nothing marked);
+// null when none holds most of them.
+const FOLD = { "‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-", " ": " " };
+function squash(s) {
+  let out = "", space = false;
+  const map = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = FOLD[s[i]] ?? s[i];
+    if (c === "*" || c === "_" || c === "`" || c === '"') continue;
+    if (/\s/.test(c)) { if (out && !space) { out += " "; map.push(i); space = true; } continue; }
+    space = false;
+    out += c.toLowerCase();
+    map.push(i);
+  }
+  return { out, map };
+}
+const leafText = (b) => (b.kind === "code" ? b.text : b.runs.map((r) => (r.br ? "\n" : r.text)).join(""));
+// Every block with text of its own (paragraph, heading, code), in reading order, with its top-level index.
+function leaves(list, top = null, out = []) {
+  list.forEach((b, i) => {
+    const at = top ?? i;
+    if (b.kind === "list") b.items.forEach((item) => leaves(item, at, out));
+    else if (b.kind === "quote") leaves(b.blocks, at, out);
+    else out.push({ top: at, block: b });
+  });
+  return out;
+}
+function markRuns(runs, s, e) {
+  const out = [];
+  let pos = 0;
+  for (const r of runs) {
+    if (r.br) { out.push(r); pos += 1; continue; }
+    const a = pos, b = pos + r.text.length;
+    pos = b;
+    if (e <= a || s >= b) { out.push(r); continue; }
+    const x = Math.max(s, a) - a, y = Math.min(e, b) - a;
+    if (x > 0) out.push({ ...r, text: r.text.slice(0, x) });
+    out.push({ ...r, text: r.text.slice(x, y), mark: true });
+    if (y < r.text.length) out.push({ ...r, text: r.text.slice(y) });
+  }
+  return out;
+}
+// The blocks again, each leaf through `fn` (in leaves()' order), each top-level block through `top`.
+function remap(list, fn, top, counter = { n: 0 }, depth = 0) {
+  return list.map((b, i) => {
+    let c;
+    if (b.kind === "list") c = { ...b, items: b.items.map((item) => remap(item, fn, top, counter, depth + 1)) };
+    else if (b.kind === "quote") c = { ...b, blocks: remap(b.blocks, fn, top, counter, depth + 1) };
+    else c = fn(b, counter.n++);
+    return depth === 0 ? top(c, i) : c;
+  });
+}
+export function findPassage(list, quote) {
+  const pieces = String(quote ?? "").split(/…|\.\.\./).map((p) => squash(p).out.trim()).filter((p) => p.length >= 3);
+  if (!list?.length || !pieces.length) return null;
+  const all = leaves(list);
+  let doc = "";
+  const spans = all.map((l) => { const start = doc.length; doc += leafText(l.block); const span = [start, doc.length]; doc += "\n"; return span; });
+  const { out, map } = squash(doc);
+  let from = 0, first = -1, last = -1;
+  for (const p of pieces) {
+    const at = out.indexOf(p, from);
+    if (at < 0) { first = -1; break; }
+    if (first < 0) first = at;
+    last = at + p.length;
+    from = last;
+  }
+  if (first >= 0) {
+    const s = map[first], e = map[last - 1] + 1;
+    const touched = new Set(all.filter((_, i) => spans[i][0] < e && spans[i][1] > s).map((l) => l.top));
+    const blocks = remap(list, (b, i) => {
+      const [a, z] = spans[i];
+      if (z <= s || a >= e) return b;
+      return b.kind === "code" ? { ...b, marked: true } : { ...b, runs: markRuns(b.runs, Math.max(s, a) - a, Math.min(e, z) - a) };
+    }, (b, i) => (touched.has(i) ? { ...b, hl: true } : b));
+    return { index: Math.min(...touched), exact: true, blocks };
+  }
+  // Not word for word: the top-level block holding most of the passage's words, if most of them.
+  const words = [...new Set(pieces.join(" ").split(" ").filter((w) => w.length >= 3))];
+  if (!words.length) return null;
+  let best = null;
+  for (let i = 0; i < list.length; i++) {
+    const text = all.filter((l) => l.top === i).map((l) => squash(leafText(l.block)).out).join(" ");
+    const share = words.filter((w) => text.includes(w)).length / words.length;
+    if (share >= 0.6 && (!best || share > best.share)) best = { i, share };
+  }
+  if (!best) return null;
+  return { index: best.i, exact: false, blocks: list.map((b, i) => (i === best.i ? { ...b, hl: true } : b)) };
+}

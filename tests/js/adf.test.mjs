@@ -2,7 +2,7 @@
 // line estimate (adfLines) and their text for prompts (adfText). Nothing written may be lost.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { adfBlocks, adfLines, adfText, markdownBlocks } from "../../mods/kelpie/adf.js";
+import { adfBlocks, adfLines, adfText, findPassage, markdownBlocks } from "../../mods/kelpie/adf.js";
 import { adfOf } from "../../mods/kelpie/demo.js";
 
 const doc = (...content) => ({ type: "doc", version: 1, content });
@@ -138,5 +138,50 @@ describe("markdownBlocks: a pull request's description", () => {
     assert.deepEqual(markdownBlocks(""), []);
     assert.deepEqual(markdownBlocks(null), []);
     assert.deepEqual(markdownBlocks("<!-- template only -->"), []);
+  });
+});
+
+// A passage pointed to (a quote of the ticket) found where it is, to be shown there and marked.
+describe("findPassage", () => {
+  const story = adfBlocks(adfOf([
+    "Travellers open saved trips offline.",
+    "## Done when",
+    "1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online",
+    "Not the `TripCache` itself: that's ACME-143.",
+  ].join("\n\n")));
+  const marked = (r) => JSON.stringify(r.blocks).match(/"text":"[^"]*"(?=[^}]*"mark":true)/g)?.map((s) => s.slice(8, -1)) ?? [];
+  test("a quote word for word: its block, its words marked, the block flagged", () => {
+    const r = findPassage(story, "An edit made offline shows on another device");
+    assert.equal(r.index, 2);
+    assert.equal(r.exact, true);
+    assert.deepEqual(marked(r), ["An edit made offline shows on another device"]);
+    assert.deepEqual(r.blocks.map((b) => Boolean(b.hl)), [false, false, true, false]);
+  });
+  test("forgives case, spaces, curly quotes, Markdown marks and … for left-out words", () => {
+    const r = findPassage(story, "  “a trip opened once”  …  within 300   ms ");
+    assert.equal(r.index, 2);
+    assert.deepEqual(marked(r), ["A trip opened once opens again in airplane mode, within 300 ms"]);
+    assert.deepEqual(marked(findPassage(story, "not the TripCache itself")), ["Not the ", "TripCache", " itself"]);
+  });
+  test("a quote across blocks marks each, from the first", () => {
+    const r = findPassage(story, "offline. Done when");
+    assert.equal(r.index, 0);
+    assert.deepEqual(r.blocks.map((b) => Boolean(b.hl)), [true, true, false, false]);
+  });
+  test("not word for word: the block holding most of its words, nothing marked", () => {
+    const r = findPassage(story, "edits made offline show on other devices after going online");
+    assert.equal(r.exact, false);
+    assert.equal(r.index, 2);
+    assert.deepEqual(marked(r), []);
+  });
+  test("null when nothing holds it, or for an empty quote", () => {
+    assert.equal(findPassage(story, "payments are refunded within a week"), null);
+    assert.equal(findPassage(story, " … "), null);
+    assert.equal(findPassage([], "anything"), null);
+  });
+  test("leaves the blocks it was given alone", () => {
+    const before = JSON.stringify(story);
+    findPassage(story, "within 300 ms");
+    assert.equal(JSON.stringify(story), before);
   });
 });

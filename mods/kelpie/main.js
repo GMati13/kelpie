@@ -13,7 +13,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
 import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, status, stop, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -618,6 +618,8 @@ async function command(c) {
   if (c === "edit-profile" || c.startsWith("edit-profile-")) { const p = shownProfile(); return p ? openProfile(p.id, { focus: c.slice("edit-profile-".length) || undefined }) : undefined; }
   if (c.startsWith("profile-")) { const p = profiles().find((x) => x.id === c.slice("profile-".length)); return p ? switchProfile(p) : undefined; }
   if (c.startsWith("preview-")) return showStoryByKey(c.slice("preview-".length));
+  // show-passage: a story with a passage of its description marked, from a request file (stories.js).
+  if (c === "show-passage") return showPassageRequest();
   if (c.startsWith("pause-story-")) return pauseStoryByKey(c.slice("pause-story-".length));
   if (c.startsWith("clean-story-")) return cleanStoryByKey(c.slice("clean-story-".length));
   if (c === "clean-all") return cleanAll();
