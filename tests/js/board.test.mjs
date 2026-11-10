@@ -139,4 +139,10 @@ describe("projectCategory: a Status option as a status category", () => {
     assert.equal(projectCategory(-1, 4), "new");
     assert.equal(projectCategory(-1, 0, true), "done");
   });
+  test("an option named as work not started is to do wherever it is, as GitHub has no categories", () => {
+    const names = ["Backlog", "Todo", "In Progress", "In Review", "Testing", "Done"];
+    assert.deepEqual(names.map((n, i) => projectCategory(i, names.length, false, n)), ["new", "new", "indeterminate", "indeterminate", "indeterminate", "done"]);
+    for (const n of ["To do", "Ready", "Up next", "Triage"]) assert.equal(projectCategory(2, 6, false, n), "new", n);
+    for (const n of ["Doing", "Ready for review", "New feature", "Newsletter"]) assert.notEqual(projectCategory(2, 6, false, n), "new", n);
+  });
 });

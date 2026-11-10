@@ -152,8 +152,8 @@ export async function loadProject(board) {
         summary: i.title ?? "",
         issuetype: { name: i.parent ? "Sub-issue" : "Issue", subtask: Boolean(i.parent) },
         status: index >= 0
-          ? { id: option, name: options[index].name, statusCategory: { key: projectCategory(index, options.length, closed) } }
-          : { id: null, name: closed ? "Closed" : "Open", statusCategory: { key: projectCategory(-1, options.length, closed) } },
+          ? { id: option, name: options[index].name, statusCategory: { key: projectCategory(index, options.length, closed, options[index].name) } }
+          : { id: null, name: own ? "No status" : closed ? "Closed" : "Open", statusCategory: { key: projectCategory(-1, options.length, closed) } },
         parent: parent ? { key: parent } : null,
         ...(who ? { assignee: { displayName: who.name || who.login, avatarUrls: { "48x48": who.avatarUrl ?? null } } } : {}),
       },

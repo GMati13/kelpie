@@ -346,3 +346,13 @@ describe("the demo as a GitHub Project", () => {
     assert.ok(!build(jira, new Map()).flatMap((it) => it.subs).some((s) => s.prs.some((p) => p.url === linked)), "Jira knows nothing of it");
   });
 });
+
+describe("an issue on the Project with no Status set", () => {
+  test("reads as No status, to do, and keeps its item so it can be moved", async () => {
+    const own = ghIssue("acme/web", 20, { assignee: ME, option: null });
+    fakeGh({ pages: { null: projectOf({ items: [item(own)] }) }, stories: { [own.id]: { ...own, subIssues: { nodes: [] } } } });
+    const d = await loadBoard(boardWith());
+    assert.deepEqual(d.parents[0].fields.status, { id: null, name: "No status", statusCategory: { key: "new" } });
+    assert.equal(d.parents[0].item, "PVTI_20");
+  });
+});

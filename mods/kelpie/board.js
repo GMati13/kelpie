@@ -26,11 +26,13 @@ import { loadProject } from "./project.js";
 const PAGES = 5; // up to 500 tickets a search
 
 // What a GitHub Project's Status option means to Kelpie, as Jira's status categories do: a closed
-// issue, or one in the last option, is done; the first option is to do; any other is in progress.
+// issue, or one in the last option, is done; the first option, or one named as work not started yet
+// (Backlog then Todo, say: GitHub has no categories of its own), is to do; any other is in progress.
 // `index` the option's place in the Status field (-1: no Status), `count` how many options it has.
-export function projectCategory(index, count, closed = false) {
+const NOT_STARTED = /^(backlog|to ?do|ready|new|triage|icebox|planned|up next|next up)$/i;
+export function projectCategory(index, count, closed = false, name = "") {
   if (closed || (count > 0 && index === count - 1)) return "done";
-  return index <= 0 ? "new" : "indeterminate";
+  return index <= 0 || NOT_STARTED.test(String(name).trim()) ? "new" : "indeterminate";
 }
 
 async function search(cfg, jql) {
@@ -128,7 +130,7 @@ export async function statusOptions(board, key, data) {
   if (board.kind === "project") {
     if (!movable(board, key, data)) return [];
     const columns = data?.columns ?? [], now = loadedIssue(data, key)?.fields?.status?.id;
-    return columns.map((c, i) => ({ id: c.statuses?.[0], name: c.name, to: c.name, category: projectCategory(i, columns.length) }))
+    return columns.map((c, i) => ({ id: c.statuses?.[0], name: c.name, to: c.name, category: projectCategory(i, columns.length, false, c.name) }))
       .filter((o) => o.id && o.id !== now);
   }
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`);
