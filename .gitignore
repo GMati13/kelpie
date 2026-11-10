@@ -9,3 +9,6 @@ mods/**/jsconfig.json
 
 # macOS Finder metadata
 .DS_Store
+
+# claude plugin eval run results
+plugin/**/evals/results/

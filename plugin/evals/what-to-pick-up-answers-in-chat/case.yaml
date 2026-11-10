@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: what-to-pick-up-answers-in-chat
+expected_outcome: |
+  Answers in the chat (it may read the queue with get_next) and doesn't call suggest_next, which would replace the person's suggestions in Kelpie.

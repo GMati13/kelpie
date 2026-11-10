@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: done-without-asking
+expected_outcome: |
+  Fixes the typo in the offline banner, says what it changed, and doesn't call add_to_next: nothing needs the person.
+context:
+  scaffold_script: place-files.sh

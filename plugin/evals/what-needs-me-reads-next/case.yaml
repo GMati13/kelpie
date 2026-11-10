@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: what-needs-me-reads-next
+expected_outcome: |
+  Calls get_next and answers from what Kelpie returned, in its order, without calling suggest_next or add_to_next.
