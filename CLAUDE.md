@@ -24,7 +24,9 @@ docs/screenshots/               # the README's screenshots, of the demo (Demo be
 .claude/settings.json          # shared Claude Code permissions
 test.sh                        # runs every test suite (tests/README.md)
 tests/                         # stubs/ (herdr, gpui-kit, gpui-base for Node), lib/, js/, shell/, python/
+tests/snapshots/               # what each view draws, as text (js/views-*.test.mjs; UPDATE_SNAPSHOTS=1 re-records, reviewed like code)
 scripts/pre-commit             # git hook running ./test.sh (enable: git config core.hooksPath scripts)
+scripts/e2e-demo.sh            # end-to-end check in a second Herdr window on a throwaway home (macOS, not CI; ask first)
 .github/workflows/test.yml     # CI: ./test.sh on macOS and Linux, on every push and pull request
 ```
 
