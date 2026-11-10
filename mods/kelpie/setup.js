@@ -449,7 +449,7 @@ export class Setup {
         field("Claude account", choice("setup-claude", [
           { label: "Default", value: null, on: !this.claudeConfig, tip: "Claude's own folder, ~/.claude" },
           ...dirs.map((d) => ({ label: dirName(d), value: d, on: this.claudeConfig === d, tip: d })),
-        ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR). Resuming a session keeps the account it ran on."),
+        ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR). Lists your ~/.claude* folders that have a settings.json or projects/ (any you've run Claude with via CLAUDE_CONFIG_DIR). Resuming a session keeps the account it ran on."),
       ],
 
       jira: () => [
