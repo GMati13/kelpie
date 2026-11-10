@@ -12,6 +12,8 @@ How to work on this repo. `CLAUDE.md` is the reference for how each part works; 
 
 Anything under `plugin/` (its skills, its MCP tools and their descriptions, the server's instructions) is what steers other people's Claudes, so it's written and checked with the `skill-creator` skill, every time: load it before changing any of it. Whether a new tool or behaviour needs a skill, or its description is enough, is settled by evals (`plugin/skills/<skill>/evals/`, `claude plugin eval`'s layout), not by guessing; keep the evals beside the skill either way. The plugin's own tests (`tests/python/test_plugin.py`) still cover what the server does.
 
+Every change under `plugin/` raises the plugin's version in the same pull request: Claude Code updates an installed plugin by its version, so without a new one people who have it keep the old skills, tools and descriptions. The version is `plugin/.claude-plugin/plugin.json`'s, and `server.py` reports the same one to Claude (`serverInfo`; `tests/python/test_plugin.py` keeps them equal). A patch (0.4.0 → 0.4.1) for wording, descriptions and new optional settings; a minor (0.4 → 0.5) for a new tool, skill or behaviour. Raise it once per pull request, however many commits touch the plugin, and check it before calling a pull request ready.
+
 ## Seeing a change working
 
 Herdr runs the mods from `~/.config/herdr-app/mods/` (links into this repo). After editing:
