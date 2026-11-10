@@ -1,7 +1,7 @@
 # Kelpie's tests
 
 ```sh
-./test.sh        # everything, about 10 s
+./test.sh        # everything, about 20 s
 ./test.sh js     # JavaScript and shell only (node:test)
 ./test.sh py     # Python only (unittest)
 node --import ./tests/stubs/register.mjs --test tests/js/cleanup.test.mjs   # one file
@@ -32,6 +32,7 @@ tests/stubs/            the host modules a mod imports, for Node
   gpui-kit.js           element recorder (div, svg, image, View, ...) and tree/snapshot helpers
   gpui-base.js          h_flex, v_flex, components (Button.new, TextView.html, ...) and state handles
 tests/lib/helpers.mjs   temp folders, fake programs, running scripts, git fixtures, until(), bodyOf()
+tests/lib/stories.mjs   story data: the demo loaded as the story list loads it, small hand-built issues and PRs
 tests/js/*.test.mjs     mods' logic, under the stubs
 tests/shell/*.test.mjs  shell scripts run for real in temp folders (jira.sh, install.sh, ...)
 tests/python/test_*.py  kittyfix.py, changes.py, sessions.py (unittest; helpers in kelpie_test.py)
@@ -43,7 +44,8 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py (unittest; helpers 
   file by path (`../../mods/kelpie/config.js`) and the stub as the mod does (`import { mock } from "herdr"`);
   call `mock.reset()` in `beforeEach`. Every test file runs in its own process, so module state starts
   fresh per file, not per test. A function a test needs that the mod doesn't export may be exported for
-  it: keep the change to the `export` keyword.
+  it: keep the change to the `export` keyword (stories.js, with many, lists them in one `export { ... }`
+  at its end, "for the tests only").
 - **Shell**: a `tests/shell/<script>.test.mjs` that runs the script with `sh()` in a `tempDir()`, with the
   programs it calls faked by `fakeBin()`. Point any home the script uses (`HOME`, `HERDR_APP_HOME`) into a
   temp folder.
@@ -107,3 +109,41 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `git(cwd, ...args)`: git for fixtures, without the person's config, hooks or signing.
 - `until(check, ms)`: waits for code that runs on after a call returns (a `run("space.new")`, say).
 - `bodyOf(source, start)`: a top-level function's text, for static checks on the source.
+
+### Story data (`tests/lib/stories.mjs`)
+
+- `demoData(profile = DEMO_PROFILE)`: what the story list's load gives for the demo profile
+  (`StoryList.fetch`, each request answered by demo.js from `mods/kelpie/demo/demo.json`), ready for
+  `build()`. Nothing runs: no exec, no network.
+- `issue(key, status, parent)`, `pr(title, { checks, review, merged, draft, repo, number })` and
+  `data({ parents, children, mine, prs, sessions, reviews, columns })`: hand-built data in the shapes the
+  list keeps, on a board `COLUMNS` of To Do, In Progress, QA (the default handover column) and Done.
+  Statuses: `todo`, `doing`, `blocked`, `qa`, `done`. Keys need a project of two letters or more
+  (`AB-1`): a one-letter one isn't a ticket key to Kelpie.
+
+## What's covered
+
+- `stories.test.mjs`: `build()`: stories from issues and subtasks, pull requests attached by the key in
+  their titles (`keyIn`, `projectsOf`: a subtask's key, a leading `[KEY]`, `UTF-8` not a ticket), agents by
+  tab name else space (`agentsByKey`), sessions and paused agents; `need()` ranks, `ordered()` and
+  `needQueue()`; sinking at the handover column; subtask stages and `progress()`; `prState()`'s order; the
+  demo's stories end to end.
+- `next.test.mjs`: `needQueueOf()` (needs you, reviews, the Desk asking, one clean-up item, Claude's
+  picks and when they drop out), `nextIn()`, `applyPicks()`'s rules (Jira lookups faked through `exec`).
+- `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
+- `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
+  `patchHash`'s stable values.
+- `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
+  `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
+  `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.
+- `demo.test.mjs`: each answer demo.js gives (Jira's board, sprints, searches, issues, transitions; pull
+  requests, files, uncommitted work, sessions, limits) and a schema check of `demo.json` (parents,
+  statuses, pull requests, tabs for agent.sh, `demo-` session ids, links reaching no one).
+- `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
+  around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
+  folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
+  read incrementally, in a fake HOME).
+
+Known bugs, as `todo` tests: `wordChanges()` splits two changed words around a shared space
+(diff.test.mjs); a profile folder saved with a trailing slash doesn't own a space started exactly there
+(config.test.mjs).
