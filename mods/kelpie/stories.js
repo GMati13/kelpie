@@ -322,7 +322,8 @@ const askFor = (p) => (p.merged ? null : failing(p) ? "fix" : p.reviewDecision =
 // handover column (jira.handover; none: config.js picks one): a story is `sunk` once every subtask of
 // yours is in it or a column right of it (a done status always counts), or, with no subtask of yours,
 // once the story itself is. A task of yours with no subtasks goes by its own status the same way.
-function build(data, byAgent, paused = {}, started = new Map(), handover = null) {
+// `done`: instead of the list, the finished stories it leaves out (the sidebar's Done group).
+function build(data, byAgent, paused = {}, started = new Map(), handover = null, done = false) {
   const known = projectsOf(data);
   const last = lastSessions(data.sessions, known);
   const lastOf = (k) => (byAgent.has(k) || paused[k] ? null : last.get(k) ?? null);
@@ -376,10 +377,16 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
     items.push({ key: k, title: list[0].title.replace(/^\s*\[[^\]]*\]\s*/, ""), type: "Pull request", pr: true, sunk: false, story: false, prs: [], agent: null, space: started.get(k) ?? null,
       subs: [{ key: k, title: "", prs: list, agent: byAgent.get(k) ?? null, paused: byAgent.has(k) ? null : paused[k] ?? null, last: lastOf(k) }] });
   }
-  // Finished stories leave once nothing of theirs is open: no pull request, and no space (one with a
-  // space stays, to clean it up).
-  return items.filter((it) => it.category !== "done" || it.space || it.subs.some((s) => s.prs.some((p) => !p.merged)));
+  return items.filter((it) => settled(it) === done);
 }
+// Finished stories leave the list once nothing of theirs is open: no pull request, and no space (one
+// with a space stays, to clean it up). They go to the Done group instead, still reachable.
+const settled = (it) => it.category === "done" && !it.space && !it.subs.some((s) => s.prs.some((p) => !p.merged));
+// The finished stories the list leaves out, in the board's order, each { it, n } as the list's are:
+// what the sidebar's Done group shows, previewed like a story not open (its details, its merged pull
+// requests, its earlier sessions to resume). Only the sprint's (or, on a board without sprints, the
+// last 14 days'), as that's all the load holds.
+const doneIn = (data, profile, handover) => build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), handover, true).map((it) => ({ it, n: need(it) }));
 
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
 // "on <its name>".
@@ -1099,6 +1106,7 @@ function pruneShared(profile, data) {
   const ids = new Set(profiles().map((p) => p.id));
   keep(PR_SEEN, ([id]) => ids.has(id));
   keep(PR_FOLDS, ([id]) => ids.has(id));
+  keep(DONE_OPEN, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile)).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
@@ -1242,6 +1250,8 @@ function blocksView(t, id, list, gap = 14, lead = false, color = undefined) {
 const HEAD_FOLDED = "kelpie.storyhead.folded";
 // The sidebar's pull request groups folded by hand (profile id -> "<list>:<story key>" -> true).
 const PR_FOLDS = "kelpie.pulls.folded";
+// The sidebar's Done group unfolded by hand (profile id -> true); folded otherwise.
+const DONE_OPEN = "kelpie.done.open";
 export const headFolded = () => Boolean(shared(HEAD_FOLDED));
 function foldHead(shut) {
   setShared(HEAD_FOLDED, shut);
@@ -1289,7 +1299,7 @@ function clearPoint(profile, key) {
 // when the list doesn't hold that story. Its details unfold, as they're what's shown.
 export function showPassage({ key, quote, note = "" }) {
   const s = storyItems();
-  const it = s && s.items.find((x) => x.it.key === key)?.it;
+  const it = s && [...s.items, ...s.done].find((x) => x.it.key === key)?.it;
   if (!it) return false;
   setShared(PASSAGE, { profile: s.st.profile.id, key, quote, note, at: Date.now() });
   if (headFolded()) foldHead(false);
@@ -1395,11 +1405,11 @@ const say = (text, full = null) => setShared(NOTE, text ? { text, full, at: Date
 
 // Picking a story: a started one shows its space; one not started is previewed, from its details
 // (work.js gives them the column).
-// A story by key in the shown profile's list (or its reviews), shown as selectStory does: for the
-// `kelpie.preview-<KEY>` command (scripts, tests). False when the list doesn't hold it (yet).
+// A story by key in the shown profile's list (its Done group too, or its reviews), shown as selectStory
+// does: for the `kelpie.preview-<KEY>` command (scripts, tests). False when the list doesn't hold it (yet).
 export function showStoryByKey(key) {
   const s = storyItems();
-  const it = s && (s.items.find((x) => x.it.key === key)?.it ?? s.lone.find((r) => r.key === key));
+  const it = s && ([...s.items, ...s.done].find((x) => x.it.key === key)?.it ?? s.lone.find((r) => r.key === key));
   if (!it) return false;
   selectStory(s.st.profile, it);
   return true;
@@ -2148,7 +2158,10 @@ export class Stories extends Source {
       : paused.length ? { label: "Resume", tip: `Bring back ${paused.length === 1 ? "its paused session" : `its ${paused.length} paused sessions`} where they left off` }
       : ticket.last ? { label: "Resume", tip: `Continue "${ticket.last.title}" (${ago(ticket.last.updated)} ago)`, last: true }
       : { label: it.space ? "Start agent" : "Start work", tip: `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`, fresh: true };
-    const go = work && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
+    // A finished story the list left out (its Done group's) is nothing to start: no filled Start work,
+    // though More still starts one afresh, and Resume stays for a session of its own.
+    const over = settled(it) && !live.length && !paused.length;
+    const go = work && !(over && work.fresh) && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
     // Its open pull requests, for Merge and Request approval (the menus of its heading under Your
     // pull requests). With more than one ready to merge, the main action is Merge all: the Merge
     // menu, filled (an agent checks them and plans merging them together).
@@ -2185,7 +2198,7 @@ export class Stories extends Source {
       ...(work && primary !== go && !live.length ? [{ label: work.label, tip: `${work.tip} ⌘⇧R`, action: () => startWork(st, it) }] : []),
       // With a space, more agents come from the tab bar's +; before one, this starts the story afresh
       // instead of resuming its last session.
-      ...(work?.fresh || it.space ? [] : [{ label: "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start }]),
+      ...((work?.fresh && !over) || it.space ? [] : [{ label: "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start }]),
       ...(conductor ? [{ label: "Start orchestrator", tip: `Start one Claude agent that runs ${key} through its subtasks, with the profile's orchestrator prompt`,
         action: () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, conductor) })) }] : []),
       ...(earlier.length ? [{ header: `Resume a session on ${key}` }, ...this.sessionRows(st, it, key, earlier)] : []),
@@ -3220,10 +3233,11 @@ export class Stories extends Source {
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
-    const shown = findItem(items, loneOf(st.data), previewIn(st.profile)) ?? inStory;
+    const done = doneIn(st.data, st.profile, boardOf(st.setup)?.handover);
+    const shown = findItem([...items, ...done], loneOf(st.data), previewIn(st.profile)) ?? inStory;
     // What's shown, for carefulButton: a button armed on one story isn't armed on the next.
     this.shownKey = `${st.profile.id}:${shown?.key ?? ""}`;
-    return { st, t, items, reviews, shown };
+    return { st, t, items, reviews, shown, done };
   }
 
   // A story previewed that has begun (sessions, pull requests) has its screenshots counted once per
@@ -3405,8 +3419,39 @@ export class StoryList extends Stories {
         .when(brewing, (el) => el.frames(brewWords(brewingIn(st.profile) ?? 1), 2800)).when(!brewing, (el) => el.child(slim ? "Conjure more to do" : "Conjure what's next")));
   }
 
+  // A finished story in the Done group: muted, the done mark, its key and badges (its merged pull
+  // requests among them); a click previews it, as a story not open. No actions of its own.
+  doneRow(t, it, on, st) {
+    const sign = statusMark(t, "done", { where: "row", size: 8, color: t.done });
+    return decor("rowDecor", t, h_flex().id(`done-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
+      .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .on_click(() => selectStory(st.profile, it)).tooltip(`Done on the board · ${progress(it)}. Show its details, pull requests and earlier sessions`)
+      .child(div().flex_none().mt(1).child(sign ?? mark(t, "done", 16)))
+      .child(v_flex().flex_1().min_w(0).gap(2)
+        .child(skinFont(div(), "ui").truncate().font_medium().text_color(t.muted).child(it.title))
+        .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).opacity(0.6)
+          .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
+          .children(storyBadges(t, it)))),
+      { selected: on, state: "done", story: it, now: new Date() });
+  }
+
+  // The Done group, last in the sidebar and folded unless unfolded by hand (per profile): the finished
+  // stories the list leaves out once cleaned up, so they stay one click away without crowding what's
+  // in play. Its heading counts them and its chevron folds it; folded, the one shown still has its row.
+  doneGroup(t, st, done, shown) {
+    if (!done.length) return [];
+    const all = shared(DONE_OPEN) ?? {};
+    const open = Boolean(all[st.profile.id]);
+    const flip = () => { const next = { ...all }; if (open) delete next[st.profile.id]; else next[st.profile.id] = true; setShared(DONE_OPEN, next); };
+    const when = st.data.sprints?.[0]?.kanban ? "in the last 14 days" : "this sprint";
+    return [div().id("stories-done").flex_none().cursor_pointer().on_click(flip)
+      .tooltip(`${open ? "Fold" : "Show"} the stories finished ${when}`)
+      .child(groupHeader(t, "Done", done.length, icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim))),
+    ...done.filter(({ it }) => open || it.key === shown?.key).map(({ it }) => this.doneRow(t, it, it.key === shown?.key, st))];
+  }
+
   render(cx) {
-    const { st, t, early, items, reviews, shown } = this.prepare(cx);
+    const { st, t, early, items, reviews, shown, done } = this.prepare(cx);
     if (early) return early;
     orderAgents(st.profile, items);
     checkLeftovers(st.profile, items.map((x) => x.it));
@@ -3572,7 +3617,8 @@ export class StoryList extends Stories {
           : [empty(t, noneWaiting(st.data, items))])
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))
           .children(others.map((s) => plain(`space-${s.id}`, s.active && !shown, t.dim, s.name, `${s.tabs.length} tab${s.tabs.length === 1 ? "" : "s"} · no story`,
-            () => { setPreview(st.profile, null); run("space.select", { id: s.id }); }, true)))));
+            () => { setPreview(st.profile, null); run("space.select", { id: s.id }); }, true))))
+        .children(this.doneGroup(t, st, done, shown)));
   }
 }
 
@@ -3689,10 +3735,10 @@ export function syncTracking(baseline = false) {
 export function storyNow() {
   const s = storyItems();
   if (!s) return null;
-  const { st: { profile }, items, lone } = s;
+  const { st: { profile }, items, done, lone } = s;
   const preview = previewIn(profile);
   const spaceKey = profileOf(s.st.space)?.id === profile.id ? keyOf(s.st.space?.name) : null;
-  const it = findItem(items, lone, preview) ?? findItem(items, [], spaceKey);
+  const it = findItem([...items, ...done], lone, preview) ?? findItem(items, [], spaceKey);
   if (!it) return null;
   const counts = (shared(COUNTS) ?? {})[it.key];
   return {
@@ -3710,12 +3756,14 @@ export function storyNow() {
 
 // The shown profile's stories in the list's order (each with its need, `n`), and the reviews waiting
 // for you, from what the list loaded; null where the profile shows no stories. For the keys and the
-// story picker.
+// story picker. `done`: the finished stories the list leaves out (its Done group), which can be shown
+// but need nothing.
 export function storyItems() {
   const ctx = READER.context();
   const data = sharedData(ctx)?.data;
   if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
-  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), boardOf(ctx.setup)?.handover)), reviews: reviewsOf(data), lone: loneOf(data) };
+  const handover = boardOf(ctx.setup)?.handover;
+  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), handover)), done: doneIn(data, ctx.profile, handover), reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).
