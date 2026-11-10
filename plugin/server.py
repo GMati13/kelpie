@@ -1,8 +1,8 @@
 """Kelpie's MCP server for Claude Code (stdio, no dependencies): tools that let Claude show the person
 something in Kelpie and set up their Kelpie profiles.
 
-- show_passage: a Jira story opened in Kelpie with a passage of its description marked where it is
-  (Kelpie's `kelpie.show-passage`, mods/kelpie/stories.js showPassageRequest).
+- show_passage: a story (from a Jira board or a GitHub Project) opened in Kelpie with a passage of its
+  description marked where it is (Kelpie's `kelpie.show-passage`, mods/kelpie/stories.js showPassageRequest).
 - get_profile: the saved profiles, read from Herdr's shared state (<home>/shared.json).
 - save_profile / save_status: a change to a profile, through Kelpie's `kelpie.apply-profile`
   (mods/kelpie/config.js applyProfileRequest), which checks it and holds what needs the person's yes
@@ -32,16 +32,18 @@ import time
 KEY = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
-# The profile dialog's pages (mods/kelpie/setup.js TABS).
-TABS = ["general", "jira", "github", "web", "agents", "prompts", "messages", "commands"]
+# The profile dialog's pages (mods/kelpie/setup.js TABS, and TAB_ALIAS's other names for the board page:
+# board and project open it too, project on a GitHub Project's form when the profile has no Jira).
+TABS = ["general", "board", "jira", "project", "github", "web", "agents", "prompts", "messages", "commands"]
 TERMINAL = re.compile(r"^[\w-]{1,40}$")
 # Seconds Kelpie has to answer (it runs commands between frames); the tests shorten it. Picks may wait
-# on Jira (a key the list doesn't hold is looked up), so they get longer.
+# on the board (a key the list doesn't hold is looked up), so they get longer.
 WAIT = float(os.environ.get("KELPIE_SHOW_WAIT") or 5)
 PICKS_WAIT = WAIT * 6
 
 INSTRUCTIONS = (
-    "Kelpie is the person's Herdr layout of Jira stories, pull requests and agents, set up per profile. "
+    "Kelpie is the person's Herdr layout of stories (from a Jira board or a GitHub Project), pull requests and "
+    "agents, set up per profile. "
     "When they ask where a story says something, or to show them, open it in Kelpie with show_passage "
     "rather than only quoting it. To set up a Kelpie profile, follow the configure-profile skill: read with "
     "get_profile, save with save_profile. Next is the queue the person works from, across all their agents: read it "
@@ -57,7 +59,7 @@ TOOLS = [
         "name": "show_passage",
         "title": "Show a passage in Kelpie",
         "description": (
-            "Opens a Jira story in Kelpie, the person's story view, with a passage of its description scrolled "
+            "Opens a story in Kelpie, the person's story view (a ticket on their Jira board or GitHub Project), with a passage of its description scrolled "
             "into view and marked, so they read it where it is. Use it when they ask where the story says "
             "something, which part covers a point, or to show them. `quote` must be words copied exactly from "
             "the story's description (not a summary or paraphrase; a few sentences at most, '…' for words left "
@@ -67,7 +69,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "key": {"type": "string", "description": "The story's Jira key, like ABC-123."},
+                "key": {"type": "string", "description": "The story's ticket key, like ABC-123."},
                 "quote": {"type": "string", "description": "The passage, word for word from the description."},
                 "note": {"type": "string", "description": "A few words on what the passage is, shown above it."},
             },
@@ -81,7 +83,7 @@ TOOLS = [
         "title": "Read a Kelpie profile",
         "description": (
             "The person's Kelpie profiles as saved. With `id`, that profile's settings (name, folder, claude, "
-            "jira, github, web, prompts, notify, commands); without, every profile's id, name and folder. "
+            "jira or project (its board: a Jira board or a GitHub Project), github, web, prompts, notify, commands); without, every profile's id, name and folder. "
             "Read-only. Fields not in the profile dialog (sources, seen) are old or internal: leave them."
         ),
         "inputSchema": {
@@ -96,12 +98,15 @@ TOOLS = [
         "title": "Save a change to a Kelpie profile",
         "description": (
             "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only "
-            "what changes: name and folder replace; a section (jira, github, web, prompts, notify, commands, "
+            "what changes: name and folder replace; a section (jira, project, github, web, prompts, notify, commands, "
             "claude) given as an object is merged into the saved one; a key or section set to null is removed. "
-            "Values are strings, except jira.board (a number) and notify.pulls (true/false). An id that doesn't "
+            "A profile has one board, jira or project (a GitHub Project), not both: set the other to null. "
+            "Values are strings, except jira.board and project.number (numbers, filled in from the address) and "
+            "notify.pulls (true/false). An id that doesn't "
             "exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token "
-            "or password are refused. Changes that can run commands, steer agents, move the Jira sign-in or pick "
-            "the GitHub account (commands, prompts, claude, web, the jira sign-in and address, the github "
+            "or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick "
+            "the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the "
+            "jira sign-in and address, the project's address and key prefixes, either board's prompts, the github "
             "account and prompts) aren't saved "
             "until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at "
             "Kelpie, and call save_status once they've answered. Save only what the person agreed to."
@@ -131,9 +136,11 @@ TOOLS = [
         "name": "open_profile_page",
         "title": "Open the profile dialog on a page",
         "description": (
-            "Opens Kelpie's profile dialog, for the profile Kelpie shows, on one page: general, jira, github, "
+            "Opens Kelpie's profile dialog, for the profile Kelpie shows, on one page: general, board (its Jira "
+            "board or GitHub Project; jira and project open it too, project on the GitHub Project form), github, "
             "web, agents (the accounts its agents run on), prompts, messages or commands. Use it for the person to "
-            "press a Check button (Jira's checks their sign-in and lists the board's columns; GitHub's checks "
+            "press a Check button (on the board page, Jira's checks their sign-in and lists the board's columns, a "
+            "GitHub Project's reads it, lists its columns and repos and says whether Kelpie may move its tickets; GitHub's checks "
             "their pull requests, and its Check my shell whether their agents' gh acts as the profile's GitHub "
             "account) or to look over what you saved. It only opens the dialog."
         ),
@@ -151,7 +158,7 @@ TOOLS = [
         "description": (
             "The person's Next queue in Kelpie: what needs them across all their stories and agents, in the order "
             "they'd take it. Use it whenever they ask what needs them, what's on their plate, what's waiting or what "
-            "to do next, rather than piecing it together from Jira and GitHub: Kelpie already ranks it as they see it. "
+            "to do next, rather than piecing it together from their board and GitHub: Kelpie already ranks it as they see it. "
             "Order: stories that need them (an agent waiting, changes requested, checks failing, ready to merge), what "
             "agents asked of them, pull requests waiting for their review, the Desk's agent waiting, finished stories to "
             "clean up, then Claude's suggestions. Each with its kind, key, what to do, a detail line and its link. For "
@@ -179,8 +186,8 @@ TOOLS = [
             "properties": {
                 "action": {"type": "string", "description": "What to do, a verb first, under 60 characters: what Next shows."},
                 "why": {"type": "string", "description": "One short line on why or what it's about, shown under it."},
-                "key": {"type": "string", "description": "The Jira key it's about, like ABC-123 (a subtask's counts for its story)."},
-                "url": {"type": "string", "description": "A link to open instead: a GitHub page or the profile's Jira."},
+                "key": {"type": "string", "description": "The ticket key it's about, like ABC-123 (a subtask's counts for its story)."},
+                "url": {"type": "string", "description": "A link to open instead: a GitHub page or the profile's Jira site."},
             },
             "required": ["action"],
             "additionalProperties": False,
@@ -196,11 +203,11 @@ TOOLS = [
             "refresh Kelpie's suggestions (What next? asks this way): a person asking you what to work on wants your "
             "answer in the chat, and calling it would replace the picks they have. All picks in one call, best first, "
             "8 at most. Each is one "
-            "of: `key`, a Jira key (a subtask's goes to its story; one pick per story); `url`, a GitHub pull "
+            "of: `key`, a ticket key (a subtask's goes to its story; one pick per story); `url`, a GitHub pull "
             "request link; `idea`, a short brief for an agent, with `where` (no ticket: something to make better, "
             "3 at most, after the rest). Each has `action`, what Next shows (a verb first, under 60 characters), "
             "and `why`, one short line on why now. Kelpie checks each and says what it kept and what it dropped, "
-            "and why. It changes only what Kelpie suggests: nothing in Jira, GitHub or any file."
+            "and why. It changes only what Kelpie suggests: nothing on the board, on GitHub or in any file."
         ),
         "inputSchema": {
             "type": "object",
@@ -303,7 +310,7 @@ def show_passage(args):
     key = clean(args.get("key"), 40).upper()
     quote, note = clean(args.get("quote"), 2000), clean(args.get("note"), 200)
     if not KEY.match(key):
-        return "key: a Jira key, like ABC-123.", True
+        return "key: a ticket key, like ABC-123.", True
     if len(quote) < 3:
         return "quote: the passage's words, copied from the description.", True
     answer = ask("passage", {"key": key, "quote": quote, "note": note}, "show-passage")
@@ -393,7 +400,7 @@ def add_to_next(args):
         if args.get(name):
             request[name] = clean(args.get(name), limit)
     if "key" in request and not KEY.match(request["key"].upper()):
-        return "key: a Jira key, like ABC-123.", True
+        return "key: a ticket key, like ABC-123.", True
     answer = ask("next-add", request, "add-next")
     if not answer.get("ok"):
         return refused(answer, "add it")
