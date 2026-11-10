@@ -93,10 +93,9 @@ const sharedCopy = async () => (await draw(new StoryList(), { init: () => {} }))
 // The stories with no pull requests or reviews: nothing of GitHub's needs you.
 const quiet = (e) => ({ ...e, data: { ...e.data, prs: [], reviews: [] } });
 
-// BUG (stories.js:488, suggestedIn): a pick of a pull request already waiting for your review
-// ("pr:web#421", the demo's own pick) isn't dropped, though the review is in what needs you
-// ("review:web#421"): the queue lists it twice, and the pick opens on the web instead of the preview.
-test("a pick of a review already in the queue drops out", { todo: "BUG: stories.js:488 keeps a pr: pick whose review is already queued" }, async () => {
+// A pick of a pull request already waiting for your review ("pr:web#421", the demo's own pick) drops
+// out: the review is in the queue already ("review:web#421").
+test("a pick of a review already in the queue drops out", async () => {
   setupDemoWorld({ stories });
   putShared("kelpie.next.suggested", PICKS);
   const { view, cx } = await draw(new StoryList());

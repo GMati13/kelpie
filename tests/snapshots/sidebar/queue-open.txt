@@ -44,12 +44,12 @@ v_flex
         div [fg=dim]
           "Next"
         div [fg=muted]
-          "1 of 10"
+          "1 of 9"
         div
         h_flex #story-next-tools {down:left click}
-          h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="3 suggested by Claude: open the queue to see them"
+          h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="2 suggested by Claude: open the queue to see them"
             svg own:sparkles
-            "3"
+            "2"
           div #story-queue [bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="Hide the queue"
             svg chrome:chevron-down
       h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
@@ -167,19 +167,6 @@ v_flex
               div [fg=muted]
                 "Next in the sprint's order, and nobody has started on Export an itinerary as PDF yet."
             div #queue-drop-suggest:ACME-180 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
-              svg chrome:x
-          h_flex #queue-suggest:pr:web#421 [hover(bg=hover)] {click}
-            div
-              div
-                svg own:sparkles [fg=accent]
-            v_flex
-              h_flex
-                div
-                  "Review Priya's trip sharing links"
-                svg own:external-link [fg=dim]
-              div [fg=muted]
-                "It's waited almost a day and ACME-166 can't move until it's reviewed."
-            div #queue-drop-suggest:pr:web#421 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
               svg chrome:x
           h_flex #queue-suggest:idea:2 [hover(bg=hover)] {click}
             div

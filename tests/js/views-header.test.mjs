@@ -25,15 +25,10 @@ async function header({ space = null, preview = null, view = null, shared = {}, 
 }
 const mainAction = (el) => texts(byId(el, "story-main") ?? byId(el, "story-peek") ?? byId(el, "review-start") ?? byId(el, "story-ask-fix") ?? byId(el, "story-ask-comments") ?? byId(el, "story-ask-merge") ?? []);
 
-// BUG (stories.js:1725, headActions): headKind maps need() rank 1 to "fix" and 2 to "comments", but
-// need() ranks changes requested 1 and failing checks 2 (changes outrank failing), so neither story
-// gets its pull request action as the main one. Once fixed, record the two snapshots
-// (UPDATE_SNAPSHOTS=1) and drop the todo.
-const RANKS = "BUG: stories.js:1725 maps need() rank 1 to fix and 2 to comments; need() ranks changes requested 1, failing 2";
 const CASES = [
   ["needs-you", { space: "ACME-142" }, "Peek"],
-  ["failing", { space: "ACME-151" }, "Fix checks", RANKS],
-  ["changes", { space: "ACME-160" }, "Address comments", RANKS],
+  ["failing", { space: "ACME-151" }, "Fix checks"],
+  ["changes", { space: "ACME-160" }, "Address comments"],
   ["ready", { space: "ACME-171" }, "Merge"],
   ["working", { space: "ACME-175", view: "changes" }, "Show agent"],
   ["paused", { preview: "ACME-138" }, "Resume"],
@@ -79,8 +74,8 @@ test("Kelpie-Plain: the header of a story whose agent needs you", async () => {
   snap("plain/header/needs-you", (await header({ space: "ACME-142", layout: "Kelpie-Plain" })).el);
 });
 
-// BUG (stories.js:194, pauseWhy): one tab with no agent reads "A tab with no agent close too".
-test("header: Pause's tip about one tab with no agent", { todo: "BUG: stories.js:194 says \"a tab with no agent close too\" (closes)" }, async () => {
+// One tab with no agent: "A tab with no agent closes too".
+test("header: Pause's tip about one tab with no agent", async () => {
   const { el } = await header({ space: "ACME-142" });
   assert.match(byId(el, "story-pause") && render(byId(el, "story-pause"), skinTheme()), /A tab with no agent closes too/);
 });

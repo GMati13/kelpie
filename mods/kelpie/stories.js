@@ -191,7 +191,7 @@ function pauseWhy(it) {
   const agentTabs = new Set(agents().map((a) => a.tab));
   const plain = (space?.tabs ?? []).filter((c) => !agentTabs.has(c.id)).length;
   const working = spaceAgents(it).filter((x) => x.agent.status === "working").length;
-  return [working && `${working === 1 ? "an agent is" : `${working} agents are`} working`, plain && `${plain === 1 ? "a tab" : `${plain} tabs`} with no agent close too`].filter(Boolean).join(", ");
+  return [working && `${working === 1 ? "an agent is" : `${working} agents are`} working`, plain && `${plain === 1 ? "a tab" : `${plain} tabs`} with no agent close${plain === 1 ? "s" : ""} too`].filter(Boolean).join(", ");
 }
 
 // The latest Claude session started on each key (it said the key in its first message, or carries it
@@ -490,7 +490,10 @@ function suggestedIn(profile, items, needs = new Set()) {
   if (!e || Date.now() - e.at > SUGGEST_FOR) return [];
   return (e.items ?? []).flatMap((s) => {
     const it = items.find((x) => x.it.key === s.key)?.it ?? null;
-    if (needs.has(s.key) || (it && (finished(it) || sunk(it)))) return [];
+    // A pull request picked ("pr:<repo>#<n>") that's already in the queue as a review or a lone pull
+    // request of yours is there already: not again as a pick.
+    const pr = s.key.startsWith("pr:") ? s.key.slice(3) : null;
+    if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`))) || (it && (finished(it) || sunk(it)))) return [];
     return [{ key: `suggest:${s.key}`, suggest: s, it }];
   });
 }
@@ -1729,7 +1732,8 @@ export class Stories extends Source {
     const live = allAgents(it);
     const waiting = live.find((a) => a.status === "blocked");
     // The most urgent pull request action, when those PRs are one ticket's.
-    const headKind = { 1: "fix", 2: "comments", 3: "merge" }[need(it)[0]];
+    // need()'s ranks: 1 changes requested, 2 failing checks, 3 ready to merge.
+    const headKind = { 1: "comments", 2: "fix", 3: "merge" }[need(it)[0]];
     const headPrs = headKind ? allPrs(it).filter((p) => askFor(p) === headKind) : [];
     const headAsk = headPrs.length && new Set(headPrs.map((p) => p.key)).size === 1 ? { kind: headKind, prs: headPrs } : null;
     // What cmd-shift-r does (startWork): the whole story's agent, or a ticket's single one.

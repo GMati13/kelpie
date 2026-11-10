@@ -3,12 +3,12 @@ v_flex #story-next [bg=raised border=border]
     div [fg=dim]
       "Next"
     div [fg=muted]
-      "1 of 10"
+      "1 of 9"
     div
     h_flex #story-next-tools {down:left click}
-      h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="3 suggested by Claude: open the queue to see them"
+      h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="2 suggested by Claude: open the queue to see them"
         svg own:sparkles
-        "3"
+        "2"
       div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
         svg chrome:chevron-right
   h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
