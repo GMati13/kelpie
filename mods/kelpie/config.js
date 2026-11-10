@@ -407,6 +407,10 @@ export function sunkWords(board) {
   return board?.cfg?.solo ? { heading: "Built", none: "Everything here is built." } : { heading: "Waiting on others", none: "Nothing waiting on you." };
 }
 
+// Whether the person works alone on the profile's board (its `solo`): nobody on their team reviews or
+// approves their work, so the sidebar leaves out what only a team needs (stories.js StoryList).
+export const worksAlone = (p) => Boolean(boardOf(p)?.cfg?.solo);
+
 // The task an agent started on a Jira ticket gets: the space's own template (jira.prompt), else this.
 // Placeholders: {key} {summary} {url} {type} {status} {parent} (the story's key and summary, or empty)
 // {subtasks} (a story's subtasks, a line each: "KEY — title (status)"; empty for a subtask).
