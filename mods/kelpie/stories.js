@@ -1429,17 +1429,31 @@ async function ticketFolder(profile, it) {
   return (await exec("sh", ["-c", script, "sh", profile.folder, ...storyKeys(it)], on ? { on } : {})).stdout.trim() || null;
 }
 
-// A plain shell for the story, in its space (made if needed): in its ticket folder when it has one,
-// else in the repo on its branch when the changes found one. Agents still start in the profile's folder.
-function openTerminal(profile, it) {
+// A name no tab in the list has: `base`, else `base 2`, `base 3`… (the lowest free), so a story's
+// second terminal shows as "Terminal 2" in the tab bar.
+const freeName = (base, tabs = []) => {
+  const taken = new Set(tabs.map((c) => c.name));
+  let n = 1;
+  while (taken.has(n === 1 ? base : `${base} ${n}`)) n++;
+  return n === 1 ? base : `${base} ${n}`;
+};
+
+// A plain shell for the story: a new tab on every press, as Claude's, in its space (made if needed):
+// in its ticket folder when it has one, else in the repo on its branch when the changes found one.
+// The main area goes back to the terminals, so the new one shows. Agents still start in the profile's
+// folder. Only the first, which makes the space, goes through once(): a second press then would make a
+// second space; with a space each press is its own tab.
+// Exported for the tests.
+export function openTerminal(profile, it) {
   if (lonePr(it)) return;
-  const name = `${it.key} terminal`;
-  const open = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs.find((c) => c.name === name) : null;
-  if (open) { run("tab.select", { id: open.id }); return setView(profile, it, "agent"); }
-  once(it.key, async () => {
+  const open = async () => {
     const folder = (await ticketFolder(profile, it).catch(() => null)) ?? (shared(COUNTS) ?? {})[it.key]?.repo ?? profile.folder;
-    return launch(profile, it, { name, folder, argv: shellArgv(profile) });
-  });
+    const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
+    return launch(profile, it, { name: freeName(`${it.key} terminal`, tabs), folder, argv: shellArgv(profile) });
+  };
+  if (!it.space) return once(it.key, open);
+  setView(profile, it, "agent");
+  return open();
 }
 
 // A plain Claude agent for the story, with no task: a new tab each time, in its space (made if
