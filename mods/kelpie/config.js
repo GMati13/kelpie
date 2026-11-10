@@ -400,11 +400,11 @@ export function handoverFrom(columns, name) {
   return testing >= 0 ? testing : columns.length - 1;
 }
 
-// What the sunk group says: its heading, and the line above it when every story is in it. Waiting on
-// others, unless the person works alone (the board's `solo`): then nobody else has them, and what
-// they share is that they're built (testing, in review or done, whatever the board calls it).
+// What the sunk group is called: Waiting on others, unless the person works alone (the board's
+// `solo`): then nobody else has them, and what they share is that they're built (testing, in review
+// or done, whatever the board calls it).
 export function sunkWords(board) {
-  return board?.cfg?.solo ? { heading: "Built", none: "Everything here is built." } : { heading: "Waiting on others", none: "Nothing waiting on you." };
+  return board?.cfg?.solo ? { heading: "Built" } : { heading: "Waiting on others" };
 }
 
 // Whether the person works alone on the profile's board (its `solo`): nobody on their team reviews or

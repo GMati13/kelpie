@@ -11,4 +11,4 @@ v_flex #sp-list
       div [fg=blocked]
         "Checks failing on ACME-152 (payments#97)"
     div [fg=dim]
-      "Open"
+      "Open here"
