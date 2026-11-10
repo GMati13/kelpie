@@ -11,14 +11,14 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
-import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, statColor, status, stop, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
+import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, status, stop, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { goDesk } from "./desk.js";
-import { demoAccounts, isDemo, removeDemo, setupDemo } from "./demo.js";
+import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { agentState, decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, statusMark, syncSkin } from "./skins/index.js";
 
 function top() {
@@ -315,7 +315,10 @@ function toolbar() {
     const child = id === "web" ? webChild(root) : id;
     if (id === "web" ? !webSlots(body).length : !find(body, id)) return null;
     const on = Boolean(panel && !panel.hidden && child && body?.active === child);
-    return iconButton(t, `panel-${id}`, path, () => togglePanel(id).catch(() => {}), tip, { on });
+    // The browser hidden while it plays sound (music, say): the globe turns into moving bars.
+    const playing = id === "web" && !on && (shared(PLAYING) ?? []).includes(profileDir());
+    return iconButton(t, `panel-${id}`, path, () => togglePanel(id).catch(() => {}), playing ? `${tip} · Playing sound` : tip,
+      { on, content: playing ? soundBars(t) : null });
   };
   // In a story's space: its tabs, then the story's other views. A story previewed from the list (not
   // open) has no tabs yet: its Overview, and Changes and Screenshots only when they hold something.
@@ -515,6 +518,45 @@ async function watchBrowserSize() {
   if (was && was !== now) { await exec("sleep", ["0.6"]); await hc(["keys", slot, "ctrl+0"]); }
 }
 
+// While a profile's browser plays sound, its globe in the tab bar turns into moving bars (playing
+// music with the browser hidden, say). macOS notes who plays sound: Chromium holds a "Playing audio"
+// power assertion, which `pmset -g assertions` lists with its process and how long it's been held;
+// the browser is the process whose environment names its profile's folder (kelpie/web/<profile>/).
+// Only sound lasting PLAYING_AFTER seconds counts, so a notification's ping doesn't. Elsewhere (no
+// pmset) nothing shows. The footer asks every few seconds and notes the folders in shared PLAYING.
+const PLAYING = "kelpie.web.playing"; // [profile folder], sorted
+export const PLAYING_AFTER = 10;
+// The processes holding "Playing audio" for at least PLAYING_AFTER seconds (exported for the tests).
+export function playingPids(text) {
+  const out = [];
+  for (const m of String(text ?? "").matchAll(/pid (\d+)\([^)]*\): \[[^\]]*\] (\d+):(\d\d):(\d\d) \S+ named: "Playing audio"/g)) {
+    if (Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4]) >= PLAYING_AFTER) out.push(m[1]);
+  }
+  return [...new Set(out)];
+}
+// The profile folders named in `ps eww` lines (a process's command and environment; exported for the tests).
+export function playingFolders(text) {
+  const out = new Set();
+  for (const m of String(text ?? "").matchAll(/\/\.local\/share\/kelpie\/web\/([A-Za-z0-9_-]+)\//g)) out.add(m[1]);
+  return [...out].sort();
+}
+let playingBusy = false; // one check at a time (every copy of the mod shares this context)
+export async function watchPlaying() {
+  if (playingBusy || !webSlots(find(layout(), "panel-body")).length) return;
+  playingBusy = true;
+  try {
+    let folders = [];
+    const pids = playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout);
+    if (pids.length) folders = playingFolders((await exec("ps", ["eww", "-o", "command=", "-p", pids.join(",")]).catch(() => null))?.stdout);
+    // The demo has no browser: its fixture says whether it plays.
+    for (const p of profiles()) if (isDemo(p) && demoPlaying()) folders.push(p.id.replace(/[^A-Za-z0-9_-]/g, "-"));
+    folders = [...new Set(folders)].sort();
+    if (JSON.stringify(folders) !== JSON.stringify(shared(PLAYING) ?? [])) setShared(PLAYING, folders);
+  } finally {
+    playingBusy = false;
+  }
+}
+
 // Each profile keeps whether the panel is open and what it shows: switching profile saves the one
 // left and brings back the one shown. Runs in the always-shown footer (its own copy's memory).
 let panelProfile;
@@ -643,7 +685,7 @@ export default class Quiet extends View {
     this.claude = {}; // agent address -> what claude-statusline.sh saved for it, so switching back shows at once
     this.poll(cx);
     cx.timer.every(POLL, (cx) => this.poll(cx));
-    if (props()?.role === "footer") cx.timer.every(3000, () => { watchBrowserSize().catch(() => {}); });
+    if (props()?.role === "footer") cx.timer.every(3000, () => { watchBrowserSize().catch(() => {}); watchPlaying().catch(() => {}); });
     // The clock moves even when nothing else does.
     cx.timer.every(15000, (cx) => cx.notify());
   }

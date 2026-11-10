@@ -198,6 +198,8 @@ export async function demoSessions(folder) {
   return (f.sessions ?? []).map((s) => ({ id: s.id, title: s.title, cwd: folder, updated: when(s.updated), running: false, first: s.first ?? [], keys: s.first ?? [] }))
     .sort((a, b) => b.updated - a.updated);
 }
+// Whether the demo's browser plays sound (its globe turns into moving bars): the fixture's web.playing.
+export const demoPlaying = () => Boolean(FIXTURE?.web?.playing);
 // The footer's Claude account line for a demo profile.
 export function demoAccounts() {
   const l = FIXTURE?.limits;

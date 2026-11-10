@@ -128,14 +128,23 @@ export function progressBar(t, id, parts, tip, width = 32) {
 
 // The one icon button, for routine actions (panels, create, refresh, open elsewhere, copy): dim until
 // hovered, `on` for the open one of a group, a tooltip always (its name, and its key when it has one).
-export function iconButton(t, id, path, action, tip, { on = false } = {}) {
-  return decor("controlDecor", t, iconButtonEl(t, id, path, action, tip, on), { kind: "icon", id, label: tip, on });
+export function iconButton(t, id, path, action, tip, { on = false, content = null } = {}) {
+  return decor("controlDecor", t, iconButtonEl(t, id, path, action, tip, on, content), { kind: "icon", id, label: tip, on });
 }
-function iconButtonEl(t, id, path, action, tip, on) {
+function iconButtonEl(t, id, path, action, tip, on, content) {
   return div().id(id).flex().flex_none().size(CONTROL).items_center().justify_center().rounded(7).cursor_pointer()
     .when(on, (el) => el.bg(t.selected)).text_color(on ? t.foreground : t.dim)
     .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip)
-    .on_mouse_down("left", stop).on_click(action).child(icon(path));
+    .on_mouse_down("left", stop).on_click(action).child(content ?? icon(path));
+}
+
+// Sound playing: three thin bars rising and falling out of step, natively (no redraws), in an
+// icon's box. Calm: slow, short travel, the accent colour.
+export function soundBars(t, size = ICON) {
+  const bar = (period) => div().w(2).h(4).rounded(1).bg(t.accent)
+    .loop("height", { from: 4, to: size - 4, period, easing: "ease-in-out" });
+  return h_flex().flex_none().size(size).items_end().justify_center().gap(2).pb(2)
+    .children([bar(900), bar(1300), bar(1100)]);
 }
 
 // Buttons come in two kinds, drawn alike everywhere (headers, rows, dialogs, menus): the same

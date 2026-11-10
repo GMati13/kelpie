@@ -656,6 +656,7 @@
     "fiveResets": "+2h",
     "weekResets": "+3d"
   },
+  "web": { "playing": false },
   "suggest": [
     {
       "key": "ACME-181",

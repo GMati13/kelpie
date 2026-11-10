@@ -70,3 +70,39 @@ test("the Desk: its tabs and + (no story)", () => {
   assert.deepEqual(ids(el, "view-"), []);
   snap("toolbar/desk", el);
 });
+
+test("the shown profile's browser playing sound, hidden: the globe turns into moving bars", () => {
+  const draw = (playing) => {
+    setupDemoWorld({ stories, shown: "ACME-142", props: { role: "toolbar" } });
+    mock.state.shared.set("kelpie.web.playing", playing);
+    const cx = { ...fakeCx(), spawn() {} };
+    const view = new Quiet({});
+    view.init({}, cx);
+    return byId(view.render(cx), "panel-web");
+  };
+  const on = draw(["demo"]);
+  const text = render(on, skinTheme());
+  assert.match(text, /tip="Web ⌘⇧S · Playing sound"/);
+  assert.doesNotMatch(text, /own:globe/, "the bars take the globe's place");
+  snap("toolbar/web-playing", on);
+  assert.match(render(draw([]), skinTheme()), /own:globe/, "nothing playing: the globe");
+  assert.match(render(draw(["another"]), skinTheme()), /own:globe/, "another profile's browser: not this globe");
+});
+
+test("the browser on screen while it plays: the plain globe, selected", () => {
+  setupDemoWorld({ stories, shown: "ACME-142", props: { role: "toolbar" } });
+  const find = (n, id) => n?.id === id ? n : (n?.children ?? []).map((c) => find(c, id)).find(Boolean);
+  const panel = find(mock.state.layout, "panel"), body = find(mock.state.layout, "panel-body");
+  assert.ok(panel && body && (body.children ?? []).some((c) => c.id === "web"), "the demo layout has a Web slot");
+  panel.hidden = false;
+  body.active = "web";
+  mock.state.shared.set("kelpie.web", { slots: { demo: "web" } }); // the slot the demo's browser was given
+  mock.state.shared.set("kelpie.web.playing", ["demo"]);
+  const cx = { ...fakeCx(), spawn() {} };
+  const view = new Quiet({});
+  view.init({}, cx);
+  const text = render(byId(view.render(cx), "panel-web"), skinTheme());
+  assert.match(text, /own:globe/);
+  assert.match(text, /bg=selected/);
+  assert.doesNotMatch(text, /Playing sound/);
+});
