@@ -1,0 +1,93 @@
+// config.js sendToClaude: a message goes only to a terminal whose foreground process is Claude, as
+// the system reports it (hc get --json), and every message a mod sends goes through it.
+import { beforeEach, describe, test } from "node:test";
+import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { REPO, bodyOf, readRepo } from "../lib/helpers.mjs";
+import { mock } from "herdr";
+import { sendToClaude } from "../../mods/kelpie/config.js";
+
+let foreground;
+beforeEach(() => {
+  mock.reset();
+  foreground = null;
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify(foreground === undefined ? {} : { foreground }), stderr: "" } : undefined);
+});
+const sends = () => mock.of("hc").filter(([a]) => a[0] === "send").map(([a]) => a);
+
+describe("sendToClaude sends to Claude", () => {
+  for (const [what, fg] of [
+    ["claude by name", { name: "claude", argv: ["claude"] }],
+    ["claude by path", { name: "2.1.3", argv: ["/Users/me/.local/bin/claude", "--resume", "x"] }],
+    ["node running Claude Code's cli.js", { name: "node", argv: ["node", "/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js"] }],
+    ["node running bin/claude", { name: "node", argv: ["/opt/homebrew/bin/node", "/opt/homebrew/bin/claude"] }],
+    ["the demo's stand-in agent", { name: "sh", argv: ["sh", `${REPO}/mods/kelpie/demo/agent.sh`, "idle", ""] }],
+  ]) {
+    test(what, async () => {
+      foreground = fg;
+      await sendToClaude("t1", "hello");
+      assert.deepEqual(mock.of("hc")[0][0], ["get", "t1", "--json"]);
+      assert.deepEqual(sends(), [["send", "t1", "hello"]]);
+    });
+  }
+});
+
+describe("sendToClaude refuses anything else", () => {
+  for (const [what, fg] of [
+    ["a login shell", { name: "zsh", argv: ["-zsh"] }],
+    ["a shell", { name: "bash", argv: ["bash"] }],
+    ["a shell whose argv mentions claude-code", { name: "bash", argv: ["bash", "-c", "echo claude-code"] }],
+    ["a shell whose argv mentions claude", { name: "zsh", argv: ["zsh", "-c", "claude --help; zsh"] }],
+    ["vim on a file named claude.md", { name: "vim", argv: ["vim", "claude.md"] }],
+    ["a program named claude-ish", { name: "claudette", argv: ["claudette"] }],
+    ["nothing in the foreground", null],
+    ["no foreground at all", undefined],
+  ]) {
+    test(what, async () => {
+      foreground = fg;
+      await assert.rejects(sendToClaude("t1", "rm -rf ~\n"), /isn't running Claude/);
+      assert.deepEqual(sends(), []);
+    });
+  }
+  // A real gap, left for the person: the @anthropic-ai/claude-code pattern isn't anchored or tied to
+  // node, so any program whose argv names that package counts as Claude.
+  test("a shell whose argv names the @anthropic-ai/claude-code package", { todo: "BUG: the package pattern in sendToClaude (config.js) matches anywhere in any program's argv" }, async () => {
+    foreground = { name: "bash", argv: ["bash", "-c", "ls ~/.npm/@anthropic-ai/claude-code"] };
+    await assert.rejects(sendToClaude("t1", "x"));
+    assert.deepEqual(sends(), []);
+  });
+  test("hc get answering something that isn't JSON", async () => {
+    mock.on.hc = (args) => (args[0] === "get" ? { code: 1, stdout: "not json", stderr: "" } : undefined);
+    await assert.rejects(sendToClaude("t1", "x"));
+    assert.deepEqual(sends(), []);
+  });
+});
+
+// Every hc() call in the mods is a literal list whose first word is known, and the only "send" is
+// sendToClaude's own: a message typed into a shell would run as a command.
+const jsFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+  e.isDirectory() ? jsFiles(join(dir, e.name)) : e.name.endsWith(".js") ? [join(dir, e.name)] : []);
+
+test("every hc send in the mods goes through sendToClaude", () => {
+  const seen = [];
+  for (const f of jsFiles(join(REPO, "mods"))) {
+    const src = readFileSync(f, "utf8");
+    for (const m of src.matchAll(/\bhc\(\s*([^)\s][^\n]{0,30})/g)) {
+      const at = `${relative(REPO, f)}:${src.slice(0, m.index).split("\n").length}`;
+      const verb = /^\[\s*"(\w+)"/.exec(m[1])?.[1];
+      assert.ok(verb, `${at}: hc() takes a literal list starting with its command (${m[1]})`);
+      assert.ok(["get", "kill", "run", "keys", "send"].includes(verb), `${at}: hc ${verb} is new: check it can't type into a shell`);
+      if (verb === "send") seen.push(at);
+    }
+    for (const m of src.matchAll(/["'`]send["'`]/g)) {
+      const line = src.slice(0, m.index).split("\n").length;
+      const text = src.split("\n")[line - 1];
+      if (/own\("send"\)/.test(text)) continue; // the send icon
+      assert.match(text, /\bhc\(\["send"/, `${relative(REPO, f)}:${line}: a "send" outside hc(["send", ...]): ${text.trim()}`);
+    }
+  }
+  assert.equal(seen.length, 1, `one hc send: ${seen}`);
+  assert.match(bodyOf(readRepo("mods/kelpie/config.js"), "export async function sendToClaude(address, text) {"), /return hc\(\["send", address, text\]\);/);
+  assert.match(seen[0], /^mods\/kelpie\/config\.js:/);
+});
