@@ -1,0 +1,13 @@
+{
+  "name": "kelpie",
+  "description": "Kelpie's plugin for Claude Code: lets Claude show you things in Kelpie.",
+  "owner": { "name": "Kelpie" },
+  "plugins": [
+    {
+      "name": "kelpie",
+      "description": "Show a passage of a Jira story's description in Kelpie, opened where it is and marked, instead of quoting it.",
+      "source": "./plugin",
+      "category": "productivity"
+    }
+  ]
+}

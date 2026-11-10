@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: where-offline-edits-sync
+expected_outcome: |
+  Calls show_passage for ACME-142 with a quote copied word for word from its description about offline edits (the 'Queue edits made offline…' item or the 'An edit made offline shows on another device…' criterion, or the sentence about changes made offline), a short note, and answers the question.
+context:
+  scaffold_script: place-files.sh

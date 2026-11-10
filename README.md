@@ -84,6 +84,14 @@ A profile is a folder you work in, plus whatever you connect to it: a Jira board
 
   It saves the limits for Kelpie and prints nothing, so it replaces a status line you already have. A word after the path names the account in the footer (`… claude-statusline.sh Work`). With `HERDR_APP_HOME`, use that folder in the path.
 - **The Web panel:** run `terminal-browser config set render.presenter patched` once, for its images to draw in place.
+- **Let Claude show you where a story says something:** install Kelpie's Claude Code plugin. Ask the Claude you're talking to "where does the story say…?", and it opens the story in Kelpie with the passage marked in its description, instead of only quoting it. In Claude Code, from anywhere:
+
+  ```
+  /plugin marketplace add <path to your Kelpie clone>
+  /plugin install kelpie@kelpie
+  ```
+
+  It needs `python3` and Herdr's `herdr-app` on your `PATH`, and shows stories of the profile Kelpie has on screen (a story's own description; not a subtask's yet).
 - **Changing a skin's art:** the art is already built; after editing it, rebuild with `python3 mods/kelpie/skins/<name>/build.py` (needs pillow).
 
 ## Try it without Jira

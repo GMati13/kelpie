@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: summary-not-a-where-question
+expected_outcome: |
+  Gives a short summary of ACME-142 without opening anything in Kelpie: the person asked for a summary, not where something is written.
+context:
+  scaffold_script: place-files.sh

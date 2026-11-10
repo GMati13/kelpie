@@ -1,0 +1,15 @@
+{
+  "name": "kelpie",
+  "description": "Show a passage of a Jira story's description in Kelpie, opened where it is and marked, instead of quoting it.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Kelpie"
+  },
+  "license": "MIT",
+  "keywords": [
+    "kelpie",
+    "herdr",
+    "jira",
+    "stories"
+  ]
+}

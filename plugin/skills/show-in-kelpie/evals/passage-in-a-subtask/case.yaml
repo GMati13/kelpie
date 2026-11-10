@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: passage-in-a-subtask
+expected_outcome: |
+  Finds the passage in subtask ACME-143's description ('Keep at most 30 days of trips…'), does not try to show the subtask in Kelpie (or shows it only via the parent story when the parent's description says it too), quotes it and says it's in the subtask.
+context:
+  scaffold_script: place-files.sh

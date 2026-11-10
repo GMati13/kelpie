@@ -38,7 +38,7 @@ tests/lib/snapshot.mjs  a view's element tree as text, compared with tests/snaps
 tests/js/*.test.mjs     mods' logic, under the stubs; views-*.test.mjs, what the views draw
 tests/snapshots/        the views' snapshots, one .txt per state (plain/: the Kelpie-Plain layout)
 tests/shell/*.test.mjs  shell scripts run for real in temp folders (jira.sh, install.sh, ...)
-tests/python/test_*.py  kittyfix.py, changes.py, sessions.py (unittest; helpers in kelpie_test.py)
+tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (unittest; helpers in kelpie_test.py)
 ```
 
 ## Adding a test
