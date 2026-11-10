@@ -24,44 +24,43 @@ const board = () => data({
   prs: [pr("AA-1 x", { review: "CHANGES_REQUESTED" })],
 });
 const items = () => ordered(build(board(), new Map([["BB-1", { status: "blocked" }]]), {}, new Map([["EE-1", { id: "s-ee" }]])));
-const review = { key: "review:web#3", review: { author: { login: "priya" } }, title: "Share" };
 
 describe("needQueueOf: what Next goes through", () => {
-  test("needs you by urgency, then the reviews, then one clean-up item", () => {
-    const q = needQueueOf(profile, items(), [review]);
-    assert.deepEqual(keys(q), ["BB-1", "AA-1", "review:web#3", "clean"]);
-    assert.deepEqual(q[3].clean.map((it) => it.key), ["EE-1"]);
+  test("needs you by urgency, then one clean-up item; reviews aren't in it (the sidebar lists them)", () => {
+    const q = needQueueOf(profile, items());
+    assert.deepEqual(keys(q), ["BB-1", "AA-1", "clean"]);
+    assert.deepEqual(q[2].clean.map((it) => it.key), ["EE-1"]);
   });
   test("every finished story with something to clean goes in the one item", () => {
     const list = ordered(build(data({ mine: ["AA-1", "BB-1"], parents: [issue("AA-1", "done"), issue("BB-1", "done")] }), new Map(), {},
       new Map([["AA-1", { id: "a" }], ["BB-1", { id: "b" }]])));
-    const q = needQueueOf(profile, list, []);
+    const q = needQueueOf(profile, list);
     assert.deepEqual(keys(q), ["clean"]);
     assert.deepEqual(q[0].clean.map((it) => it.key), ["AA-1", "BB-1"]);
   });
   test("a finished story with an agent working in its space isn't cleaned up yet", () => {
     mock.state.agents = [{ space: "s-ee", status: "working", tab_name: "x" }];
-    assert.ok(!keys(needQueueOf(profile, items(), [])).includes("clean"));
+    assert.ok(!keys(needQueueOf(profile, items())).includes("clean"));
   });
-  test("the Desk goes after the reviews while one of its agents waits for you", () => {
+  test("the Desk goes after what needs you while one of its agents waits for you", () => {
     mock.state.shared.set("kelpie.desk", { w: "d1" });
     mock.state.spaces = [{ id: "d1", name: "Desk", folder: "/w", tabs: [] }];
     mock.state.agents = [{ space: "d1", status: "working" }];
-    assert.ok(!keys(needQueueOf(profile, items(), [review])).includes("desk"));
+    assert.ok(!keys(needQueueOf(profile, items())).includes("desk"));
     mock.state.agents = [{ space: "d1", status: "blocked" }];
-    assert.deepEqual(keys(needQueueOf(profile, items(), [review])), ["BB-1", "AA-1", "review:web#3", "desk", "clean"]);
+    assert.deepEqual(keys(needQueueOf(profile, items())), ["BB-1", "AA-1", "desk", "clean"]);
   });
   test("Claude's picks come last, and drop out once their story needs you, is sunk or finished", () => {
     const pick = (key) => ({ key, action: `Do ${key}`, why: "", title: "", url: "" });
     mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["CC-1", "AA-1", "DD-1", "EE-1", "XX-9", "pr:web#4"].map(pick) } });
-    const q = needQueueOf(profile, items(), []);
+    const q = needQueueOf(profile, items());
     assert.deepEqual(keys(q), ["BB-1", "AA-1", "clean", "suggest:CC-1", "suggest:XX-9", "suggest:pr:web#4"]);
     assert.equal(q[3].it.key, "CC-1", "a pick the list has carries its story");
     assert.equal(q[4].it, null, "one it doesn't opens on the web");
   });
   test("picks older than a day are gone", () => {
     mock.state.shared.set(SUGGESTED, { w: { at: Date.now() - 25 * 3600e3, items: [{ key: "CC-1", action: "x" }] } });
-    assert.deepEqual(keys(needQueueOf(profile, items(), [])), ["BB-1", "AA-1", "clean"]);
+    assert.deepEqual(keys(needQueueOf(profile, items())), ["BB-1", "AA-1", "clean"]);
   });
 });
 

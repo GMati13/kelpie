@@ -463,19 +463,20 @@ const pullWords = (p) => (p.isDraft ? "Draft" : ["PENDING", "EXPECTED"].includes
   : p.reviewDecision === "APPROVED" ? "Approved" : "Waiting for review");
 
 // What needs you, in the order Next and cmd-shift-j go through it: the stories that need you, most
-// urgent first (the list's order among equals), then the reviews waiting for you.
-const needQueue = (items, reviews) => [...items.filter((x) => x.n[0] <= NEEDS_YOU).sort((a, b) => a.n[0] - b.n[0]).map((x) => x.it), ...reviews];
+// urgent first (the list's order among equals). Reviews waiting for you aren't in it: the sidebar's
+// Reviews for you lists them already.
+const needQueue = (items) => items.filter((x) => x.n[0] <= NEEDS_YOU).sort((a, b) => a.n[0] - b.n[0]).map((x) => x.it);
 // The same, then the Desk while one of its agents waits for you (an item { key: "desk", desk }), and
 // last one item for every finished story with something to clean up ({ key: "clean", clean:
 // [stories] }: Clean up all, so it's one press however many there are), then what the What next?
 // agent suggested (suggestedIn()). With nothing in it, Next's place holds the What next? button
-// (StoryList magic()).
+// (StoryList magic()). `reviews` only keep Claude's picks of them out: they're listed already.
 const DESK_ITEM = { key: "desk", desk: true };
-const needQueueOf = (profile, items, reviews) => {
-  const needs = [...needQueue(items, reviews), ...(deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [])];
+const needQueueOf = (profile, items, reviews = []) => {
+  const needs = [...needQueue(items), ...(deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [])];
   const dirty = items.map((x) => x.it).filter((it) => cleanable(profile, it).length);
   const clean = dirty.length ? [{ key: "clean", clean: dirty }] : [];
-  return [...needs, ...clean, ...suggestedIn(profile, items, new Set(needs.map((x) => x.key)))];
+  return [...needs, ...clean, ...suggestedIn(profile, items, new Set([...needs, ...reviews].map((x) => x.key)))];
 };
 
 // Suggested: what the What next? Claude picked for Next (brew(), applyPicks()), by
@@ -490,8 +491,8 @@ function suggestedIn(profile, items, needs = new Set()) {
   if (!e || Date.now() - e.at > SUGGEST_FOR) return [];
   return (e.items ?? []).flatMap((s) => {
     const it = items.find((x) => x.it.key === s.key)?.it ?? null;
-    // A pull request picked ("pr:<repo>#<n>") that's already in the queue as a review or a lone pull
-    // request of yours is there already: not again as a pick.
+    // A pull request picked ("pr:<repo>#<n>") that's already in the queue as a lone pull request of
+    // yours, or listed under Reviews for you, is on screen already: not again as a pick.
     const pr = s.key.startsWith("pr:") ? s.key.slice(3) : null;
     if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`))) || (it && (finished(it) || sunk(it)))) return [];
     return [{ key: `suggest:${s.key}`, suggest: s, it }];
@@ -3479,7 +3480,7 @@ async function applyPicks(profile, items) {
 }
 
 // cmd-shift-j, the list's "Next": each press goes to what needs you after the item shown (the stories
-// that need you, most urgent first, then the reviews waiting for you), wrapping around.
+// that need you, most urgent first), wrapping around.
 export function nextNeed() {
   const s = storyItems();
   const now = s && storyNow();

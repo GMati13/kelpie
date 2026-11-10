@@ -45,7 +45,7 @@ v_flex [fg=foreground]
           div [fg=dim]
             "Next"
           div [fg=muted]
-            "1 of 7"
+            "1 of 5"
           div
           h_flex #story-next-tools {down:left click}
             div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
