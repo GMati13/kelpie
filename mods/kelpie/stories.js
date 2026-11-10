@@ -1003,6 +1003,7 @@ function pruneShared(profile, data) {
   keep(COUNTS, ([key]) => keys.has(key));
   const ids = new Set(profiles().map((p) => p.id));
   keep(PR_SEEN, ([id]) => ids.has(id));
+  keep(PR_FOLDS, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile)).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
@@ -3107,11 +3108,11 @@ export class StoryList extends Stories {
       const shut = Boolean(folds[foldId(g, id)]);
       const open = g.list.map(prOf).filter((p) => !p.merged);
       const [worst, tip] = open.length ? prSummary(t, open) : [null, ""];
-      const what = g.key || "pull requests without a ticket";
+      const what = g.key ? `${g.key}'s pull requests` : "the pull requests without a ticket";
       return h_flex().id(`${id}-${g.key || "none"}`).flex_none().px(8).pt(10).pb(2).gap(8).items_center().text_size(SMALL).text_color(t.dim)
         .when(Boolean(g.story), (el) => el.cursor_pointer().hover((s) => s.text_color(t.foreground)).tooltip(`Show ${g.key}`).on_click(() => selectStory(st.profile, g.story)))
         .child(div().id(`${id}-fold-${g.key || "none"}`).flex_none().flex().size(16).items_center().justify_center().rounded(4).cursor_pointer()
-          .hover((s) => s.bg(t.hover)).tooltip(shut ? `Show ${what}'s pull requests` : `Fold ${what}'s pull requests`)
+          .hover((s) => s.bg(t.hover)).tooltip(`${shut ? "Show" : "Fold"} ${what}`)
           .on_mouse_down("left", stop).on_click((e, cx) => { stop(e, cx); fold(g, id); })
           .child(icon(chrome(shut ? "chevron-right" : "chevron-down"), 12).text_color(t.dim)))
         .child(skinFont(div().flex_none(), "key").child(g.key || "No ticket"))

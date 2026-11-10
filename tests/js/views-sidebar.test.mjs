@@ -9,7 +9,7 @@ import { StoryList } from "../../mods/kelpie/stories.js";
 import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
-import { nodeOf } from "gpui-kit";
+import { handlers, nodeOf } from "gpui-kit";
 import { mock } from "herdr";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -103,4 +103,26 @@ test("a review is neither in the queue nor picked again", async () => {
   const open = view.render(cx);
   assert.equal(byId(open, "queue-review:web#421"), null, "the review isn't queued");
   assert.equal(byId(open, "queue-suggest:pr:web#421"), null, "and not again as a pick");
+});
+
+// A story with many pull requests folds by its heading's chevron: its rows go, the heading says how
+// many and the most urgent state, and it stays folded per profile.
+test("a story's pull requests fold under its heading", async () => {
+  setupDemoWorld({ stories });
+  const { el, view, cx } = await draw(new StoryList());
+  assert.ok(byId(el, "mine-web#418") && byId(el, "mine-docs#61"), "ACME-142's pull requests show");
+  assert.equal(byId(el, "mine-story-sum-ACME-142"), null, "no summary while open");
+  const click = handlers(el).find((h) => h.id === "mine-story-fold-ACME-142");
+  click.fn({}, { ...cx, stop_propagation() {} });
+  assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: { "mine-story:ACME-142": true } });
+  const shut = view.render(cx);
+  assert.equal(byId(shut, "mine-web#418"), null, "its rows are gone");
+  assert.equal(byId(shut, "mine-docs#61"), null);
+  assert.ok(byId(shut, "mine-web#423"), "other stories' stay");
+  const sum = byId(shut, "mine-story-sum-ACME-142");
+  assert.ok(sum, "the heading says what's folded");
+  assert.match(nodeOf(sum).calls.find(([m]) => m === "tooltip")[1][0], /web#418: .*\ndocs#61: /);
+  handlers(shut).find((h) => h.id === "mine-story-fold-ACME-142").fn({}, { ...cx, stop_propagation() {} });
+  assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: {} });
+  assert.ok(byId(view.render(cx), "mine-web#418"), "unfolded again");
 });

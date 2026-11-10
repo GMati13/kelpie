@@ -238,6 +238,8 @@ v_flex [fg=foreground]
         div
           div [bg=#9dbb84f2] ×32 … [bg=#9dbb841a]
     h_flex #review-story-ACME-166 [fg=dim]
+      div #review-story-fold-ACME-166 [hover(bg=hover)] {down:left click} tip="Fold ACME-166's pull requests"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "ACME-166"
       div
@@ -253,6 +255,8 @@ v_flex [fg=foreground]
         div [fg=muted]
           "web#421 · 20h"
     h_flex #review-story-none [fg=dim]
+      div #review-story-fold-none [hover(bg=hover)] {down:left click} tip="Fold the pull requests without a ticket"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "No ticket"
       div
@@ -276,6 +280,8 @@ v_flex [fg=foreground]
         div
           div [bg=dim/f2] ×32 … [bg=dim/1a]
     h_flex #mine-story-ACME-175 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-175"
+      div #mine-story-fold-ACME-175 [hover(bg=hover)] {down:left click} tip="Fold ACME-175's pull requests"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "ACME-175"
       div
@@ -301,6 +307,8 @@ v_flex [fg=foreground]
         div [fg=muted]
           "web#423 · 8m"
     h_flex #mine-story-ACME-142 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-142"
+      div #mine-story-fold-ACME-142 [hover(bg=hover)] {down:left click} tip="Fold ACME-142's pull requests"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "ACME-142"
       div
@@ -336,6 +344,8 @@ v_flex [fg=foreground]
         div [fg=muted]
           "docs#61 · 6h"
     h_flex #mine-story-ACME-151 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-151"
+      div #mine-story-fold-ACME-151 [hover(bg=hover)] {down:left click} tip="Fold ACME-151's pull requests"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "ACME-151"
       div
@@ -361,6 +371,8 @@ v_flex [fg=foreground]
         div [fg=muted]
           "payments#97 · 1h"
     h_flex #mine-story-ACME-160 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-160"
+      div #mine-story-fold-ACME-160 [hover(bg=hover)] {down:left click} tip="Fold ACME-160's pull requests"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "ACME-160"
       div
@@ -386,6 +398,8 @@ v_flex [fg=foreground]
         div [fg=muted]
           "search#233 · 3h"
     h_flex #mine-story-ACME-171 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-171"
+      div #mine-story-fold-ACME-171 [hover(bg=hover)] {down:left click} tip="Fold ACME-171's pull requests"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "ACME-171"
       div
@@ -407,6 +421,8 @@ v_flex [fg=foreground]
         div [fg=muted]
           "web#415 · 5h"
     h_flex #mine-story-none [fg=dim]
+      div #mine-story-fold-none [hover(bg=hover)] {down:left click} tip="Fold the pull requests without a ticket"
+        svg chrome:chevron-down [fg=dim]
       div [font="DM Mono"]
         "No ticket"
       div
