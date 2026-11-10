@@ -3,10 +3,10 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneWaiting, ordered, progress, projectsOf, pullsOf, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
 import { sunkWords } from "../../mods/kelpie/config.js";
 import { prState } from "../../mods/kelpie/ui.js";
-import { COLUMNS, DEMO_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
+import { COLUMNS, DEMO_PROFILE, DEMO_PROJECT_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
 
 beforeEach(() => mock.reset());
 
@@ -204,11 +204,11 @@ describe("ordered and needQueue: the list's order and Next's", () => {
 
 describe("what the sunk group says", () => {
   test("with a team, they wait on others", () => {
-    assert.deepEqual(sunkWords({ cfg: {} }), { heading: "Waiting on others", none: "Nothing waiting on you." });
+    assert.deepEqual(sunkWords({ cfg: {} }), { heading: "Waiting on others" });
     assert.equal(sunkWords(null).heading, "Waiting on others", "no board");
   });
   test("working alone, nobody else has them: they're built, whatever the columns are called", () => {
-    assert.deepEqual(sunkWords({ cfg: { solo: true } }), { heading: "Built", none: "Everything here is built." });
+    assert.deepEqual(sunkWords({ cfg: { solo: true } }), { heading: "Built" });
   });
 });
 
@@ -306,7 +306,7 @@ describe("the demo's stories, as the list builds them", () => {
     const list = ordered(build(d, new Map(), {}, new Map(), null));
     assert.deepEqual(list.map((x) => [x.it.key, x.n[0], sunk(x.it, x.n)]), [
       ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
-      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-180", 6, false],
+      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false],
       ["ACME-129", 6, true],
     ]);
   });
@@ -344,11 +344,48 @@ describe("the demo's stories, as the list builds them", () => {
   });
 });
 
-describe("noneWaiting: why Not open is empty", () => {
-  test("no sprint, nothing of yours in it, or everything open", () => {
-    assert.equal(noneWaiting({ sprints: [] }, []), "No sprint running right now.");
-    assert.equal(noneWaiting({ sprints: [{ id: 1, name: "Sprint 1" }] }, []), "Nothing in Sprint 1 is yours yet: tickets assigned to you show here.");
-    assert.equal(noneWaiting({ sprints: [{ id: null, name: "Kelpie", kanban: true }] }, []), "Nothing on Kelpie is yours yet: tickets assigned to you show here.");
-    assert.equal(noneWaiting({ sprints: [{ id: 1, name: "Sprint 1" }] }, [{ it: {} }]), "Every story of yours is open.");
+describe("noneToDo: why To do is empty", () => {
+  test("no sprint, nothing of yours in it, or everything started", () => {
+    assert.equal(noneToDo({ sprints: [] }, []), "No sprint running right now.");
+    assert.equal(noneToDo({ sprints: [{ id: 1, name: "Sprint 1" }] }, []), "Nothing in Sprint 1 is yours yet: tickets assigned to you show here.");
+    assert.equal(noneToDo({ sprints: [{ id: null, name: "Kelpie", kanban: true }] }, []), "Nothing on Kelpie is yours yet: tickets assigned to you show here.");
+    assert.equal(noneToDo({ sprints: [{ id: 1, name: "Sprint 1" }] }, [{ it: {} }]), "Nothing left to start.");
   });
+});
+
+// The sidebar groups by where the work is on the board, not by whether this machine has a space for
+// it: a story in progress on the board with nothing open here is In progress, not To do.
+describe("underWay: the sidebar's In progress and To do", () => {
+  const one = (parents, children = [], mine = [], spaces = new Map()) => byKey(build(data({ parents, children, mine }), new Map(), {}, spaces));
+  test("in progress on the board, with no space, agent, session or pull request here", () => {
+    const { "AB-1": s } = one([issue("AB-1", "doing")], [issue("AB-2", "doing", "AB-1")], ["AB-2"]);
+    assert.equal(s.space, null);
+    assert.equal(underWay(s), true);
+  });
+  test("a story still to do whose subtask has started is under way", () => {
+    assert.equal(underWay(one([issue("AB-1")], [issue("AB-2", "doing", "AB-1")], ["AB-2"])["AB-1"]), true);
+  });
+  test("a space here counts, whatever the board says", () => {
+    assert.equal(underWay(one([issue("AB-1")], [], ["AB-1"], new Map([["AB-1", { id: "s1" }]]))["AB-1"]), true);
+  });
+  test("to do on the board, its subtasks too, and nothing here: not under way", () => {
+    assert.equal(underWay(one([issue("AB-1")], [issue("AB-2", "todo", "AB-1")], ["AB-2"])["AB-1"]), false);
+  });
+  test("an earlier session alone leaves it to do", () => {
+    const d = data({ parents: [issue("AB-1")], children: [issue("AB-2", "todo", "AB-1")], mine: ["AB-2"], sessions: [{ id: "x", title: "A sketch", first: ["AB-2"], updated: Date.now() - 3600e3 }] });
+    const s = byKey(build(d, new Map()))["AB-1"];
+    assert.ok(s.subs[0].last, "the session is found");
+    assert.equal(underWay(s), false);
+  });
+  for (const [what, profile] of [["a Jira board", DEMO_PROFILE], ["a GitHub Project", DEMO_PROJECT_PROFILE]]) {
+    test(`the demo on ${what}: a story worked on elsewhere is in progress, not to do`, async () => {
+      const d = await demoData(profile);
+      const list = ordered(build(d, new Map(), {}, new Map(), null));
+      const it = list.find((x) => x.it.key === "ACME-184")?.it;
+      assert.ok(it, "the fixture's story in progress with nothing here");
+      assert.equal(it.space, null);
+      assert.equal(underWay(it), true);
+      assert.deepEqual(list.filter((x) => !sunk(x.it, x.n) && !underWay(x.it)).map((x) => x.it.key), ["ACME-180"], "only the story nobody started is to do");
+    });
+  }
 });

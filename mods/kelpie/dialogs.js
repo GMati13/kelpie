@@ -66,7 +66,7 @@ export class StoryPicker {
             .child(skinFont(div(), "numbers").flex_none().text_size(SMALL).text_color(t.accent).child(x.it.key))
             .child(skinFont(div(), "ui").flex_1().min_w(0).truncate().text_color(t.foreground).child(x.it.title)))
           .child(div().truncate().text_size(SMALL).text_color(color === "dim" ? t.muted : t[color] ?? t.muted).child(line)))
-        .when(Boolean(x.it.space) || Boolean(x.done), (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(x.done ? "Done" : "Open")));
+        .when(Boolean(x.it.space) || Boolean(x.done), (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(x.done ? "Done" : "Open here")));
     };
     const loaded = Boolean(storyItems());
     return decor("blockDecor", t, v_flex().id("story-picker").track_focus(this.handle).w_full().min_h(0).p(DIALOG.pad).gap(DIALOG.gap).bg(t.popover).text_size(TEXT)

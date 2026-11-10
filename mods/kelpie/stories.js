@@ -396,12 +396,19 @@ const doneIn = (data, profile, handover) => build(data, agentsByKey(profile), pa
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
 // "on <its name>".
 const sprintsWord = (data) => (data.sprints[0]?.kanban ? `on ${data.sprints[0].name}` : `in ${data.sprints.map((x) => x.name).join(" and ")}`);
-// Why "Not open" is empty: no sprint running, nothing of yours in it at all (Exported for the tests),
-// or every story of yours already open.
-export function noneWaiting(data, items) {
+// Why "To do" is empty: no sprint running, nothing of yours in it at all (Exported for the tests),
+// or every story of yours already started.
+export function noneToDo(data, items) {
   if (!data.sprints.length) return "No sprint running right now.";
-  return items.length ? "Every story of yours is open." : `Nothing ${sprintsWord(data)} is yours yet: tickets assigned to you show here.`;
+  return items.length ? "Nothing left to start." : `Nothing ${sprintsWord(data)} is yours yet: tickets assigned to you show here.`;
 }
+// Whether a story is under way, for the sidebar's groups: started on the board (its own status or any
+// subtask's past to do), or live here (a space, an agent, a paused session, a pull request). The groups
+// go by the board, so a story worked on elsewhere, with no space here, is still in progress; whether
+// it has a space here is the row's own mark. An earlier session alone (a sketch, say) leaves a story
+// to do, its Resume still offered. (Exported for the tests.)
+export const underWay = (it) => (Boolean(it.category) && it.category !== "new") || it.subs.some((s) => Boolean(s.category) && s.category !== "new")
+  || Boolean(it.space) || allAgents(it).length > 0 || allPaused(it).length > 0 || allPrs(it).length > 0;
 
 const allPrs = (it) => [...it.prs, ...it.subs.flatMap((s) => s.prs)];
 // Open pull requests first, then the merged, each the most recently changed first.
@@ -2111,6 +2118,9 @@ export class Stories extends Source {
         .child(skinFont(div(), "ui").truncate().font_medium().when(quiet, (el) => el.text_color(t.muted)).child(it.title))
         .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).when(quiet, (el) => el.opacity(0.6))
           .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
+          // It has a space on this machine: a small terminal after its key (the groups go by the board).
+          .when(Boolean(it.space), (el) => el.child(div().id(`here-${it.key}`).flex_none().tooltip("Open here: it has a space on this machine")
+            .child(icon(chrome("terminal"), 11).text_color(t.dim))))
           .children(badges)))
       // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
       // it; its clicks stay off the row, as the broom's do.
@@ -3319,8 +3329,9 @@ export class StoryBody extends Stories {
   }
 }
 
-// The sidebar for a profile with Jira: what needs you; its open stories (each has a space here), the
-// pull requests waiting for your review, the stories not open; then its other spaces.
+// The sidebar for a profile with a board: what needs you; its stories in progress (on the board or
+// here), the pull requests waiting for your review, the stories to do, the ones handed over; then its
+// other spaces.
 export class StoryList extends Stories {
   init(cx) {
     this.loader = true;
@@ -3492,7 +3503,7 @@ export class StoryList extends Stories {
     // Every finished story the board has, not just the ones listed: one that's left only leftovers
     // behind is listed once they're found.
     checkLeftovers(st.profile, build(st.data, new Map(), {}, storySpaces(st.profile), null, { all: true }));
-    const started = items.filter(({ it }) => it.space), waiting = items.filter(({ it }) => !it.space);
+    const started = items.filter(({ it }) => it.space);
     // Story spaces named before names were just the key get renamed once.
     for (const { it } of started) if (it.space.name !== it.key && !RENAMED.has(it.space.id)) { RENAMED.add(it.space.id); run("space.rename", { id: it.space.id, name: it.key }); }
     const tally = (lo, hi) => items.filter((x) => x.n[0] >= lo && x.n[0] <= hi).length;
@@ -3506,16 +3517,13 @@ export class StoryList extends Stories {
     const shownKey = shown?.key ?? (onDesk ? DESK_ITEM.key : undefined);
     const top = nextIn(queue, shownKey);
     const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey) : this.allClear(t, st, items, reviews);
-    // A list of stories; the sunk ones (sorted last) under a small divider (sunkWords).
+    // The stories, grouped by where their work is on the board: in progress (what needs you first, as
+    // ordered() keeps it), to do, and the sunk ones, handed over (sunkWords), each in the list's order.
     const words = sunkWords(boardOf(st.setup));
-    const rows = (list) => {
-      const at = list.findIndex((x) => sunk(x.it, x.n));
-      const row = ({ it }) => this.row(t, it, it.key === shown?.key, cx, st);
-      if (at < 0) return list.map(row);
-      // Every one of them is sunk: say so, or the group would look empty above the divider.
-      return [...(at === 0 ? [empty(t, words.none)] : list.slice(0, at).map(row)),
-        groupHeader(t, words.heading, list.length - at), ...list.slice(at).map(row)];
-    };
+    const handed = items.filter((x) => sunk(x.it, x.n));
+    const going = items.filter((x) => !sunk(x.it, x.n) && underWay(x.it));
+    const toDo = items.filter((x) => !sunk(x.it, x.n) && !underWay(x.it));
+    const rows = (list) => list.map(({ it }) => this.row(t, it, it.key === shown?.key, cx, st));
     const group = (label, n) => groupHeader(t, label, n);
     // `badge`: a chip after the title (an approved pull request's).
     // `lead`: what goes before the title instead of the skin's mark (a pull request's state, an avatar).
@@ -3640,8 +3648,8 @@ export class StoryList extends Stories {
       .child(v_flex().id("work-side-list").flex_1().min_h(0).px(8).pb(10).overflow_y_scrollbar()
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
-        // "Open": the stories with a space here; shown only when there are some.
-        .when(started.length > 0, (el) => el.child(group("Open", started.length)).children(rows(started)))
+        // "In progress": started on the board or here; shown only when there are some.
+        .when(going.length > 0, (el) => el.child(group("In progress", going.length)).children(rows(going)))
         .when(Boolean(owner) || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))
           .when(reviews.length === 0, (x) => x.child(empty(t, noPulls ?? "Nothing waiting for your review.")))
           .children(grouped(reviews, (r) => r.review, (r) => plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
@@ -3649,9 +3657,9 @@ export class StoryList extends Stories {
         .when(Boolean(owner) || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
           .when(minePrs.length === 0, (x) => x.child(empty(t, noPulls ?? "No open pull requests of yours.")))
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
-        .child(group("Not open", waiting.length))
-        .children(waiting.length ? rows(waiting)
-          : [empty(t, noneWaiting(st.data, items))])
+        .child(group("To do", toDo.length))
+        .children(toDo.length ? rows(toDo) : [empty(t, noneToDo(st.data, items))])
+        .when(handed.length > 0, (el) => el.child(group(words.heading, handed.length)).children(rows(handed)))
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))
           .children(others.map((s) => plain(`space-${s.id}`, s.active && !shown, t.dim, s.name, `${s.tabs.length} tab${s.tabs.length === 1 ? "" : "s"} · no story`,
             () => { setPreview(st.profile, null); run("space.select", { id: s.id }); }, true))))
