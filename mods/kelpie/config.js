@@ -3,7 +3,7 @@
 // belongs to the profile whose folder it is in (the deepest one). Each profile has:
 //   name     what it's called
 //   folder   where its agents start and whose Claude sessions show
-//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo }: a Jira
+//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone }: a Jira
 //            Cloud board URL pasted in setup, the Keychain item whose account is the Jira email and
 //            password the API token (macOS), or instead a shell command that prints the token, with the
 //            email beside it (any system; jira.sh keeps the token in pipes), the task
@@ -11,11 +11,12 @@
 //            that runs a whole story through its subtasks (none: no "Start orchestrator"), and the board
 //            column from which your part of a ticket is done (none: handoverFrom() picks one), and
 //            `solo` (true/false) when the person works alone on it: the stories past that column then
-//            wait on them, not on others, and the list says so (sunkWords)
-//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo }: a GitHub
+//            wait on them, not on others, and the list says so (sunkWords); `moveToDone` false hides
+//            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise
+//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone }: a GitHub
 //            Project as the board instead of Jira (a profile has one or the other): its address
 //            (parseProject()), the ticket key prefix per repo (parsePrefixes(); none: the repo's
-//            name, defaultPrefix()), the same prompts, handover column and solo as Jira's. Read as the
+//            name, defaultPrefix()), the same prompts, handover column, solo and moveToDone as Jira's. Read as the
 //            github section's account, as pull requests are
 //   github   { owner, account }: an organisation or user whose pull requests show; `account`, optional,
 //            the GitHub account (a login gh is signed in to) Kelpie's own gh calls act as, named to its
@@ -726,7 +727,7 @@ export function buildProfile(id, set) {
     const section = { ...(next[key] ?? {}) };
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
-      const flag = (key === "jira" || key === "project") && k === "solo"; // true/false only, never a string
+      const flag = (key === "jira" || key === "project") && (k === "solo" || k === "moveToDone"); // true/false only, never a string
       const ok = v === null || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: ${flag ? "true or false" : `a string${key === "notify" ? " or true/false" : ""}`}, or null to remove it.`);
       if (v === null) delete section[k]; else section[k] = typeof v === "string" ? v.trim() : v;
@@ -765,7 +766,7 @@ export function buildProfile(id, set) {
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
-// folder, owner, handover, solo, notify) applies at once.
+// folder, owner, handover, solo, moveToDone, notify) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 export function needsYes(id, set) {

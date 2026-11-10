@@ -239,6 +239,17 @@ test("I work alone: the Board page's toggle saves solo with the board, and off d
   assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, solo: true } }).d.solo, true, "a saved one opens on");
 });
 
+test("Move to Done: the Board page's toggle, on by default, saves moveToDone false only when off", () => {
+  const { d, cx } = profileDialog("jira", {}, { filled: true });
+  assert.equal(d.draft().profile.jira.moveToDone, undefined, "on by default, nothing saved");
+  press(d.render(cx), "setup-move-to-done", cx);
+  assert.equal(d.draft().profile.jira.moveToDone, false);
+  assert.ok(texts(d.render(cx)).some((x) => x.startsWith("Off: tickets move only one at a time")));
+  press(d.render(cx), "setup-move-to-done", cx);
+  assert.equal(d.draft().profile.jira.moveToDone, undefined);
+  assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, moveToDone: false } }).d.moveToDone, false, "a saved off opens off");
+});
+
 test("a Project's address that isn't one, and prefixes that can't be keys, stop Save with a reason", () => {
   const { d } = profileDialog("project", { jira: null, project: DEMO_PROJECT }, { filled: true });
   d.projectUrl.set_value("https://github.com/kelpie--demo/acme");

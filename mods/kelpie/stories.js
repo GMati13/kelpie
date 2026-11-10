@@ -2114,7 +2114,7 @@ export class Stories extends Source {
           .children(badges)))
       // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
       // it; its clicks stay off the row, as the broom's do.
-      .when(Boolean(st) && quiet && canMoveToDone(it), (el) => el.child(div().id(`finish-${it.key}`).flex_none().mt(2)
+      .when(Boolean(st) && quiet && finishes(st?.setup) && canMoveToDone(it), (el) => el.child(div().id(`finish-${it.key}`).flex_none().mt(2)
         .on_mouse_down("left", stop).on_click(stop).child(this.finishButton(t, st, it, `finish-${it.key}-button`))))
       // A finished story's broom, at hand without opening it; its clicks stay off the row.
       .when(Boolean(st) && cleanable(st?.profile, it).length > 0, (el) => el.child(div().id(`clean-${it.key}`).flex_none().mt(2)
@@ -2240,7 +2240,7 @@ export class Stories extends Source {
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
     const clean = cleanable(st.profile, it).length ? this.cleanButton(t, st, it) : null;
     const tasks = [unapproved.length ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null,
-      canMoveToDone(it) ? this.finishButton(t, st, it) : null].filter(Boolean);
+      finishes(st.setup) && canMoveToDone(it) ? this.finishButton(t, st, it) : null].filter(Boolean);
     return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
 
@@ -4041,6 +4041,9 @@ export function donePlan(it) {
   return { mine: subs.filter((x) => x.mine && !shownDone(x)), others, story: !shownDone(it) && !others.length };
 }
 const canMoveToDone = (it) => { const p = donePlan(it); return Boolean(p && (p.mine.length || p.story)); };
+// Whether the profile's stories offer Move to Done at all: the board's `moveToDone`, on unless set to
+// false (the profile dialog's Board page, Your part).
+const finishes = (setup) => boardOf(setup)?.cfg?.moveToDone !== false;
 // The board's done column's name ("Done"), for the words.
 const doneName = (data) => data?.columns?.at(-1)?.name || "Done";
 const keyList = (keys) => (keys.length < 3 ? keys.join(" and ") : `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`);
@@ -4081,6 +4084,7 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
   const it = s?.st.profile.id === profile ? [...s.items, ...s.done].map((x) => x.it).find((x) => x.key === key) : null;
   const plan = donePlan(it);
   if (!plan) { say(`Nothing was moved: ${key} isn't among the shown profile's stories any more.`); return null; }
+  if (!finishes(s.st.setup)) { say("Nothing was moved: Move to Done is turned off for this profile."); return null; }
   const board = boardOf(s.st.setup), data = s.st.data, done = doneName(data);
   const moved = [], failed = [];
   const one = async (t) => {

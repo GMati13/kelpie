@@ -2,7 +2,7 @@
 // own subtasks moved to the board's done column in one go, from the header's More, after a dialog
 // listing each ticket. Others' subtasks stay, the story moves last and only once every subtask is
 // done, and a move that fails doesn't stop the rest.
-import { DEMO, FIXTURE, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mjs";
+import { DEMO, FIXTURE, demoProfile, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
@@ -189,6 +189,21 @@ describe("Move to Done on the demo's board", async () => {
     assert.equal(await moveStoryToDone({ profile: "other", key: "ACME-160" }), null);
     assert.match(note(), /^Nothing was moved: ACME-160 isn't among the shown profile's stories/);
     assert.equal(await statusOf("ACME-161"), "In Review");
+  });
+
+  // Turned off on the profile (the board's moveToDone false): no icon anywhere, and nothing moves.
+  const off = () => { setupDemoWorld({ profile: { jira: { ...demoProfile().jira, moveToDone: false } } }); mock.state.shared.set("kelpie.stories.data", { [DEMO]: { ...stories, key: new Stories().context().key } }); };
+  test("turned off: no icon in the header or on the list's rows", async () => {
+    off();
+    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-138" });
+    assert.equal(byId((await draw(new Stories())).el, "story-finish"), null);
+    assert.equal(byId((await draw(new StoryList())).el, "finish-ACME-129"), null);
+  });
+  test("turned off: a dialog opened before moves nothing", async () => {
+    off();
+    assert.equal(await moveStoryToDone({ profile: DEMO, key: "ACME-151" }), null);
+    assert.equal(note(), "Nothing was moved: Move to Done is turned off for this profile.");
+    assert.equal(await statusOf("ACME-153"), "To Do");
   });
 
   // Clean up afterwards (#72): the dialog's switch, then the clean-up's own checks after the moves.
