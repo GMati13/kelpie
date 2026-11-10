@@ -686,7 +686,7 @@ function patchHash(text) {
   const known = HASHES.get(text);
   if (known !== undefined) return known;
   const h = fnv(text);
-  if (HASHES.size > 400) HASHES.clear();
+  if (HASHES.size > 4000) HASHES.clear();
   HASHES.set(text, h);
   return h;
 }
@@ -696,6 +696,7 @@ function fnv(text) {
   return h.toString(36);
 }
 const viewedId = (f) => `${f.id}:${patchHash(f.patch ?? "")}`;
+const hashed = (text) => HASHES.has(text);
 
 // What happened to a file, from GitHub's status or the local diff's own lines: added, removed,
 // renamed or modified (copied and changed count as added and modified).
@@ -703,7 +704,7 @@ const FILE_STATUS = new Map();
 function fileStatus(status, patch) {
   const p = patch ?? "";
   let by = FILE_STATUS.get(p);
-  if (!by) { if (FILE_STATUS.size > 400) FILE_STATUS.clear(); FILE_STATUS.set(p, (by = {})); }
+  if (!by) { if (FILE_STATUS.size > 4000) FILE_STATUS.clear(); FILE_STATUS.set(p, (by = {})); }
   return (by[status] ??= statusOf(status, p));
 }
 function statusOf(status, patch) {
@@ -727,8 +728,13 @@ function changeSquares(add, del) {
 // A patch as rows to draw, GitHub's way and a bit more: each line with its old and new numbers and
 // its own text (the +/- moved to a gutter), hunk headers saying how many lines they skip and which
 // function they're in, and in a changed line that pairs with a removed one, the words that changed.
-// Parsed once per patch (a few kept), as the view redraws often.
+// Parsed once per patch, as the view redraws often. Every patch of the story shown stays parsed (up to
+// DIFFS_KEEP characters of patches, the oldest going first): parsing a big pull request takes longer
+// than Herdr gives a render, so it's spread over several (PARSE_FOR) and none is parsed twice.
 const DIFFS = new Map(); // patch -> rows
+const DIFFS_KEEP = 8e6;
+let diffsSize = 0;
+const parsed = (patch) => DIFFS.has(patch);
 function diffRows(patch) {
   const hit = DIFFS.get(patch);
   if (hit) return hit;
@@ -782,8 +788,11 @@ function diffRows(patch) {
   // The lines after the last hunk, to the end of the file: how many is known once the file is read.
   if (gap && !whole && !cut) rows.push({ kind: "hunk", gap, trailing: true, skipped: null, from: n, at: null, delta: n - o, context: "" });
   if (!rows.some((r) => r.kind !== "note" || r.text)) rows.splice(0, rows.length, { kind: "note", text: "No lines changed: renamed, or only its mode changed." });
-  if (DIFFS.size > 8) DIFFS.delete(DIFFS.keys().next().value);
-  DIFFS.set(patch, rows);
+  for (const old of DIFFS.keys()) {
+    if (diffsSize + patch.length <= DIFFS_KEEP) break;
+    DIFFS.delete(old); diffsSize -= old.length;
+  }
+  DIFFS.set(patch, rows); diffsSize += patch.length;
   return rows;
 }
 
@@ -791,6 +800,12 @@ function diffRows(patch) {
 // files folded or unfolded by hand, the gaps between hunks opened, and each file's text for opening
 // them (by file and version, so a changed file starts over). `version` changes with any of it.
 const DIFF = { all: true, folds: {}, open: {}, text: {}, version: 0 };
+// How long a render may spend parsing and hashing patches (changesBody): a big pull request's take
+// longer than Herdr gives a render, so the rest waits for the next one, which a timer asks for.
+const PARSE_FOR = 30;
+// The diff as list items (Herdr's virtual list takes 10 000 at most): up to CHUNK code lines in one,
+// and the lines drawn when the list first asks for every item, before it knows its height.
+const CHUNK = 30, DRAW_FIRST = 200;
 // Lockfiles, minified and generated files start folded: they bury the changes worth reading.
 const FOLD_FILES = /(^|\/)(yarn\.lock|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|Pipfile\.lock|Gemfile\.lock|composer\.lock|go\.sum|uv\.lock)$|\.min\.(js|css)$|\.(snap|map)$/i;
 const fileKey = (f) => `${f.id}:${f.sha ?? patchHash(f.patch ?? "")}`;
@@ -2117,13 +2132,13 @@ export class Stories extends Source {
     return v_flex().flex_1().min_h(0).gap(8).child(notice(t, `Couldn't load the ${what} again, so these are from before: ${extra.error}`, t.blocked)).child(body);
   }
 
-  changesView(t, st, it, extra) {
+  changesView(t, st, it, extra, cx) {
     if (extra?.error && !extra.groups) return empty(t, `Couldn't load the changes: ${extra.error}`, { fill: true });
     if (!extra?.groups) return empty(t, "Gathering the changes…", { fill: true });
-    return this.keptOnError(t, "changes", extra, this.changesBody(t, st, it, extra));
+    return this.keptOnError(t, "changes", extra, this.changesBody(t, st, it, extra, cx));
   }
 
-  changesBody(t, st, it, extra) {
+  changesBody(t, st, it, extra, cx) {
     const all = extra.groups.flatMap((g) => g.files.map((f) => ({ ...f, group: g })));
     if (!all.length) {
       return empty(t, extra.groups.some((g) => g.failed) ? "GitHub didn't answer for these pull requests. Refresh to try again."
@@ -2154,31 +2169,71 @@ export class Stories extends Source {
     // The rows, built again only when something they come from changed: [{ r, fi }], fi the file's
     // index; on the page of all files each starts with a header row.
     const sig = `${it.key}|${extra.at}|${whole ? "all" : chosen.id}|${DIFF.version}|${all.map((f) => f.id).join(",")}`;
+    // The patches shown are parsed (and every file's hashed, for its Viewed tick) first, for at most
+    // PARSE_FOR ms a render: a big pull request's take longer than a render may, and Herdr would cut
+    // the view off. What's left is for the next render, asked for by a timer (not a task: one that
+    // ends inside the render it was started from can't ask for a redraw, and the view stayed put).
     if (this.diffView?.sig !== sig) {
-      const entries = [], starts = [], ends = [];
+      const shown = new Set(whole ? all.filter((f) => !isFolded(f)) : [chosen]);
+      const ready = (f) => hashed(f.patch ?? "") && (!shown.has(f) || parsed(f.patch ?? ""));
+      const missing = all.filter((f) => !ready(f));
+      const until = Date.now() + PARSE_FOR;
+      let done = 0;
+      for (const f of missing) {
+        if (Date.now() > until) break;
+        patchHash(f.patch ?? "");
+        if (shown.has(f)) diffRows(f.patch ?? "");
+        done++;
+      }
+      if (done < missing.length) {
+        cx.timer.after(1, (cx) => cx.notify());
+        return empty(t, `Reading the changes: ${all.length - missing.length + done} of ${all.length} file${all.length === 1 ? "" : "s"}…`, { fill: true });
+      }
+    }
+    if (this.diffView?.sig !== sig) {
+      const rows = [], first = [], last = [];
       all.forEach((f, fi) => {
         if (!whole && f !== chosen) return;
         if (whole) {
           // Each pull request (or repo with uncommitted work) opens its own section; picking its first
           // file shows the section's heading with it.
-          starts[fi] = entries.length;
-          if (!fi || all[fi - 1].group !== f.group) entries.push({ r: { kind: "group" }, fi });
-          entries.push({ r: { kind: "file" }, fi });
-          if (!isFolded(f)) for (const r of fileRows(f)) entries.push({ r, fi });
+          first[fi] = rows.length;
+          if (!fi || all[fi - 1].group !== f.group) rows.push({ r: { kind: "group" }, fi });
+          rows.push({ r: { kind: "file" }, fi });
+          if (!isFolded(f)) for (const r of fileRows(f)) rows.push({ r, fi });
         } else {
-          starts[fi] = entries.length;
-          entries.push({ r: { kind: "file" }, fi });
-          for (const r of fileRows(f)) entries.push({ r, fi });
+          first[fi] = rows.length;
+          rows.push({ r: { kind: "file" }, fi });
+          for (const r of fileRows(f)) rows.push({ r, fi });
         }
-        ends[fi] = entries.length - 1;
+        last[fi] = rows.length - 1;
       });
-      const top = entries.reduce((m, { r }) => Math.max(m, r.old ?? 0, r.new ?? 0), 0);
-      const long = entries.reduce((m, { r, fi }) => Math.max(m, r.kind === "file" ? all[fi].path.length + 50 : (r.text ?? r.context ?? "").length), 0);
-      // A file's header is taller than a line, with room above it, so it reads as a new section.
-      const sizes = entries.map(({ r }, i) => (r.kind === "group" ? (i ? GROUP : GROUP - 32) : r.kind === "file" ? HEAD : r.kind === "hunk" ? BAND : ROW));
-      // Where each run of changed lines starts, for n / p.
+      const top = rows.reduce((m, { r }) => Math.max(m, r.old ?? 0, r.new ?? 0), 0);
+      const long = rows.reduce((m, { r, fi }) => Math.max(m, r.kind === "file" ? all[fi].path.length + 50 : (r.text ?? r.context ?? "").length), 0);
+      // Herdr's virtual list takes at most 10 000 items, and a big pull request has more lines than
+      // that: a run of code lines (nothing in them takes a click) is one item of up to CHUNK lines,
+      // and a heading, file header or band one item each. A run of changed lines starts an item 3
+      // lines above it (or where its run of lines does), so n / p scroll to that item.
+      const plain = (e) => e && e.r.kind !== "group" && e.r.kind !== "file" && e.r.kind !== "hunk";
       const isChange = (e) => e && (e.r.kind === "add" || e.r.kind === "del");
-      const changes = entries.flatMap((e, i) => (isChange(e) && !(isChange(entries[i - 1]) && entries[i - 1].fi === e.fi) ? [i] : []));
+      const breaks = new Set();
+      rows.forEach((e, i) => {
+        if (!isChange(e) || (isChange(rows[i - 1]) && rows[i - 1].fi === e.fi)) return;
+        let b = i;
+        while (b > i - 3 && plain(rows[b - 1]) && rows[b - 1].fi === e.fi) b--;
+        breaks.add(b);
+      });
+      const entries = [], itemOf = [];
+      rows.forEach((e, i) => {
+        const prev = entries[entries.length - 1];
+        if (plain(e) && prev?.lines && prev.fi === e.fi && prev.lines.length < CHUNK && !breaks.has(i)) prev.lines.push(e.r);
+        else entries.push(plain(e) ? { r: { kind: "lines" }, lines: [e.r], fi: e.fi } : e);
+        itemOf[i] = entries.length - 1;
+      });
+      const starts = first.map((i) => (i === undefined ? undefined : itemOf[i])), ends = last.map((i) => (i === undefined ? undefined : itemOf[i]));
+      // A file's header is taller than a line, with room above it, so it reads as a new section.
+      const sizes = entries.map((e, i) => (e.lines ? e.lines.length * ROW : e.r.kind === "group" ? (i ? GROUP : GROUP - 32) : e.r.kind === "file" ? HEAD : BAND));
+      const changes = [...breaks].map((b) => itemOf[b]).sort((a, b) => a - b);
       this.diffView = { sig, key: it.key, ids: all.map((f) => f.id), files: all, entries, starts, ends, top, long, sizes, changes };
     }
     const view = this.diffView, entries = view.entries;
@@ -2356,8 +2411,9 @@ export class Stories extends Source {
           .when(folded, (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim)
             .child(`${DIFF.folds[fileKey(f)] !== undefined ? (ticked ? "Viewed, folded" : "Folded") : FOLD_FILES.test(f.path) ? "Generated, folded" : "Large, folded"}: click to show`))));
     };
-    const line = ({ r, fi }, i) => {
+    const line = ({ r, fi, lines }) => {
       const f = all[fi];
+      if (lines) return v_flex().w_full().flex_none().children(lines.map((x) => line({ r: x, fi })));
       if (r.kind === "group") return section(f.group);
       if (r.kind === "file") return header(f);
       if (r.kind === "hunk") return band(r);
@@ -2460,10 +2516,14 @@ export class Stories extends Source {
               .child(v_virtual_list(list, entries.length, view.sizes, (i) => String(i), (range) => {
                 // Drawn during layout: it may only note what's on screen, not ask for a redraw.
                 this.diffRange = { start: range.start, end: range.end };
-                // Before it knows its height the list asks for every row at once; drawing them all
-                // could run past the time Herdr gives a render, so past the first screenfuls they're
-                // blank boxes of the right height until it asks again for what's on screen.
-                return entries.slice(range.start, range.end).map((e, k) => (k < 160 ? line(e, range.start + k) : div().w_full().h(view.sizes[range.start + k] ?? ROW)));
+                // Before it knows its height the list asks for every item at once; drawing them all
+                // could run past the time Herdr gives a render, so past the first screenfuls (DRAW_FIRST
+                // lines) they're blank boxes of the right height until it asks again for what's on screen.
+                let drawn = 0;
+                return entries.slice(range.start, range.end).map((e, k) => {
+                  drawn += e.lines?.length ?? 1;
+                  return drawn <= DRAW_FIRST ? line(e) : div().w_full().h(view.sizes[range.start + k] ?? ROW);
+                });
               }).size_full().on_item_click(clickRow).when(Boolean(scroller), (el) => el.track_scroll(scroller)))))
           .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0())));
   }
@@ -2534,11 +2594,12 @@ export class Stories extends Source {
   stepChange(key, scroller, by) {
     const view = this.diffView, top = this.diffRange?.start ?? 0;
     if (!view || view.key !== key || !scroller || !view.changes.length) return false;
-    const from = this.changeAt?.sig === view.sig ? this.changeAt.i : by > 0 ? top + 3 : top;
+    // `changes` are the items that start 3 lines above each run of changes (see changesBody).
+    const from = this.changeAt?.sig === view.sig ? this.changeAt.i : top;
     const c = by > 0 ? view.changes.find((i) => i > from) : [...view.changes].reverse().find((i) => i < from);
     if (c === undefined) return false;
     const fi = view.entries[c].fi;
-    scroller.scroll_to_item(Math.max(view.starts[fi] ?? 0, c - 3), "top");
+    scroller.scroll_to_item(c, "top");
     this.changeAt = { sig: view.sig, i: c };
     if (this.file[key] !== view.ids[fi]) { this.file[key] = view.ids[fi]; this.jump = { fi, start: null }; }
     return true;
@@ -3002,7 +3063,7 @@ export class StoryView extends Stories {
     if (mode === "changes" && (!extra || (!extra.loading && extra.at < st.at))) this.loadExtra(st, shown, cx);
     // A story not started has its details above, filling the column (work.js hides this block), and
     // its screenshots have a block of their own ("story-shots").
-    const body = mode === "changes" ? this.changesView(t, st, shown, extra) : empty(t, "Its details and what can be done are above.", { fill: true });
+    const body = mode === "changes" ? this.changesView(t, st, shown, extra, cx) : empty(t, "Its details and what can be done are above.", { fill: true });
     return decor("blockDecor", t, v_flex().size_full().min_h(0).px(INSET).py(10).text_size(TEXT).text_color(t.foreground).child(body), storyBlock("story-view", shown));
   }
 }
