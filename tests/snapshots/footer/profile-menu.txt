@@ -1,0 +1,55 @@
+v_flex #space-menu [bg=popover border=border fg=foreground] {down_out key_down}
+  v_flex #space-menu-list
+    div [fg=dim]
+      "Profiles"
+    h_flex #menu-profile-demo [bg=selected] {move click} tip="/home/test/.local/share/kelpie/demo/acme · Jira · GitHub"
+      div
+        div [bg=#2c4436 fg=#b4dcbf]
+          "A"
+      div [fg=foreground]
+        "Acme"
+      h_flex
+        h_flex #menu-profile-demo-ask [fg=working] tip="1 waiting for you"
+          div
+            div [bg=working/40] ~loop(opacity)
+              div [bg=working]
+        h_flex #menu-profile-demo-busy [fg=accent] tip="2 working"
+          div
+            svg chrome:spinner [fg=accent] ~spin
+          "2"
+      div [fg=dim]
+        "7 spaces"
+      div
+        svg chrome:check [fg=accent]
+    h_flex #menu-profile-side [hover(bg=hover)] {move click} tip="/home/test/code/side"
+      div
+        div [bg=#523036 fg=#f0b8c0]
+          "S"
+      div [fg=foreground]
+        "Side project"
+      div
+        ""
+    div [bg=border]
+    h_flex #menu-space-new [hover(bg=hover)] {move click}
+      div
+        svg chrome:plus [fg=dim]
+      div [fg=muted]
+        "New space"
+      div [fg=dim]
+        "⌘N"
+      div
+        ""
+    h_flex #menu-profile-new [hover(bg=hover)] {move click}
+      div
+        svg chrome:folder-plus [fg=dim]
+      div [fg=muted]
+        "New profile…"
+      div
+        ""
+    h_flex #menu-profile-edit [hover(bg=hover)] {move click}
+      div
+        svg chrome:settings [fg=dim]
+      div [fg=muted]
+        "Edit Acme…"
+      div
+        ""

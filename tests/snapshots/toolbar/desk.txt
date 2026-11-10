@@ -1,0 +1,31 @@
+h_flex
+  h_flex #tab-list {hover up:left}
+    h_flex #tab-t6-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="Claude"
+      div
+        div [border=dim]
+      div
+        "Why is the web bundle 2 MB?"
+    Popup.new "open-new-menu"
+      div #open-new-more [bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal"
+        svg chrome:plus
+      @content
+        v_flex #open-new-menu-list [bg=popover border=border fg=foreground] {down_out}
+          h_flex #open-new-row-0 [hover(bg=hover)] {click} tip="A Claude agent with no task, in this space's folder"
+            div
+              "Claude"
+            div [fg=dim]
+              "⌥⌘C"
+          h_flex #open-new-row-1 [hover(bg=hover)] {click} tip="A shell in this space's folder"
+            div
+              "Terminal"
+            div [fg=dim]
+              "⌥⌘T"
+  h_flex
+    div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
+      svg chrome:folder
+    div #panel-changes [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Changes"
+      svg chrome:git-compare
+    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Artifacts"
+      svg chrome:layers
+    div #panel-web [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Web ⌘⇧S"
+      svg own:globe

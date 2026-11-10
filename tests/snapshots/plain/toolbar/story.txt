@@ -1,0 +1,34 @@
+h_flex
+  h_flex #tab-list {hover up:left}
+    h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
+      div
+        div [bg=blocked] ~loop(opacity)
+      div
+        "Cache trips for offline use"
+    h_flex #tab-t0-1 [fg=muted hover(bg=hover fg=foreground)] {hover down:left move up:left click down:right}
+      div
+      div
+        "Terminal"
+    Popup.new "open-new-menu"
+      div #open-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal"
+        svg chrome:plus
+    div [bg=border]
+    h_flex #view-changes [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      div
+        "Changes"
+      div [fg=dim]
+        "3"
+    h_flex #view-shots [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      div
+        "Screenshots"
+      div [fg=dim]
+        "2"
+  h_flex
+    div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
+      svg chrome:folder
+    div #panel-changes [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Changes"
+      svg chrome:git-compare
+    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Artifacts"
+      svg chrome:layers
+    div #panel-web [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Web ⌘⇧S"
+      svg own:globe

@@ -1,0 +1,18 @@
+div #acct [fg=muted] tip="Claude · Opus · 1m ago"
+  "Claude"
+h_flex #acct-five tip="Resets in 20m, at 10:20 AM"
+  h_flex
+    div
+      "5h"
+    div [font="DM Mono" fg=blocked]
+      "91%"
+    div [font="DM Mono" fg=muted]
+      "20m"
+h_flex #acct-week tip="Resets Thu 10:00 AM"
+  h_flex
+    div
+      "Week"
+    div [font="DM Mono" fg=blocked]
+      "87%"
+    div [font="DM Mono" fg=muted]
+      "Thu"

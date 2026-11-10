@@ -1,0 +1,11 @@
+v_flex #open-new-menu-list [bg=popover border=border fg=foreground] {down_out}
+  h_flex #open-new-row-0 [hover(bg=hover)] {click} tip="A Claude agent for this story with no task, in the profile's folder"
+    div
+      "Claude"
+    div [fg=dim]
+      "⌥⌘C"
+  h_flex #open-new-row-1 [hover(bg=hover)] {click} tip="A plain shell for this story"
+    div
+      "Terminal"
+    div [fg=dim]
+      "⌥⌘T"

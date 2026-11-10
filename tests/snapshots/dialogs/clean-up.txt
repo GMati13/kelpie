@@ -1,0 +1,29 @@
+v_flex #kelpie-confirm [bg=popover] {key_down}
+  div [fg=foreground]
+    "Clean up ACME-122?"
+  v_flex #confirm-detail
+    div [fg=muted]
+      "ACME-122 is done, nothing of it is open or running. This closes its space, runs the clean-up command on what it left:"
+    v_flex
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-123"
+        div [fg=foreground]
+          "worktrees/ACME-123/api: 2 files not pushed"
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-123"
+        div [fg=foreground]
+          "a branch ACME-123 in api"
+  h_flex
+    h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      "Cancel"
+    h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+      "Clean up"
+      div
+        div
+          div [bg=#7fb3ae]
