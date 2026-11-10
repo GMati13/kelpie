@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { mock } from "herdr";
 import { PREFIX, boardOf, defaultPrefix, hasBoard, parsePrefixes, parseProject, prefixFor } from "../../mods/kelpie/config.js";
-import { boardSite, description, loadBoard, lookUp, statusOptions, ticketText, ticketUrl } from "../../mods/kelpie/board.js";
+import { boardSite, description, loadBoard, lookUp, projectCategory, statusOptions, ticketText, ticketUrl } from "../../mods/kelpie/board.js";
 import { DEMO_PROFILE } from "../lib/stories.mjs";
 
 beforeEach(() => mock.reset());
@@ -129,5 +129,14 @@ describe("ticket key prefixes", () => {
     assert.throws(() => parsePrefixes("acme/web=$(id)"), /can't be a key prefix/);
     assert.throws(() => parsePrefixes("acme/web=WEB, acme/api=WEB"), /share/);
     assert.throws(() => prefixFor({ prefixes: "nonsense" }, "acme/web"));
+  });
+});
+
+describe("projectCategory: a Status option as a status category", () => {
+  test("first to do, last or closed done, the rest in progress, no Status to do", () => {
+    assert.deepEqual([0, 1, 2, 3].map((i) => projectCategory(i, 4)), ["new", "indeterminate", "indeterminate", "done"]);
+    assert.equal(projectCategory(0, 4, true), "done");
+    assert.equal(projectCategory(-1, 4), "new");
+    assert.equal(projectCategory(-1, 0, true), "done");
   });
 });

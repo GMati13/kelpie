@@ -23,6 +23,14 @@ import { adfBlocks, adfText } from "./adf.js";
 
 const PAGES = 5; // up to 500 tickets a search
 
+// What a GitHub Project's Status option means to Kelpie, as Jira's status categories do: a closed
+// issue, or one in the last option, is done; the first option is to do; any other is in progress.
+// `index` the option's place in the Status field (-1: no Status), `count` how many options it has.
+export function projectCategory(index, count, closed = false) {
+  if (closed || (count > 0 && index === count - 1)) return "done";
+  return index <= 0 ? "new" : "indeterminate";
+}
+
 async function search(cfg, jql) {
   const out = [];
   let page = "";
