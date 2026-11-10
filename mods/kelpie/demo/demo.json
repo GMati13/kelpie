@@ -7,7 +7,8 @@
     "project": "ACME",
     "board": 7,
     "owner": "kelpie--demo",
-    "me": "you"
+    "me": "you",
+    "meName": "Alex Morgan"
   },
   "board": {
     "name": "Acme Trips",
@@ -73,6 +74,7 @@
   "issues": [
     {
       "key": "ACME-142",
+      "assignee": "Priya Nair",
       "summary": "Offline mode for saved trips",
       "type": "Story",
       "status": "In Progress",
@@ -95,12 +97,14 @@
     },
     {
       "key": "ACME-145",
+      "assignee": "Tomás Ruiz",
       "summary": "Design the offline banner",
       "parent": "ACME-142",
       "status": "Done"
     },
     {
       "key": "ACME-151",
+      "assignee": "Priya Nair",
       "summary": "Pay with Apple Pay at checkout",
       "type": "Story",
       "status": "In Progress",
@@ -122,6 +126,7 @@
     },
     {
       "key": "ACME-160",
+      "assignee": "Lena Vogel",
       "summary": "Typo-tolerant search",
       "type": "Story",
       "status": "In Review",
@@ -136,6 +141,7 @@
     },
     {
       "key": "ACME-171",
+      "assignee": "Tomás Ruiz",
       "summary": "Dark mode for the dashboard",
       "type": "Story",
       "status": "In Review",
@@ -158,6 +164,7 @@
     },
     {
       "key": "ACME-138",
+      "assignee": "Lena Vogel",
       "summary": "Rate-limit the public API",
       "type": "Story",
       "status": "In Progress",
@@ -172,6 +179,7 @@
     },
     {
       "key": "ACME-180",
+      "assignee": "Priya Nair",
       "summary": "Export an itinerary as PDF",
       "type": "Story",
       "status": "To Do",
@@ -186,12 +194,14 @@
     },
     {
       "key": "ACME-182",
+      "assignee": "Tomás Ruiz",
       "summary": "Export from the share sheet",
       "parent": "ACME-180",
       "status": "To Do"
     },
     {
       "key": "ACME-129",
+      "assignee": "Sam Okafor",
       "summary": "Password reset emails",
       "type": "Story",
       "status": "In QA",
@@ -212,6 +222,7 @@
     },
     {
       "key": "ACME-122",
+      "assignee": "Sam Okafor",
       "summary": "Upgrade the services to Node 22",
       "type": "Story",
       "status": "Done",

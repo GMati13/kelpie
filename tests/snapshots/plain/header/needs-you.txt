@@ -8,6 +8,9 @@ v_flex [fg=foreground]
       div #story-need [fg=working] tip="ACME-143's agent needs you"
         "ACME-143's agent needs you"
       div
+      div #story-assignee
+        div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
+          "PN"
       Popup.new "story-status-menu-menu"
         div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
           div [bg=accent/26 fg=accent]

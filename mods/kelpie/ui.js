@@ -1,7 +1,7 @@
 // What the Quiet pieces share: sizes, icons, status marks, buttons, names and load colours.
 
 import { div, image, svg } from "gpui-kit";
-import { Popup, h_flex, v_flex } from "gpui-base";
+import { Avatar, AvatarFallback, AvatarImage, Popup, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, run, window } from "herdr";
 import { decor, skinFont, skinText } from "./skins/index.js";
 
@@ -275,15 +275,21 @@ export const capitalize = (w) => (w ? w[0].toUpperCase() + w.slice(1) : "");
 export const tint = (hex, alpha) => (/^#[0-9a-f]{6}$/i.test(hex ?? "") ? hex + alpha : hex);
 
 // A person as a small round avatar: their initials on a colour that is always the same for them.
-export function avatar(t, name, size = 18) {
+// `tip` replaces the name as its tooltip; `picture` (a path from Herdr's home) shows them instead,
+// the initials staying while it can't be drawn.
+export function avatar(t, name, size = 18, tip = name || "Unassigned", picture = null) {
   const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
   const initials = words.length ? (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase() : "?";
   let h = 0;
   for (const c of name ?? "") h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const hue = [t.ansi4, t.ansi5, t.ansi6, t.ansi2, t.ansi3, t.ansi1][h % 6];
-  return div().flex().flex_none().size(size).items_center().justify_center().rounded_full()
-    .bg(name ? tint(hue, "33") : t.raised).text_size(size * 0.45).font_medium().text_color(name ? hue : t.dim)
-    .tooltip(name || "Unassigned").child(name ? initials : "–");
+  const letters = (el) => el.flex().items_center().justify_center().rounded_full()
+    .bg(name ? tint(hue, "33") : t.raised).text_size(size * 0.45).font_medium().text_color(name ? hue : t.dim).child(name ? initials : "–");
+  if (!picture) return letters(div().flex().flex_none().size(size)).tooltip(tip);
+  // Round on every layer: overflow_hidden doesn't clip an image to its box's corners, so the picture
+  // carries the radius itself.
+  return div().flex_none().size(size).rounded_full().tooltip(tip).child(Avatar.new().size(size).rounded_full().overflow_hidden()
+    .image(AvatarImage.new(picture).size_full().rounded_full()).fallback(letters(AvatarFallback.new().size_full())));
 }
 
 // A small coloured chip: a label on a tint of its colour (or on `bg`). Jira's status lozenges are chips too.

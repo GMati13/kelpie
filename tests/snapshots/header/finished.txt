@@ -12,6 +12,9 @@ div
         div #story-need [fg=dim font="DM Sans"] tip="1 subtask · 1 done"
           "1 subtask · 1 done"
         div
+        div #story-assignee
+          div [bg=ansi2/33 fg=ansi2] tip="Assigned to Sam Okafor"
+            "SO"
         Popup.new "story-status-menu-menu"
           div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
             div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]

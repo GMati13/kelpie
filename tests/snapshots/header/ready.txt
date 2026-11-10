@@ -12,6 +12,9 @@ div
         div #story-need [fg=done font="DM Sans"] tip="Approved, checks pass · ready to merge"
           "Approved, checks pass · ready to merge"
         div
+        div #story-assignee
+          div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
+            "TR"
         Popup.new "story-status-menu-menu"
           div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]

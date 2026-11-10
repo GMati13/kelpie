@@ -12,6 +12,9 @@ div
         div #story-need [fg=blocked font="DM Sans"] tip="Checks failing on ACME-152 (payments#97)"
           "Checks failing on ACME-152 (payments#97)"
         div
+        div #story-assignee
+          div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
+            "PN"
         Popup.new "story-status-menu-menu"
           div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]

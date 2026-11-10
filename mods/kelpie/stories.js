@@ -12,7 +12,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
-import { agents, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
+import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
@@ -359,13 +359,13 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
     const children = kids.get(key) ?? [];
     const sub = (c) => ({
       key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, status: c.fields?.status?.name,
-      category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key),
+      category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
     });
     const own = children.filter((c) => mine.has(c.key));
     return {
-      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", status: f?.status?.name, category: f?.status?.statusCategory?.key,
+      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
@@ -392,6 +392,41 @@ const allPaused = (it) => [it.paused && it.key, ...it.subs.map((s) => s.paused &
 const begun = (it) => Boolean(it.space) || allAgents(it).length > 0 || allPaused(it).length > 0 || allPrs(it).length > 0 || Boolean(it.last) || it.subs.some((s) => s.last);
 // Paused: something of it is paused and nothing of it runs.
 const isPaused = (it) => !allAgents(it).length && allPaused(it).length > 0;
+
+// Assignees' pictures. Jira gives each person's avatar as a link; Herdr draws images only from its own
+// folder, so each is downloaded once (avatar.sh) into art/<mod>/avatars, named after its link, and
+// drawn from there, with the initials until it's there or when it can't be had. Only links to
+// Gravatar and Atlassian's public avatar host count: the Jira site's own need a sign-in, and nothing
+// here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
+const AVATARS = "kelpie.avatars";
+const AVATAR_RETRY = 24 * 60 * 60 * 1000; // a picture that failed is tried again a day later
+const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
+// Exported for the tests.
+export const avatarUrl = (u) => typeof u === "string" && u.length < 1000 && AVATAR_HOST.test(u);
+const avatarName = (url) => `${fnv(url)}${fnv(`${url.length}:${url}`)}`;
+// The picture's path from Herdr's home, once downloaded.
+function avatarFile(url) {
+  if (!avatarUrl(url)) return null;
+  const e = (shared(AVATARS) ?? {})[avatarName(url)];
+  return e?.file ? `art/${MOD}/avatars/${e.file}` : null;
+}
+// Downloads the pictures of a load's assignees that aren't there yet, one after another, in the
+// background (the list calls it after a fresh load). Exported for the tests.
+export async function fetchAvatars(data) {
+  const urls = [...new Set([...(data.parents ?? []), ...(data.children ?? [])].map((i) => i.fields?.assignee?.avatar).filter(avatarUrl))];
+  for (const url of urls) {
+    const name = avatarName(url), e = (shared(AVATARS) ?? {})[name];
+    if (e?.file || (e?.failed && Date.now() - e.failed < AVATAR_RETRY)) continue;
+    const r = await exec("sh", [modFile("avatar.sh"), `${appHome()}/art/${MOD}/avatars`, name, url]).catch(() => null);
+    const file = r?.code === 0 ? String(r.stdout ?? "").trim() : "";
+    const ok = /^[0-9a-z]+\.(png|jpg|gif|webp)$/.test(file) && file.startsWith(`${name}.`);
+    setShared(AVATARS, { ...(shared(AVATARS) ?? {}), [name]: ok ? { file, at: Date.now() } : { failed: Date.now() } });
+  }
+}
+
+// Who a ticket is assigned to, as an avatar (their picture, else initials) with their name in its tooltip.
+const assigned = (t, id, who, mine, url = null) => div().id(id).flex_none()
+  .child(avatar(t, who, 18, who ? `Assigned to ${who}${mine ? " (you)" : ""}` : "Unassigned", who ? avatarFile(url) : null));
 
 // Where its subtasks are, from Jira and their pull requests.
 function progress(it) {
@@ -603,7 +638,8 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
-const issue = (i) => ({ key: i.key, fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null } });
+const issue = (i) => ({ key: i.key, fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+  ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
   author: p.author ? { login: p.author.login } : null, repository: { name: p.repository?.name }, commits: { nodes: [{ commit: { statusCheckRollup: { state: checksOf(p) } } }] } });
@@ -1448,7 +1484,12 @@ export class Stories extends Source {
       const p = i.fields?.issuetype?.subtask ? i.fields.parent : i;
       if (p && !parents.has(p.key)) parents.set(p.key, { key: p.key, fields: p.fields });
     }
-    const children = parents.size ? await search(cfg, `parent in (${[...parents.keys()].join(", ")}) ORDER BY Rank`) : [];
+    // The children and, in the same search, the parents themselves: a subtask's embedded parent
+    // carries no assignee, so a story's own fields come from here when it answers.
+    const keys = [...parents.keys()].join(", ");
+    const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
+    for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
+    const children = found.filter((i) => !parents.has(i.key));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
@@ -1739,6 +1780,7 @@ export class Stories extends Source {
           .text_color(sunk(it, n) ? t.dim : color === "dim" ? t.muted : t[color]), "meta", SMALL).tooltip(line).child(skinText(line, "meta")))
         .child(div().flex_1())
         .when(Boolean(subMeter), (el) => el.child(div().flex_none().child(subMeter)))
+        .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.mine, it.avatar)))
         .when(Boolean(it.status), (el) => el.child(it.review || it.pr ? div().flex_none().child(lozenge(t, it.status, it.category))
           : this.statusChip(t, st, it.key, it.status, it.category, "story-status-menu", cx))))
       .child(h_flex().flex_none().gap(6).items_center().ml(8).children(actions))
@@ -1910,6 +1952,7 @@ export class Stories extends Source {
         .child(skinFont(div(), "numbers").flex_none().w(84).text_size(SMALL).text_color(t.dim).child(s.key))
         .child(title(s))
         .when(!s.prs.length && s.category !== "done", (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child("No PR yet")))
+        .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.mine, s.avatar))
         .when(Boolean(s.status), (el) => el.child(this.statusChip(t, st, s.key, s.status, s.category, `sub-status-${s.key}`, cx)))
         .when(Boolean(s.agent), (el) => el.child(statusMark(t, agentState(s.agent.status), { where: "sub", size: 8, color: t[AGENT[s.agent.status][1]], agent: s.agent })
           ?? div().id(`sub-mark-${s.key}`).flex_none().tooltip(`Agent: ${AGENT[s.agent.status][0]}`).child(mark(t, agentState(s.agent.status) ?? "idle", 14))))
@@ -2714,6 +2757,7 @@ export class StoryList extends Stories {
     this.fresh = null;
     notifyPulls(ctx, entry.data);
     pruneShared(ctx.profile, entry.data);
+    fetchAvatars(entry.data).catch(() => {});
   }
 
   // Next: a card with a header line ("Next", where it is in the queue, Claude's picks as a ✨ badge,

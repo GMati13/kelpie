@@ -12,6 +12,9 @@ div
         div #story-need [fg=working font="DM Sans"] tip="Changes requested on ACME-161 (search#233)"
           "Changes requested on ACME-161 (search#233)"
         div
+        div #story-assignee
+          div [bg=ansi1/33 fg=ansi1] tip="Assigned to Lena Vogel"
+            "LV"
         Popup.new "story-status-menu-menu"
           div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]

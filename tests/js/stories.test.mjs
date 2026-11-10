@@ -293,4 +293,15 @@ describe("the demo's stories, as the list builds them", () => {
     assert.ok(!build(d, new Map()).some((it) => it.key === "ACME-122"));
     assert.deepEqual(pullsOf(d).map((it) => it.key), ["pull:docs#58"]);
   });
+  test("who each story and subtask is assigned to: a story's own assignee too, not only yours", async () => {
+    const it = byKey(build(await demoData(), new Map()));
+    // ACME-142 reaches the list only as the parent of your subtasks, whose embedded parent names no one.
+    assert.equal(it["ACME-142"].assignee, "Priya Nair");
+    assert.equal(it["ACME-142"].mine, false);
+    assert.deepEqual(it["ACME-142"].subs.map((s) => [s.key, s.assignee, s.mine]), [
+      ["ACME-143", "Alex Morgan", true], ["ACME-144", "Alex Morgan", true], ["ACME-145", "Tomás Ruiz", false],
+    ]);
+    assert.equal(byKey(it["ACME-129"].subs)["ACME-131"].assignee, null, "unassigned");
+    assert.deepEqual([it["ACME-175"].assignee, it["ACME-175"].mine], ["Alex Morgan", true], "a task of yours");
+  });
 });

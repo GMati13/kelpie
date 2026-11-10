@@ -12,6 +12,9 @@ div
         div #story-need [fg=muted font="DM Sans"] tip="2 subtasks · 2 to do"
           "2 subtasks · 2 to do"
         div
+        div #story-assignee
+          div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
+            "PN"
         Popup.new "story-status-menu-menu"
           div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
             div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]

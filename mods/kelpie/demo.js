@@ -48,6 +48,10 @@ function fields(f, i, { withParent = true } = {}) {
     issuetype: { name: i.type ?? (subtask ? "Sub-task" : "Story"), subtask },
     status: jiraStatus(statusNamed(f, MOVED[i.key] ?? i.status)),
   };
+  // Yours are assigned to the fixture's own name; others name someone, or no one. A parent embedded in
+  // a subtask names no one, as in Jira.
+  const who = i.assignee ?? (i.mine ? f.profile.meName : null);
+  if (who && withParent) out.assignee = { displayName: who };
   const parent = i.parent && issueById(f).get(i.parent);
   if (withParent && parent) out.parent = { key: parent.key, fields: fields(f, parent, { withParent: false }) };
   return out;
@@ -92,9 +96,12 @@ export async function demoJira(args) {
   const ok = (body) => ({ site: f.profile.site, code: 200, authed: true, body });
   const [what, a, b] = args;
   if (what === "search") {
+    // `key in (…) OR parent in (…)`: the stories and their subtasks; `parent in (…)` alone: the subtasks.
     const parents = /parent in \(([^)]*)\)/.exec(a);
+    const named = /key in \(([^)]*)\)/.exec(a);
+    const among = (m, k) => Boolean(m) && m[1].split(",").map((s) => s.trim()).includes(k);
     const list = parents
-      ? f.issues.filter((i) => i.parent && parents[1].split(",").map((s) => s.trim()).includes(i.parent))
+      ? f.issues.filter((i) => among(named, i.key) || (i.parent && among(parents, i.parent)))
       : /assignee = currentUser\(\)/.test(a) ? f.issues.filter((i) => i.mine) : [];
     return ok({ issues: list.map((i) => asIssue(f, i)), isLast: true });
   }

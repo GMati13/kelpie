@@ -32,6 +32,9 @@ describe("demoJira: what Kelpie asks Jira", () => {
     assert.deepEqual(mine.issues.map((i) => i.key), FIXTURE.issues.filter((i) => i.mine).map((i) => i.key));
     const kids = (await demoJira(["search", "parent in (ACME-142, ACME-129) ORDER BY Rank", ""])).body.issues;
     assert.deepEqual(kids.map((i) => i.key), ["ACME-143", "ACME-144", "ACME-145", "ACME-130", "ACME-131"]);
+    const both = (await demoJira(["search", "key in (ACME-142) OR parent in (ACME-142) ORDER BY Rank", ""])).body.issues;
+    assert.deepEqual(both.map((i) => i.key), ["ACME-142", "ACME-143", "ACME-144", "ACME-145"]);
+    assert.deepEqual(both.map((i) => i.fields.assignee?.displayName), ["Priya Nair", "Alex Morgan", "Alex Morgan", "Tomás Ruiz"]);
     assert.deepEqual((await demoJira(["search", "project = ACME", ""])).body.issues, []);
   });
   test("an issue's fields: a subtask with its story as parent, the status as Jira gives it", async () => {
