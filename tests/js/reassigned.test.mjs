@@ -99,7 +99,9 @@ describe("which keys the load asks for", () => {
     { key: "ACME-6", fields: { summary: "Its subtask", issuetype: { name: "Sub-task", subtask: true }, status: { id: "1" }, parent: { key: "ACME-5" }, assignee: ana } },
     { key: "ACME-8", fields: { summary: "Mine, out of the sprint", issuetype: { name: "Story", subtask: false }, status: { id: "1" }, assignee: me } },
   ];
-  function fakeJira(searches) {
+  // `sprint`: what the sprint search gives as yours; `down`: Jira can't answer a search naming ACME-5
+  // (503), which only the kept stories' searches do.
+  function fakeJira(searches, { sprint = [ISSUES[0]], down = false } = {}) {
     mock.on.exec = (cmd, args) => {
       if (cmd !== "sh" || !String(args[0]).endsWith("jira.sh")) return undefined;
       const [what, a] = args.slice(3);
@@ -107,14 +109,16 @@ describe("which keys the load asks for", () => {
       if (what === "get" && a.endsWith("/configuration")) return body({ columnConfig: { columns: [{ name: "To Do", statuses: [{ id: "1" }] }] } });
       if (what === "get") return body({ values: [{ id: 3, name: "Sprint 3" }] });
       searches.push(a);
-      if (/currentUser/.test(a)) return body({ issues: [ISSUES[0]], isLast: true });
+      if (down && /ACME-5\b/.test(a)) return { code: 0, stdout: JSON.stringify({ site: SITE, code: 503, authed: true, body: { errorMessages: ["Service unavailable"] } }), stderr: "" };
+      if (/currentUser/.test(a) && !/^key in/.test(a)) return body({ issues: sprint, isLast: true });
       if (/ACME-404/.test(a)) return { code: 0, stdout: JSON.stringify({ site: SITE, code: 400, authed: true, body: { errorMessages: ["An issue with key 'ACME-404' does not exist."] } }), stderr: "" };
       const named = [...a.matchAll(/ACME-\d+/g)].map((m) => m[0]);
-      return body({ issues: ISSUES.filter((i) => named.includes(i.key) || named.includes(i.fields.parent?.key)), isLast: true });
+      const found = ISSUES.filter((i) => named.includes(i.key) || (!/ AND assignee/.test(a) && named.includes(i.fields.parent?.key)));
+      return body({ issues: /currentUser/.test(a) ? found.filter((i) => i.fields.assignee === me) : found, isLast: true });
     };
   }
 
-  test("Jira: by key, a subtask's story too, yours known by your own issues' assignee", async () => {
+  test("Jira: by key, a subtask's story too, yours as Jira says", async () => {
     mock.reset();
     const searches = [];
     fakeJira(searches);
@@ -131,5 +135,19 @@ describe("which keys the load asks for", () => {
     const r = await loadBoard({ kind: "jira", cfg }, { keys: ["OTHER-3", "ACME-404", "ACME-5", "ACME-1;DROP"] });
     assert.ok(!searches.some((s) => /OTHER|DROP/.test(s)), searches.join("\n"));
     assert.deepEqual(r.kept, ["ACME-5"], "asked again alone, the known key still comes");
+  });
+
+  test("Jira: a kept story still yours is yours with nothing else of yours in the sprint", async () => {
+    mock.reset();
+    fakeJira([], { sprint: [] });
+    const r = await loadBoard({ kind: "jira", cfg }, { keys: ["ACME-8", "ACME-5"], projects: ["ACME"] });
+    assert.deepEqual(r.kept, ["ACME-5", "ACME-8"]);
+    assert.deepEqual(r.mine.map((i) => i.key), ["ACME-8"], "Jira says ACME-8 is yours; ACME-5 is Ana's");
+  });
+
+  test("Jira: a kept search Jira can't answer fails the load, so nothing is pruned", async () => {
+    mock.reset();
+    fakeJira([], { down: true });
+    await assert.rejects(loadBoard({ kind: "jira", cfg }, { keys: ["ACME-5"] }), /Service unavailable/);
   });
 });

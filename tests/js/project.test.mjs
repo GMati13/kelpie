@@ -361,7 +361,8 @@ describe("an issue on the Project with no Status set", () => {
 // out, reassigned since, are asked for by key, through a constant query with its values as variables.
 describe("kept stories, by key", () => {
   const PRIYA = { login: "priya", name: "Priya Nair", avatarUrl: null };
-  function keptBoard() {
+  // `down`: GitHub fails the kept question for another reason than an issue not being there.
+  function keptBoard({ down = false } = {}) {
     const { pages, stories } = sprintBoard();
     const gone = ghIssue("acme/web", 30, { title: "Saved filters", assignee: PRIYA, option: "o2" });
     const sub = ghIssue("acme/web", 31, { title: "Save them", assignee: PRIYA, parent: gone, option: "o2" });
@@ -373,8 +374,9 @@ describe("kept stories, by key", () => {
       const json = (data) => ({ code: 0, stdout: JSON.stringify({ data }), stderr: "" });
       if (opOf(gh) === "KelpieStories") return json({ nodes: v.ids.map((id) => all[id] ?? null) });
       if (opOf(gh) !== "KelpieKept") return json({ user: { projectV2: pages[v.cursor ?? null] ?? null } });
+      if (down) return { code: 1, stdout: "", stderr: "gh: HTTP 502: Bad Gateway" };
       const i = v.owner === "acme" && v.repo === "web" ? issues[v.number] : null;
-      if (!i) return { code: 1, stdout: JSON.stringify({ errors: [{ message: "Could not resolve to an Issue" }] }), stderr: "" };
+      if (!i) return { code: 1, stdout: JSON.stringify({ data: { viewer: { login: "alex" }, repository: { issue: null } }, errors: [{ type: "NOT_FOUND", message: "Could not resolve to an Issue" }] }), stderr: "" };
       return { code: 0, stdout: JSON.stringify({ data: { viewer: { login: "alex" }, repository: { issue: { id: i.id, parent: i.parent ? { id: i.parent.id } : null } } } }), stderr: "" };
     } });
   }
@@ -396,6 +398,11 @@ describe("kept stories, by key", () => {
     const items = build(loaded, new Map(), {});
     assert.deepEqual(items.find((x) => x.key === "WEB-30").reassigned, { to: ["Priya Nair"] });
     assert.equal(items.find((x) => x.key === "WEB-40").reassigned, null);
+  });
+
+  test("a kept question GitHub can't answer fails the load, so nothing is pruned", async () => {
+    keptBoard({ down: true });
+    await assert.rejects(loadBoard(boardWith(), { keys: ["WEB-31"] }), /Bad Gateway/);
   });
 
   test("a key that isn't one isn't sent", async () => {

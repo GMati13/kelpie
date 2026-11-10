@@ -51,13 +51,18 @@ async function search(cfg, jql) {
 // A key as Jira makes them, checked before one goes into a search (security.md).
 const KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 
-// The stories and subtasks a search finds by key: `key in (…) OR parent in (…)`. A key Jira doesn't
-// know (a ticket deleted or moved since) fails the whole search, so then each key is asked alone.
-async function byKeys(cfg, keys) {
-  const jql = (ks) => `key in (${ks.join(", ")}) OR parent in (${ks.join(", ")}) ORDER BY Rank`;
-  try { return await search(cfg, jql(keys)); } catch {
+// The stories and subtasks a search finds by key: `key in (…) OR parent in (…)` (with `and`, only
+// the keys' own issues that match it too). A key Jira doesn't know (a ticket deleted or moved since)
+// makes it refuse the whole search (400), so then each key is asked alone and the ones it refuses are
+// skipped. Any other failure fails the load: one that left kept stories out would have pruneShared()
+// drop their paused agents.
+const refused = (e) => e?.status === 400;
+async function byKeys(cfg, keys, and = null) {
+  const jql = (ks) => and ? `key in (${ks.join(", ")}) AND ${and} ORDER BY Rank` : `key in (${ks.join(", ")}) OR parent in (${ks.join(", ")}) ORDER BY Rank`;
+  try { return await search(cfg, jql(keys)); } catch (e) {
+    if (!refused(e)) throw e;
     const out = [];
-    for (const k of keys) out.push(...await search(cfg, jql([k])).catch(() => []));
+    if (keys.length > 1) for (const k of keys) out.push(...await search(cfg, jql([k])).catch((e) => { if (refused(e)) return []; throw e; }));
     return out;
   }
 }
@@ -66,9 +71,8 @@ async function byKeys(cfg, keys) {
 // request; stories.js hereKeys()) that the search by assignee left out, as they're someone else's now
 // (or out of the sprint): { parents, children, mine } to add to the load. Only keys of the board's
 // projects (this load's, or `keep.projects`, the last load's) are asked for; a subtask's key brings
-// its story. `mine`: those assigned to the person, known by the assignee of the issues found as theirs
-// (none of those: none).
-async function keptJira(cfg, keep, have, mine) {
+// its story. `mine`: those of them Jira gives as the person's own (`assignee = currentUser()`).
+async function keptJira(cfg, keep, have) {
   const projects = new Set([...(keep.projects ?? []), ...[...have].map((k) => k.split("-")[0])]);
   const asked = [...new Set(keep.keys ?? [])].filter((k) => KEY.test(k) && !have.has(k) && projects.has(k.split("-")[0]));
   if (!asked.length) return { parents: [], children: [], mine: [] };
@@ -76,13 +80,13 @@ async function keptJira(cfg, keep, have, mine) {
   const found = new Set(got.map((i) => i.key));
   const up = [...new Set(got.filter((i) => i.fields?.issuetype?.subtask).map((i) => i.fields?.parent?.key))]
     .filter((k) => k && KEY.test(k) && !found.has(k) && !have.has(k));
-  const all = [...got, ...(up.length ? await byKeys(cfg, up) : [])].filter((i, n, a) => !have.has(i.key) && a.findIndex((x) => x.key === i.key) === n);
+  const all = [...got, ...(up.length ? await byKeys(cfg, up) : [])].filter((i, n, a) => KEY.test(i.key) && !have.has(i.key) && a.findIndex((x) => x.key === i.key) === n);
   const parents = all.filter((i) => !i.fields?.issuetype?.subtask);
   const stories = new Set(parents.map((i) => i.key));
   const children = all.filter((i) => i.fields?.issuetype?.subtask && stories.has(i.fields?.parent?.key));
-  const who = (i) => i.fields?.assignee?.accountId ?? i.fields?.assignee?.displayName ?? null;
-  const me = new Set(mine.map(who).filter(Boolean));
-  return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => me.has(who(i))) };
+  const keys = [...parents, ...children].map((i) => i.key);
+  const own = keys.length ? new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key)) : new Set();
+  return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => own.has(i.key)) };
 }
 
 // The board's current work as it answers it: { site, columns, sprints, mine, parents, children }, the
@@ -112,7 +116,7 @@ export async function loadBoard(board, keep = {}) {
   const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
   for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
   const children = found.filter((i) => !parents.has(i.key));
-  const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]), mine);
+  const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]));
   return { site: active.site, columns, sprints, mine: [...mine, ...kept.mine], parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
 }
 

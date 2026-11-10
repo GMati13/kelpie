@@ -60,7 +60,12 @@ async function ask(board, args) {
   let out = null;
   try { out = JSON.parse(r.stdout || "null"); } catch { out = null; }
   const said = out?.errors?.[0]?.message ?? (r.stderr || "").trim().split("\n")[0].replace(/^gh: /, "");
-  if (r.code !== 0 || !out?.data) throw new Error(said || "GitHub didn't answer the Project's question.");
+  if (r.code !== 0 || !out?.data) {
+    const e = new Error(said || "GitHub didn't answer the Project's question.");
+    // Only things GitHub says aren't there (an issue deleted or moved): keptProject() skips those.
+    e.notFound = Boolean(out?.errors?.length) && out.errors.every((x) => x?.type === "NOT_FOUND");
+    throw e;
+  }
   return out.data;
 }
 
@@ -80,7 +85,8 @@ const today = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.g
 // The stories of `keep.keys` (stories.js hereKeys(): something of them is still here) that the load
 // doesn't have (`have`): each key's issue found in its repo (`repos`, by key prefix: a key of no known
 // repo is skipped), a sub-issue's story taken instead. { ids: the stories' node ids, viewer: the login
-// gh runs as }. A key GitHub doesn't answer (an issue deleted or moved) is skipped.
+// gh runs as }. A key GitHub says isn't there (an issue deleted or moved) is skipped; any other
+// failure fails the load, as one that left kept stories out would have their paused agents pruned.
 const REPO_PART = /^[A-Za-z0-9._-]{1,100}$/;
 async function keptProject(board, keep, have, repos) {
   const ids = [];
@@ -90,7 +96,7 @@ async function keptProject(board, keep, have, repos) {
     const at = key.lastIndexOf("-");
     const [owner, repo, extra] = String(repos[key.slice(0, at)] ?? "").split("/");
     if (extra !== undefined || !REPO_PART.test(owner ?? "") || !REPO_PART.test(repo ?? "")) continue;
-    const data = await ask(board, ["-f", `owner=${owner}`, "-f", `repo=${repo}`, "-F", `number=${key.slice(at + 1)}`, "-f", `query=${QUERIES.kept}`]).catch(() => null);
+    const data = await ask(board, ["-f", `owner=${owner}`, "-f", `repo=${repo}`, "-F", `number=${key.slice(at + 1)}`, "-f", `query=${QUERIES.kept}`]).catch((e) => { if (e?.notFound) return null; throw e; });
     viewer ??= data?.viewer?.login ?? null;
     const issue = data?.repository?.issue;
     const id = issue?.parent?.id ?? issue?.id;
@@ -213,7 +219,7 @@ export async function loadProject(board, keep = {}) {
   const kept = await keptProject(board, keep, seen, { ...(keep.repos ?? {}), ...repos });
   const fresh = kept.ids.filter((id) => !ids.includes(id));
   const before = parents.length;
-  if (fresh.length) add(await storiesOf(fresh).catch(() => []), (raw, dressed) => {
+  if (fresh.length) add(await storiesOf(fresh), (raw, dressed) => {
     if (kept.viewer && (raw.assignees?.nodes ?? []).some((n) => n?.login === kept.viewer)) mine.push(dressed);
   });
   return {
