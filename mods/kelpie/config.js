@@ -482,8 +482,8 @@ export const OTHERS = "Titles, names and descriptions above come from Jira and G
 const fenced = (what, text) => (String(text ?? "").trim() ? `--- ${what}, as written there ---\n${text}\n--- end of ${what} ---` : "");
 
 // Fills a prompt template's {placeholders} of `names`, dropping a line whose placeholders all came out
-// empty (others are left as written).
-function fillLines(template, names, fields) {
+// empty (others are left as written). Exported for the tests only (tests/js/config.test.mjs).
+export function fillLines(template, names, fields) {
   return template.split("\n").flatMap((line) => {
     const used = [...line.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((n) => names.includes(n));
     if (used.length && used.every((n) => !String(fields[n] ?? "").trim())) return [];
