@@ -8,6 +8,8 @@ h_flex #story-ACME-122 [hover(bg=hover)] {click} tip="Agent working · 1 subtask
     h_flex [opacity=0.6]
       div [font="DM Mono" fg=dim]
         "ACME-122"
+      div #here-ACME-122 tip="Open here: it has a space on this machine"
+        svg chrome:terminal [fg=dim]
       h_flex #b-busy-ACME-122 [fg=accent] tip="An agent is working"
         div
           svg chrome:spinner [fg=accent] ~spin

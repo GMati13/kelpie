@@ -190,6 +190,28 @@
       "mine": true
     },
     {
+      "key": "ACME-184",
+      "assignee": "Sam Okafor",
+      "summary": "Show times in each stop's time zone",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "Started on another machine, so nothing of it is open here. A trip's times show in the traveller's own time zone, which is wrong for every stop abroad: show each booking in its stop's local time, with the zone beside it."
+    },
+    {
+      "key": "ACME-185",
+      "summary": "Store each stop's time zone",
+      "parent": "ACME-184",
+      "status": "In Progress",
+      "mine": true
+    },
+    {
+      "key": "ACME-186",
+      "assignee": "Sam Okafor",
+      "summary": "Label times with their zone",
+      "parent": "ACME-184",
+      "status": "In Progress"
+    },
+    {
       "key": "ACME-180",
       "assignee": "Priya Nair",
       "summary": "Export an itinerary as PDF",

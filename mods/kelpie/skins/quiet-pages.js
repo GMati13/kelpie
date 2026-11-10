@@ -105,7 +105,7 @@ function lead(el, mark, { left = 10, room = 26, half = 4 } = {}) {
 // to nothing, so it still reaches the count.
 const FADE = Array.from({ length: 32 }, (_, i) => 0.1 + 0.85 * (1 - i / 31) ** 2);
 const inkRule = (c) => bands(FADE.map((f) => alpha(c, f))).size_full();
-const GROUP_INK = { "Open": INK.gold, "Not open": INK.teal, "Waiting on others": INK.rose, "Reviews for you": INK.sage };
+const GROUP_INK = { "In progress": INK.gold, "To do": INK.teal, "Waiting on others": INK.rose, "Built": INK.rose, "Reviews for you": INK.sage };
 
 // ---- hooks
 
