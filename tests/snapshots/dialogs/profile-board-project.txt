@@ -115,7 +115,7 @@ v_flex #work-setup [bg=popover fg=foreground] {key_down}
         div [fg=dim]
           "Open the Project on GitHub and copy its address. Kelpie reads it as the account gh has active (the GitHub page can name another), through gh."
       div [fg=done]
-        "Found “Acme”: 5 columns (To Do, In Progress, Review, QA, Done), 1 repo. It has no iteration field, so all of its open work counts, like a Kanban board. Kelpie can move its tickets."
+        "Found “Acme”: 5 columns (To Do, In Progress, Review, QA, Done), 1 repo. Stories come from the current iteration of its “Sprint” field. Kelpie can move its tickets."
       v_flex
         h_flex [border=border]
           div

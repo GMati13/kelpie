@@ -71,7 +71,7 @@ export async function checkProject(cfg, { account = null, demo = false, name = "
 function described(project, account) {
   const { title, options, iteration, repos, scopes, canUpdate } = project;
   const lines = [`Found “${title}”: ${options.length ? `${options.length} columns (${options.map((o) => o.name).join(", ")})` : "no Status field, so stories have no columns: add one on GitHub"}, ${repos.length} repo${repos.length === 1 ? "" : "s"}.`];
-  lines.push(iteration ? `Its current ${iteration} is the sprint.` : "It has no iteration field, so all of its open work counts, like a Kanban board.");
+  lines.push(iteration ? `Stories come from the current iteration of its “${iteration}” field.` : "It has no iteration field, so all of its open work counts, like a Kanban board.");
   let fix;
   if (scopes === "write") lines.push(canUpdate ? "Kelpie can move its tickets." : "GitHub doesn't let you change this Project, so moving a ticket from Kelpie won't work.");
   else if (scopes === "read") {

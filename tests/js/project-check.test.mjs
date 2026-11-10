@@ -62,7 +62,7 @@ test("a readable Project: its title, Status options in order, iteration, repos, 
   assert.deepEqual(r.project.repos, ["acme/web", "acme/api"]);
   assert.equal(r.project.scopes, "write");
   assert.equal(r.fix, undefined);
-  assert.equal(r.text, "Found “Roadmap”: 3 columns (Todo, In Progress, Done), 2 repos. Its current Sprint is the sprint. Kelpie can move its tickets.");
+  assert.equal(r.text, "Found “Roadmap”: 3 columns (Todo, In Progress, Done), 2 repos. Stories come from the current iteration of its “Sprint” field. Kelpie can move its tickets.");
 });
 
 test("no iteration field: the whole board counts; no right to change it: moves won't work", async () => {
