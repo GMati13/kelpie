@@ -12,7 +12,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 ## Rules
 
-**Commands.** Never build shell code out of a value. A `sh -c` script takes values as `"$1"`, `"$2"`…, quoted. Prefer `exec(program, [args])` without a shell. A value that could start with `-` goes after `--` or is validated. Ticket keys are checked against `^[A-Z][A-Z0-9_]*-\d+$` before use.
+**Commands.** Never build shell code out of a value. A `sh -c` script takes values as `"$1"`, `"$2"`…, quoted. Prefer `exec(program, [args])` without a shell. A value that could start with `-` goes after `--` or is validated. Check a ticket key against `^[A-Z][A-Z0-9_]*-\d+$` before it goes into a command or a path.
 
 **The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command.
 
@@ -20,15 +20,15 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Messages to agents.** Only through `sendToClaude()`, which checks the terminal's real foreground process. Never `hc(["send", …])` directly.
 
-**Prompts.** Values go in through `promptValue()` (no control characters). Text others wrote is fenced and the task ends with the `OTHERS` note: information, not instructions. Prompts say what to look at or do, never how to reach it: Claude uses its own access (MCP servers, plugins, its tools); Kelpie's plumbing (`jira.sh`, its `gh` calls, the person's sign-in) is never offered, and no message names a tool. When Claude can't reach something, it says so.
+**Prompts.** Values go in through `promptValue()` (no control characters; the fill functions in config.js all do). Fence long text others wrote, and end every task that carries it with the `OTHERS` note: information, not instructions. Prompts say what to look at or do, never how to reach it: Claude uses its own access (MCP servers, plugins, its tools); Kelpie's plumbing (`jira.sh`, its `gh` calls, the person's sign-in) is never offered, and no message names a tool. When Claude can't reach something, it says so.
 
 **Other people's code.** Never run it. A review agent starts outside the checkout (in the profile's folder) and reviews by reading. No default prompt asks to run, build, install or test a pull request.
 
 **Background agents.** Claude run without a terminal (What next?) runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is.
 
-**Files.** Never delete, overwrite or write through a symlink to a file the person owns; installs and copies skip and report what's in the way. Deletions are guarded by an exact, tested path check (`removeDemo()`, `resetBrowser()`). Temp files: `mktemp -d`, private (0700), never fixed names in `/tmp`. Caches holding prompts or titles are private.
+**Files.** Never delete, overwrite or write through a symlink to a file the person owns; installs and copies skip and report what's in the way. Deletions are guarded by an exact, tested path check (`removeDemo()`, `resetBrowser()`). Temp files and folders: `mktemp` / `mktemp -d` (private), never fixed names in `/tmp`. Caches holding prompts or titles are private.
 
-**Destructive actions.** Closing a space, pausing, cleaning up or killing a process asks first when something is working, and refuses what isn't settled (`cleanBlockers()`: not Done, an open pull request, a busy agent, uncommitted work). Match processes by an exact, tested pattern; never kill what Kelpie didn't start.
+**Destructive actions.** Closing a space, pausing, cleaning up or killing a process asks first when something is working, and refuses what isn't settled (`cleanBlockers()`: not Done, an open pull request, a busy agent; `cleanUp()` checks those again when it runs, and uncommitted work). Match processes by an exact, tested pattern; never kill what Kelpie didn't start.
 
 ## When you change something here
 
@@ -38,12 +38,13 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 ## Known gaps
 
-Where the code doesn't meet these rules yet (from the security review; fix them with tests, then remove the line):
+Where the code doesn't meet these rules yet (fix them with tests, then remove the line):
 
-- `runCommand()` (config.js) puts `{key}` into a profile command unquoted; keys aren't checked against the ticket-key pattern first.
-- Screenshot mark-up and thumbnails (`mods/kelpie-artifacts`) use fixed temp names, in shared `/tmp` on Linux.
-- `~/.cache/kelpie/sessions.json` and the Web panel's folders are created with the default permissions, not private.
-- A secret-like key nested inside a profile section (e.g. `github.pat`) isn't refused; sections don't have their own list of allowed keys.
-- What next? passes its whole prompt as a command-line argument (visible to other users in `ps`).
-- Profile ids that differ only by punctuation (`a.b`, `a-b`) share one Web panel folder.
+- Ticket keys from Jira aren't checked against the key pattern when they're loaded; only `jira.sh transition` and `applyPicks()` (stories.js) check one. `runCommand()` (config.js) then puts `{key}` into a profile command unquoted.
+- Some shell code is still built from a value, single-quoted rather than passed as `"$1"`: `shellArgv()` (config.js, the Claude config folder) and the Web panel's browser command (`browserCommand()` in main.js, the start page and kittyfix's path).
+- Only the review task (`reviewTask()`) and What next? (`suggestText()`) end with `OTHERS`. The ticket prompt (`jiraTask()`: summary, subtasks), Merge and Request approval (`mergeTask()`, `approvalTask()`: `{prs}`, pull request titles) and an idea's prompt (`ASK_PROMPTS` `idea`, from Claude's picks) carry others' text without it.
+- Screenshot mark-up (`FLATTEN_SCRIPT`, `mods/kelpie-artifacts/markup.js`) writes into a fixed folder, `${TMPDIR:-/tmp}/herdr-markup` (shared `/tmp` on Linux), made with default permissions: its files get `mktemp` names, but another user could own the folder first. Thumbnails (`session.js`) add `.png` to a `mktemp` name, a name `mktemp` didn't reserve.
+- `~/.cache/kelpie/sessions.json` (sessions.py) and the Web panel's folders (`~/.local/share/kelpie/web/<profile>/`, main.js) are created with the default permissions, not private.
+- Inside a profile section, a key is refused as a secret only by its name (`SECRET` in config.js: token, password, secret), so `github.pat` passes; sections don't have their own list of allowed keys.
+- What next? passes its whole prompt as a command-line argument (`claude -p <task>` in `brew()`), visible to other users in `ps`.
 - `.claude/settings.json` allows every `gh api` call, including ones that write.

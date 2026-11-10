@@ -18,8 +18,8 @@ Run it before committing. To have git do it, once per clone:
 git config core.hooksPath scripts      # or: ln -s ../../scripts/pre-commit .git/hooks/pre-commit
 ```
 
-Any security-relevant change comes with a test that fails without it (break the protection, see the
-test fail, put it back).
+What must be tested, and what to do when a test fails, are the rules in `.claude/rules/testing.md`;
+this file is how the harness works.
 
 ## Layout
 
@@ -54,8 +54,9 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py (unittest; helpers 
   temp folder.
 - **Python**: a `tests/python/test_<name>.py`; `load("kittyfix", argv)` imports a script as a module,
   `run_script("changes", args, home)` runs one as Kelpie does (`python3 -I`).
-- A real bug found by a test: don't fix it in the same change unless asked. Mark the test
-  `{ todo: "BUG: ..." }` (node) so it runs and reports without failing, and say where the bug is.
+- A real bug found by a test outside your change: mark the test `{ todo: "BUG: ..." }` (node) so it
+  runs and reports without failing, say where the bug is, and fix it in its own commit
+  (`.claude/rules/testing.md`).
 
 ## The stubs
 
@@ -159,7 +160,7 @@ test with a diff, so a change to a view shows exactly what it changed.
 | File | Covers |
 | --- | --- |
 | `views-sidebar` | the story list in every state the demo has (needs you, changes requested, failing checks, ready to merge, working, finished with the broom, paused, not open, waiting on others), reviews, your pull requests and "No ticket", the Desk (open, closed, without an agent), Next (no picks, Claude's picks, brewing, the Desk asking, all clear) and the opened queue; a finished story with a working agent has no broom |
-| `views-header` | the title row's main action per state (Peek, Merge, Show agent, Resume, Start work; Fix checks and Address comments are `todo`, see below), Pause, the icons, More open, folded; a review before and while its agent runs (and Approve asking twice); a pull request with no ticket |
+| `views-header` | the title row's main action per state (Peek, Fix checks, Address comments, Merge, Show agent, Resume, Start work), Pause, the icons, More open, folded; a review before and while its agent runs (and Approve asking twice); a pull request with no ticket |
 | `views-body` | the details: the description folded with Show more and opened, a subtask's own description, the subtasks with their actions, the fade only while the details overflow (`fits()`), a review's details |
 | `views-toolbar` | the tab bar: agent tabs, the + menu, Changes and Screenshots with counts; a preview (Overview, the rest only when they hold something), a review (Changes alone), the Desk |
 | `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered) |
