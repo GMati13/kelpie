@@ -142,7 +142,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   `patchHash`'s stable values.
 - `board.test.mjs`: `boardOf()`/`hasBoard()` (a profile or a setup, none without a board), `ticketUrl()`,
   the board's questions answered for the demo (`loadBoard`, `description`, `ticketText`, `statusOptions`,
-  `lookUp`), and that no view but board.js calls `jira()` or reads a profile's `jira` section itself.
+  `lookUp`), that no view but board.js calls `jira()` or reads a profile's `jira` section itself; a GitHub
+  Project's board, `parseProject()` and the key prefixes (`defaultPrefix`, `parsePrefixes`, `prefixFor`).
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.

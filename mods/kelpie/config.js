@@ -10,6 +10,11 @@
 //            template for agents started on a ticket (none: DEFAULT_PROMPT), an optional one for an agent
 //            that runs a whole story through its subtasks (none: no "Start orchestrator"), and the board
 //            column from which your part of a ticket is done (none: handoverFrom() picks one)
+//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover }: a GitHub
+//            Project as the board instead of Jira (a profile has one or the other): its address
+//            (parseProject()), the ticket key prefix per repo (parsePrefixes(); none: the repo's
+//            name, defaultPrefix()), the same prompts and handover column as Jira's. Read as the
+//            github section's account, as pull requests are
 //   github   { owner, account }: an organisation or user whose pull requests show; `account`, optional,
 //            the GitHub account (a login gh is signed in to) Kelpie's own gh calls act as, named to its
 //            agents and terminals as KELPIE_GH_ACCOUNT
@@ -305,14 +310,17 @@ export function sourcesOf(saved) {
 
 // What applies to a space: its profile's setup, with the live folder when it's in no profile.
 export function setupOf(space, profile = profileOf(space)) {
-  return { saved: Boolean(profile), profile, folder: profile?.folder || liveFolder(space), jira: profile?.jira ?? null, github: profile?.github ?? null, sources: sourcesOf(profile) };
+  return { saved: Boolean(profile), profile, folder: profile?.folder || liveFolder(space), jira: profile?.jira ?? null, project: profile?.project ?? null, github: profile?.github ?? null, sources: sourcesOf(profile) };
 }
 
 // A profile's board (or a setup's: both carry the same sections), what board.js asks: { kind, cfg,
 // name, prompt, orchestrator, handover }, `cfg` the board's own section; null when it has none. Every
 // "does this profile show stories" goes through here, never through `jira` itself.
+// A GitHub Project's board also carries `account`, the profile's GitHub account (gh.sh), as it's read
+// and moved with the person's own gh sign-in.
 export function boardOf(p) {
   if (p?.jira) return { kind: "jira", cfg: p.jira, name: "Jira", prompt: p.jira.prompt, orchestrator: p.jira.orchestrator, handover: p.jira.handover };
+  if (p?.project) return { kind: "project", cfg: p.project, name: "GitHub", prompt: p.project.prompt, orchestrator: p.project.orchestrator, handover: p.project.handover, account: p.github?.account ?? null };
   return null;
 }
 export const hasBoard = (p) => Boolean(boardOf(p));
@@ -326,6 +334,48 @@ export function parseBoard(url, { demo = false } = {}) {
   const m = new RegExp(`^(${site})\\/.*\\/boards\\/(\\d+)`).exec((url ?? "").trim());
   return m ? { site: m[1], board: Number(m[2]) } : null;
 }
+// A GitHub Project's address, as the browser shows it: https://github.com/users/<login>/projects/<n>
+// or https://github.com/orgs/<login>/projects/<n> (a view or more after it is fine). github.com only.
+// A demo profile's owner may be any name of letters, digits and hyphens (the demo's kelpie--demo is
+// one GitHub can't have, so its links reach no one).
+export function parseProject(url, { demo = false } = {}) {
+  const m = /^https:\/\/github\.com\/(users|orgs)\/([A-Za-z0-9-]+)\/projects\/(\d+)(?:[/?#].*)?$/.exec((url ?? "").trim());
+  if (!m || !(demo ? /^[A-Za-z0-9-]{1,39}$/ : GITHUB_LOGIN).test(m[2])) return null;
+  return { owner: m[2], ownerType: m[1] === "orgs" ? "org" : "user", number: Number(m[3]) };
+}
+
+// Ticket keys for a GitHub Project's issues: a prefix per repo and the issue's number, KELPIE-42 for
+// #42. A prefix is a capital letter then capitals or digits, two at least: what every key finder
+// takes (stories.js KEY, sessions.py), so a key is found in titles, names spaces and ticket folders,
+// and goes into `{key}` commands safely.
+export const PREFIX = /^[A-Z][A-Z0-9]{1,19}$/;
+const REPO = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
+// A repo's own prefix: its name in capitals, all but letters and digits dropped (my-app: MYAPP); null
+// when that isn't one (a name of digits, or a single letter).
+export function defaultPrefix(repo) {
+  const name = String(repo ?? "").split("/").pop().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
+  return PREFIX.test(name) ? name : null;
+}
+// The profile's own prefixes, "owner/repo=PREFIX, owner/repo=PREFIX" (commas or line breaks
+// between): { "owner/repo": "PREFIX" }. A malformed entry is an error naming it.
+export function parsePrefixes(text) {
+  const out = {};
+  for (const part of String(text ?? "").split(/[,\n]/).map((x) => x.trim()).filter(Boolean)) {
+    const m = /^([^=\s]+)\s*=\s*(\S+)$/.exec(part);
+    if (!m || !REPO.test(m[1])) throw new Error(`"${part}" isn't a repo and its prefix, like owner/repo=PREFIX.`);
+    const prefix = m[2].toUpperCase();
+    if (!PREFIX.test(prefix)) throw new Error(`${m[2]} can't be a key prefix: a letter then letters or digits, 2 to 20 of them.`);
+    if (Object.values(out).includes(prefix)) throw new Error(`Two repos can't share the prefix ${prefix}.`);
+    out[m[1].toLowerCase()] = prefix;
+  }
+  return out;
+}
+// The prefix a repo's issues get under a Project's settings (`cfg.prefixes`), or null when it has none.
+// Malformed prefixes throw (parsePrefixes()), so the load says why instead of keys quietly changing.
+export function prefixFor(cfg, repo) {
+  return parsePrefixes(cfg?.prefixes)[String(repo ?? "").toLowerCase()] ?? defaultPrefix(repo);
+}
+
 // A Jira email as it can go into curl's config (jira.sh): no quote, backslash, space or line break.
 export const validEmail = (email) => /^[^\s"\\]+@[^\s"\\]+$/.test(email ?? "");
 

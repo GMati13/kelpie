@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { mock } from "herdr";
-import { boardOf, hasBoard } from "../../mods/kelpie/config.js";
+import { PREFIX, boardOf, defaultPrefix, hasBoard, parsePrefixes, parseProject, prefixFor } from "../../mods/kelpie/config.js";
 import { boardSite, description, loadBoard, lookUp, statusOptions, ticketText, ticketUrl } from "../../mods/kelpie/board.js";
 import { DEMO_PROFILE } from "../lib/stories.mjs";
 
@@ -77,5 +77,57 @@ describe("one way to the board", () => {
       assert.doesNotMatch(src, /\bjira\(/, `${f} calls jira() itself`);
       assert.doesNotMatch(src, /\b(profile|setup|p|space)\??\.jira\b(?!\s*[:=])/, `${f} reads .jira itself`);
     }
+  });
+});
+
+describe("a GitHub Project as the board", () => {
+  const PROJECT = { url: "https://github.com/users/me/projects/2", owner: "me", ownerType: "user", number: 2, prompt: "P", orchestrator: "O", handover: "Testing" };
+  test("boardOf gives its section, prompts, handover and the profile's GitHub account", () => {
+    assert.deepEqual(boardOf({ project: PROJECT, github: { owner: "me", account: "me-work" } }),
+      { kind: "project", cfg: PROJECT, name: "GitHub", prompt: "P", orchestrator: "O", handover: "Testing", account: "me-work" });
+    assert.equal(boardOf({ project: PROJECT }).account, null, "no account: gh's active one");
+  });
+});
+
+describe("parseProject: a Project's address", () => {
+  test("a user's or an organisation's, a view after it or not", () => {
+    assert.deepEqual(parseProject("https://github.com/users/GMati13/projects/2"), { owner: "GMati13", ownerType: "user", number: 2 });
+    assert.deepEqual(parseProject(" https://github.com/orgs/acme-co/projects/14/views/3 "), { owner: "acme-co", ownerType: "org", number: 14 });
+  });
+  test("github.com only, and a real login", () => {
+    for (const url of ["http://github.com/users/me/projects/2", "https://github.com.evil.example/users/me/projects/2", "https://gitlab.com/users/me/projects/2",
+      "https://github.com/me/projects/2", "https://github.com/users/-me/projects/2", "https://github.com/users/kelpie--demo/projects/1", "https://github.com/users/me/projects/x", "", null]) {
+      assert.equal(parseProject(url), null, String(url));
+    }
+  });
+  test("the demo's owner may be a name GitHub can't have", () => {
+    assert.equal(parseProject("https://github.com/users/kelpie--demo/projects/1", { demo: true }).owner, "kelpie--demo");
+  });
+});
+
+describe("ticket key prefixes", () => {
+  test("a repo's own: its name in capitals, other characters dropped", () => {
+    assert.equal(defaultPrefix("GMati13/kelpie"), "KELPIE");
+    assert.equal(defaultPrefix("acme/my-app.v2"), "MYAPPV2");
+    assert.equal(defaultPrefix("acme/123"), null, "digits alone aren't a prefix");
+    assert.equal(defaultPrefix("acme/a"), null, "one letter isn't found in titles");
+  });
+  test("every prefix fits what the key finders take, so a key is found in titles", () => {
+    for (const p of ["KELPIE", "AB", "A1"]) assert.match(`${p}-42`, /^[A-Z][A-Z0-9]+-\d+$/);
+    for (const p of ["A", "A_B", "1A", "ab", "A-B"]) assert.equal(PREFIX.test(p), false, p);
+  });
+  test("the profile's own, by repo", () => {
+    assert.deepEqual(parsePrefixes("acme/web=WEB, Acme/API = api\nacme/docs=DOC"), { "acme/web": "WEB", "acme/api": "API", "acme/docs": "DOC" });
+    assert.deepEqual(parsePrefixes(""), {});
+    assert.equal(prefixFor({ prefixes: "acme/web=FRONT" }, "Acme/Web"), "FRONT");
+    assert.equal(prefixFor({ prefixes: "acme/web=FRONT" }, "acme/api"), "API");
+  });
+  test("malformed ones are errors naming the entry, never quietly other keys", () => {
+    assert.throws(() => parsePrefixes("acme/web"), /acme\/web/);
+    assert.throws(() => parsePrefixes("web=WEB"), /web=WEB/);
+    assert.throws(() => parsePrefixes("acme/web=W_B"), /W_B/);
+    assert.throws(() => parsePrefixes("acme/web=$(id)"), /can't be a key prefix/);
+    assert.throws(() => parsePrefixes("acme/web=WEB, acme/api=WEB"), /share/);
+    assert.throws(() => prefixFor({ prefixes: "nonsense" }, "acme/web"));
   });
 });

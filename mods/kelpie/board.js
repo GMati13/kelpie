@@ -3,6 +3,20 @@
 // (sprint.js jira()); a profile's board comes from config.js boardOf(). What a load gives is the
 // shape the story list keeps (stories.js issue(), build()): Jira's issues, the board's columns with
 // the status ids each holds, and the sprints shown.
+//
+// A GitHub Project (boardOf() kind "project", issue #1) answers the same questions in the same shape,
+// its issues dressed as Jira's. What its load gives, beyond Jira's:
+//   site      "https://github.com"
+//   columns   the Status field's options in order, { name, statuses: [option id] }
+//   sprints   the current iteration [{ id, name }], none running [], or no iteration field: the board
+//             as one [{ id: null, name: <Project title>, kanban: true }]
+//   issues    { key: PREFIX-<number>, url (the issue's page), item (its Project item id, null when
+//             it's not on the Project), fields: { summary, issuetype: { name, subtask: has a parent },
+//             status: { id: option id or null, name, statusCategory: { key: new|indeterminate|done } },
+//             parent: { key } or null, assignee: { displayName, avatarUrls: { "48x48": url } } } }
+//   links     { [pull request url]: key }: the pull requests that close an issue (GitHub's link)
+//   repos     { [PREFIX]: "owner/repo" }: which repo a key's issue is in
+//   project   { id, statusField, title, url }: what a Status move needs
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
