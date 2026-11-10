@@ -48,6 +48,28 @@ test("a finished story whose agent is working has no broom", async () => {
   snap("sidebar/row-finished-busy", row);
 });
 
+// KELPIE-43: a finished story whose space is closed, with only a ticket folder left, used to drop out
+// of the list before the leftovers check looked at it, so it never got a broom.
+test("a finished story with only leftovers left is checked, listed and gets its broom", async () => {
+  setupDemoWorld({ stories, spaces: FIXTURE.spaces.filter((s) => s.name !== "ACME-122"), profile: { commands: { cleanUp: "rm -rf worktrees/{key}" } } });
+  const asked = [];
+  const home = mock.on.exec;
+  mock.on.exec = (cmd, args) => {
+    const script = String(args?.[1] ?? "");
+    if (cmd === "sh" && script.includes("for k; do")) { asked.push(...args.slice(4)); return { code: 0, stdout: args.includes("ACME-123") ? "ACME-123\n" : "", stderr: "" }; }
+    return home(cmd, args);
+  };
+  await draw(new StoryList());
+  // The check runs on after the render (the clock is pinned here, so until() couldn't time out).
+  const found = () => mock.sharedValue("kelpie.clean.leftovers")?.[DEMO]?.found?.["ACME-122"];
+  for (let i = 0; i < 50 && !found(); i++) await new Promise((r) => setImmediate(r));
+  assert.ok(found(), "the leftovers check found its folder");
+  assert.ok(asked.includes("ACME-123"), "the check looked under its subtask's key");
+  const el = (await draw(new StoryList())).el;
+  assert.ok(byId(byId(el, "story-ACME-122"), "clean-ACME-122"), "its row has the broom");
+  assert.ok(byId(el, "stories-clean-all"), "and Clean up all shows");
+});
+
 test("Next with Claude's picks, and the queue opened", async () => {
   setupDemoWorld({ stories });
   putShared("kelpie.next.suggested", PICKS);

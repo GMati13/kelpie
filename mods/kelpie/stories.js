@@ -322,7 +322,10 @@ const askFor = (p) => (p.merged ? null : failing(p) ? "fix" : p.reviewDecision =
 // handover column (jira.handover; none: config.js picks one): a story is `sunk` once every subtask of
 // yours is in it or a column right of it (a done status always counts), or, with no subtask of yours,
 // once the story itself is. A task of yours with no subtasks goes by its own status the same way.
-function build(data, byAgent, paused = {}, started = new Map(), handover = null) {
+// `left`: the keys of finished stories the leftovers check found something under (leftStories()), so
+// they stay listed to be cleaned up; `all`: every story, finished or not (the leftovers check's, the
+// pruning's).
+function build(data, byAgent, paused = {}, started = new Map(), handover = null, { left = new Set(), all = false } = {}) {
   const known = projectsOf(data);
   const last = lastSessions(data.sessions, known);
   const lastOf = (k) => (byAgent.has(k) || paused[k] ? null : last.get(k) ?? null);
@@ -376,9 +379,12 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
     items.push({ key: k, title: list[0].title.replace(/^\s*\[[^\]]*\]\s*/, ""), type: "Pull request", pr: true, sunk: false, story: false, prs: [], agent: null, space: started.get(k) ?? null,
       subs: [{ key: k, title: "", prs: list, agent: byAgent.get(k) ?? null, paused: byAgent.has(k) ? null : paused[k] ?? null, last: lastOf(k) }] });
   }
-  // Finished stories leave once nothing of theirs is open: no pull request, and no space (one with a
-  // space stays, to clean it up).
-  return items.filter((it) => it.category !== "done" || it.space || it.subs.some((s) => s.prs.some((p) => !p.merged)));
+  // Finished stories leave once nothing of theirs is open (no pull request) and nothing's left to
+  // clean up: no space, no paused session, no leftovers found. One with any of those stays, so its
+  // broom shows.
+  if (all) return items;
+  return items.filter((it) => it.category !== "done" || it.space || it.subs.some((s) => s.prs.some((p) => !p.merged))
+    || allPaused(it).length > 0 || left.has(it.key));
 }
 
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
@@ -1100,7 +1106,7 @@ function pruneShared(profile, data) {
   keep(PR_SEEN, ([id]) => ids.has(id));
   keep(PR_FOLDS, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
-  const listed = new Set(build(data, new Map(), {}, storySpaces(profile)).flatMap(storyKeys));
+  const listed = new Set(build(data, new Map(), {}, storySpaces(profile), null, { all: true }).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
   const mine = all[profile.id] ?? {};
   const kept = Object.fromEntries(Object.entries(mine).filter(([k]) => listed.has(k)));
@@ -1342,7 +1348,7 @@ function requestProfile(req) {
 function itemsFor(profile) {
   const data = (shared(DATA) ?? {})[profile?.id]?.data;
   if (!hasBoard(profile) || !data) return null;
-  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover)), reviews: reviewsOf(data) };
+  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover, { left: leftStories(profile) })), reviews: reviewsOf(data) };
 }
 const profileHasNext = (profile) => {
   if (!profile) throw new Error("No Kelpie profile is shown.");
@@ -3216,7 +3222,7 @@ export class Stories extends Source {
       if ([...sig].some(([pane, now]) => was.get(pane) === "working" && (now === "done" || now === "idle"))) this.loadAfterAgent(cx);
       else if (sig.size !== was.size || [...sig.keys()].some((pane) => !was.has(pane))) this.loadSessions(cx);
     }
-    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover));
+    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover, { left: leftStories(st.profile) }));
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
@@ -3409,7 +3415,9 @@ export class StoryList extends Stories {
     const { st, t, early, items, reviews, shown } = this.prepare(cx);
     if (early) return early;
     orderAgents(st.profile, items);
-    checkLeftovers(st.profile, items.map((x) => x.it));
+    // Every finished story the board has, not just the ones listed: one that's left only leftovers
+    // behind is listed once they're found.
+    checkLeftovers(st.profile, build(st.data, new Map(), {}, storySpaces(st.profile), null, { all: true }));
     const started = items.filter(({ it }) => it.space), waiting = items.filter(({ it }) => !it.space);
     // Story spaces named before names were just the key get renamed once.
     for (const { it } of started) if (it.space.name !== it.key && !RENAMED.has(it.space.id)) { RENAMED.add(it.space.id); run("space.rename", { id: it.space.id, name: it.key }); }
@@ -3714,7 +3722,7 @@ export function storyItems() {
   const ctx = READER.context();
   const data = sharedData(ctx)?.data;
   if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
-  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), boardOf(ctx.setup)?.handover)), reviews: reviewsOf(data), lone: loneOf(data) };
+  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), boardOf(ctx.setup)?.handover, { left: leftStories(ctx.profile) })), reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).
@@ -3782,6 +3790,9 @@ const leftoversByKey = (profile, it) => {
   const found = (shared(LEFTOVERS) ?? {})[profile.id]?.found?.[it.key];
   return Array.isArray(found) ? { [it.key]: found } : found ?? {};
 };
+// The finished stories the leftovers check found something under, while the profile has a clean-up
+// command (build() keeps them listed).
+const leftStories = (profile) => new Set(cleanCommand(profile) ? Object.keys((shared(LEFTOVERS) ?? {})[profile?.id]?.found ?? {}) : []);
 const leftoversOf = (profile, it) => Object.values(leftoversByKey(profile, it)).flat();
 const leftoverKeys = (profile, it) => Object.keys(leftoversByKey(profile, it));
 // A leftover's line as the person reads it: paths under the profile's folder relative to it, the home
@@ -3913,7 +3924,7 @@ export async function cleanUp(profile, it) {
     if (failed.code !== null) notify({ title: `Clean-up command failed for ${failed.key}`, body: failed.out.split("\n").slice(-6).join("\n"), level: "warning" });
   }
   const s = storyItems();
-  if (s?.st.profile.id === profile.id) checkLeftovers(profile, s.items.map((x) => x.it), true);
+  if (s?.st.profile.id === profile.id) checkLeftovers(profile, build(s.st.data, new Map(), {}, storySpaces(profile), null, { all: true }), true);
 }
 
 // The confirm dialog's Clean up (`kelpie.clean-story-<key>`), for a story of the shown profile.
