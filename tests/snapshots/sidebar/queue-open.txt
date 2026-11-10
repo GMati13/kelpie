@@ -69,7 +69,7 @@ v_flex
           "Needs you"
         div [fg=muted]
           "4"
-      h_flex #queue-ACME-142 [bg=selected] {click}
+      h_flex #queue-ACME-142 [hover(bg=hover)] {click}
         div
           div
             div [bg=working/40] ~loop(opacity)

@@ -105,6 +105,27 @@ test("a pick of a review already in the queue drops out", async () => {
   assert.equal(byId(open, "queue-suggest:pr:web#421"), null, "and not again as a pick");
 });
 
+// The open queue lights the item shown, the one just clicked, not Next's (the one after it): lighting
+// Next's lit the row under the one clicked. Nothing shown, nothing lit.
+test("the open queue lights the item shown, not the one after it", async () => {
+  const lit = (el, id) => render(byId(el, id), skinTheme()).split("\n")[0].includes("bg=selected");
+  const queue = async (preview) => {
+    setupDemoWorld({ stories });
+    if (preview) putShared("kelpie.stories.preview", { [DEMO]: preview });
+    const { view, cx } = await draw(new StoryList());
+    view.queueOpen = true;
+    return view.render(cx);
+  };
+  let open = await queue("ACME-160");
+  assert.ok(lit(open, "queue-ACME-160"), "the story shown is lit");
+  assert.ok(!lit(open, "queue-ACME-151"), "the one after it isn't");
+  open = await queue("review:web#421");
+  assert.ok(lit(open, "queue-review:web#421"), "a review shown is lit");
+  assert.ok(!lit(open, "queue-review:api#305"), "the next review isn't");
+  open = await queue(null);
+  assert.ok(!lit(open, "queue-ACME-142"), "nothing shown: Next's first item isn't lit");
+});
+
 // A story with many pull requests folds by its heading's chevron: its rows go, the heading says how
 // many and the most urgent state, and it stays folded per profile.
 test("a story's pull requests fold under its heading", async () => {

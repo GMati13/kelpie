@@ -3156,7 +3156,8 @@ export class StoryList extends Stories {
   // the chevron opening the whole queue) over the item itself, drawn as the queue's rows are. A pick
   // of Claude's on top tints the card, so it reads as generated. Under it, the queue while open, and
   // while Claude has no picks a slim magic button.
-  nextCard(t, st, items, reviews, queue, top) {
+  // `shownKey`: the item on screen now (the story or review shown, "desk"), lit in the open queue.
+  nextCard(t, st, items, reviews, queue, top, shownKey) {
     const glow = (a) => alpha(t.accent, a);
     const picks = queue.filter((x) => x.suggest).length;
     const brewing = Boolean(brewingIn(st.profile));
@@ -3180,7 +3181,7 @@ export class StoryList extends Stories {
         .tooltip(`${queueAway(top) ? "Opens on the web" : top.suggest?.idea ? "Starts a Claude on the Desk with this idea" : "Go there"} ⌘⇧J`));
     return v_flex().flex_none().gap(6)
       .child(card)
-      .when(Boolean(this.queueOpen), (el) => el.child(this.queueList(t, st, items, reviews, queue, top)))
+      .when(Boolean(this.queueOpen), (el) => el.child(this.queueList(t, st, items, reviews, queue, shownKey)))
       .when(!picks, (el) => el.child(this.magic(t, st, items, reviews, { slim: true })));
   }
 
@@ -3194,9 +3195,11 @@ export class StoryList extends Stories {
 
   // The whole queue, under Next while its chevron is open: what needs you, the clean-up, then the
   // suggestions (each with why, and an ✕ to drop it); a click does what Next would. At its foot the
-  // What next? button, to ask for suggestions (again).
-  queueList(t, st, items, reviews, queue, top) {
-    const row = (x) => queueRow(t, x, x === top, () => goNext(st.profile, x))
+  // What next? button, to ask for suggestions (again). The item shown is lit (a pick by its story),
+  // not Next's, which is the one after it: lighting that lit the row under the one clicked.
+  queueList(t, st, items, reviews, queue, shownKey) {
+    const lit = (x) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest) && x.it?.key === shownKey));
+    const row = (x) => queueRow(t, x, lit(x), () => goNext(st.profile, x))
       .when(Boolean(x.suggest), (el) => el.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
         .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
         .tooltip("Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); dismissSuggestion(st.profile, x.suggest.key); })
@@ -3271,8 +3274,9 @@ export class StoryList extends Stories {
     const desk = deskOf(st.profile);
     const onDesk = Boolean(desk?.active) && !shown;
     const queue = needQueueOf(st.profile, items, reviews);
-    const top = nextIn(queue, shown?.key ?? (onDesk ? DESK_ITEM.key : undefined));
-    const next = top ? this.nextCard(t, st, items, reviews, queue, top) : this.allClear(t, st, items, reviews);
+    const shownKey = shown?.key ?? (onDesk ? DESK_ITEM.key : undefined);
+    const top = nextIn(queue, shownKey);
+    const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey) : this.allClear(t, st, items, reviews);
     // A list of stories; the sunk ones (sorted last) under a small "Waiting on others" divider.
     const rows = (list) => {
       const at = list.findIndex((x) => sunk(x.it, x.n));
