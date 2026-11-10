@@ -564,7 +564,8 @@ export const CONFIGURE_SCOPES = {
   claude: "Agents: the Claude account only",
   jira: "Jira: board, sign-in, your part",
   "jira-signin": "Jira sign-in only",
-  handover: "Jira: your part (the handover column) only",
+  project: "GitHub Project: address, keys, your part",
+  handover: "Your part on the board (the handover column) only",
   github: "GitHub: owner, notifications",
   web: "Web: start page",
   prompts: "Prompts",
@@ -652,7 +653,7 @@ export async function installPlugin(id) {
 // profile, and writes what happened to profile-apply.result.json ({ ok, error | profile, at }). The
 // plugin's configure-profile skill documents the rules: known keys only, sections merged (a null key or section removed), strings
 // only, no secrets, and the same checks as the dialog's Save.
-const APPLY_KEYS = ["name", "folder", "jira", "github", "commands", "prompts", "notify", "claude", "web"];
+const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
 const SECRET = /token$|^token|password|secret/i;
 // A change to a profile from outside the dialog (an agent's request, a `herdr-app do` command): saved
 // at once, or, when it touches what needs the person's yes (CONFIRM_KEYS), held for the confirm dialog.
@@ -709,13 +710,15 @@ export function buildProfile(id, set) {
     const section = { ...(next[key] ?? {}) };
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
-      const ok = v === null || typeof v === "string" || (key === "jira" && k === "board" && Number.isInteger(v)) || (key === "notify" && typeof v === "boolean");
+      const ok = v === null || typeof v === "string" || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || (key === "notify" && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: a string${key === "notify" ? " or true/false" : ""}, or null to remove it.`);
       if (v === null) delete section[k]; else section[k] = typeof v === "string" ? v.trim() : v;
     }
     next[key] = Object.keys(section).length ? section : null;
   }
   if (!next.name || !next.folder) throw new Error(saved ? "name and folder can't be removed." : `No profile ${id}: a new one needs name and folder.`);
+  // One board: the story list, Next and every prompt read one, so a second would quietly be ignored.
+  if (next.jira && next.project) throw new Error("A profile has a Jira board or a GitHub Project, not both: remove one (set it to null).");
   if (next.jira) {
     const parsed = parseBoard(next.jira.url, { demo: Boolean(next.demo) });
     if (!parsed) throw new Error("jira.url: a Jira Cloud board's address, https://<name>.atlassian.net/…/boards/<number>.");
@@ -723,6 +726,14 @@ export function buildProfile(id, set) {
     if (!next.demo && !next.jira.keychain && !next.jira.tokenCommand) throw new Error("jira: needs keychain, or tokenCommand with email.");
     if (next.jira.tokenCommand && !next.jira.email) throw new Error("jira.email: needed with tokenCommand.");
     if (next.jira.email && !validEmail(next.jira.email)) throw new Error("jira.email: an email address, without quotes, backslashes or spaces.");
+  }
+  if (next.project) {
+    // The owner, its kind and the number come from the address, as Jira's site and board do.
+    const parsed = parseProject(next.project.url, { demo: Boolean(next.demo) });
+    if (!parsed) throw new Error("project.url: a GitHub Project's address, https://github.com/users/<login>/projects/<number> or https://github.com/orgs/<org>/projects/<number>.");
+    next.project = { ...next.project, ...parsed };
+    // Prefixes make the ticket keys, which go into {key} commands and folder names.
+    try { parsePrefixes(next.project.prefixes); } catch (e) { throw new Error(`project.prefixes: ${e.message}`); }
   }
   if (next.github && !next.github.owner) throw new Error("github.owner: needed while GitHub is set (null removes GitHub).");
   if (next.github?.account && !GITHUB_LOGIN.test(next.github.account)) throw new Error("github.account: a GitHub account name gh is signed in to (null for gh's active one).");
@@ -735,8 +746,10 @@ export function buildProfile(id, set) {
 // token command), decides where the Jira token goes or which one (the board, the email, the Keychain
 // item), steers future agents (prompts), picks the Claude account (its settings can run hooks), or
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
-// requests as it). The rest (name, folder, owner, handover, notify) applies at once.
-export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
+// requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
+// show and the keys made from them, which go into {key} commands and folder names. The rest (name,
+// folder, owner, handover, notify) applies at once.
+export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 export function needsYes(id, set) {
   const saved = profileById(id) ?? {};
