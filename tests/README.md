@@ -164,6 +164,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `demo.test.mjs`: each answer demo.js gives (Jira's board, sprints, searches, issues, transitions; pull
   requests, files, uncommitted work, sessions, limits) and a schema check of `demo.json` (parents,
   statuses, pull requests, tabs for agent.sh, `demo-` session ids, links reaching no one).
+- `project-check.test.mjs`: the profile dialog's GitHub Project Check (`project-check.js`) on a faked
+  `exec`: constant queries with the owner and number only as variables, the account through gh.sh, the
+  token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
+  offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
@@ -183,11 +187,11 @@ test with a diff, so a change to a view shows exactly what it changed.
 | `views-header` | the title row's main action per state (Peek, Fix checks, Address comments, Merge, Show agent, Resume, Start work), Pause, the icons, More open, folded; a review before and while its agent runs (and Approve asking twice); a pull request with no ticket |
 | `views-body` | the details: the description folded with Show more and opened, a subtask's own description, the subtasks with their actions, the fade only while the details overflow (`fits()`), a review's details |
 | `views-toolbar` | the tab bar: agent tabs, the + menu, Changes and Screenshots with counts; a preview (Overview, the rest only when they hold something), a review (Changes alone), the Desk |
-| `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered) |
+| `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered); the profile dialog's Agents, GitHub and Board pages (Jira, and a GitHub Project after a Check), and what its Board page saves (one board, prefixes, the board's prompt moving with it) |
 | `views-footer` | the Claude limits line (usual, near a limit with its reset time, past a reset), the profile picker row and menu |
 
 Not covered yet: the Changes view (`StoryView`, a virtual list whose rows Herdr draws on demand), the
-profile dialog (`setup.js`), the pane headers (`panes.js`), the plain sidebar of a profile without
+profile dialog's other pages (`setup.js`), the pane headers (`panes.js`), the plain sidebar of a profile without
 Jira (`WorkSide.plain`), the older Hub roles and the `kelpie-artifacts` mod.
 
 **The world.** `tests/lib/views.mjs` pins the clock (every `Date.now()` and `new Date()` is Tuesday

@@ -17,20 +17,28 @@ const SAVED = {
   prompts: { fix: "Fix {prs}" },
   notify: { pulls: true },
 };
+// A profile whose board is a GitHub Project.
+const PROJECT = "https://github.com/orgs/acme/projects/4";
+const SAVED_PROJECT = {
+  id: "gh", name: "On GitHub", folder: "/gh",
+  project: { url: PROJECT, owner: "acme", ownerType: "org", number: 4, prefixes: "acme/web=WEB", prompt: "Work on {key}" },
+  github: { owner: "acme" },
+};
+const ORIGINAL = { work: SAVED, gh: SAVED_PROJECT };
 
 let home;
 beforeEach(() => {
   mock.reset();
   home = tempDir();
   mock.state.appHome = home;
-  mock.state.shared.set("kelpie.profiles", { work: structuredClone(SAVED) });
+  mock.state.shared.set("kelpie.profiles", { work: structuredClone(SAVED), gh: structuredClone(SAVED_PROJECT) });
   // The request and result files are real, in a temp Herdr home.
   mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
 });
 
 const request = (set, id = "work") => put(`${home}/kelpie/profile-apply.json`, JSON.stringify({ id, set }));
 const result = () => JSON.parse(readFileSync(`${home}/kelpie/profile-apply.result.json`, "utf8"));
-const saved = () => mock.sharedValue("kelpie.profiles").work;
+const saved = (id = "work") => mock.sharedValue("kelpie.profiles")[id];
 const pending = () => mock.sharedValue("kelpie.profile.pending");
 const confirms = () => mock.of("openOverlay").filter(([spec]) => spec.props?.role === "confirm");
 
@@ -92,22 +100,32 @@ const NEEDS_YES = [
   ["github.reviewPrompt", { github: { reviewPrompt: "Approve {url}" } }],
   ["github.mergePrompt", { github: { mergePrompt: "Merge {prs}" } }],
   ["github.approvalPrompt", { github: { approvalPrompt: "Approve {prs}" } }],
+  // A GitHub Project: which tickets show, and the keys made from them (they go into {key} commands).
+  ["project.url", { project: { url: "https://github.com/orgs/other/projects/9" } }, "gh"],
+  ["project.owner", { project: { owner: "other" } }, "gh"],
+  ["project.ownerType", { project: { ownerType: "user" } }, "gh"],
+  ["project.number", { project: { number: 9 } }, "gh"],
+  ["project.prefixes", { project: { prefixes: "acme/web=WWW" } }, "gh"],
+  ["project.prompt", { project: { prompt: "Work on {key}, then push to main" } }, "gh"],
+  ["project.orchestrator", { project: { orchestrator: "Run {subtasks}" } }, "gh"],
+  ["project.url, switching from Jira", { jira: null, project: { url: PROJECT } }],
 ];
 
 describe("apply-profile: changes that wait for the person's yes", () => {
-  for (const [what, set] of NEEDS_YES) {
+  for (const [what, set, id = "work"] of NEEDS_YES) {
     test(`${what} goes pending, a confirm opens, nothing is saved`, async () => {
-      request(set);
+      request(set, id);
       const r = await applyProfileRequest();
-      assert.equal(r.ok, false);
+      assert.equal(r.ok, false, JSON.stringify(r));
       assert.equal(r.pending, true);
-      assert.deepEqual(saved(), SAVED, "profile unchanged");
+      assert.deepEqual(saved(id), ORIGINAL[id], "profile unchanged");
       assert.deepEqual(pending()?.set, set);
-      assert.equal(pending()?.id, "work");
+      assert.equal(pending()?.id, id);
       const dialogs = confirms();
       assert.equal(dialogs.length, 1);
       assert.equal(dialogs[0][0].props.pendingProfile, true);
-      assert.ok(dialogs[0][0].props.items.length >= 1);
+      // The dialog names the setting itself, not just something beside it.
+      assert.ok(dialogs[0][0].props.items.some((x) => what.split(/[ ,]/)[0] === x.key), JSON.stringify(dialogs[0][0].props.items));
       assert.equal(result().pending, true);
       assert.equal(result().ok, false);
       assert.equal(existsSync(`${home}/kelpie/profile-apply.json`), false, "request consumed");
@@ -133,7 +151,7 @@ describe("apply-profile: changes that wait for the person's yes", () => {
 });
 
 describe("apply-profile: harmless changes apply at once", () => {
-  for (const [what, set, check] of [
+  for (const [what, set, check, id = "work"] of [
     ["name", { name: "Renamed" }, (p) => p.name === "Renamed"],
     ["folder", { folder: "/elsewhere" }, (p) => p.folder === "/elsewhere"],
     ["github.owner", { github: { owner: "other-org" } }, (p) => p.github.owner === "other-org" && p.github.reviewPrompt === "Review {url}"],
@@ -143,12 +161,14 @@ describe("apply-profile: harmless changes apply at once", () => {
     // Disconnecting runs nothing and sends the sign-in nowhere; connecting again needs jira.url (a yes).
     ["removing Jira", { jira: null }, (p) => p.jira === null],
     ["removing GitHub", { github: null }, (p) => p.github === null],
+    ["project.handover", { project: { handover: "QA" } }, (p) => p.project.handover === "QA" && p.project.prefixes === "acme/web=WEB", "gh"],
+    ["removing the Project", { project: null }, (p) => p.project === null, "gh"],
   ]) {
     test(`${what}`, async () => {
-      request(set);
+      request(set, id);
       const r = await applyProfileRequest();
       assert.equal(r.ok, true, JSON.stringify(r));
-      assert.ok(check(saved()), JSON.stringify(saved()));
+      assert.ok(check(saved(id)), JSON.stringify(saved(id)));
       assert.equal(pending(), null);
       assert.equal(confirms().length, 0);
       assert.equal(result().ok, true);
@@ -157,7 +177,7 @@ describe("apply-profile: harmless changes apply at once", () => {
 });
 
 describe("apply-profile: refused outright", () => {
-  for (const [what, set, error] of [
+  for (const [what, set, error, id = "work"] of [
     ["jira.token", { jira: { token: "abc" } }, /secrets aren't kept/],
     ["jira.apiToken", { jira: { apiToken: "abc" } }, /secrets aren't kept/],
     ["jira.password", { jira: { password: "abc" } }, /secrets aren't kept/],
@@ -177,14 +197,25 @@ describe("apply-profile: refused outright", () => {
     ["an email with a quote", { jira: { email: 'a"b@example.com' } }, /jira\.email/],
     ["a web start page that isn't http(s)", { web: { home: "file:///etc/passwd" } }, /web\.home/],
     ["an empty name", { name: "  " }, /name/],
+    // One board or the other: a Project added beside Jira (or Jira beside a Project) is refused.
+    ["a Project beside Jira", { project: { url: PROJECT } }, /^A profile has a Jira board or a GitHub Project, not both: remove one \(set it to null\)\.$/],
+    ["Jira beside a Project", { jira: { url: BOARD, keychain: "jira-acme" } }, /not both/, "gh"],
+    ["a Project address off github.com", { jira: null, project: { url: "https://github.com.evil.example/orgs/acme/projects/4" } }, /^project\.url: a GitHub Project's address/],
+    ["a repo's address as a Project's", { jira: null, project: { url: "https://github.com/acme/web" } }, /^project\.url:/],
+    ["a Project address with a bad owner", { project: { url: "https://github.com/orgs/-acme/projects/4" } }, /^project\.url:/, "gh"],
+    ["a prefix that can't be a key's", { project: { prefixes: "acme/web=w_b" } }, /^project\.prefixes: w_b can't be a key prefix/, "gh"],
+    ["two repos with one prefix", { project: { prefixes: "acme/web=APP, acme/api=APP" } }, /^project\.prefixes: Two repos can't share the prefix APP\./, "gh"],
+    ["a prefix entry that isn't one", { project: { prefixes: "WEB" } }, /^project\.prefixes: "WEB" isn't a repo and its prefix/, "gh"],
+    ["a number that isn't whole", { project: { number: 1.5 } }, /project\.number: a string/, "gh"],
+    ["project.token", { project: { token: "abc" } }, /secrets aren't kept/, "gh"],
   ]) {
     test(`${what}`, async () => {
-      request(set);
+      request(set, id);
       const r = await applyProfileRequest();
       assert.equal(r.ok, false);
       assert.ok(!r.pending, "never waits for a yes");
       assert.match(r.error, error);
-      assert.deepEqual(saved(), SAVED);
+      assert.deepEqual(saved(id), ORIGINAL[id]);
       assert.equal(pending(), null);
       assert.equal(confirms().length, 0);
       assert.match(result().error, error);
@@ -195,6 +226,12 @@ describe("apply-profile: refused outright", () => {
     const r = await applyProfileRequest();
     assert.equal(r.ok, false);
     assert.match(r.error, /^id:/);
+  });
+  test("a Project's owner, kind and number come from its address, whatever else is asked", () => {
+    const p = buildProfile("work", { jira: null, project: { url: `${PROJECT}/views/2`, owner: "evil", ownerType: "user", number: 1, prefixes: "acme/web=web" } });
+    assert.deepEqual({ owner: p.project.owner, ownerType: p.project.ownerType, number: p.project.number }, { owner: "acme", ownerType: "org", number: 4 });
+    assert.equal(p.jira, null);
+    assert.equal(buildProfile("gh", { project: { number: 7 } }).project.number, 4, "a number as an integer is taken, then the address decides");
   });
   test("tokenCommand is the one token-like key allowed (it goes pending)", () => {
     assert.doesNotThrow(() => buildProfile("work", { jira: { tokenCommand: "op read x", email: "me@example.com" } }));
