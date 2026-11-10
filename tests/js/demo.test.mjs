@@ -97,6 +97,16 @@ describe("demoPulls and the local helpers", () => {
     assert.ok(Math.abs(Date.now() - 3 * 60 * MIN - sessions[0].updated) < MIN);
     assert.deepEqual(sessions[0], { ...sessions[0], cwd: "/f", running: false, first: ["ACME-139"], keys: ["ACME-139"], title: "Token bucket per API key" });
   });
+  test("sessions with the same time keep the fixture's order, however slow the machine", async () => {
+    const real = Date.now;
+    let t = real();
+    Date.now = () => (t += 1); // every read a millisecond later
+    try {
+      const ids = (await demoSessions("/f")).map((s) => s.id);
+      assert.ok(ids.indexOf("demo-s1") < ids.indexOf("demo-s6"), ids.join(" "));
+      assert.ok(ids.indexOf("demo-s4") < ids.indexOf("demo-s7"), ids.join(" "));
+    } finally { Date.now = real; }
+  });
   test("a pull request's files, counted, with a sha each; an unknown one has none", async () => {
     const files = await demoPullFiles(PR("web", 418));
     assert.deepEqual(files.map((f) => [f.filename, f.status]), [["src/trips/cache.ts", "added"], ["src/trips/store.ts", "modified"], ["src/trips/types.ts", "modified"], ["package-lock.json", "modified"]]);

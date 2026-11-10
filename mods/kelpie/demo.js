@@ -283,7 +283,10 @@ export async function demoLocal(folder, keys) {
 // sessions.py for a demo profile: earlier Claude sessions, newest first.
 export async function demoSessions(folder) {
   const f = await demoFixture();
-  return (f.sessions ?? []).map((s) => ({ id: s.id, title: s.title, cwd: folder, updated: when(s.updated), running: false, first: s.first ?? [], keys: s.first ?? [] }))
+  // One now for all: sessions with the same time ("-2d") then keep the fixture's order, whatever
+  // millisecond each was worked out in (a slow machine once swapped them).
+  const now = Date.now();
+  return (f.sessions ?? []).map((s) => ({ id: s.id, title: s.title, cwd: folder, updated: when(s.updated, now), running: false, first: s.first ?? [], keys: s.first ?? [] }))
     .sort((a, b) => b.updated - a.updated);
 }
 // Whether the demo's browser plays sound (its globe turns into moving bars): the fixture's web.playing.
