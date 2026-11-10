@@ -69,9 +69,9 @@ describe("wordChanges: what changed inside a line", () => {
     assert.deepEqual(wordChanges("let a = compute(x)", "let a = compute(y)"), [[[16, 17]], [[16, 17]]]);
     assert.deepEqual(wordChanges("one two", "one two three"), [[], [[7, 13]]]);
   });
-  // stories.js wordChanges() says "Spaces between two changed words join them", but a space both
-  // versions share is kept by the LCS, so the two words come out as two ranges.
-  test("neighbouring changed words join across the spaces between them", { todo: "BUG: mods/kelpie/stories.js:836 wordChanges(): a shared space between two changed words splits them into two ranges ([5,6],[7,8]), against its own comment" }, () => {
+  // Spaces between two changed words join them into one range, even a space both versions share
+  // (the LCS keeps it, so it's joined afterwards).
+  test("neighbouring changed words join across the spaces between them", () => {
     assert.deepEqual(wordChanges("keep a b keep", "keep c d keep"), [[[5, 8]], [[5, 8]]]);
   });
   test("a change of spaces alone isn't marked", () => {

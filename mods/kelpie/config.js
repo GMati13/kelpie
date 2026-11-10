@@ -63,7 +63,9 @@ export function profiles() {
 
 export const profileById = (id) => profiles().find((p) => p.id === id) ?? null;
 
-const inside = (folder, root) => Boolean(folder && root) && (folder === root || folder.startsWith(root.replace(/\/+$/, "") + "/"));
+// A trailing slash doesn't count, on either side (the dialog keeps the folder as typed).
+const trimSlash = (f) => String(f).replace(/(.)\/+$/, "$1");
+const inside = (folder, root) => Boolean(folder && root) && (trimSlash(folder) === trimSlash(root) || trimSlash(folder).startsWith(trimSlash(root) + "/"));
 
 // The profile a space belongs to: the deepest one whose folder holds the folder the space began in.
 // Where that's in no profile's, where it is now (an agent's `cd` mustn't move a story's space to

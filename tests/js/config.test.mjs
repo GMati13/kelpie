@@ -29,7 +29,7 @@ describe("profileOf: the profile a space belongs to", () => {
     assert.equal(owner(space("f", "/elsewhere")), null);
     assert.equal(profileOf(null), null);
   });
-  test("a trailing slash in the profile's folder doesn't matter", { todo: "BUG: mods/kelpie/config.js:66 inside() strips the root's trailing slash only for the prefix check, so a space at exactly a profile folder saved as \"/x/\" (setup.js:259 keeps it) isn't that profile's" }, () => {
+  test("a trailing slash in the profile's folder doesn't matter", () => {
     mock.state.shared.set("kelpie.profiles", { w: W, sub: { ...SUB, folder: "/code/work/client/" } });
     assert.equal(owner(space("c", "/code/work/client/web")), "sub");
     assert.equal(owner(space("c", "/code/work/client")), "sub");

@@ -833,8 +833,15 @@ function wordChanges(a, b) {
       }
       at += t.length;
     });
-    // Spaces between two changed words join them; a change of spaces alone isn't marked.
-    return out.filter(([s, e]) => /\S/.test(toks.join("").slice(s, e)));
+    // Spaces between two changed words join them (even spaces both versions share); a change of
+    // spaces alone isn't marked.
+    const text = toks.join("");
+    const joined = [];
+    for (const r of out) {
+      const prev = joined[joined.length - 1];
+      if (prev && !/\S/.test(text.slice(prev[1], r[0]))) prev[1] = r[1]; else joined.push([...r]);
+    }
+    return joined.filter(([s, e]) => /\S/.test(text.slice(s, e)));
   };
   return [ranges(x, keepX), ranges(y, keepY)];
 }
