@@ -135,7 +135,21 @@ export async function statusOptions(board, key, data) {
   }
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`);
   return (r.body?.transitions ?? []).filter((x) => x.isAvailable !== false)
-    .map((x) => ({ id: x.id, name: x.name, to: x.to?.name ?? x.name, category: x.to?.statusCategory?.key }));
+    .map((x) => ({ id: x.id, name: x.name, to: x.to?.name ?? x.name, toId: x.to?.id, category: x.to?.statusCategory?.key }));
+}
+
+// The move that takes a ticket to the board's done column (Move to Done, stories.js): the option
+// landing in its last column (a Jira status it holds, or a Project's last Status option), else one
+// landing in a done status. It throws, saying why in a few words, when there's none from where the
+// ticket is (a Jira workflow without a way straight to done, an issue off the Project).
+export async function doneOption(board, key, data) {
+  if (!movable(board, key, data)) throw new Error("it isn't on the board's Project, so it has no status there");
+  const options = await statusOptions(board, key, data);
+  // A Project's option is the status itself; a Jira transition's id is not a status's, its `toId` is.
+  const last = data?.columns?.at(-1)?.statuses ?? [];
+  const o = options.find((x) => last.includes(board.kind === "project" ? x.id : x.toId)) ?? options.find((x) => x.category === "done");
+  if (!o) throw new Error("its workflow has no move straight to done from where it is");
+  return o;
 }
 
 // Moves a ticket by one of statusOptions(), on the person's own click.

@@ -42,3 +42,6 @@ div
               h_flex #story-more-row-0 [hover(bg=hover)] {click} tip="Start a fresh Claude agent on ACME-138"
                 div
                   "Start fresh"
+              h_flex #story-more-row-1 [hover(bg=hover)] {click} tip="Move your subtasks of ACME-138, then the story, to Done on the board"
+                div
+                  "Move to Done…"

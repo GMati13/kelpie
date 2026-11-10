@@ -62,7 +62,7 @@ describe("demoJira: what Kelpie asks Jira", () => {
   test("transitions: every other status; one moves the ticket until the mod reloads", async () => {
     const t = (await demoJira(["get", "/rest/api/3/issue/ACME-144/transitions"])).body.transitions;
     assert.deepEqual(t.map((x) => x.name), ["In Progress", "In Review", "In QA", "Done"]);
-    assert.deepEqual(t[0], { id: "3", name: "In Progress", isAvailable: true, to: { name: "In Progress", statusCategory: { key: "indeterminate" } } });
+    assert.deepEqual(t[0], { id: "3", name: "In Progress", isAvailable: true, to: { id: "3", name: "In Progress", statusCategory: { key: "indeterminate" } } });
     assert.equal((await demoJira(["transition", "ACME-144", "99"])).code, 400);
     assert.equal((await demoJira(["transition", "ACME-144", "3"])).code, 204);
     const moved = await demoJira(["get", "/rest/api/3/issue/ACME-144"]);

@@ -18,7 +18,7 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { boardSite, description as boardDescription, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
@@ -2220,6 +2220,10 @@ export class Stories extends Source {
       ...((work?.fresh && !over) || it.space ? [] : [{ label: "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start }]),
       ...(conductor ? [{ label: "Start orchestrator", tip: `Start one Claude agent that runs ${key} through its subtasks, with the profile's orchestrator prompt`,
         action: () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, conductor) })) }] : []),
+      // Move to Done: the person's own subtasks, then the story, to the board's done column, after a
+      // dialog listing each (askMoveToDone()).
+      ...(canMoveToDone(it) ? [{ label: `Move to ${doneName(st.data)}…`, action: () => askMoveToDone(st, it),
+        tip: it.story ? `Move your subtasks of ${it.key}, then the story, to ${doneName(st.data)} on the board` : `Move ${it.key} to ${doneName(st.data)} on the board` }] : []),
       ...(earlier.length ? [{ header: `Resume a session on ${key}` }, ...this.sessionRows(st, it, key, earlier)] : []),
     ];
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
@@ -4005,6 +4009,84 @@ function askCleanUp(profile, it) {
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(items.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${it.key}?`, yes: "Clean up", command: { name: `${MOD}.clean-story-${it.key}` },
     detail: `${it.key} is ${it.category === "done" ? "done" : "merged"}, nothing of it is open or running. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
+}
+
+// Move to Done (the header's More): a story and its subtasks to the board's done column in one go.
+// Only the person's own subtasks move, never others' (they aren't theirs to close), and the story
+// itself last, once every subtask is done; tickets already done are left alone. A ticket's status is
+// the one shown, so a move made a moment ago counts (MOVED).
+const shownDone = (t) => {
+  const m = MOVED[t.key];
+  return (m && Date.now() - m.at < 60 * 1000 ? m.category : t.category) === "done";
+};
+// What it would move: { mine: your subtasks not done, others: others' not done, story: whether the
+// story moves too (not done, and no one else's subtask open) }; null for what isn't a board's ticket
+// (a lone pull request). A ticket without subtasks is a story with none. Exported for the tests.
+export function donePlan(it) {
+  if (!it || it.pr || it.review || it.pull || !it.subs) return null;
+  const subs = it.story ? it.subs : [];
+  const others = subs.filter((x) => !x.mine && !shownDone(x));
+  return { mine: subs.filter((x) => x.mine && !shownDone(x)), others, story: !shownDone(it) && !others.length };
+}
+const canMoveToDone = (it) => { const p = donePlan(it); return Boolean(p && (p.mine.length || p.story)); };
+// The board's done column's name ("Done"), for the words.
+const doneName = (data) => data?.columns?.at(-1)?.name || "Done";
+const keyList = (keys) => (keys.length < 3 ? keys.join(" and ") : `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`);
+
+// The dialog listing every ticket it moves, from which status, and others' subtasks left alone. Its
+// button moves them itself (dialogs.js Confirm, `doneStory`): no command runs it, as any agent can
+// run a command and this writes to the board.
+function askMoveToDone(st, it) {
+  const plan = donePlan(it), done = doneName(st.data);
+  const whose = (x) => (x.assignee ? `${x.assignee}'s` : "unassigned");
+  const items = [
+    ...plan.mine.map((x) => ({ key: x.key, text: `${x.status ?? "No status"} → ${done}` })),
+    ...plan.others.map((x) => ({ key: x.key, text: `${x.status ?? "No status"}, ${whose(x)}: left alone` })),
+    ...(plan.story ? [{ key: it.key, text: `${it.status ?? "No status"} → ${done}${plan.mine.length ? ", once your subtasks are" : ""}` }]
+      : !shownDone(it) ? [{ key: it.key, text: `Stays ${it.status ?? "as it is"}, as ${keyList(plan.others.map((x) => x.key))} ${plan.others.length === 1 ? "is" : "are"} still open` }] : []),
+  ];
+  const detail = it.story
+    ? `This moves your subtasks of ${it.key} to ${done} on the board, one after another, then the story once every subtask is done. Others' subtasks are left as they are, as they aren't yours to close:`
+    : `This moves ${it.key} to ${done} on the board:`;
+  openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(items.length, 10) * 24), props: {
+    role: "confirm", title: `Move ${it.key} to ${done}?`, yes: `Move to ${done}`, doneStory: { profile: st.profile.id, key: it.key }, detail, items } });
+}
+
+// Move to Done's dialog button: moves what donePlan() says, as it stands now, one ticket after
+// another; one that fails (a workflow asking for fields, no way straight to done, an issue off the
+// Project) doesn't stop the rest, and a story whose subtask didn't move stays. The new statuses show
+// at once, then the stories load once. Returns { moved, failed: [{ key, why }] }, null when the story
+// isn't the shown profile's any more.
+export async function moveStoryToDone({ profile, key }) {
+  const s = storyItems();
+  const it = s?.st.profile.id === profile ? [...s.items, ...s.done].map((x) => x.it).find((x) => x.key === key) : null;
+  const plan = donePlan(it);
+  if (!plan) { say(`Nothing was moved: ${key} isn't among the shown profile's stories any more.`); return null; }
+  const board = boardOf(s.st.setup), data = s.st.data, done = doneName(data);
+  const moved = [], failed = [];
+  const one = async (t) => {
+    try {
+      const o = await doneOption(board, t.key, data);
+      await moveStatus(board, t.key, o, data);
+      MOVED[t.key] = { status: o.to, category: o.category ?? "done", at: Date.now() };
+      delete MOVES[t.key];
+      moved.push(t.key);
+    } catch (e) {
+      failed.push({ key: t.key, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
+    }
+  };
+  for (const t of plan.mine) await one(t);
+  const subsDone = !plan.mine.some((t) => failed.some((f) => f.key === t.key));
+  if (plan.story && subsDone) await one(it);
+  if (moved.length) setShared(REFRESH, Date.now());
+  const stays = shownDone(it) || failed.some((f) => f.key === key) ? ""
+    : plan.others.length ? ` ${key} stays, as ${keyList(plan.others.map((x) => x.key))} ${plan.others.length === 1 ? "is" : "are"} still open.`
+    : ` ${key} stays, as not all its subtasks moved.`;
+  const text = `${moved.length ? `Moved ${keyList(moved)} to ${done}.` : "Nothing was moved."}${failed.length
+    ? ` Couldn't move ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: move ${failed.length === 1 ? "it" : "them"} by hand.` : ""}${stays}`;
+  say(text, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
+  if (failed.length) notify({ title: `Some of ${key} didn't move to ${done}`, body: failed.map((f) => `${f.key}: ${f.why}`).join("\n"), level: "warning" });
+  return { moved, failed };
 }
 
 // Clean up all's dialog (the list's broom beside its freshness line, and Next): every finished story

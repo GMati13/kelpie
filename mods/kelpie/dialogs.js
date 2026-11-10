@@ -10,7 +10,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { closeOverlay, openOverlay, props, run } from "herdr";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, primaryButton, textButton } from "./ui.js";
-import { selectStory, storyItems, storyState } from "./stories.js";
+import { moveStoryToDone, selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
 import { applyPendingProfile, installPlugin } from "./config.js";
 
@@ -108,8 +108,18 @@ export class Confirm {
   // the same way: the Kelpie plugin installed on that profile's Claude account.
   // Installing runs in a task of this dialog's, which closes the dialog once the Desk's terminal is
   // open: a closed dialog's tasks are cancelled, so closing first left Install it doing nothing.
+  // `doneStory` ({ profile, key }): Move to Done's tickets moved on the board by this button (stories.js
+  // moveStoryToDone()), the dialog staying open, its button saying Moving…, until they're done.
   yes(command = props().command, cx = null) {
-    const { overlay, installPlugin: install, installThen: then = null } = props();
+    const { overlay, installPlugin: install, installThen: then = null, doneStory } = props();
+    if (doneStory) {
+      if (this.busy) return;
+      this.busy = true;
+      if (!cx) return moveStoryToDone(doneStory).catch(() => null).finally(() => closeOverlay(overlay));
+      cx.notify?.();
+      cx.spawn(async () => { await moveStoryToDone(doneStory).catch(() => null); closeOverlay(overlay); });
+      return;
+    }
     if (install) {
       if (!cx) return installPlugin(install, then).finally(() => closeOverlay(overlay));
       cx.spawn(async () => { await installPlugin(install, then).catch(() => null); closeOverlay(overlay); });
@@ -121,6 +131,7 @@ export class Confirm {
     run(command.name, command.args ?? {});
   }
   no() {
+    if (this.busy) return; // half the tickets moved: let it finish
     if (props().pendingProfile) applyPendingProfile(false);
     closeOverlay(props().overlay);
   }
@@ -147,6 +158,6 @@ export class Confirm {
       .child(h_flex().justify_end().gap(DIALOG.gap)
         .child(textButton(t, "confirm-no", "Cancel", () => this.no()))
         .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, (_e, cx) => this.yes(p.alt.command, cx))))
-        .child(primaryButton(t, "confirm-yes", p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx)))), { role: "confirm", now: new Date() });
+        .child(primaryButton(t, "confirm-yes", this.busy ? "Moving…" : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx)))), { role: "confirm", now: new Date() });
   }
 }
