@@ -852,28 +852,52 @@ function changeSquares(add, del) {
 const DIFFS = new Map(); // patch -> rows
 const DIFFS_KEEP = 8e6;
 let diffsSize = 0;
-const parsed = (patch) => DIFFS.has(patch);
-function diffRows(patch) {
-  const hit = DIFFS.get(patch);
-  if (hit) return hit;
-  const rows = [];
-  let o = 1, n = 1, inHunk = false, block = [], gap = 0, whole = false, cut = false;
-  // A run of removed lines then added ones: pair them in order and mark what differs in each pair.
-  const flush = () => {
-    const dels = block.filter((r) => r.kind === "del"), adds = block.filter((r) => r.kind === "add");
-    // Each removed line pairs with whichever of the next few added lines it has most in common with
-    // (so a line added above its new version doesn't steal the match), in order.
-    const kept = (text, marks) => 1 - marks.reduce((n, [a, b]) => n + b - a, 0) / Math.max(1, text.length);
-    let j = 0;
-    for (const d of dels) {
+// Runs of removed then added lines still to be marked, by the rows they're in: marking what changed
+// in a line is a token LCS per pair tried, by far the slowest part of reading a patch, and a file of
+// long changed lines took longer than a whole render, so it's done apart, a removed line at a time,
+// until the time a render gives it (markWords), and goes on where it stopped.
+const UNMARKED = new WeakMap(); // rows -> [{ dels, adds, d (next removed line), j (first added line left) }]
+// Read and marked: a patch's rows ready to show.
+const parsed = (patch) => DIFFS.has(patch) && !UNMARKED.has(DIFFS.get(patch));
+// A patch's rows (parsed once, kept), marked until `until` (a Date.now() time; by default, all).
+function diffRows(patch, until = Infinity) {
+  const rows = DIFFS.get(patch) ?? readPatch(patch);
+  markWords(rows, until);
+  return rows;
+}
+// Marks what changed in each pair of a run (removed line, added line), until `until`: false when
+// time ran out first, the rest kept for the next call. Each removed line pairs with whichever of the
+// next few added lines it has most in common with (so a line added above its new version doesn't
+// steal the match), in order.
+function markWords(rows, until = Infinity) {
+  const runs = UNMARKED.get(rows);
+  if (!runs) return true;
+  const kept = (text, marks) => 1 - marks.reduce((n, [a, b]) => n + b - a, 0) / Math.max(1, text.length);
+  while (runs.length) {
+    const run = runs[0];
+    while (run.d < run.dels.length) {
+      if (Date.now() > until) return false;
+      const d = run.dels[run.d++];
       let best = null;
-      for (let k = j; k < Math.min(adds.length, j + 4); k++) {
-        const w = wordChanges(d.text, adds[k].text);
-        const score = w ? kept(d.text, w[0]) + kept(adds[k].text, w[1]) : -1;
+      for (let k = run.j; k < Math.min(run.adds.length, run.j + 4); k++) {
+        const w = wordChanges(d.text, run.adds[k].text);
+        const score = w ? kept(d.text, w[0]) + kept(run.adds[k].text, w[1]) : -1;
         if (w && (!best || score > best.score)) best = { k, w, score };
       }
-      if (best) { d.marks = best.w[0]; adds[best.k].marks = best.w[1]; j = best.k + 1; }
+      if (best) { d.marks = best.w[0]; run.adds[best.k].marks = best.w[1]; run.j = best.k + 1; }
     }
+    runs.shift();
+  }
+  UNMARKED.delete(rows);
+  return true;
+}
+// Reads a patch into rows, its runs of changes left to markWords.
+function readPatch(patch) {
+  const rows = [], runs = [];
+  let o = 1, n = 1, inHunk = false, block = [], gap = 0, whole = false, cut = false;
+  const flush = () => {
+    const dels = block.filter((r) => r.kind === "del"), adds = block.filter((r) => r.kind === "add");
+    if (dels.length && adds.length) runs.push({ dels, adds, d: 0, j: 0 });
     block = [];
   };
   for (const raw of patch.replace(/\n$/, "").split("\n")) {
@@ -911,6 +935,7 @@ function diffRows(patch) {
     DIFFS.delete(old); diffsSize -= old.length;
   }
   DIFFS.set(patch, rows); diffsSize += patch.length;
+  if (runs.length) UNMARKED.set(rows, runs);
   return rows;
 }
 
@@ -2735,7 +2760,8 @@ export class Stories extends Source {
       for (const f of missing) {
         if (Date.now() > until) break;
         patchHash(f.patch ?? "");
-        if (shown.has(f)) diffRows(f.patch ?? "");
+        // A file whose marks ran out of time isn't done: the next render goes on with it.
+        if (shown.has(f) && (diffRows(f.patch ?? "", until), !parsed(f.patch ?? ""))) break;
         done++;
       }
       if (done < missing.length) {
