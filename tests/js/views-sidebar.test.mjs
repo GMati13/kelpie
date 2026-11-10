@@ -94,14 +94,14 @@ const sharedCopy = async () => (await draw(new StoryList(), { init: () => {} }))
 const quiet = (e) => ({ ...e, data: { ...e.data, prs: [], reviews: [] } });
 
 // A pick of a pull request already waiting for your review ("pr:web#421", the demo's own pick) drops
-// out: Reviews for you lists it already. Reviews aren't in the queue either, for the same reason.
-test("a review is neither in the queue nor picked again", async () => {
+// out: the review is in the queue already ("review:web#421").
+test("a pick of a review already in the queue drops out", async () => {
   setupDemoWorld({ stories });
   putShared("kelpie.next.suggested", PICKS);
   const { view, cx } = await draw(new StoryList());
   view.queueOpen = true;
   const open = view.render(cx);
-  assert.equal(byId(open, "queue-review:web#421"), null, "the review isn't queued");
+  assert.ok(byId(open, "queue-review:web#421"), "the review is queued");
   assert.equal(byId(open, "queue-suggest:pr:web#421"), null, "and not again as a pick");
 });
 

@@ -182,8 +182,9 @@ describe("ordered and needQueue: the list's order and Next's", () => {
   test("what needs you first, then the rest, then what's sunk, each in the board's order", () => {
     assert.deepEqual(keys(ordered(items())), ["BB-1", "DD-1", "EE-1", "AA-1", "CC-1"]);
   });
-  test("Next goes by urgency, without the reviews", () => {
-    assert.deepEqual(keys(needQueue(ordered(items()))), ["EE-1", "DD-1", "BB-1"]);
+  test("Next goes by urgency, then the reviews", () => {
+    const review = { key: "review:web#3" };
+    assert.deepEqual(keys(needQueue(ordered(items()), [review])), ["EE-1", "DD-1", "BB-1", "review:web#3"]);
   });
   test("a sunk story that needs you isn't sunk", () => {
     const [it] = build(data({ mine: ["CC-1"], parents: [issue("CC-1", "qa")], prs: [pr("CC-1 x", { checks: "FAILURE" })] }), new Map());
