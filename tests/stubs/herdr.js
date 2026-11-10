@@ -45,7 +45,7 @@ export const mock = {
   // The arguments of each recorded call of `fn`.
   of(fn) { return this.calls.filter((c) => c.fn === fn).map((c) => c.args); },
   // Shared state without the stub's copying (for asserting).
-  sharedValue(key) { return json(this.state.shared.get(key)); },
+  sharedValue(key) { return json(this.state.shared.get(key)) ?? null; },
   // A path under appHome()/mods/ as the repo's own file (the mods as if installed), else unchanged.
   repoPath(path) {
     const mods = `${this.state.appHome}/mods/`;
