@@ -6,7 +6,7 @@ import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { handlers, texts } from "gpui-kit";
+import { handlers, texts, tree } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -72,17 +72,130 @@ test("a review's details show its description", async () => {
   assert.doesNotMatch(words, /Describe how you tested it/);
 });
 
-// A subtask with an earlier session shows one action, Resume, so its title keeps the room: starting
-// fresh and every session (with its age) are in the ▾ beside it, and no age sits in the row.
+// A subtask row's actions show on the row hovered (on_hover, this copy's), over its title's end: at
+// rest it keeps no room for them.
+const hoverRow = (el, key, on, cx) => handlers(el, "on_hover").find((h) => h.id === `sub-row-${key}`).fn(on, cx);
+
+// A subtask with an earlier session shows one action when hovered, Resume: starting fresh and every
+// session (with its age) are in the ▾ beside it, and no age sits in the row. The row stays awake
+// while its menu is open, though the pointer has left it for the menu.
 test("a subtask's Resume is a split button: Start fresh and the sessions in its menu", async () => {
   const { el, view, cx } = await body({ preview: "ACME-180" });
-  const row = render(byId(el, "sub-row-ACME-181"), skinTheme());
+  hoverRow(el, "ACME-181", true, cx);
+  const hovered = view.render(cx);
+  const row = render(byId(hovered, "sub-row-ACME-181"), skinTheme());
   assert.doesNotMatch(row, /"last session|"Start fresh"/);
   assert.match(row, /"Resume"/);
-  press(el, "sub-agent-ACME-181-more", cx);
-  const menu = render(byId(view.render(cx), "sub-agent-ACME-181-menu-list"), skinTheme());
+  press(hovered, "sub-agent-ACME-181-more", cx);
+  hoverRow(hovered, "ACME-181", false, cx);
+  const open = view.render(cx);
+  const menu = render(byId(open, "sub-agent-ACME-181-menu-list"), skinTheme());
   assert.match(menu, /"Start fresh"/);
   assert.match(menu, /"Resume the session"|"Resume one of \d+ sessions"/);
   assert.match(menu, /"Sketch the PDF itinerary layout"[\s\S]*"2d ago"/);
   view.menu = null;
+  assert.equal(byId(view.render(cx), "sub-actions-ACME-181"), null, "once it's shut and the pointer gone, the row is calm again");
+});
+
+// At rest a row shows only what you read: no actions, except Peek on the row whose agent asks
+// something. Hovered, all of them; leaving puts it back. A row entered before the last one reports
+// leaving keeps the hover.
+test("a subtask's actions show on the row hovered, Peek always", async () => {
+  const { el, view, cx } = await body({ preview: "ACME-142" });
+  const words = (x, key) => texts(byId(x, `sub-row-${key}`));
+  assert.ok(!words(el, "ACME-144").some((w) => /Show agent|Pause|Resume|Start/.test(w)), "a calm row has no buttons");
+  assert.equal(byId(el, "sub-actions-ACME-144"), null);
+  assert.ok(words(el, "ACME-143").includes("Peek"), "Peek stays while its agent asks");
+  assert.ok(!words(el, "ACME-143").includes("Show agent"));
+  hoverRow(el, "ACME-143", true, cx);
+  const on = view.render(cx);
+  assert.ok(words(on, "ACME-143").includes("Peek") && words(on, "ACME-143").includes("Show agent"));
+  hoverRow(on, "ACME-144", true, cx);
+  hoverRow(on, "ACME-143", false, cx);
+  const moved = view.render(cx);
+  assert.ok(!words(moved, "ACME-143").includes("Show agent"));
+  assert.ok(byId(moved, "sub-actions-ACME-144"), "the row entered keeps the hover");
+  hoverRow(moved, "ACME-144", false, cx);
+  assert.equal(byId(view.render(cx), "sub-actions-ACME-144"), null);
+});
+
+// Every subtask row has the same columns after its title, empty or not, so marks, avatars and chips
+// line up down the list; the agent's state is a mark in a slot of its own, there at rest.
+test("subtask rows line up: the same columns on every row", async () => {
+  const { el } = await body({ preview: "ACME-142" });
+  // The row's first line (its first child, up to the next one: its pull requests), then its columns.
+  const cols = (key) => {
+    const lines = render(byId(el, `sub-row-${key}`), skinTheme()).split("\n").slice(1);
+    const end = lines.findIndex((l, i) => i > 0 && /^  \S/.test(l));
+    return lines.slice(0, end < 0 ? undefined : end).filter((l) => /^    \S/.test(l)).length;
+  };
+  // Key, title (its actions laid over it), the agent's mark, avatar, status: no "No PR yet".
+  assert.deepEqual(["ACME-143", "ACME-144", "ACME-145"].map(cols), [5, 5, 5]);
+  const slot = (key) => render(byId(el, `sub-mark-${key}`), skinTheme());
+  assert.match(slot("ACME-143"), /tip="ACME-143: needs you"\n  div/, "the agent's mark, saying its state");
+  assert.doesNotMatch(slot("ACME-145"), /tip=|\n  div/, "an empty slot");
+  assert.doesNotMatch(render(byId(el, "sub-row-ACME-144"), skinTheme()), /No PR yet/);
+});
+
+// Each column is as wide as its widest cell among the rows shown, as drawn (divided by the zoom), and
+// narrows again once that cell is gone.
+test("a subtask column takes its widest cell's width", async () => {
+  const { el, view, cx } = await body({ preview: "ACME-142" });
+  const fire = (x, id, width) => handlers(x, "on_size_change").find((h) => h.id === id).fn({ width, height: 20 }, cx);
+  fire(el, "sub-cols-zoom-probe", 120);
+  fire(el, "sub-status-cell-ACME-143", 96);
+  fire(el, "sub-status-cell-ACME-144", 60);
+  fire(el, "sub-status-cell-ACME-145", 72);
+  // The box around a cell, and the min_w it was given.
+  const minW = (x, id) => {
+    const find = (n) => {
+      if (Array.isArray(n)) { for (const k of n) { const f = find(k); if (f) return f; } return null; }
+      if (!n || typeof n !== "object") return null;
+      const kids = (n.calls ?? []).filter(([m]) => m === "child").map(([, a]) => a[0]);
+      if (kids.some((k) => (k?.calls ?? []).some(([m, a]) => m === "id" && a[0] === id))) return n;
+      for (const k of [...kids, ...(n.calls ?? []).flatMap(([, a]) => a)]) { const f = find(k); if (f) return f; }
+      return null;
+    };
+    return find(tree(x))?.calls.find(([m]) => m === "min_w")?.[1][0] ?? null;
+  };
+  const wide = view.render(cx);
+  assert.deepEqual(["ACME-143", "ACME-144", "ACME-145"].map((k) => minW(wide, `sub-status-cell-${k}`)), [80, 80, 80]);
+  fire(wide, "sub-status-cell-ACME-143", 48);
+  const narrow = view.render(cx);
+  assert.equal(minW(narrow, "sub-status-cell-ACME-144"), 60);
+});
+
+// Who a subtask is assigned to is the first thing looked for, so the avatar leads each row.
+test("a subtask row starts with who it's assigned to", async () => {
+  const { el } = await body({ preview: "ACME-142" });
+  for (const key of ["ACME-143", "ACME-144", "ACME-145"]) {
+    const first = render(byId(el, `sub-row-${key}`), skinTheme()).split("\n").find((l) => /^    \S/.test(l));
+    assert.match(first, new RegExp(`#sub-assignee-${key}`), key);
+  }
+});
+
+// The subtask list stays narrow on a wide screen: a row's end within an eye's sweep of its start.
+test("the subtask rows are at most 760 wide", async () => {
+  const { el } = await body({ preview: "ACME-142" });
+  const widths = [];
+  const walk = (n) => {
+    if (Array.isArray(n)) return n.forEach(walk);
+    if (!n || typeof n !== "object") return;
+    for (const [m, a] of n.calls ?? []) { if (m === "max_w") widths.push(a[0]); a.forEach(walk); }
+  };
+  walk(tree(el));
+  assert.ok(widths.includes(760), `max widths: ${widths}`);
+  assert.ok(!widths.some((w) => typeof w === "number" && w > 760 && w < 2000), `nothing wider: ${widths}`);
+});
+
+// The subtasks come in two groups: yours first, then everyone else's, each under a heading; a story
+// whose subtasks are all yours (or all others') has one plain list.
+test("subtasks: yours first, then everyone else's", async () => {
+  const order = (x) => render(x, skinTheme()).split("\n").map((l) => /#(subs-mine|subs-others|sub-row-[A-Z]+-\d+)\b/.exec(l)?.[1]).filter(Boolean);
+  const split = (await body({ preview: "ACME-142" })).el;
+  assert.deepEqual(order(split), ["subs-mine", "sub-row-ACME-143", "sub-row-ACME-144", "subs-others", "sub-row-ACME-145"]);
+  assert.deepEqual(texts(byId(split, "subs-mine")), ["Assigned to you"]);
+  assert.deepEqual(texts(byId(split, "subs-others")), ["Everyone else"]);
+  const allMine = (await body({ preview: "ACME-151" })).el;
+  assert.deepEqual(order(allMine), ["sub-row-ACME-152", "sub-row-ACME-153"]);
 });

@@ -9,49 +9,50 @@ div #story-overview-view {size_change}
                 TextView.html "story-desc-0-text-0" "<span>Travellers want a printable itinerary: every booking of a trip on one page, with confirmation numbers and addresses, as a PDF from the trip's share menu.</span>" [fg=foreground/e0]
       h_flex
         v_flex
-          v_flex #sub-row-ACME-181 [border=border hover(bg=hover)]
+          div #sub-cols-zoom-probe {size_change}
+          div #subs-mine [fg=muted]
+            "Assigned to you"
+          v_flex #sub-row-ACME-181 [border=border hover(bg=hover)] {hover}
             h_flex
-              div [font="DM Mono" fg=dim]
-                "ACME-181"
-              div #sub-title-ACME-181 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
-                "PDF layout for itineraries"
-              div [fg=dim]
-                "No PR yet"
               div #sub-assignee-ACME-181
                 div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
                   "AM"
-              Popup.new "sub-status-ACME-181-menu"
-                div #sub-status-ACME-181-more [hover(bg=hover)] {click} tip="Change the status"
-                  div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
-                    "To do"
-                    div
-                      div
-                        div [border=dim]
-              h_flex
-                h_flex #sub-agent-ACME-181-resume [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Continue \"Sketch the PDF itinerary layout\" (2d ago)"
-                  "Resume"
-                Popup.new "sub-agent-ACME-181-menu"
-                  h_flex #sub-agent-ACME-181-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start fresh, or resume another session on ACME-181"
-                    "▾"
-          v_flex #sub-row-ACME-182 [border=border hover(bg=hover)]
-            h_flex
               div [font="DM Mono" fg=dim]
-                "ACME-182"
-              div #sub-title-ACME-182 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
-                "Export from the share sheet"
-              div [fg=dim]
-                "No PR yet"
+                "ACME-181"
+              h_flex #sub-main-ACME-181
+                div #sub-title-ACME-181 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                  "PDF layout for itineraries"
+              h_flex #sub-mark-ACME-181
+              h_flex
+                h_flex #sub-status-cell-ACME-181 {size_change}
+                  Popup.new "sub-status-ACME-181-menu"
+                    div #sub-status-ACME-181-more [hover(bg=hover)] {click} tip="Change the status"
+                      div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                        "To do"
+                        div
+                          div
+                            div [border=dim]
+          div #subs-others [fg=muted]
+            "Everyone else"
+          v_flex #sub-row-ACME-182 [border=border hover(bg=hover)] {hover}
+            h_flex
               div #sub-assignee-ACME-182
                 div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
                   "TR"
-              Popup.new "sub-status-ACME-182-menu"
-                div #sub-status-ACME-182-more [hover(bg=hover)] {click} tip="Change the status"
-                  div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
-                    "To do"
-                    div
-                      div
-                        div [border=dim]
-              h_flex #sub-agent-ACME-182-start [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start a Claude agent on ACME-182, in a new space for the story"
-                "Start work"
+              div [font="DM Mono" fg=dim]
+                "ACME-182"
+              h_flex #sub-main-ACME-182
+                div #sub-title-ACME-182 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                  "Export from the share sheet"
+              h_flex #sub-mark-ACME-182
+              h_flex
+                h_flex #sub-status-cell-ACME-182 {size_change}
+                  Popup.new "sub-status-ACME-182-menu"
+                    div #sub-status-ACME-182-more [hover(bg=hover)] {click} tip="Change the status"
+                      div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                        "To do"
+                        div
+                          div
+                            div [border=dim]
   div
     div [bg=background/17] ×10 … [bg=background/e6]

@@ -22,7 +22,7 @@ import { approvePull, pullBody, searchPulls } from "./pulls.js";
 import { adfBlocks, adfLines, adfText, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { alpha, bands } from "./skins/common.js";
+import { alpha, bands, mix } from "./skins/common.js";
 import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -1032,7 +1032,17 @@ const DESC_EVERY = 5 * 60 * 1000;
 const DOC = { size: 14, width: 540, perLine: 68, label: 11, lead: 16, leadLine: 26, mono: 12 };
 const LINE = 24; // a description's line height, for the lines a folded one shows
 const FOLDED = 12;
-const ROWS = 760; // the widest the subtask rows (and the story's pull requests) get
+// The widest the subtask rows (and the story's pull requests) get, so a row's end stays within an
+// eye's sweep of its start on a wide screen: wider read and aimed badly.
+const ROWS = 760;
+// Where a subtask's title starts in its row (the avatar, the key's 84, the gaps): its description
+// and pull requests line up under it.
+const SUB_INDENT = 18 + 10 + 84 + 10;
+// `top` (a see-through colour, like the theme's hover) laid over `base`, as one solid colour.
+function solidOver(base, top) {
+  const a = /^#[0-9a-f]{8}$/i.test(top) ? parseInt(top.slice(7, 9), 16) / 255 : 1;
+  return mix(base, alpha(top, 1), a);
+}
 
 // A paragraph's runs. Plain text is one string, which wraps by itself; with bold, code or links in it,
 // it's laid out a word at a time (a word keeps each of its runs' looks), so it still wraps like text.
@@ -1660,21 +1670,24 @@ export class Stories extends Source {
   // What can be done with the agent on a key of story `it`: show or pause the one running (one at
   // work asks first), resume a paused one or an earlier session, or start one with the profile's
   // ticket prompt. Agents start in the story's space; a story not started yet gets its space then.
-  // The subtask rows' (the header has its own, headActions).
-  agentButtons(t, st, it, id, key, agent, paused, last) {
+  // The subtask rows' (the header has its own, headActions). With `calm` (a row at rest), only what
+  // can't wait: Peek, while its agent asks something. The agent's state is the row's mark (agentSlot).
+  agentButtons(t, st, it, id, key, agent, paused, last, { calm = false } = {}) {
     const b = (suffix, label, action, tip) => textButton(t, `${id}-${suffix}`, label, action, { tip });
+    if (calm) return agent?.status === "blocked" ? [peekButton(t, `${id}-peek`, agent)] : [];
     if (agent) return [
-      // An agent asking something can be answered from here, over the shown tab (the header has its own).
+      // An agent asking something can be answered from here, over the shown tab (the header has its own);
+      // it takes Pause's place (Pause stays in the header and on its key).
       ...(agent.status === "blocked" ? [peekButton(t, `${id}-peek`, agent)] : []),
-      b("show", "Show agent", () => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); setView(st.profile, it, "agent"); }, `Show ${agent.tab_name}`),
-      this.carefulButton(t, `${id}-pause`, "Pause", agent.status === "working", (cx) => this.pauseAll(st, [{ key, agent }], cx),
-        { tip: "Close its tab and keep its Claude session to resume later", confirmTip: `${agent.tab_name} is working: click again to pause it anyway` }),
+      b("show", "Show agent", () => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); setView(st.profile, it, "agent"); }, `Show ${agent.tab_name}: ${AGENT[agent.status][0].toLowerCase()}`),
+      ...(agent.status === "blocked" ? [] : [this.carefulButton(t, `${id}-pause`, "Pause", agent.status === "working", (cx) => this.pauseAll(st, [{ key, agent }], cx),
+        { tip: "Close its tab and keep its Claude session to resume later", confirmTip: `${agent.tab_name} is working: click again to pause it anyway` })]),
     ];
-    if (paused) return [b("resume", "Resume", () => once(it.key, () => resume(st.profile, it, key)), `Bring back ${paused.length === 1 ? "its session" : `its ${paused.length} sessions`} where ${paused.length === 1 ? "it" : "they"} left off`)];
+    if (paused) return [b("resume", "Resume", () => once(it.key, () => resume(st.profile, it, key)), `Paused: bring back ${paused.length === 1 ? "its session" : `its ${paused.length} sessions`} where ${paused.length === 1 ? "it" : "they"} left off`)];
     const start = () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key) }));
     const word = it.space ? "agent" : "work";
-    // One visible action, Resume, so the row's title keeps its room: starting fresh and the other
-    // sessions (each with its age) are in the ▾ beside it, held to it as one split button.
+    // One action, Resume: starting fresh and the other sessions (each with its age) are in the ▾
+    // beside it, held to it as one split button.
     if (last) {
       const all = sessionsFor(st.data, key);
       const rows = [
@@ -1686,6 +1699,24 @@ export class Stories extends Source {
         .child(this.menuButton(t, id, "▾", rows, `Start fresh, or resume another session on ${key}`))];
     }
     return [b("start", `Start ${word}`, start, `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`)];
+  }
+
+  // A subtask's agent as a mark, in a slot of the same width on every row: working, waiting for you,
+  // done or idle (a skin's mark, else Kelpie's), or paused; empty when it has none.
+  agentSlot(t, s) {
+    const a = s.agent;
+    const m = a ? statusMark(t, agentState(a.status), { where: "sub", size: 8, color: t[AGENT[a.status][1]], agent: a }) ?? mark(t, agentState(a.status) ?? "idle", 14)
+      : s.paused ? mark(t, "paused", 14) : null;
+    return h_flex().id(`sub-mark-${s.key}`).flex_none().w(16).justify_center().items_center()
+      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${AGENT[a.status][0].toLowerCase()}` : "Paused: its session is kept to resume").child(m));
+  }
+
+  // Whether a subtask row shows all its actions: while hovered (`this.hoverSub`, this copy's), and
+  // while one of them is in use, so it doesn't vanish under the pointer on its way to the menu (its
+  // ▾ open) or between the two clicks of Pause (armed).
+  subAwake(key) {
+    const id = `sub-agent-${key}`;
+    return this.hoverSub === key || this.menu === id || (this.armed === `${id}-pause` && Date.now() - this.armedAt < ARMED_FOR);
   }
 
   // Sends a request to the agent on a key: typed into the open one, else as the first message of
@@ -1946,30 +1977,62 @@ export class Stories extends Source {
       .on_click((_e, cx) => { if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key); cx.notify(); }).child(s.title);
     // A subtask's row: its key, title, state and agent buttons, then its pull requests. A ticket with
     // no subtasks has no row: its state and actions are the header's, only its pull requests show.
-    const sub = (s, about = opened(s) ? this.description(t, st, s.key, cx, { id: `sub-desc-${s.key}` }) : null) => v_flex().id(`sub-row-${s.key}`).flex_none().gap(4).px(8).py(8).border_t_1().border_color(t.border).hover((x) => x.bg(t.hover))
+    this.colRows = new Set(it.subs.map((s) => s.key));
+    // A calm list: at rest a row shows what you read (who it's assigned to, key, title, its agent's
+    // mark, its status); its actions show on the row hovered, laid over the end of its title, so they
+    // keep no room at rest and the title has the row. Peek stays while the agent asks something.
+    const hover = (key) => (on, cx) => {
+      const was = this.hoverSub;
+      // The row left may report after the row entered: only its own leaving clears it.
+      this.hoverSub = on ? key : was === key ? null : was;
+      if (this.hoverSub !== was) cx.notify();
+    };
+    const acts = (s) => s.category !== "done" || s.agent || s.paused || s.last
+      ? this.agentButtons(t, st, it, `sub-agent-${s.key}`, s.key, s.agent, s.paused, s.last, { calm: !this.subAwake(s.key) }) : [];
+    // Over the title's end, on the row's own colour made solid (the hover's is see-through), with a
+    // short fade so the title runs under it rather than stopping at an edge.
+    const actions = (s, list) => {
+      const bg = this.hoverSub === s.key ? solidOver(t.background, t.hover) : t.background;
+      return h_flex().id(`sub-actions-${s.key}`).absolute().top(0).bottom(0).right(0).items_center()
+        .child(bands(Array.from({ length: 6 }, (_, i) => alpha(bg, (i + 1) / 7)), {}).flex_none().w(24).h_full())
+        .child(h_flex().flex_none().h_full().gap(4).pl(4).items_center().bg(bg).children(list));
+    };
+    const sub = (s, about = opened(s) ? this.description(t, st, s.key, cx, { id: `sub-desc-${s.key}` }) : null, list = acts(s)) => v_flex().id(`sub-row-${s.key}`).flex_none().gap(4).px(8).py(8).border_t_1().border_color(t.border).hover((x) => x.bg(t.hover))
+      .on_hover(hover(s.key))
       .child(h_flex().gap(10).items_center().min_w(0)
-        .child(skinFont(div(), "numbers").flex_none().w(84).text_size(SMALL).text_color(t.dim).child(s.key))
-        .child(title(s))
-        .when(!s.prs.length && s.category !== "done", (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child("No PR yet")))
+        // Who it's assigned to leads the row: the first thing looked for.
         .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.mine, s.avatar))
-        .when(Boolean(s.status), (el) => el.child(this.statusChip(t, st, s.key, s.status, s.category, `sub-status-${s.key}`, cx)))
-        .when(Boolean(s.agent), (el) => el.child(statusMark(t, agentState(s.agent.status), { where: "sub", size: 8, color: t[AGENT[s.agent.status][1]], agent: s.agent })
-          ?? div().id(`sub-mark-${s.key}`).flex_none().tooltip(`Agent: ${AGENT[s.agent.status][0]}`).child(mark(t, agentState(s.agent.status) ?? "idle", 14))))
-        .when(Boolean(s.paused), (el) => el.child(div().id(`sub-paused-${s.key}`).flex_none().tooltip("Paused: Resume picks it up").child(mark(t, "paused", 14))))
-        .when(s.category !== "done" || Boolean(s.agent || s.paused || s.last), (el) => el.children(this.agentButtons(t, st, it, `sub-agent-${s.key}`, s.key, s.agent, s.paused, s.last))))
-      .when(Boolean(about), (el) => el.child(div().pl(94).pb(2).child(about)))
-      .children(s.prs.map((p) => this.pr(t, p, st, it).pl(94)));
+        .child(skinFont(div(), "numbers").flex_none().w(84).text_size(SMALL).text_color(t.dim).child(s.key))
+        // As high as a button, so a row is the same height with its actions shown or not.
+        .child(h_flex().id(`sub-main-${s.key}`).relative().flex_1().min_w(0).h(CONTROL).items_center()
+          .child(title(s))
+          .when(list.length > 0, (el) => el.child(actions(s, list))))
+        // After the title, the same columns on every row, filled or empty, so marks and chips line up
+        // down the list. The status is as wide as its widest chip in this list, measured as drawn
+        // (column()).
+        .child(this.agentSlot(t, s))
+        .child(this.column("status", s.key, h_flex().flex_none().items_center()
+          .when(Boolean(s.status), (el) => el.child(this.statusChip(t, st, s.key, s.status, s.category, `sub-status-${s.key}`, cx))))))
+      .when(Boolean(about), (el) => el.child(div().pl(SUB_INDENT).pb(2).child(about)))
+      .children(s.prs.map((p) => this.pr(t, p, st, it).pl(SUB_INDENT)));
+    // Yours first, then everyone else's, each under a small heading; one group alone needs none.
+    const heading = (id, words) => div().id(id).flex_none().px(8).pt(14).pb(6).text_size(SMALL).font_semibold().text_color(t.muted).child(words);
+    const subGroups = (list) => {
+      const mine = list.filter((s) => s.mine), others = list.filter((s) => !s.mine);
+      if (!mine.length || !others.length) return list.map((s) => sub(s));
+      return [heading("subs-mine", "Assigned to you"), ...mine.map((s) => sub(s)), heading("subs-others", "Everyone else"), ...others.map((s) => sub(s))];
+    };
     const own = it.story ? [] : it.subs[0].prs;
     // The ticket's own description first, folded to a few lines (a pull request's row has none).
     const about = it.pr ? null : this.description(t, st, it.key, cx, { id: "story-desc", fold: true });
     // Its pull requests and subtasks sit in a centred column of their own (ROWS wide), so a row's
-    // buttons stay near its key and title on a wide screen.
-    const rows = v_flex().w_full().min_w(0).max_w(ROWS)
+    // status stays near its key and title on a very wide screen.
+    const rows = v_flex().relative().w_full().min_w(0).max_w(ROWS).child(this.colProbe())
       .when(it.prs.length > 0, (el) => el.child(v_flex().gap(4).px(8).py(8).border_t_1().border_color(t.border)
         .child(div().text_size(SMALL).font_semibold().text_color(t.muted).child("On the story itself"))
         .children(it.prs.map((p) => this.pr(t, p, st, it)))))
       .when(own.length > 0, (el) => el.child(v_flex().gap(4).px(8).py(8).border_t_1().border_color(t.border).children(own.map((p) => this.pr(t, p, st, it)))))
-      .children(it.story ? it.subs.map((s) => sub(s)) : []);
+      .children(it.story ? subGroups(it.subs) : []);
     const overview = v_flex().id("story-overview").flex_1().min_h(0).gap(0).overflow_y_scrollbar()
       .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
         .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
@@ -1994,6 +2057,32 @@ export class Stories extends Source {
 
   // The story details' height as drawn (`view`) and their content's (`content`), on this copy, for the
   // fade over a details block that scrolls; redrawn only when one changes.
+  // One cell of a subtask row's column `col`: its content at its own width, measured as drawn, inside
+  // a box as wide as the column's widest cell among the rows shown (`this.colRows`). Widths are kept
+  // per row on this copy (drawn sizes include the zoom, so they're divided by it: colProbe()); a
+  // redraw only when a column's width changes, so it settles in one frame and shrinks again when
+  // its widest cell goes.
+  column(col, key, content) {
+    const zoom = this.colZoom || 1;
+    const widths = Object.entries(this.cols?.[col] ?? {}).filter(([k]) => this.colRows?.has(k)).map(([, w]) => w);
+    const width = widths.length ? Math.ceil(Math.max(...widths) / zoom) : 0;
+    return h_flex().flex_none().items_center().when(width > 0, (el) => el.min_w(width))
+      .child(content.id(`sub-${col}-cell-${key}`).on_size_change((size, cx) => {
+        const was = this.cols?.[col]?.[key];
+        if (was !== undefined && Math.abs(was - size.width) < 0.5) return;
+        this.cols = { ...(this.cols ?? {}), [col]: { ...(this.cols?.[col] ?? {}), [key]: size.width } };
+        cx.notify();
+      }));
+  }
+  colProbe() {
+    return div().id("sub-cols-zoom-probe").absolute().top(0).left(0).w(100).h(0).on_size_change((size, cx) => {
+      const zoom = size.width / 100;
+      if (!zoom || Math.abs((this.colZoom ?? 0) - zoom) < 0.001) return;
+      this.colZoom = zoom;
+      cx.notify();
+    });
+  }
+
   fits(part) {
     return (size, cx) => {
       if (Math.abs((this.fit?.[part] ?? -1) - size.height) < 0.5) return;

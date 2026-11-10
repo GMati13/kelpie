@@ -98,33 +98,40 @@ div
                     "Show less"
             h_flex
               v_flex
-                v_flex #sub-row-ACME-143 [border=border hover(bg=hover)]
+                div #sub-cols-zoom-probe {size_change}
+                div #subs-mine [fg=muted]
+                  "Assigned to you"
+                v_flex #sub-row-ACME-143 [border=border hover(bg=hover)] {hover}
                   h_flex
-                    div [font="DM Mono" fg=dim]
-                      "ACME-143"
-                    div #sub-title-ACME-143 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Hide the description"
-                      "Cache trips in IndexedDB"
                     div #sub-assignee-ACME-143
                       div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
                         "AM"
-                    Popup.new "sub-status-ACME-143-menu"
-                      div #sub-status-ACME-143-more [hover(bg=hover)] {click} tip="Change the status"
-                        div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
-                          "In progress"
-                          div
-                            div
-                              div [bg=#7fb3ae]
-                    div
+                    div [font="DM Mono" fg=dim]
+                      "ACME-143"
+                    h_flex #sub-main-ACME-143
+                      div #sub-title-ACME-143 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Hide the description"
+                        "Cache trips in IndexedDB"
+                      h_flex #sub-actions-ACME-143
+                        div
+                          div [bg=background/24] ×6 … [bg=background/db]
+                        h_flex [bg=background]
+                          h_flex #sub-agent-ACME-143-peek [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Answer ACME-143 here, without switching spaces"
+                            "Peek"
+                    h_flex #sub-mark-ACME-143 tip="ACME-143: needs you"
                       div
-                        div [bg=#e8603f52] ~loop(opacity)
-                        div [bg=#e8603f]
-                        div [bg=#ffb39a opacity=0.75]
-                    h_flex #sub-agent-ACME-143-peek [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Answer ACME-143 here, without switching spaces"
-                      "Peek"
-                    h_flex #sub-agent-ACME-143-show [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Show ACME-143"
-                      "Show agent"
-                    h_flex #sub-agent-ACME-143-pause [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Close its tab and keep its Claude session to resume later"
-                      "Pause"
+                        div
+                          div [bg=#e8603f52] ~loop(opacity)
+                          div [bg=#e8603f]
+                          div [bg=#ffb39a opacity=0.75]
+                    h_flex
+                      h_flex #sub-status-cell-ACME-143 {size_change}
+                        Popup.new "sub-status-ACME-143-menu"
+                          div #sub-status-ACME-143-more [hover(bg=hover)] {click} tip="Change the status"
+                            div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                              "In progress"
+                              div
+                                div
+                                  div [bg=#7fb3ae]
                   div
                     div #sub-desc-ACME-143-body [font="Fraunces" fg=foreground/c4]
                       v_flex
@@ -207,39 +214,45 @@ div
                       div
                         svg own:git-pull-request [fg=accent]
                       "web#418"
-                v_flex #sub-row-ACME-144 [border=border hover(bg=hover)]
+                v_flex #sub-row-ACME-144 [border=border hover(bg=hover)] {hover}
                   h_flex
-                    div [font="DM Mono" fg=dim]
-                      "ACME-144"
-                    div #sub-title-ACME-144 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
-                      "Queue offline edits and sync them back"
-                    div [fg=dim]
-                      "No PR yet"
                     div #sub-assignee-ACME-144
                       div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
                         "AM"
-                    Popup.new "sub-status-ACME-144-menu"
-                      div #sub-status-ACME-144-more [hover(bg=hover)] {click} tip="Change the status"
-                        div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
-                          "To do"
-                          div
-                            div
-                              div [border=dim]
-                    h_flex #sub-agent-ACME-144-start [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start a Claude agent on ACME-144"
-                      "Start agent"
-                v_flex #sub-row-ACME-145 [border=border hover(bg=hover)]
-                  h_flex
                     div [font="DM Mono" fg=dim]
-                      "ACME-145"
-                    div #sub-title-ACME-145 [font="DM Sans" fg=muted hover(fg=accent)] {click} tip="Show the description"
-                      "Design the offline banner"
+                      "ACME-144"
+                    h_flex #sub-main-ACME-144
+                      div #sub-title-ACME-144 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                        "Queue offline edits and sync them back"
+                    h_flex #sub-mark-ACME-144
+                    h_flex
+                      h_flex #sub-status-cell-ACME-144 {size_change}
+                        Popup.new "sub-status-ACME-144-menu"
+                          div #sub-status-ACME-144-more [hover(bg=hover)] {click} tip="Change the status"
+                            div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                              "To do"
+                              div
+                                div
+                                  div [border=dim]
+                div #subs-others [fg=muted]
+                  "Everyone else"
+                v_flex #sub-row-ACME-145 [border=border hover(bg=hover)] {hover}
+                  h_flex
                     div #sub-assignee-ACME-145
                       div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
                         "TR"
-                    Popup.new "sub-status-ACME-145-menu"
-                      div #sub-status-ACME-145-more [hover(bg=hover)] {click} tip="Change the status"
-                        div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
-                          "Done"
-                          div
-                            div
-                              div [bg=#9dbb84]
+                    div [font="DM Mono" fg=dim]
+                      "ACME-145"
+                    h_flex #sub-main-ACME-145
+                      div #sub-title-ACME-145 [font="DM Sans" fg=muted hover(fg=accent)] {click} tip="Show the description"
+                        "Design the offline banner"
+                    h_flex #sub-mark-ACME-145
+                    h_flex
+                      h_flex #sub-status-cell-ACME-145 {size_change}
+                        Popup.new "sub-status-ACME-145-menu"
+                          div #sub-status-ACME-145-more [hover(bg=hover)] {click} tip="Change the status"
+                            div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                              "Done"
+                              div
+                                div
+                                  div [bg=#9dbb84]
