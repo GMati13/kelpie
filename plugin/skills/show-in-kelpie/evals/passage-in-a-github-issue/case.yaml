@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: passage-in-a-github-issue
+expected_outcome: |
+  The story is a GitHub Project's issue (acme/web#42, key WEB-42), not a Jira ticket. Calls show_passage once with key WEB-42 and a quote copied word for word from the issue's Errors section (the sentence starting "If the export fails", or "Never download a half-written file"), a short note, and answers the question.
+context:
+  scaffold_script: place-files.sh

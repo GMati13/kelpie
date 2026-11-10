@@ -1,6 +1,6 @@
 ---
 name: show-in-kelpie
-description: Point the person to the exact place in a Jira story's description, opened and marked in Kelpie (their Herdr story view), instead of only quoting it. Use this whenever they ask where a story or ticket says, mentions, requires or describes something ("where does it say…", "which part covers…", "show me the acceptance criteria about…", "is that actually in the ticket?", "point me to it"), even when they don't mention Kelpie, and whenever you're about to quote a story's description back at them to back up an answer.
+description: Point the person to the exact place in a story's description (a ticket on their Jira board or GitHub Project), opened and marked in Kelpie (their Herdr story view), instead of only quoting it. Use this whenever they ask where a story or ticket says, mentions, requires or describes something ("where does it say…", "which part covers…", "show me the acceptance criteria about…", "is that actually in the ticket?", "point me to it"), even when they don't mention Kelpie, and whenever you're about to quote a story's description back at them to back up an answer.
 ---
 
 # Show it in Kelpie
@@ -9,7 +9,7 @@ The person reads their stories in Kelpie. When they ask where a story says somet
 
 ## Steps
 
-1. **Read the story's description** the way you normally reach Jira. If you can't reach it, say so and stop: don't guess a passage.
+1. **Read the story's description** through your own access to wherever the ticket lives (a Jira issue, or the GitHub issue of a GitHub Project). If you can't reach it, say so and stop: don't guess a passage.
 2. **Pick the passage**: the sentence or few that answer the question, nothing longer. If the description doesn't say it, tell them so rather than showing the closest thing.
 3. **Call `show_passage`** (the Kelpie plugin's tool):
    - `key`: the story the description belongs to.

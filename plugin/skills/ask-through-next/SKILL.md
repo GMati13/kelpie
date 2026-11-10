@@ -23,7 +23,7 @@ Not when you're reporting finished work, when you could reasonably decide yourse
 2. Before you finish, call `add_to_next` (the Kelpie plugin's tool) once:
    - `action`: what to do, a verb first, under 60 characters: "Choose read-only or synced offline trips".
    - `why`: one short line on what it's about or why it matters now.
-   - `key`: the Jira key you're working on, when there is one; `url` instead for a GitHub page.
+   - `key`: the ticket key you're working on (like `ABC-123`, from Jira or a GitHub Project), when there is one; `url` instead for a GitHub page.
 3. One call per question. Asking again with the same `action` replaces it, and three at most stay from you. It goes once they click or drop it, or when your terminal closes, so there's nothing to clean up.
 
 If the tool isn't there or Kelpie can't be reached, just ask in your reply.
