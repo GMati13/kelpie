@@ -362,6 +362,7 @@
       "checks": "SUCCESS",
       "reviewer": true,
       "author": "priya-n",
+      "body": "## What\nShare a trip with a read-only link that works for 14 days, without signing in.\n\n## How\n- `shareLink()` asks the API for a token and builds the link\n- The link opens the trip read-only\n\n<!-- Describe how you tested it -->\n## Checklist\n- [x] Tests\n- [ ] Docs\n\nCloses [ACME-166](https://jira.example.com/browse/ACME-166).",
       "files": [
         {
           "path": "src/share/link.ts",

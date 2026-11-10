@@ -2,7 +2,7 @@
 // line estimate (adfLines) and their text for prompts (adfText). Nothing written may be lost.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { adfBlocks, adfLines, adfText } from "../../mods/kelpie/adf.js";
+import { adfBlocks, adfLines, adfText, markdownBlocks } from "../../mods/kelpie/adf.js";
 import { adfOf } from "../../mods/kelpie/demo.js";
 
 const doc = (...content) => ({ type: "doc", version: 1, content });
@@ -102,5 +102,41 @@ describe("adfText: the blocks as text for a prompt", () => {
   });
   test("a heading level is capped at 6", () => {
     assert.equal(adfText([{ kind: "h", level: 9, runs: [{ text: "deep" }] }]), "###### deep");
+  });
+});
+
+describe("markdownBlocks: a pull request's description", () => {
+  const plain = (runs) => runs.map((r) => (r.br ? "\n" : r.text)).join("");
+  test("headings, paragraphs with their line breaks, lists, task lists, code, quotes, tables", () => {
+    const b = markdownBlocks("## What\nfirst line\nsecond line\n\n- one\n- two\n\n1. a\n2. b\n\n- [x] done\n- [ ] todo\n\n```js\nconst x = 1;\n```\n\n> quoted\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n---");
+    assert.deepEqual(b.map((x) => x.kind), ["h", "p", "list", "list", "list", "code", "quote", "p", "p"]);
+    assert.equal(b[0].level, 3);
+    assert.equal(plain(b[1].runs), "first line\nsecond line");
+    assert.deepEqual(b[2].items.map((i) => plain(i[0].runs)), ["one", "two"]);
+    assert.equal(b[3].ordered, true);
+    assert.deepEqual(b[4].items.map((i) => plain(i[0].runs)), ["☑ done", "☐ todo"]);
+    assert.equal(b[5].text, "const x = 1;");
+    assert.equal(plain(b[6].blocks[0].runs), "quoted");
+    assert.deepEqual([plain(b[7].runs), plain(b[8].runs)], ["a  ·  b", "1  ·  2"]);
+  });
+  test("inline code, bold, italic and links; code keeps its Markdown as text", () => {
+    const [p] = markdownBlocks("Use `a **b**` with **bold**, *it* and [the docs](https://example.com/docs).");
+    assert.deepEqual(p.runs.filter((r) => r.code || r.bold || r.italic || r.link).map((r) => [r.text, r.code, r.bold, r.italic, r.link]),
+      [["a **b**", true, false, false, null], ["bold", false, true, false, null], ["it", false, false, true, null], ["the docs", false, false, false, "https://example.com/docs"]]);
+  });
+  // Anyone opening a pull request writes this: only web links stay links.
+  test("a link that isn't http(s) is only its text", () => {
+    const [p] = markdownBlocks("[click](javascript:alert(1)) [file](file:///etc/passwd) [x](HTTPS://ok.example)");
+    assert.deepEqual(p.runs.filter((r) => r.text.trim()).map((r) => [r.text, r.link]), [["click", null], ["file", null], ["x", "HTTPS://ok.example"]]);
+  });
+  test("comments and images go, other tags leave their text", () => {
+    const b = markdownBlocks("<!-- fill this in\nplease -->\nBefore ![shot](https://x.example/a.png) <b>after</b><br>end\n\n<!-- only a hint -->");
+    assert.equal(b.length, 1);
+    assert.equal(plain(b[0].runs), "Before  after end");
+  });
+  test("an empty description has no blocks", () => {
+    assert.deepEqual(markdownBlocks(""), []);
+    assert.deepEqual(markdownBlocks(null), []);
+    assert.deepEqual(markdownBlocks("<!-- template only -->"), []);
   });
 });

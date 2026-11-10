@@ -129,6 +129,11 @@ function asPull(f, p) {
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };
 }
+// pullBody() for a demo profile: the fixture's description of the pull request, if any.
+export async function demoPullBody(url) {
+  const f = await demoFixture();
+  return f.pulls.find((x) => prUrl(f, x) === url)?.body ?? "";
+}
 // approvePull() for a demo profile: the pull request shows approved until the mod reloads.
 const APPROVED = new Set();
 export async function demoApprove(url) {

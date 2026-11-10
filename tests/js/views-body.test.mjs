@@ -62,3 +62,12 @@ test("the fade shows only while the details are taller than their block", async 
 test("a review's details", async () => {
   snap("body/review", (await body({ preview: "review:web#421" })).el);
 });
+
+// A pull request shown on its own shows its description (the demo's, GitHub Markdown), folded like a
+// ticket's; its template's hint comment doesn't show.
+test("a review's details show its description", async () => {
+  const { el } = await body({ preview: "review:web#421" });
+  const words = render(byId(el, "pr-desc-body"), skinTheme());
+  assert.match(words, /Share a trip with a read-only link that works for 14 days/);
+  assert.doesNotMatch(words, /Describe how you tested it/);
+});

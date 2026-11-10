@@ -18,8 +18,8 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { PREVIEWS, STORIES, chooseProfile, claudeArgv, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
-import { approvePull, searchPulls } from "./pulls.js";
-import { adfBlocks, adfLines, adfText } from "./adf.js";
+import { approvePull, pullBody, searchPulls } from "./pulls.js";
+import { adfBlocks, adfLines, adfText, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands } from "./skins/common.js";
@@ -1876,11 +1876,14 @@ export class Stories extends Source {
     return [ask, show, approval].filter(Boolean);
   }
 
-  // A pull request shown on its own: who opened it (a review's), its checks and review, and when it
-  // last changed. Its files are in the Changes view.
-  reviewDetail(t, st, it, note) {
+  // A pull request shown on its own: who opened it (a review's), its checks and review, when it last
+  // changed, and its description (GitHub's Markdown, loaded when shown, folded like a ticket's). Its
+  // files are in the Changes view.
+  reviewDetail(t, st, it, note, cx) {
     const p = lonePr(it);
     const c = CHECKS[checksOf(p)], r = REVIEW[p.reviewDecision];
+    const demo = Boolean(st.setup.github?.demo) || isDemo(st.profile);
+    const about = this.description(t, st, `pr:${p.url}`, cx, { id: "pr-desc", fold: true, load: async () => markdownBlocks(await pullBody(p, { demo })) });
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       .when(Boolean(note), (el) => el.child(note))
       .child(h_flex().flex_none().gap(6).items_center().text_size(SMALL).text_color(t.muted)
@@ -1889,11 +1892,12 @@ export class Stories extends Source {
         .when(Boolean(c), (el) => el.child(chip(t, c[0], t[c[1]])))
         .when(!p.isDraft && Boolean(r), (el) => el.child(chip(t, r[0], t[r[1]]))))
       .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(it.review ? "Start review opens a Claude agent on it, in the Reviews space."
-        : "It names no ticket, so its agents work on the Desk."));
+        : "It names no ticket, so its agents work on the Desk."))
+      .when(Boolean(about), (el) => el.child(div().id("pr-desc-view").flex_1().min_h(0).overflow_y_scrollbar().child(about)));
   }
 
   detail(t, st, it, cx, note = null) {
-    if (lonePr(it)) return this.reviewDetail(t, st, it, note);
+    if (lonePr(it)) return this.reviewDetail(t, st, it, note, cx);
     // A subtask's title shows its description under it, and hides it again.
     const opened = (s) => this.opened.has(s.key);
     const title = (s) => skinFont(div(), "ui").id(`sub-title-${s.key}`).flex_1().min_w(0).truncate().cursor_pointer().text_color(s.category === "done" ? t.muted : t.foreground).hover((x) => x.text_color(t.accent))
@@ -1985,16 +1989,16 @@ export class Stories extends Source {
   }
 
   // A ticket's description, loaded when first shown and again after the stories reload (st.at) once
-  // it's DESC_EVERY old, or after a Refresh press.
-  descriptionOf(st, key, cx) {
+  // it's DESC_EVERY old, or after a Refresh press. `load` gives the blocks of something else's (a
+  // pull request's, by its own key); the default asks Jira for the ticket's.
+  descriptionOf(st, key, cx, load = async () => adfBlocks((await jira(st.setup.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description)) {
     const d = this.descs[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
     this.descs[key] = { ...(d ?? {}), loading: true, at: d?.at ?? 0 };
     cx.spawn(async (cx) => {
       try {
-        const r = await jira(st.setup.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`);
-        this.descs[key] = { blocks: adfBlocks(r.body?.fields?.description), at: Date.now() };
+        this.descs[key] = { blocks: await load(), at: Date.now() };
       } catch (e) {
         this.descs[key] = { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() };
       }
@@ -2005,8 +2009,8 @@ export class Stories extends Source {
 
   // A ticket's description, or null: nothing while it loads or when it's empty. Folded to a few lines
   // with "Show more" when `fold`; unfolded, it's all there (the header scrolls).
-  description(t, st, key, cx, { id, fold = false } = {}) {
-    const d = this.descriptionOf(st, key, cx);
+  description(t, st, key, cx, { id, fold = false, load } = {}) {
+    const d = this.descriptionOf(st, key, cx, load);
     if (!d.blocks) return d.error ? div().id(`${id}-error`).text_size(SMALL).text_color(t.dim).tooltip(d.error).child("Couldn't load the description") : null;
     if (!d.blocks.length) return null;
     const more = this.more.has(key);

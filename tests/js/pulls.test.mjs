@@ -4,7 +4,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { approvePull, searchPulls } from "../../mods/kelpie/pulls.js";
+import { approvePull, pullBody, searchPulls } from "../../mods/kelpie/pulls.js";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const PR = { url: "https://github.com/acme/web/pull/42", number: 42, repository: { name: "web" }, headRefOid: SHA };
@@ -40,4 +40,12 @@ test("searchPulls: your own latest review comes as viewerReview", async () => {
   const prs = await searchPulls("is:pr");
   assert.deepEqual(prs.map((p) => p.viewerReview), ["APPROVED", null]);
   assert.ok(prs.every((p) => !("viewerLatestReview" in p)));
+});
+
+test("pullBody: reads the description through the API, for a github.com pull request only", async () => {
+  mock.on.exec = () => ({ code: 0, stderr: "", stdout: "## What\nIt does this.\n" });
+  assert.equal(await pullBody(PR), "## What\nIt does this.");
+  assert.deepEqual(mock.of("exec"), [["gh", ["api", "repos/acme/web/pulls/42", "--jq", '.body // ""'], {}]]);
+  await assert.rejects(pullBody({ ...PR, url: "https://evil.example/acme/web/pull/42" }), /isn't a GitHub pull request's/);
+  assert.equal(mock.of("exec").length, 1);
 });

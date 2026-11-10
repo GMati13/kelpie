@@ -8,7 +8,7 @@ import { exec } from "herdr";
 import { skinTheme } from "./skins/index.js";
 import { SMALL, ago, avatar, chip, openExternal, textButton } from "./ui.js";
 import { Source, empty, frame, needsSetup, startAgent } from "./source.js";
-import { demoApprove, demoPulls } from "./demo.js";
+import { demoApprove, demoPullBody, demoPulls } from "./demo.js";
 
 const QUERY = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number title url isDraft updatedAt reviewDecision headRefOid author { login } repository { name }
@@ -51,6 +51,17 @@ export async function approvePull(pr, { demo = false } = {}) {
   const at = /^[0-9a-f]{40}$/.test(pr.headRefOid ?? "") ? ["-f", `commit_id=${pr.headRefOid}`] : [];
   const r = await exec("gh", ["api", "--method", "POST", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/reviews`, "-f", "event=APPROVE", ...at]);
   if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split("\n")[0].replace(/^gh: /, "") || "GitHub didn't take the approval.");
+}
+
+// A pull request's description (its Markdown), loaded when it's shown: the search doesn't carry it,
+// as some are long. The same address check as approvePull; `demo`: the fixture's.
+export async function pullBody(pr, { demo = false } = {}) {
+  const m = PULL_URL.exec(pr?.url ?? "");
+  if (!m) throw new Error("its address isn't a GitHub pull request's.");
+  if (demo) return demoPullBody(pr.url);
+  const r = await exec("gh", ["api", `repos/${m[1]}/${m[2]}/pulls/${m[3]}`, "--jq", ".body // \"\""]);
+  if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split("\n")[0].replace(/^gh: /, "") || "GitHub didn't send the description.");
+  return r.stdout.replace(/\n$/, "");
 }
 
 // GitHub gives a review decision only where the branch requires reviews; elsewhere it's null however

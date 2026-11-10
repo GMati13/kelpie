@@ -99,3 +99,86 @@ export function adfText(list, indent = "") {
     return `${indent}${line(b.runs)}`;
   }).join("\n\n");
 }
+
+// A pull request's description (GitHub Markdown) as the same blocks, so the views draw it as they do
+// a ticket's. Enough of Markdown to read by: headings, paragraphs (a line break stays one, as GitHub
+// shows them), lists and task lists, fenced code, quotes, tables as a row a line, and inline code,
+// bold, italic and links. HTML comments (templates' hints) and images go; other tags are dropped but
+// their text kept. Others write these: only http(s) links stay links, the rest is text.
+export function markdownBlocks(md) {
+  const text = String(md ?? "").replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?(-->|$)/g, "");
+  const lines = text.split("\n");
+  const out = [];
+  let para = null, list = null;
+  const end = () => { para = null; list = null; };
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const fence = /^\s*(```|~~~)/.exec(raw);
+    if (fence) {
+      const code = [];
+      for (i++; i < lines.length && !lines[i].trimStart().startsWith(fence[1]); i++) code.push(lines[i]);
+      end();
+      out.push({ kind: "code", text: code.join("\n") });
+      continue;
+    }
+    const line = stripTags(raw);
+    if (!line.trim()) { end(); continue; }
+    const h = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h) { end(); out.push({ kind: "h", level: Math.min(6, h[1].length + 1), runs: mdRuns(h[2]) }); continue; }
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) { end(); continue; } // a rule
+    const q = /^\s{0,3}>\s?(.*)$/.exec(line);
+    if (q) {
+      const quote = [q[1]];
+      while (i + 1 < lines.length && /^\s{0,3}>/.test(lines[i + 1])) quote.push(stripTags(lines[++i]).replace(/^\s{0,3}>\s?/, ""));
+      end();
+      const inner = markdownBlocks(quote.join("\n"));
+      if (inner.length) out.push({ kind: "quote", blocks: inner });
+      continue;
+    }
+    if (/^\s*\|/.test(line)) {
+      end();
+      if (/^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(line)) continue; // the row under a table's header
+      const cells = line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).filter(Boolean);
+      if (cells.length) out.push({ kind: "p", runs: mdRuns(cells.join("  ·  ")) });
+      continue;
+    }
+    const item = /^\s*([-*+]|(\d+)[.)])\s+(.*)$/.exec(line);
+    if (item) {
+      const ordered = Boolean(item[2]);
+      const task = /^\[([ xX])\]\s+(.*)$/.exec(item[3]);
+      const runs = task ? [{ text: task[1] === " " ? "☐ " : "☑ " }, ...mdRuns(task[2])] : mdRuns(item[3]);
+      if (!list || list.ordered !== ordered) { para = null; list = { kind: "list", ordered, start: ordered ? Number(item[2]) : 1, items: [] }; out.push(list); }
+      list.items.push([{ kind: "p", runs }]);
+      continue;
+    }
+    // A line under a list item, indented, goes on with it; any other starts or goes on with a paragraph.
+    if (list && /^\s+\S/.test(line)) { const runs = list.items[list.items.length - 1][0].runs; runs.push({ br: true }, ...mdRuns(line.trim())); continue; }
+    list = null;
+    if (para) para.runs.push({ br: true }, ...mdRuns(line.trim()));
+    else { para = { kind: "p", runs: mdRuns(line.trim()) }; out.push(para); }
+  }
+  return out.filter((b) => b.kind !== "p" || b.runs.some((r) => r.br || r.text.trim()));
+}
+
+// Tags dropped (a line break tag kept as a space), their text kept; images and the like vanish.
+const stripTags = (line) => line.replace(/<br\s*\/?>/gi, " ").replace(/<\/?[a-z][^>]*>/gi, "");
+
+// Inline Markdown as runs: `code` first (nothing inside it is Markdown), then links, bold, italic.
+function mdRuns(text) {
+  const out = [];
+  // A link's address may hold one level of brackets (a wiki page's, say), and a title after a space.
+  const url = String.raw`((?:[^()\s]|\([^()\s]*\))*)(?:\s+"[^"]*")?`;
+  const re = new RegExp(String.raw`\x60([^\x60]+)\x60|!\[([^\]]*)\]\(${url}\)|\[([^\]]+)\]\(${url}\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\s][^*]*)\*|(?<![\w])_([^_\s][^_]*)_(?![\w])`, "g");
+  let at = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > at) out.push({ text: text.slice(at, m.index) });
+    if (m[1] !== undefined) out.push({ text: m[1], code: true });
+    else if (m[3] !== undefined) { /* an image: nothing to read */ }
+    else if (m[4] !== undefined) out.push(/^https?:\/\//i.test(m[5]) ? { text: m[4], link: m[5] } : { text: m[4] });
+    else if (m[6] !== undefined || m[7] !== undefined) out.push({ text: m[6] ?? m[7], bold: true });
+    else out.push({ text: m[8] ?? m[9], italic: true });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push({ text: text.slice(at) });
+  return out.map((r) => ({ bold: false, italic: false, code: false, link: null, ...r }));
+}
