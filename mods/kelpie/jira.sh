@@ -27,13 +27,16 @@ site=${1%/}
 item=$2
 shift 2 2>/dev/null
 
+nl='
+'
+cr=$(printf '\r')
+# One line, nothing else: grep matches line by line, so a second line could hide behind a good first.
+oneline() { case "$1" in *"$nl"*|*"$cr"*) return 1 ;; esac; }
 # Jira Cloud only: the token goes to this site, so nothing but https://<name>.atlassian.net.
-if ! printf '%s' "$site" | grep -Eq '^https://[A-Za-z0-9-]+\.atlassian\.net$'; then
+if ! oneline "$site" || ! printf '%s' "$site" | grep -Eq '^https://[A-Za-z0-9-]+\.atlassian\.net$'; then
   jq -nc '{code: 0, error: "site"}'; exit 0
 fi
 
-nl='
-'
 if [ -n "$token_command" ]; then
   # Its errors are dropped too: a secret tool's message could quote what it read.
   if ! token=$("${SHELL:-/bin/sh}" -c "$token_command" 2>/dev/null </dev/null) || [ -z "$token" ]; then
@@ -72,7 +75,7 @@ case "$1" in
     case "$2" in /rest/*) ;; *) jq -nc '{code: 0, error: "path"}'; exit 0 ;; esac
     set -- "$site$2" ;;
   transition)
-    printf %s "$2" | grep -Eq '^[A-Z][A-Z0-9_]*-[0-9]+$' && printf %s "$3" | grep -Eq '^[0-9]+$' || { jq -nc '{code: 0, error: "usage"}'; exit 0; }
+    oneline "$2" && oneline "$3" && printf %s "$2" | grep -Eq '^[A-Z][A-Z0-9_]*-[0-9]+$' && printf %s "$3" | grep -Eq '^[0-9]+$' || { jq -nc '{code: 0, error: "usage"}'; exit 0; }
     set -- -X POST "$site/rest/api/3/issue/$2/transitions" --data "$(jq -nc --arg id "$3" '{transition: {id: $id}}')" ;;
   *) jq -nc '{code: 0, error: "usage"}'; exit 0 ;;
 esac

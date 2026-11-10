@@ -50,9 +50,8 @@ describe("sendToClaude refuses anything else", () => {
       assert.deepEqual(sends(), []);
     });
   }
-  // A real gap, left for the person: the @anthropic-ai/claude-code pattern isn't anchored or tied to
-  // node, so any program whose argv names that package counts as Claude.
-  test("a shell whose argv names the @anthropic-ai/claude-code package", { todo: "BUG: the package pattern in sendToClaude (config.js) matches anywhere in any program's argv" }, async () => {
+  // The package's path counts only as the script node runs, never named anywhere in a command line.
+  test("a shell whose argv names the @anthropic-ai/claude-code package", async () => {
     foreground = { name: "bash", argv: ["bash", "-c", "ls ~/.npm/@anthropic-ai/claude-code"] };
     await assert.rejects(sendToClaude("t1", "x"));
     assert.deepEqual(sends(), []);

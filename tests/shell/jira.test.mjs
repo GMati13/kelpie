@@ -12,7 +12,6 @@ const EMAIL = "me@example.com";
 // `printf | grep -Eq`, which matches line by line, so a value with a line break passes when any one
 // line of it is valid (`https://acme.atlassian.net\nhttps://evil.com` passes the site check). curl
 // then refuses the malformed URL, so nothing is sent today, but the check itself doesn't hold.
-const NEWLINE_BUG = "BUG: grep matches line by line, so a value with a line break passes (jira.sh site and transition checks)";
 
 // Fakes: curl writes a signed-in answer (-o body, -D headers) and prints 200; security answers the
 // Keychain item from FAKE_TOKEN and FAKE_ACCT.
@@ -55,7 +54,7 @@ describe("jira.sh: the site", () => {
     "https://acme.atlassian.net\nhttps://evil.com",
     "",
   ]) {
-    test(`refuses ${JSON.stringify(site)} before signing in or calling curl`, { todo: site.includes("\n") && NEWLINE_BUG }, () => {
+    test(`refuses ${JSON.stringify(site)} before signing in or calling curl`, () => {
       const f = fakes();
       const r = jira(f, [...byCommand(), site, "", "get", "/rest/api/3/myself"]);
       assert.equal(r.json?.error, "site");
@@ -142,7 +141,7 @@ describe("jira.sh: the sign-in can't add curl options", () => {
 
 describe("jira.sh: transition", () => {
   for (const [key, id] of [["abc-1", "31"], ["ABC-1;x", "31"], ["ABC-1/../../x", "31"], ["ABC", "31"], ["-1", "31"], ["ABC-1", "3a"], ["ABC-1", ""], ["ABC-1", "1 2"], ["ABC-1\nABC-2", "31"], ["ABC-1", "31\n32"]]) {
-    test(`refuses key ${JSON.stringify(key)}, id ${JSON.stringify(id)}`, { todo: (key + id).includes("\n") && NEWLINE_BUG }, () => {
+    test(`refuses key ${JSON.stringify(key)}, id ${JSON.stringify(id)}`, () => {
       const f = fakes();
       const r = jira(f, [...byCommand(), SITE, "", "transition", key, id]);
       assert.equal(r.json?.error, "usage");

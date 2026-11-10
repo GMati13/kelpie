@@ -545,6 +545,21 @@ export function configureOnDesk(profile, scope = "all", agent = null) {
 // only, no secrets, and the same checks as the dialog's Save.
 const APPLY_KEYS = ["name", "folder", "jira", "github", "commands", "prompts", "notify", "claude", "web"];
 const SECRET = /token$|^token|password|secret/i;
+// A change to a profile from outside the dialog (an agent's request, a `herdr-app do` command): saved
+// at once, or, when it touches what needs the person's yes (CONFIRM_KEYS), held for the confirm dialog.
+// Every check runs first, so a change that would fail never waits. Returns the request's result.
+export function requestProfileChange(id, set) {
+  buildProfile(id, set);
+  const asks = needsYes(id, set);
+  if (!asks.length) return { ok: true, profile: applyProfile(id, set) };
+  setShared(PENDING, { id, set, at: Date.now() });
+  openOverlay({ mod: MOD, kind: "dialog", width: 560, height: Math.min(520, 220 + Math.min(asks.length, 10) * 26), props: {
+    role: "confirm", pendingProfile: true, title: `Claude wants to change ${profileById(id)?.name ?? id}`,
+    detail: "These settings can run commands, send your Jira sign-in somewhere or steer your agents, so they wait for your yes:",
+    items: asks, yes: "Save these changes" } });
+  return { ok: false, pending: true, error: "Waiting for the person to confirm these changes in Kelpie: nothing is saved until they do. Tell them to look at Kelpie." };
+}
+
 export async function applyProfileRequest() {
   const dir = `${appHome()}/kelpie`;
   const file = `${dir}/profile-apply.json`;
@@ -555,16 +570,7 @@ export async function applyProfileRequest() {
     const { id, set } = JSON.parse(read.stdout);
     if (typeof id !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("id: a profile id, lowercase letters, digits and dashes.");
     if (!set || typeof set !== "object" || Array.isArray(set)) throw new Error("set: an object of settings.");
-    buildProfile(id, set); // every check first: a request that would fail never waits for a yes
-    const asks = needsYes(id, set);
-    if (asks.length) {
-      setShared(PENDING, { id, set, at: Date.now() });
-      openOverlay({ mod: MOD, kind: "dialog", width: 560, height: Math.min(520, 220 + Math.min(asks.length, 10) * 26), props: {
-        role: "confirm", pendingProfile: true, title: `Claude wants to change ${profileById(id)?.name ?? id}`,
-        detail: "These settings can run commands, send your Jira sign-in somewhere or steer your agents, so they wait for your yes:",
-        items: asks, yes: "Save these changes" } });
-      result = { ok: false, pending: true, error: "Waiting for the person to confirm these changes in Kelpie: nothing is saved until they do. Tell them to look at Kelpie." };
-    } else result = { ok: true, profile: applyProfile(id, set) };
+    result = requestProfileChange(id, set);
   } catch (e) {
     result = { ok: false, error: String(e?.message ?? e) };
   }
@@ -667,9 +673,13 @@ export async function sendToClaude(address, text) {
   const r = await hc(["get", address, "--json"]);
   let fg = {};
   try { fg = JSON.parse(r.stdout || "{}").foreground ?? {}; } catch { /* unknown: refused below */ }
-  const argv = fg.argv ?? [];
-  const claude = fg.name === "claude" || argv.some((a) => /(^|\/)claude(\.m?js)?$|@anthropic-ai\/claude-code/.test(String(a)))
-    || argv.some((a) => /\/demo\/agent\.sh$/.test(String(a)));
+  // Only where a launcher puts the program counts: the process itself (its name, or its command, as
+  // Claude Code may name its process after its version), or the script node or sh runs (its first
+  // argument). A path named anywhere else in a command line (a shell's -c script) doesn't.
+  const [first, script] = (fg.argv ?? []).map(String);
+  const claude = fg.name === "claude" || /(^|\/)claude$/.test(first ?? "")
+    || (/(^|\/)node$/.test(first ?? "") && /(^|\/)claude(\.m?js)?$|\/@anthropic-ai\/claude-code\/[\w./-]*\.m?js$/.test(script ?? ""))
+    || (/(^|\/)sh$/.test(first ?? "") && /\/demo\/agent\.sh$/.test(script ?? ""));
   if (!claude) throw new Error(`it isn't running Claude (it runs ${fg.name || "something unknown"}), so nothing was sent`);
   return hc(["send", address, text]);
 }

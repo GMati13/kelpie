@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { bodyOf, put, readRepo, tempDir } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { applyPendingProfile, applyProfileRequest, buildProfile, needsYes, parseBoard, validEmail } from "../../mods/kelpie/config.js";
+import { applyPendingProfile, applyProfileRequest, buildProfile, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 
 const BOARD = "https://acme.atlassian.net/jira/software/c/projects/ABC/boards/12";
@@ -250,11 +250,18 @@ describe("the pending change", () => {
     assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command) {"), /if \(props\(\)\.pendingProfile\) return applyPendingProfile\(true\);/);
   });
 
-  // A real gap, left for the person: `kelpie.claude-<profile>--<folder>` (main.js command()) sets a
-  // profile's Claude account at once, and the account is a setting that waits for a yes when an agent
-  // asks through apply-profile (its settings can run hooks). An agent can run `herdr-app do`.
-  test("no kelpie.* command changes a setting that needs a yes", { todo: "BUG: kelpie.claude-<id>--<folder> saves claude.config without the confirm (main.js command())" }, () => {
+  // `kelpie.claude-<profile>--<folder>` (main.js command()) can be run by any agent (`herdr-app do`),
+  // and the Claude account waits for a yes (its settings can run hooks): it goes through
+  // requestProfileChange(), like an agent's request, and no command saves a profile itself.
+  test("no kelpie.* command changes a setting that needs a yes", () => {
     const command = bodyOf(readRepo("mods/kelpie/main.js"), "async function command(c) {");
     assert.doesNotMatch(command, /saveProfile\(/);
+    assert.match(command, /requestProfileChange\(id, \{ claude:/);
+  });
+  test("requestProfileChange holds a Claude account change for the yes", () => {
+    const r = requestProfileChange("work", { claude: { config: "/Users/me/.claude-evil" } });
+    assert.equal(r.pending, true);
+    assert.equal(saved().claude ?? null, SAVED.claude ?? null);
+    assert.deepEqual(pending().set, { claude: { config: "/Users/me/.claude-evil" } });
   });
 });

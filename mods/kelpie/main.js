@@ -16,7 +16,7 @@ import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
-import { applyProfileRequest, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
+import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { goDesk } from "./desk.js";
 import { demoAccounts, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { agentState, decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, statusMark, syncSkin } from "./skins/index.js";
@@ -556,14 +556,16 @@ async function command(c) {
   if (c === "show-notified" || c.startsWith("show-notified-")) return showNotified(c.slice("show-notified-".length));
   // From outside (herdr-app do kelpie.profile-<id> / kelpie.preview-<KEY>): pick a profile as its menu
   // does; show a story of the shown profile, its space or a preview.
-  // claude-<profile id>--<folder in home> sets that profile's Claude account (".claude": Claude's own,
-  // nothing set), for scripts such as a one-off folder move.
+  // claude-<profile id>--<folder in home> asks to set that profile's Claude account (".claude": Claude's
+  // own, nothing set), for scripts such as a one-off folder move; the person confirms it in a dialog.
   if (c.startsWith("claude-") && c.includes("--")) {
     const [id, dir] = [c.slice("claude-".length, c.indexOf("--")), c.slice(c.indexOf("--") + 2)];
     const p = profiles().find((x) => x.id === id);
     if (!p || !/^\.claude[\w.-]*$/.test(dir)) return;
     const home = (await exec("sh", ["-c", 'printf %s "$HOME"'])).stdout;
-    return saveProfile(id, { ...p, claude: dir === ".claude" ? null : { config: `${home}/${dir}` } });
+    // The Claude account is one of the settings that wait for the person's yes (CONFIRM_KEYS): this
+    // command can be run by any agent, so it asks the same way an agent's profile change does.
+    return requestProfileChange(id, { claude: dir === ".claude" ? null : { config: `${home}/${dir}` } });
     return;
   }
   // apply-profile: an agent's change to a profile, from a file (guides/profile-setup.md, "Saving").
