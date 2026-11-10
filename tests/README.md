@@ -150,6 +150,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `demo.test.mjs`: each answer demo.js gives (Jira's board, sprints, searches, issues, transitions; pull
   requests, files, uncommitted work, sessions, limits) and a schema check of `demo.json` (parents,
   statuses, pull requests, tabs for agent.sh, `demo-` session ids, links reaching no one).
+- `project-check.test.mjs`: the profile dialog's GitHub Project Check (`project-check.js`) on a faked
+  `exec`: constant queries with the owner and number only as variables, the account through gh.sh, the
+  token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
+  offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
