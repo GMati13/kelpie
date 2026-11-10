@@ -30,10 +30,9 @@ div
               div [bg=#7fb3ae]
       div [bg=border]
       h_flex
+        div #story-finish [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-180, then the story"
+          svg own:check-check
         div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
           svg own:refresh-cw
         div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
           svg own:external-link
-        Popup.new "story-more-menu"
-          div #story-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="More for this story"
-            svg own:ellipsis

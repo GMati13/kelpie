@@ -1,0 +1,37 @@
+v_flex #kelpie-confirm [bg=popover] {key_down}
+  div [fg=foreground]
+    "Move ACME-138 to Done?"
+  v_flex #confirm-detail
+    div [fg=muted]
+      "This moves your subtasks of ACME-138 to Done on the board, one after another, then the story once every subtask is done. Others' subtasks are left as they are, as they aren't yours to close:"
+    v_flex
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-139"
+        div [fg=foreground]
+          "In Progress → Done"
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-138"
+        div [fg=foreground]
+          "In Progress → Done, once your subtasks are"
+    h_flex #confirm-check {click}
+      v_flex
+        div [fg=foreground]
+          "Clean up afterwards"
+        div [fg=dim]
+          "Once everything is moved, clean it up as the broom does: only if nothing of it is still open, running or uncommitted."
+      h_flex [bg=border]
+        div [bg=muted]
+  h_flex
+    h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      "Cancel"
+    h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+      "Move to Done"
+      div
+        div
+          div [bg=#7fb3ae]

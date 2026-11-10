@@ -521,6 +521,9 @@ v_flex [fg=foreground]
               div [bg=ansi4]
             div [fg=dim]
               "0/1"
+      div #finish-ACME-129 {down:left click}
+        div #finish-ACME-129-button [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-129, then the story"
+          svg own:check-check
     h_flex #story-ACME-116 [hover(bg=hover)] {click} tip="Paused · 1 subtask · 1 done"
       div
         div

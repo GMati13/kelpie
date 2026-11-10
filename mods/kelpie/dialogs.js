@@ -99,6 +99,9 @@ export class StoryPicker {
 
 export class Confirm {
   init(cx) {
+    // `check`: a choice under the list ({ label, on, about }), its state kept here (Move to Done's
+    // Clean up afterwards).
+    this.checked = Boolean(props()?.check?.on);
     this.handle = cx.focus_handle();
     this.handle.focus();
   }
@@ -115,9 +118,10 @@ export class Confirm {
     if (doneStory) {
       if (this.busy) return;
       this.busy = true;
-      if (!cx) return moveStoryToDone(doneStory).catch(() => null).finally(() => closeOverlay(overlay));
+      const ask = { ...doneStory, clean: props().check ? this.checked : null };
+      if (!cx) return moveStoryToDone(ask).catch(() => null).finally(() => closeOverlay(overlay));
       cx.notify?.();
-      cx.spawn(async () => { await moveStoryToDone(doneStory).catch(() => null); closeOverlay(overlay); });
+      cx.spawn(async () => { await moveStoryToDone(ask).catch(() => null); closeOverlay(overlay); });
       return;
     }
     if (install) {
@@ -154,10 +158,18 @@ export class Confirm {
         .when(Boolean(p.items?.length), (el) => el.child(v_flex().gap(4).pl(4).children(p.items.map((x) => h_flex().gap(8).items_start()
           .child(div().flex_none().text_color(t.dim).child("•"))
           .when(Boolean(x.key), (row) => row.child(div().flex_none().text_size(SMALL).mt(1).text_color(t.dim).child(x.key)))
-          .child(div().flex_1().min_w(0).text_color(t.foreground).child(x.text)))))))
+          .child(div().flex_1().min_w(0).text_color(t.foreground).child(x.text))))))
+        // `check`: a switch, as the profile dialog's (no square boxes in Kelpie), the whole row its click.
+        .when(Boolean(p.check), (el) => el.child(h_flex().id("confirm-check").gap(16).items_start().cursor_pointer()
+          .on_click((_e, cx) => { if (this.busy) return; this.checked = !this.checked; cx.notify(); })
+          .child(v_flex().flex_1().min_w(0).gap(2)
+            .child(div().text_color(t.foreground).child(p.check.label))
+            .when(Boolean(p.check.about), (c) => c.child(div().text_size(SMALL).text_color(t.dim).child(p.check.about))))
+          .child(h_flex().flex_none().mt(1).w(34).h(20).p(2).rounded_full().bg(this.checked ? t.accent : t.border).when(this.checked, (c) => c.justify_end())
+            .child(div().size(16).rounded_full().bg(this.checked ? t.accent_foreground : t.muted))))))
       .child(h_flex().justify_end().gap(DIALOG.gap)
         .child(textButton(t, "confirm-no", "Cancel", () => this.no()))
         .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, (_e, cx) => this.yes(p.alt.command, cx))))
-        .child(primaryButton(t, "confirm-yes", this.busy ? "Moving…" : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx)))), { role: "confirm", now: new Date() });
+        .child(primaryButton(t, "confirm-yes", this.busy ? (this.checked && p.check ? "Moving and cleaning up…" : "Moving…") : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx)))), { role: "confirm", now: new Date() });
   }
 }

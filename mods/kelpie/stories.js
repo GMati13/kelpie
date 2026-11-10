@@ -1112,6 +1112,7 @@ function pruneShared(profile, data) {
   keep(PR_SEEN, ([id]) => ids.has(id));
   keep(PR_FOLDS, ([id]) => ids.has(id));
   keep(DONE_OPEN, ([id]) => ids.has(id));
+  keep(DONE_CLEAN, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile), null, { all: true }).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
@@ -1257,6 +1258,8 @@ const HEAD_FOLDED = "kelpie.storyhead.folded";
 const PR_FOLDS = "kelpie.pulls.folded";
 // The sidebar's Done group unfolded by hand (profile id -> true); folded otherwise.
 const DONE_OPEN = "kelpie.done.open";
+// Move to Done's "Clean up afterwards", as last chosen (profile id -> true); off otherwise.
+const DONE_CLEAN = "kelpie.done.clean";
 export const headFolded = () => Boolean(shared(HEAD_FOLDED));
 function foldHead(shut) {
   setShared(HEAD_FOLDED, shut);
@@ -1898,6 +1901,14 @@ export class Stories extends Source {
     return iconButton(t, id, own("brush-cleaning"), () => askCleanUp(st.profile, it), `Clean up ${it.key}: ${cleanable(st.profile, it).join(", ")}`);
   }
 
+  // Move to Done, a double check (the header's icons, and each Built / Waiting on others row in the
+  // list), while something of the story is yours to move; it asks first in a dialog listing each ticket.
+  finishButton(t, st, it, id = "story-finish") {
+    const done = doneName(st.data);
+    return iconButton(t, id, own("check-check"), () => askMoveToDone(st, it),
+      it.story ? `Move to ${done}: your subtasks of ${it.key}, then the story` : `Move ${it.key} to ${done}`);
+  }
+
   // A small menu (ui.js menuButton), its open state kept on this view.
   menuButton(t, id, label, rows, tip, opts = {}) {
     return menuButton(this, t, id, label, rows, { tip, ...opts });
@@ -2101,6 +2112,10 @@ export class Stories extends Source {
         .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).when(quiet, (el) => el.opacity(0.6))
           .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
           .children(badges)))
+      // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
+      // it; its clicks stay off the row, as the broom's do.
+      .when(Boolean(st) && quiet && canMoveToDone(it), (el) => el.child(div().id(`finish-${it.key}`).flex_none().mt(2)
+        .on_mouse_down("left", stop).on_click(stop).child(this.finishButton(t, st, it, `finish-${it.key}-button`))))
       // A finished story's broom, at hand without opening it; its clicks stay off the row.
       .when(Boolean(st) && cleanable(st?.profile, it).length > 0, (el) => el.child(div().id(`clean-${it.key}`).flex_none().mt(2)
         .on_mouse_down("left", stop).on_click(stop).child(this.cleanButton(t, st, it, `clean-${it.key}`)))),
@@ -2220,15 +2235,12 @@ export class Stories extends Source {
       ...((work?.fresh && !over) || it.space ? [] : [{ label: "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start }]),
       ...(conductor ? [{ label: "Start orchestrator", tip: `Start one Claude agent that runs ${key} through its subtasks, with the profile's orchestrator prompt`,
         action: () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, conductor) })) }] : []),
-      // Move to Done: the person's own subtasks, then the story, to the board's done column, after a
-      // dialog listing each (askMoveToDone()).
-      ...(canMoveToDone(it) ? [{ label: `Move to ${doneName(st.data)}…`, action: () => askMoveToDone(st, it),
-        tip: it.story ? `Move your subtasks of ${it.key}, then the story, to ${doneName(st.data)} on the board` : `Move ${it.key} to ${doneName(st.data)} on the board` }] : []),
       ...(earlier.length ? [{ header: `Resume a session on ${key}` }, ...this.sessionRows(st, it, key, earlier)] : []),
     ];
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
     const clean = cleanable(st.profile, it).length ? this.cleanButton(t, st, it) : null;
-    const tasks = [unapproved.length ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null].filter(Boolean);
+    const tasks = [unapproved.length ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null,
+      canMoveToDone(it) ? this.finishButton(t, st, it) : null].filter(Boolean);
     return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
 
@@ -4048,8 +4060,12 @@ function askMoveToDone(st, it) {
   const detail = it.story
     ? `This moves your subtasks of ${it.key} to ${done} on the board, one after another, then the story once every subtask is done. Others' subtasks are left as they are, as they aren't yours to close:`
     : `This moves ${it.key} to ${done} on the board:`;
-  openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(items.length, 10) * 24), props: {
-    role: "confirm", title: `Move ${it.key} to ${done}?`, yes: `Move to ${done}`, doneStory: { profile: st.profile.id, key: it.key }, detail, items } });
+  // Clean up afterwards: offered only when the story will be done (a story that stays can't be
+  // cleaned up), off unless chosen last time.
+  const check = plan.story ? { label: "Clean up afterwards", on: Boolean((shared(DONE_CLEAN) ?? {})[st.profile.id]),
+    about: "Once everything is moved, clean it up as the broom does: only if nothing of it is still open, running or uncommitted." } : null;
+  openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(520, (check ? 250 : 200) + Math.min(items.length, 10) * 24), props: {
+    role: "confirm", title: `Move ${it.key} to ${done}?`, yes: `Move to ${done}`, doneStory: { profile: st.profile.id, key: it.key }, detail, items, check } });
 }
 
 // Move to Done's dialog button: moves what donePlan() says, as it stands now, one ticket after
@@ -4057,7 +4073,10 @@ function askMoveToDone(st, it) {
 // Project) doesn't stop the rest, and a story whose subtask didn't move stays. The new statuses show
 // at once, then the stories load once. Returns { moved, failed: [{ key, why }] }, null when the story
 // isn't the shown profile's any more.
-export async function moveStoryToDone({ profile, key }) {
+// With `clean` (the dialog's Clean up afterwards), once everything moved: the clean-up's own checks
+// (cleanBlockers(), uncommitted work), and the clean-up only when they all pass; else it says why.
+export async function moveStoryToDone({ profile, key, clean = null }) {
+  if (clean !== null) setShared(DONE_CLEAN, { ...(shared(DONE_CLEAN) ?? {}), [profile]: Boolean(clean) });
   const s = storyItems();
   const it = s?.st.profile.id === profile ? [...s.items, ...s.done].map((x) => x.it).find((x) => x.key === key) : null;
   const plan = donePlan(it);
@@ -4086,7 +4105,21 @@ export async function moveStoryToDone({ profile, key }) {
     ? ` Couldn't move ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: move ${failed.length === 1 ? "it" : "them"} by hand.` : ""}${stays}`;
   say(text, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
   if (failed.length) notify({ title: `Some of ${key} didn't move to ${done}`, body: failed.map((f) => `${f.key}: ${f.why}`).join("\n"), level: "warning" });
-  return { moved, failed };
+  if (!clean) return { moved, failed };
+  // The story as it is now: done when it moved (the loaded copy still has its old status).
+  const now = shownDone(it) ? { ...it, category: "done" } : it;
+  const why = cleanBlockers(now);
+  if (!why.length) why.push(...(await uncommitted(s.st.profile, now)).map((r) => `uncommitted work in ${r}`));
+  if (why.length) {
+    say(`${text} ${key} wasn't cleaned up: ${why.join(", ")}.`, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
+    notify({ title: `${key} wasn't cleaned up`, body: `${capitalize(why.join(", "))}.`, level: "warning" });
+    return { moved, failed, cleaned: false, why };
+  }
+  await cleanUp(s.st.profile, now);
+  // cleanUp() leaves its own note ("Cleaned up …"); the moves go before it.
+  const after = shared(NOTE);
+  if (after?.text) say(`${text} ${after.text}`, after.full ?? null);
+  return { moved, failed, cleaned: true };
 }
 
 // Clean up all's dialog (the list's broom beside its freshness line, and Next): every finished story

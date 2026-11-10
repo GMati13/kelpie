@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
-import { StoryList } from "../../mods/kelpie/stories.js";
+import { Stories, StoryList } from "../../mods/kelpie/stories.js";
 import { Confirm, StoryPicker } from "../../mods/kelpie/dialogs.js";
 import { Setup } from "../../mods/kelpie/setup.js";
 import { requestProfileChange } from "../../mods/kelpie/config.js";
@@ -52,6 +52,26 @@ test("Clean up all lists every finished story with something left", async () => 
   const { el } = await draw(new StoryList());
   press(el, "stories-clean-all");
   snap("dialogs/clean-up-all", lastDialog().el);
+});
+
+// Move to Done from a built story's row: each ticket and where it goes, and Clean up afterwards.
+test("Move to Done lists each ticket, with Clean up afterwards", async () => {
+  setupDemoWorld({ stories });
+  const { el } = await draw(new StoryList());
+  press(el, "finish-ACME-129-button");
+  const { spec, el: dialog } = lastDialog();
+  assert.equal(spec.props.title, "Move ACME-129 to Done?");
+  assert.equal(spec.props.check, null, "ACME-131 is someone else's and still open, so the story stays and nothing can be cleaned up");
+  snap("dialogs/move-to-done", dialog);
+});
+test("Move to Done of a story that will be done offers Clean up afterwards", async () => {
+  setupDemoWorld({ stories });
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-138" });
+  const { el } = await draw(new Stories());
+  press(el, "story-finish");
+  const { el: dialog } = lastDialog();
+  assert.ok(byId(dialog, "confirm-check"));
+  snap("dialogs/move-to-done-clean", dialog);
 });
 
 test("closing a story's last tab asks: Pause, or Close", () => {
