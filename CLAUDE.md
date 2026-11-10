@@ -24,7 +24,7 @@ docs/screenshots/               # the README's screenshots, of the demo (Demo be
 .claude/settings.json          # shared Claude Code permissions
 test.sh                        # runs every test suite (tests/README.md)
 tests/                         # stubs/ (herdr, gpui-kit, gpui-base for Node), lib/, js/, shell/, python/
-tests/snapshots/               # what each view draws, as text (js/views-*.test.mjs; UPDATE_SNAPSHOTS=1 re-records, reviewed like code)
+tests/snapshots/               # what each view draws, as text (js/views-*.test.mjs; re-recording: tests/README.md)
 scripts/pre-commit             # git hook running ./test.sh (enable: git config core.hooksPath scripts)
 scripts/e2e-demo.sh            # end-to-end check in a second Herdr window on a throwaway home (macOS, not CI; ask first)
 .github/workflows/test.yml     # CI: ./test.sh on macOS and Linux, on every push and pull request
@@ -42,14 +42,14 @@ scripts/e2e-demo.sh            # end-to-end check in a second Herdr window on a 
 
 ## Working routine
 
-- Run `./test.sh` before committing (about 10 s; the hook does it once enabled per clone: `git config core.hooksPath scripts`); nothing reaches main with a test failing (CI runs it on macOS and Linux). Any security-relevant change comes with a test that fails without it: break the protection, see the test fail, put it back. A test that finds a real bug outside the change is marked `{ todo: "BUG: ..." }`, not silently fixed. Writing tests and the stubs' API: `tests/README.md`. A mod's internals may be exported for a test (the `export` keyword only); a shell script a test must run lives in its own file under `mods/kelpie/` (like `skins/copy-art.sh`)
+- Tests: `./test.sh` before every commit (about 20 s; the hook, once enabled per clone with `git config core.hooksPath scripts`, and CI run it too). The rules for tests are `.claude/rules/testing.md`; the harness (stubs, helpers, snapshots, the end-to-end check) is `tests/README.md`. A mod's internals may be exported for a test (the `export` keyword only); a shell script a test must run lives in its own file under `mods/kelpie/` (like `skins/copy-art.sh`)
 - After editing a mod, re-create its link so hot reload notices: `ln -sfn "$PWD/mods/kelpie" ~/.config/herdr-app/mods/kelpie` from the repo (same for `kelpie-artifacts`), then `herdr-app check mods/kelpie` and `herdr-app status` (its errors list)
 - A layout file edit often isn't noticed while that layout is shown, even relinked: `herdr-app do layout.switch '{"name":"<another Kelpie layout>"}'` and back reloads it, but closes open Herdr windows (the settings window, say), so tell the user first. `layout.resize`/`layout.show` act live
 - Look before claiming: `node --check --input-type=module < file.js` for syntax, then `herdr-app shot <scratchpad>/x.png` and crop (PIL). For a state hard to reach (a near-limit footer), change the threshold temporarily, shoot, restore, and grep that the restore took
 - Driving the UI from outside (`herdr-app do kelpie.profile-<id>`, `kelpie.preview-<KEY>`, `pane.split`…): put the screen back as it was afterwards (profile, panel, sidebar width). `pane.split` once came out doubled: check `herdr-app ls` and close only the panes you made
 - Mods have no readable console: debug with a temporary `setShared("kelpie.debug.<role>", {...})`, written only on change (a write per render can loop), and read `~/.config/herdr-app/shared.json`. Herdr owns that file, stray keys can't be deleted by hand, so keep debug names obvious
 - `!`-prefixed commands get no TTY: anything interactive (`claude /login`) runs in a real Herdr terminal
-- `.claude/settings.json` is the shared permission list (read-only Herdr, git and gh commands; `hc kill`/`hc rm` always ask); personal permissions go in `.claude/settings.local.json` (git-ignored)
+- `.claude/settings.json` is the shared permission list (Herdr's, git's and gh's reading commands, though `gh api` is allowed whole, writes too: a known gap in `.claude/rules/security.md`; `hc kill`/`hc rm` always ask); personal permissions go in `.claude/settings.local.json` (git-ignored)
 
 ## Herdr notes
 
