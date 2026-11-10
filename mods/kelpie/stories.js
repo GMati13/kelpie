@@ -11,7 +11,7 @@
 //   folder on `claude --resume`.
 
 import { div } from "gpui-kit";
-import { h_flex, v_flex, Input, InputState, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
+import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
@@ -2454,9 +2454,11 @@ export class Stories extends Source {
     const progress = all.filter(seen).length;
     const keycap = (k) => div().flex_none().min_w(16).h(16).px(4).rounded(4).border_1().border_color(t.border).text_size(10.5).line_height("14px").text_center().text_color(t.muted).child(k);
     // Each side scrolls on its own: the files in their column, the diff both ways. Every box down
-    // to the scrolling ones has a definite height (h_full / flex_1 with min_h(0)).
-    return h_flex().flex_1().min_h(0).gap(0).items_stretch().border_t_1().border_color(t.border)
-      .child(v_flex().w(260).h_full().flex_none().min_h(0).border_r_1().border_color(t.border)
+    // to the scrolling ones has a definite height (h_full / flex_1 with min_h(0)). The file list's
+    // width is dragged by the line between them; Herdr keeps it under the group's id, the same for
+    // every story.
+    return h_resizable("changes-split").flex_1().min_h(0).border_t_1().border_color(t.border)
+      .child(resizable_panel().size(260).size_range(180, 640).child(v_flex().size_full().min_h(0).border_r_1().border_color(t.border)
         // ↑ and ↓ (and the diff's keys) work once the list has been clicked.
         .when(Boolean(this.filesFocus), (el) => el.track_focus(this.filesFocus).on_mouse_down("left", () => this.filesFocus.focus())
           .on_key_down(keys(true)))
@@ -2466,7 +2468,7 @@ export class Stories extends Source {
             .child(div().flex_1().text_color(t.muted).child(`${all.length} file${all.length === 1 ? "" : "s"}`))
             .child(div().flex_none().text_color(progress === all.length ? t.done : t.dim).child(progress === all.length ? "All viewed" : `${progress} of ${all.length} viewed`)))
           .child(h_flex().w_full().h(3).rounded(2).bg(t.raised).overflow_hidden()
-            .child(div().h_full().rounded(2).bg(t.done).w(Math.round((236 * progress) / all.length))))
+            .child(div().h_full().rounded(2).bg(t.done).w(`${(100 * progress) / all.length}%`)))
           // Every file on one page, or one at a time.
           .when(Boolean(this.diffScroll), (el) => el.child(h_flex().gap(2).pt(2)
             .child(textButton(t, "diff-all", "All files", (_e, cx) => { if (!DIFF.all) { DIFF.all = true; DIFF.version++; this.pendingJump = chosen.id; cx.notify(); } }, { on: DIFF.all, tip: "Every file on one page" }))
@@ -2499,10 +2501,10 @@ export class Stories extends Source {
         .when(Boolean(this.diffFocus), (el) => el.child(h_flex().flex_none().flex_wrap().px(12).py(8).gap(4).items_center().border_t_1().border_color(t.border).text_size(10.5).text_color(t.dim)
           .child(keycap("n")).child(keycap("p")).child(div().pr(6).child("change"))
           .child(keycap("]")).child(keycap("[")).child(div().pr(6).child("file"))
-          .child(keycap("v")).child(div().child("viewed")))))
+          .child(keycap("v")).child(div().child("viewed"))))))
       // The diff: both modes are the same list (one at a time it holds one file), each file under the
       // same header with its own actions, so there's no bar above it.
-      .child(v_flex().flex_1().h_full().min_w(0).min_h(0)
+      .child(resizable_panel().child(v_flex().size_full().min_w(0).min_h(0)
         // Asking the agent about a file: a bar above the diff naming it, while it's open.
         .children(this.askBar(t, st, it, all))
         .child(div().flex_1().min_h(0).relative()
@@ -2525,7 +2527,7 @@ export class Stories extends Source {
                   return drawn <= DRAW_FIRST ? line(e) : div().w_full().h(view.sizes[range.start + k] ?? ROW);
                 });
               }).size_full().on_item_click(clickRow).when(Boolean(scroller), (el) => el.track_scroll(scroller)))))
-          .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0())));
+          .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0()))));
   }
 
   // On the page of all files, after a scroll: the file at the top of what was last drawn becomes

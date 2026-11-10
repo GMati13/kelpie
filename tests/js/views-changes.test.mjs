@@ -114,3 +114,22 @@ test("diffRows: every patch of a big pull request stays parsed, not the last few
   assert.ok(patches.every((p, i) => diffRows(p) === rows[i]));
 });
 
+// The file list and the diff are a resizable split: the list starts 260 wide and is dragged between
+// 180 and 640, the window keeping the width under the group's id.
+test("changes: the file list's width can be dragged", async () => {
+  const { view, cx } = await changes([file(4000, 3)]);
+  const find = (x, kind) => {
+    if (Array.isArray(x)) { for (const v of x) { const r = find(v, kind); if (r) return r; } return null; }
+    if (!isElement(x)) return null;
+    const n = nodeOf(x);
+    if (n.kind === kind) return n;
+    for (const a of n.args) { const r = find(a, kind); if (r) return r; }
+    for (const [, a] of n.calls) for (const v of a) { const r = find(v, kind); if (r) return r; }
+    return null;
+  };
+  const split = find(view.render(cx), "h_resizable");
+  assert.deepEqual(split.args, ["changes-split"]);
+  const panels = split.calls.filter(([m]) => m === "child").map(([, [p]]) => nodeOf(p));
+  assert.deepEqual(panels.map((p) => p.kind), ["resizable_panel", "resizable_panel"]);
+  assert.deepEqual(panels[0].calls.filter(([m]) => m === "size" || m === "size_range").map(([m, a]) => [m, ...a]), [["size", 260], ["size_range", 180, 640]]);
+});
