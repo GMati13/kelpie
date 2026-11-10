@@ -30,6 +30,8 @@ div
               div [bg=#7fb3ae]
       div [bg=border]
       h_flex
+        div #story-finish [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-138, then the story"
+          svg own:check-check
         div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
           svg own:refresh-cw
         div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"

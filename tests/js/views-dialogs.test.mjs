@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
-import { StoryList } from "../../mods/kelpie/stories.js";
+import { Stories, StoryList } from "../../mods/kelpie/stories.js";
 import { Confirm, StoryPicker } from "../../mods/kelpie/dialogs.js";
 import { Setup } from "../../mods/kelpie/setup.js";
 import { requestProfileChange } from "../../mods/kelpie/config.js";
@@ -52,6 +52,26 @@ test("Clean up all lists every finished story with something left", async () => 
   const { el } = await draw(new StoryList());
   press(el, "stories-clean-all");
   snap("dialogs/clean-up-all", lastDialog().el);
+});
+
+// Move to Done from a built story's row: each ticket and where it goes, and Clean up afterwards.
+test("Move to Done lists each ticket, with Clean up afterwards", async () => {
+  setupDemoWorld({ stories });
+  const { el } = await draw(new StoryList());
+  press(el, "finish-ACME-129-button");
+  const { spec, el: dialog } = lastDialog();
+  assert.equal(spec.props.title, "Move ACME-129 to Done?");
+  assert.equal(spec.props.check, null, "ACME-131 is someone else's and still open, so the story stays and nothing can be cleaned up");
+  snap("dialogs/move-to-done", dialog);
+});
+test("Move to Done of a story that will be done offers Clean up afterwards", async () => {
+  setupDemoWorld({ stories });
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-138" });
+  const { el } = await draw(new Stories());
+  press(el, "story-finish");
+  const { el: dialog } = lastDialog();
+  assert.ok(byId(dialog, "confirm-check"));
+  snap("dialogs/move-to-done-clean", dialog);
 });
 
 test("closing a story's last tab asks: Pause, or Close", () => {
@@ -217,6 +237,17 @@ test("I work alone: the Board page's toggle saves solo with the board, and off d
   press(d.render(cx), "setup-solo", cx);
   assert.equal(d.draft().profile.jira.solo, undefined);
   assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, solo: true } }).d.solo, true, "a saved one opens on");
+});
+
+test("Move to Done: the Board page's toggle, on by default, saves moveToDone false only when off", () => {
+  const { d, cx } = profileDialog("jira", {}, { filled: true });
+  assert.equal(d.draft().profile.jira.moveToDone, undefined, "on by default, nothing saved");
+  press(d.render(cx), "setup-move-to-done", cx);
+  assert.equal(d.draft().profile.jira.moveToDone, false);
+  assert.ok(texts(d.render(cx)).some((x) => x.startsWith("Off: tickets move only one at a time")));
+  press(d.render(cx), "setup-move-to-done", cx);
+  assert.equal(d.draft().profile.jira.moveToDone, undefined);
+  assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, moveToDone: false } }).d.moveToDone, false, "a saved off opens off");
 });
 
 test("a Project's address that isn't one, and prefixes that can't be keys, stop Save with a reason", () => {

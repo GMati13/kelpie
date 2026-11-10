@@ -2,11 +2,11 @@
 // own subtasks moved to the board's done column in one go, from the header's More, after a dialog
 // listing each ticket. Others' subtasks stay, the story moves last and only once every subtask is
 // done, and a move that fails doesn't stop the rest.
-import { DEMO, FIXTURE, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mjs";
+import { DEMO, FIXTURE, demoProfile, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { handlers, texts } from "gpui-kit";
+import { handlers, texts, walk } from "gpui-kit";
 import { byId } from "../lib/snapshot.mjs";
 import { Stories, StoryList, build, donePlan, moveStoryToDone, storyItems } from "../../mods/kelpie/stories.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
@@ -28,7 +28,7 @@ test("only the confirm dialog's button moves a story to done; no kelpie.* comman
   for (const f of ["main.js", "work.js", "workside.js", "setup.js", "desk.js", "demo.js", "source.js", "ui.js", "sprint.js", "pulls.js", "panes.js", "config.js"]) {
     assert.doesNotMatch(readRepo("mods/kelpie", f), /moveStoryToDone/, f);
   }
-  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /await moveStoryToDone\(doneStory\)/);
+  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /await moveStoryToDone\(ask\)/);
   const stories = readRepo("mods/kelpie/stories.js");
   assert.equal(stories.match(/moveStoryToDone\(/g).length, 1, "stories.js only defines it");
 });
@@ -91,15 +91,14 @@ describe("Move to Done on the demo's board", async () => {
   setupDemoWorld();
   const stories = await loadStories(StoryList);
 
-  test("the header's More offers it, and its dialog lists each ticket and what stays", async () => {
+  test("the header has its own icon, and its dialog lists each ticket and what stays", async () => {
     setupDemoWorld({ stories });
     mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
-    const { view, cx } = await draw(new Stories());
-    view.menu = "story-more";
-    const el = view.render(cx);
-    const row = handlers(el).find((h) => /^story-more-row-/.test(h.id ?? "") && texts(byId(el, h.id)).includes("Move to Done…"));
-    assert.ok(row, "a Move to Done… row");
-    row.fn({}, cx);
+    const { el, view, cx } = await draw(new Stories());
+    const icon = byId(el, "story-finish");
+    assert.ok(icon, "a Move to Done icon");
+    assert.ok(walk(icon).some((n) => n.kind === "svg" && n.args[0].endsWith("check-check.svg")), "drawn as a double check");
+    handlers(el).find((h) => h.id === "story-finish").fn({}, cx);
     const spec = mock.of("openOverlay").at(-1)[0];
     assert.equal(spec.props.title, "Move ACME-180 to Done?");
     assert.deepEqual(spec.props.doneStory, { profile: DEMO, key: "ACME-180" });
@@ -109,14 +108,25 @@ describe("Move to Done on the demo's board", async () => {
       "ACME-182 To Do, Tomás Ruiz's: left alone",
       "ACME-180 Stays To Do, as ACME-182 is still open",
     ]);
+    view.menu = "story-more";
+    assert.ok(!texts(view.render(cx)).includes("Move to Done…"), "not in More as well");
   });
 
   test("not offered for a story with nothing of yours left to move", async () => {
     setupDemoWorld({ stories });
     mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-118" });
-    const { view, cx } = await draw(new Stories());
-    view.menu = "story-more";
-    assert.ok(!texts(view.render(cx)).includes("Move to Done…"));
+    const { el } = await draw(new Stories());
+    assert.equal(byId(el, "story-finish"), null);
+  });
+
+  test("the sidebar's rows have it only under Built / Waiting on others", async () => {
+    setupDemoWorld({ stories });
+    const { el, cx } = await draw(new StoryList());
+    assert.ok(byId(el, "finish-ACME-129"), "a built story (its subtask of yours past the handover column)");
+    for (const key of ["ACME-180", "ACME-142", "ACME-175"]) assert.equal(byId(el, `finish-${key}`), null, `${key} isn't built yet`);
+    assert.ok(handlers(el, "on_mouse_down").some((h) => h.id === "finish-ACME-129"), "its click stays off the row");
+    handlers(el).find((h) => h.id === "finish-ACME-129-button").fn({}, cx);
+    assert.equal(mock.of("openOverlay").at(-1)[0].props.title, "Move ACME-129 to Done?");
   });
 
   test("the dialog's button moves your subtasks, then the story, and loads the stories once", async () => {
@@ -179,6 +189,79 @@ describe("Move to Done on the demo's board", async () => {
     assert.equal(await moveStoryToDone({ profile: "other", key: "ACME-160" }), null);
     assert.match(note(), /^Nothing was moved: ACME-160 isn't among the shown profile's stories/);
     assert.equal(await statusOf("ACME-161"), "In Review");
+  });
+
+  // Turned off on the profile (the board's moveToDone false): no icon anywhere, and nothing moves.
+  const off = () => { setupDemoWorld({ profile: { jira: { ...demoProfile().jira, moveToDone: false } } }); mock.state.shared.set("kelpie.stories.data", { [DEMO]: { ...stories, key: new Stories().context().key } }); };
+  test("turned off: no icon in the header or on the list's rows", async () => {
+    off();
+    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-138" });
+    assert.equal(byId((await draw(new Stories())).el, "story-finish"), null);
+    assert.equal(byId((await draw(new StoryList())).el, "finish-ACME-129"), null);
+  });
+  test("turned off: a dialog opened before moves nothing", async () => {
+    off();
+    assert.equal(await moveStoryToDone({ profile: DEMO, key: "ACME-151" }), null);
+    assert.equal(note(), "Nothing was moved: Move to Done is turned off for this profile.");
+    assert.equal(await statusOf("ACME-153"), "To Do");
+  });
+
+  // Clean up afterwards (#72): the dialog's switch, then the clean-up's own checks after the moves.
+  test("the dialog offers Clean up afterwards only when the story will be done, off at first", async () => {
+    setupDemoWorld({ stories });
+    for (const [key, offered] of [["ACME-138", true], ["ACME-180", false]]) {
+      mock.state.shared.set("kelpie.stories.preview", { [DEMO]: key });
+      const { el, cx } = await draw(new Stories());
+      handlers(el).find((h) => h.id === "story-finish").fn({}, cx);
+      const check = mock.of("openOverlay").at(-1)[0].props.check;
+      assert.equal(Boolean(check), offered, key);
+      if (check) assert.deepEqual([check.label, check.on], ["Clean up afterwards", false]);
+    }
+  });
+
+  test("ticked, the button moves everything, then cleans up once its checks pass, and remembers the choice", async () => {
+    // A profile with a leftovers check and a clean-up command: the story wasn't finished before, so
+    // nothing was found for it yet; the clean-up looks first, then runs the command on what it left.
+    setupDemoWorld({ profile: { commands: { leftovers: "check-leftovers {key}", cleanUp: "clean-up {key}" } } });
+    mock.state.shared.set("kelpie.stories.data", { [DEMO]: { ...stories, key: new Stories().context().key } });
+    const ran = [];
+    const home = mock.on.exec;
+    mock.on.exec = (cmd, args, opts) => {
+      const line = cmd === "sh" && args[0] === "-c" ? String(args[3] ?? "") : "";
+      if (line.startsWith("check-leftovers ")) return { code: 0, stdout: line.endsWith("ACME-139") ? "branch 139-token-bucket (merged)" : "", stderr: "" };
+      if (line.startsWith("clean-up ")) { ran.push(line); return { code: 0, stdout: "removed branch 139-token-bucket", stderr: "" }; }
+      return home(cmd, args, opts);
+    };
+    mock.state.props = { role: "confirm", doneStory: { profile: DEMO, key: "ACME-138" }, yes: "Move to Done", overlay: "o2", check: { label: "Clean up afterwards", on: false } };
+    const dialog = new Confirm();
+    const cx = fakeCx();
+    dialog.init(cx);
+    handlers(dialog.render(cx)).find((h) => h.id === "confirm-check").fn({}, cx);
+    handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
+    assert.deepEqual(texts(byId(dialog.render(cx), "confirm-yes")), ["Moving and cleaning up…"]);
+    await cx.settle(10);
+    assert.deepEqual(await Promise.all(["ACME-139", "ACME-138"].map(statusOf)), ["Done", "Done"]);
+    assert.equal(mock.sharedValue("kelpie.paused")[DEMO]["ACME-138"], undefined, "its paused session forgotten");
+    assert.deepEqual(ran, ["clean-up ACME-139"], "the clean-up command ran on what the story left");
+    assert.equal(note(), "Moved ACME-139 and ACME-138 to Done. Cleaned up ACME-138: removed branch 139-token-bucket");
+    assert.deepEqual(mock.sharedValue("kelpie.done.clean"), { [DEMO]: true });
+    assert.deepEqual(mock.of("closeOverlay"), [["o2"]]);
+  });
+
+  test("a check that fails cleans nothing up and says why, after the moves", async () => {
+    setupDemoWorld({ stories });
+    const r = await moveStoryToDone({ profile: DEMO, key: "ACME-160", clean: true });
+    assert.deepEqual(r, { moved: ["ACME-161", "ACME-160"], failed: [], cleaned: false, why: ["a pull request of it is still open", "an agent is working on it"] });
+    assert.equal(note(), "Moved ACME-161 and ACME-160 to Done. ACME-160 wasn't cleaned up: a pull request of it is still open, an agent is working on it.");
+    assert.ok(mock.of("notify").some(([n]) => n.level === "warning" && n.title === "ACME-160 wasn't cleaned up"));
+    assert.ok(!mock.of("run").some(([c]) => c === "space.close"), "its space stays");
+  });
+
+  test("a story that stays isn't cleaned up", async () => {
+    setupDemoWorld({ stories });
+    const r = await moveStoryToDone({ profile: DEMO, key: "ACME-180", clean: true });
+    assert.deepEqual(r.why, ["it isn't done on the board"]);
+    assert.match(note(), /ACME-180 stays, as ACME-182 is still open\. ACME-180 wasn't cleaned up: it isn't done on the board\.$/);
   });
 });
 

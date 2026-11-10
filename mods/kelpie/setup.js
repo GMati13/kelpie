@@ -181,6 +181,8 @@ export class Setup {
     this.handover = board?.handover ?? null;
     // Whether the person works alone on the board: what the stories past that column wait on.
     this.solo = board?.solo === true;
+    // Whether stories offer Move to Done (on unless turned off; saved only when off).
+    this.moveToDone = board?.moveToDone !== false;
     const columns = board ? loadedColumns(this.profile) : [];
     this.columns = columns.length && saved.jira ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
     this.projectColumns = columns.length && saved.project && !saved.jira ? { key: projectKey(saved.project), list: columns } : null;
@@ -387,7 +389,7 @@ export class Setup {
     const prefixRows = project ? this.prefixList() : [];
     const badPrefix = prefixRows.find((r) => r.error);
     const prefixes = prefixRows.filter((r) => r.own).map((r) => `${r.key}=${r.own}`).join(", ");
-    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
+    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(this.profile?.demo ? { demo: true } : {}) };
     const error = onJira && url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
       : onJira && parsed && missing ? ["jira", missing]
       : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
@@ -690,6 +692,8 @@ export class Setup {
           : hint(onJira ? "Check the connection to choose the column where your part of a story is done." : "Check the Project to choose the column where your part of a story is done."),
         toggle("setup-solo", "I work alone", this.solo, (_e, cx) => { this.solo = !this.solo; cx.notify(); },
           this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
+        toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
+          this.moveToDone ? "A double check in the story's header, and on each built story in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
       ],
 
       github: () => [
