@@ -135,6 +135,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   demo's stories end to end.
 - `next.test.mjs`: `needQueueOf()` (needs you, reviews, the Desk asking, one clean-up item, Claude's
   picks and when they drop out), `nextIn()`, `applyPicks()`'s rules (Jira lookups faked through `exec`).
+- `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
+  agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
   `patchHash`'s stable values.

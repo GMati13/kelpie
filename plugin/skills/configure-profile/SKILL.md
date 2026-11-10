@@ -127,7 +127,7 @@ Change one only when the person wants agents to work differently: a slash comman
 | `github.reviewPrompt` | Start review, with a checkout of the pull request | `{url} {repo} {number} {title} {author} {folder} {ticket} {summary} {description}` |
 | `github.mergePrompt` | The Merge icon on a story's pull requests | `{ticket} {summary} {prs}` (a line per open pull request) |
 | `github.approvalPrompt` | Request approval, while a pull request isn't approved | as merge; `{prs}` only the unapproved |
-| `prompts.suggest` | What next? (the magic button under Next): a Claude in the background filling Next's queue | `{name} {snapshot} {board} {owner}`. It runs unattended, so its answer must end in the JSON block of picks the default asks for: keep that part |
+| `prompts.suggest` | What next? (the magic button under Next): a Claude in the background filling Next's queue | `{name} {snapshot} {board} {owner}`. It runs unattended; Kelpie adds how the picks come back (through its plugin) after this message, so the prompt needn't say it, and shouldn't ask for a JSON block or any other answer format |
 
 `jira.*` prompts are kept only while Jira is connected, `github.*` ones only while GitHub is. For `prompts.suggest`, ask what kind of work the person picks up (frontend, say) and add it, so unassigned tickets of that kind are pointed out. Like every prompt, say what to look at or do, never how to reach Jira or GitHub: each agent uses its own access.
 

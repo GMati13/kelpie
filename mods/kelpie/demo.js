@@ -10,7 +10,7 @@
 //   the mod), pull request searches and files, uncommitted work, sessions and the footer's limits.
 // Times in the fixture are relative ("-2h", "-3d", "+40m"), so the demo never looks stale.
 
-import { exec, readTextFile, run, setShared, shared, spaces } from "herdr";
+import { agents, exec, readTextFile, run, setShared, shared, spaces } from "herdr";
 import { modFile } from "./ui.js";
 import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
 
@@ -233,6 +233,17 @@ async function waitForSpace(name, before) {
 // kelpie.demo: makes (or refreshes) the demo profile from the fixture and opens its spaces: every
 // space the fixture lists that isn't open yet, its first tab with it and the rest after, then the
 // paused agents it lists. Spaces already open are left as they are.
+// The fixture's asks of agents (`asks`), as the plugin's add_to_next keeps them (stories.js addAsk):
+// each from the agent of its `tab` (`terminalOf(tab)`, its terminal; left out while there's none, as
+// an ask nobody waits on goes), a story's key linking to Jira.
+export function demoAsks(f, terminalOf = () => null) {
+  return (f.asks ?? []).flatMap((a, i) => {
+    const terminal = terminalOf(a.tab);
+    return terminal ? [{ id: `demo-${i}`, at: when(a.at ?? "-5m"), action: a.action, why: a.why ?? "", terminal, tab: a.tab,
+      ...(a.key ? { key: a.key, url: `${f.profile.site}/browse/${a.key}` } : {}) }] : [];
+  });
+}
+
 export async function setupDemo() {
   const f = await demoFixture();
   const home = await homeOf();
@@ -263,13 +274,14 @@ export async function setupDemo() {
   const paused = {};
   for (const [key, list] of Object.entries(f.paused ?? {})) paused[key] = list.map((x, n) => ({ sessionId: x.id ?? `demo-paused-${key}-${n}`, cwd: folder, name: x.name ?? key, at: when(x.at ?? "-3h") }));
   setShared("kelpie.paused", { ...(shared("kelpie.paused") ?? {}), [DEMO_ID]: paused });
+  setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address) });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
 }
 
 // kelpie.demo-remove: undoes kelpie.demo. Closes the demo profile's spaces (ending their stand-in
 // agents), deletes the profile and what's kept for it in shared state, and removes its folder, only
 // when that's inside ~/.local/share/kelpie/demo (an edited fixture could name any folder).
-const BY_PROFILE = ["kelpie.paused", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.profile.last", "kelpie.notify.prs"];
+const BY_PROFILE = ["kelpie.paused", "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.profile.last", "kelpie.notify.prs"];
 export async function removeDemo() {
   const p = profileById(DEMO_ID);
   for (const s of p ? spacesOf(p) : []) run("space.close", { id: s.id, confirmed: true });

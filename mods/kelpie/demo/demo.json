@@ -677,6 +677,15 @@
     "weekResets": "+3d"
   },
   "web": { "playing": false },
+  "asks": [
+    {
+      "tab": "ACME-175",
+      "key": "ACME-175",
+      "action": "Pick how trips are stored offline",
+      "why": "Two ways to keep trips offline: I'd like your choice before I build one.",
+      "at": "-6m"
+    }
+  ],
   "suggest": [
     {
       "key": "ACME-181",

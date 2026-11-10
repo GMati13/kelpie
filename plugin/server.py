@@ -9,6 +9,13 @@ something in Kelpie and set up their Kelpie profiles.
   for their click in Kelpie; save_status reads the answer again once they've given it.
 - open_profile_page: the profile dialog on one of its pages (`kelpie.edit-profile-<tab>`), for the
   person to press a Check button or look over what was saved.
+- get_next / add_to_next / suggest_next: Next, the person's queue of what to do: read
+  (`kelpie.get-next`), an agent's ask added to it (`kelpie.add-next`), Claude's picks for it handed
+  in (`kelpie.suggest-next`, how What next? answers), mods/kelpie/stories.js.
+
+Which profile a Next request is about comes from where the server runs: KELPIE_PROFILE (set by What
+next?, whose Claude runs in no terminal) or HC_TERMINAL_ID (the agent's terminal in Herdr, so Kelpie
+finds its space's profile and says who asked), else Kelpie takes the profile it shows.
 
 Each request is a file in <home>/kelpie/ (HERDR_APP_HOME, else ~/.config/herdr-app), written privately
 and put in place whole, then `herdr-app do <command>` (no shell), then Kelpie's answer file is read.
@@ -27,14 +34,22 @@ PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 # The profile dialog's pages (mods/kelpie/setup.js TABS).
 TABS = ["general", "jira", "github", "web", "prompts", "messages", "commands"]
-# Seconds Kelpie has to answer (it runs commands between frames); the tests shorten it.
+TERMINAL = re.compile(r"^[\w-]{1,40}$")
+# Seconds Kelpie has to answer (it runs commands between frames); the tests shorten it. Picks may wait
+# on Jira (a key the list doesn't hold is looked up), so they get longer.
 WAIT = float(os.environ.get("KELPIE_SHOW_WAIT") or 5)
+PICKS_WAIT = WAIT * 6
 
 INSTRUCTIONS = (
     "Kelpie is the person's Herdr layout of Jira stories, pull requests and agents, set up per profile. "
     "When they ask where a story says something, or to show them, open it in Kelpie with show_passage "
     "rather than only quoting it. To set up a Kelpie profile, follow the configure-profile skill: read with "
-    "get_profile, save with save_profile."
+    "get_profile, save with save_profile. Next is the queue the person works from, across all their agents: read it "
+    "with get_next when they ask what needs them or what's on their plate. Whenever you end a turn waiting on the "
+    "person (a choice only they can make, a plan to read before you build, a pull request of yours to look at), call "
+    "add_to_next before you finish, as well as asking in your reply: they run many agents, Kelpie flags an agent only "
+    "while a permission prompt waits, so a question at the end of a turn is easily missed. Not when you're only "
+    "reporting what you did."
 )
 
 TOOLS = [
@@ -128,6 +143,86 @@ TOOLS = [
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
     },
+    {
+        "name": "get_next",
+        "title": "Read Kelpie's Next queue",
+        "description": (
+            "The person's Next queue in Kelpie: what needs them across all their stories and agents, in the order "
+            "they'd take it. Use it whenever they ask what needs them, what's on their plate, what's waiting or what "
+            "to do next, rather than piecing it together from Jira and GitHub: Kelpie already ranks it as they see it. "
+            "Order: stories that need them (an agent waiting, changes requested, checks failing, ready to merge), what "
+            "agents asked of them, pull requests waiting for their review, the Desk's agent waiting, finished stories to "
+            "clean up, then Claude's suggestions. Each with its kind, key, what to do, a detail line and its link. For "
+            "your own profile in Kelpie (the one of the space you run in), else the one Kelpie shows. Read-only."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "add_to_next",
+        "title": "Ask the person something through Next",
+        "description": (
+            "Adds a line to the person's Next queue in Kelpie, from you. They run many agents and work from Next, "
+            "so a question left at the end of your turn in your own terminal is easy to miss: Kelpie flags an agent "
+            "only while a permission prompt waits, not one that finished its turn with a question. Use it when you end "
+            "a turn and can't go on well without them: a choice only they can make, a plan to read before you build, "
+            "a pull request of yours to look at. Not for reporting that you're done, for questions you can settle "
+            "yourself, or for permission prompts (Kelpie shows those). It shows under your tab's name; a click takes "
+            "them to its story or link, and to you; it goes once they've clicked or dropped it, or when your terminal "
+            "closes. Three at most from you; the same `action` again replaces it. Still ask the question in your reply: "
+            "this only points them to it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "What to do, a verb first, under 60 characters: what Next shows."},
+                "why": {"type": "string", "description": "One short line on why or what it's about, shown under it."},
+                "key": {"type": "string", "description": "The Jira key it's about, like ABC-123 (a subtask's counts for its story)."},
+                "url": {"type": "string", "description": "A link to open instead: a GitHub page or the profile's Jira."},
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "suggest_next",
+        "title": "Hand Kelpie suggestions for Next",
+        "description": (
+            "The Kelpie tool for suggestions: hands your picks of what the person could do next to Kelpie, which "
+            "shows them in Next as suggested by Claude, replacing earlier ones. Use it only when asked to fill or "
+            "refresh Kelpie's suggestions (What next? asks this way): a person asking you what to work on wants your "
+            "answer in the chat, and calling it would replace the picks they have. All picks in one call, best first, "
+            "8 at most. Each is one "
+            "of: `key`, a Jira key (a subtask's goes to its story; one pick per story); `url`, a GitHub pull "
+            "request link; `idea`, a short brief for an agent, with `where` (no ticket: something to make better, "
+            "3 at most, after the rest). Each has `action`, what Next shows (a verb first, under 60 characters), "
+            "and `why`, one short line on why now. Kelpie checks each and says what it kept and what it dropped, "
+            "and why. It changes only what Kelpie suggests: nothing in Jira, GitHub or any file."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"}, "url": {"type": "string"}, "idea": {"type": "string"}, "where": {"type": "string"},
+                            "action": {"type": "string"}, "why": {"type": "string"},
+                        },
+                        "required": ["action"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["items"],
+            "additionalProperties": False,
+        },
+        # Read only as far as the person's work goes (it only changes what Kelpie suggests), so What
+        # next?'s Claude, run in plan mode, may hand its picks in: plan mode refuses other tools.
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    },
 ]
 
 
@@ -174,7 +269,7 @@ def kelpie(command):
         raise Unreachable(f"Kelpie can't be reached: {(run.stderr or run.stdout).strip()[:300] or 'Herdr refused the command'}.")
 
 
-def ask(name, request, command):
+def ask(name, request, command, wait=None):
     """Kelpie's answer to `request`: written as <name>.json, `command` run, <name>.result.json read.
     An answer from before is removed first; a request never answered is removed too, so it can't act
     later out of the blue. Unreachable when there's no answer."""
@@ -191,7 +286,7 @@ def ask(name, request, command):
     except Unreachable:
         remove(path)
         raise
-    deadline = time.monotonic() + WAIT
+    deadline = time.monotonic() + (WAIT if wait is None else wait)
     while time.monotonic() < deadline:
         answer = read_json(result)
         if answer is not None:
@@ -262,8 +357,64 @@ def open_profile_page(args):
     return f"Opened the profile dialog on its {page} page.", False
 
 
+def origin():
+    """Where this server runs, for Kelpie to tell the profile (and the asking agent): What next?'s
+    profile, else the agent's terminal in Herdr. Only well-formed values pass."""
+    out = {}
+    profile, terminal = os.environ.get("KELPIE_PROFILE", ""), os.environ.get("HC_TERMINAL_ID", "")
+    if PROFILE_ID.match(profile):
+        out["profile"] = profile
+    if TERMINAL.match(terminal):
+        out["terminal"] = terminal
+    return out
+
+
+def refused(answer, what):
+    return f"Kelpie didn't {what}: {clean(answer.get('error'), 300) or 'no reason given'}", True
+
+
+def get_next(_args):
+    answer = ask("next-get", origin(), "get-next")
+    if not answer.get("ok"):
+        return refused(answer, "say")
+    items = answer.get("items") or []
+    head = f"Next, in Kelpie's profile {answer.get('profile')}: " + (f"{len(items)} item(s), in order." if items else "nothing in it.")
+    return head + ("\n" + json.dumps(items, indent=2, ensure_ascii=False) if items else ""), False
+
+
+def add_to_next(args):
+    action = clean(args.get("action"), 120)
+    if len(action) < 3:
+        return "action: what you ask the person to do, a few words.", True
+    request = {**origin(), "action": action, "why": clean(args.get("why"), 300)}
+    for name, limit in (("key", 40), ("url", 500)):
+        if args.get(name):
+            request[name] = clean(args.get(name), limit)
+    if "key" in request and not KEY.match(request["key"].upper()):
+        return "key: a Jira key, like ABC-123.", True
+    answer = ask("next-add", request, "add-next")
+    if not answer.get("ok"):
+        return refused(answer, "add it")
+    return f"Added to Next in Kelpie's profile {answer.get('profile')}: {answer.get('ask', {}).get('action', action)}.", False
+
+
+def suggest_next(args):
+    items = args.get("items")
+    if not isinstance(items, list) or not items:
+        return "items: a list of picks, each with action and one of key, url or idea.", True
+    answer = ask("next-suggest", {**origin(), "items": [x for x in items if isinstance(x, dict)][:20]}, "suggest-next", PICKS_WAIT)
+    if not answer.get("ok"):
+        return refused(answer, "take them")
+    kept, dropped = answer.get("kept") or [], answer.get("dropped") or []
+    text = f"Kelpie shows {len(kept)} in Next for {answer.get('profile')}" + (": " + "; ".join(map(str, kept)) if kept else "") + "."
+    if dropped:
+        text += " Dropped: " + "; ".join(f"{d.get('item')} ({d.get('why')})" for d in dropped if isinstance(d, dict)) + "."
+    return text, False
+
+
 CALLS = {"show_passage": show_passage, "get_profile": get_profile, "save_profile": save_profile,
-         "save_status": save_status, "open_profile_page": open_profile_page}
+         "save_status": save_status, "open_profile_page": open_profile_page,
+         "get_next": get_next, "add_to_next": add_to_next, "suggest_next": suggest_next}
 
 
 def reply(id_, result=None, error=None):
@@ -279,7 +430,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.2.0"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.3.0"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":

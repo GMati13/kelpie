@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "kelpie",
-      "description": "Lets Claude show you where a Jira story says something in Kelpie, and set up your Kelpie profiles with you.",
+      "description": "Lets Claude show you where a Jira story says something in Kelpie, read and add to your Next queue, and set up your Kelpie profiles with you.",
       "source": "./plugin",
       "category": "productivity"
     }

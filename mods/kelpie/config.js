@@ -432,7 +432,7 @@ export const SUGGEST_FIELDS = ["name", "snapshot", "board", "owner"];
 export const SUGGEST_PROMPT = [
   "Help me choose what to work on next in \"{name}\". Nothing needs me right now: no agent waiting on me, no failing checks or requested changes, no review asked of me, nothing to clean up.",
   "",
-  "You run unattended: nobody will read your messages or answer questions, only the JSON block at the end of your answer.",
+  "You run unattended: nobody will read your messages or answer questions, only the picks you hand to Kelpie.",
   "",
   "## Where things stand",
   "",
@@ -451,23 +451,18 @@ export const SUGGEST_PROMPT = [
   "   3. Get ahead: backlog tickets likely to come next that fit my work, and unclear ones worth asking about now. If no sprint is running, look at the next planned sprint first, then the backlog.",
   "   4. Only when 1 to 3 have nothing real, make things better: in the repositories under this folder that I've worked in lately, find 2 or 3 small, concrete improvements worth doing (flaky or slow tests, TODO or FIXME notes worth doing, outdated or vulnerable dependencies, missing docs or types, CI warnings, a small refactor near recent work). Each specific: the file or area, and why it pays off.",
   "3. Pick 3 to 5, best first. Name each the way my sidebar shows it: a story, or a task without a parent, by its own key; a subtask by its parent story's key (say which subtask in why). One per story, never two for the same one. Improvements from rung 4 have no ticket: they're ideas.",
-  "4. End your answer with the picks as one JSON block, nothing after it:",
-  "   ```json",
-  "   {\"items\": [",
-  "     {\"key\": \"ABC-123\", \"action\": \"Pick up ABC-123: short title\", \"why\": \"one line on why now\"},",
-  "     {\"url\": \"https://github.com/org/repo/pull/45\", \"action\": \"Review repo#45\", \"why\": \"...\"},",
-  "     {\"idea\": \"what to do, as a short brief for an agent\", \"where\": \"repo/path\", \"action\": \"Speed up the slow auth tests\", \"why\": \"...\"}",
-  "   ]}",
-  "   ```",
-  "   `action` is what my Next queue shows: a verb first, under 60 characters. `why` is one short line. Ideas only from rung 4, and only then.",
+  "4. Hand the picks to Kelpie, best first: each a Jira key, a pull request link, or an idea (a short brief for an agent, and where), with `action`, what my Next queue shows (a verb first, under 60 characters), and `why`, one short line on why now. Ideas only from rung 4, and only then.",
   "",
   "## Rules",
   "",
   "- Read only. Don't assign, move, comment, review, merge, push, edit files or start any work.",
 ].join("\n");
 
+// How the picks come back, after the profile's message whatever it says (one saved before the plugin
+// asked for a JSON block): through the plugin's tool, which checks each and says what it dropped.
+export const HAND_IN = "Hand your picks to Kelpie in one call of the Kelpie tool for suggestions: that's the only answer read. If it drops some, it says why: fix those and hand them in again.";
 export function suggestText(profile, fields) {
-  return `${fillLines(profile?.prompts?.suggest?.trim() || SUGGEST_PROMPT, SUGGEST_FIELDS, fields)}\n\n${OTHERS}`;
+  return `${fillLines(profile?.prompts?.suggest?.trim() || SUGGEST_PROMPT, SUGGEST_FIELDS, fields)}\n\n${HAND_IN}\n\n${OTHERS}`;
 }
 
 // A value going into a prompt: no control characters (typed into an agent, one could act as a key:
@@ -560,14 +555,19 @@ export async function configureOnDesk(profile, scope = "all", agent = null) {
 
 // Says the plugin is needed, with what installs it. Its button installs it (installPlugin), called by
 // the dialog itself (dialogs.js), never a command: an agent could run a command, and installing adds
-// a program Claude runs.
-async function askPlugin(profile) {
+// a program Claude runs. `use`: what needs it (PLUGIN_USES), for what the dialog says.
+const PLUGIN_USES = {
+  configure: ["Claude sets up a profile through Kelpie's Claude Code plugin: it gives Claude the setup guide and a safe way to save your profile.", "Let me configure it for you"],
+  "what-next": ["What next? gets Claude's suggestions through Kelpie's Claude Code plugin: Claude hands them to Kelpie with it.", "Conjure what's next"],
+};
+export async function askPlugin(profile, use = "configure") {
   const source = await pluginSource();
   const account = claudeKey(claudeConfigOf(profile)) || "~/.claude";
+  const [why, again] = PLUGIN_USES[use] ?? PLUGIN_USES.configure;
   openOverlay({ mod: MOD, kind: "dialog", width: 560, height: 300, props: {
     role: "confirm", installPlugin: source ? profile.id : null,
     title: "Claude needs Kelpie's plugin for this",
-    detail: `Claude sets up a profile through Kelpie's Claude Code plugin: it gives Claude the setup guide and a safe way to save your profile. It isn't installed on this profile's Claude account (${account}) yet.${source ? " Install it, then press Let me configure it for you again." : " Install it from your Kelpie folder with:"}`,
+    detail: `${why} It isn't installed on this profile's Claude account (${account}) yet.${source ? ` Install it, then press ${again} again.` : " Install it from your Kelpie folder with:"}`,
     items: [{ text: `claude plugin marketplace add ${source ?? "<your Kelpie folder>"}` }, { text: `claude plugin install ${PLUGIN}` }],
     yes: source ? "Install it" : "OK" } });
 }
@@ -577,7 +577,7 @@ export async function installPlugin(id) {
   const profile = profileById(id);
   const source = await pluginSource();
   if (!profile || !source) return;
-  const script = 'root=$1; shift; "$@" plugin marketplace add "$root"; "$@" plugin install "$PLUGIN" && printf "\\nInstalled. Press Let me configure it for you again.\\n"; exec "${SHELL:-/bin/sh}" -l';
+  const script = 'root=$1; shift; "$@" plugin marketplace add "$root"; "$@" plugin install "$PLUGIN" && printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; exec "${SHELL:-/bin/sh}" -l';
   return openDesk(profile, { name: "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, ...claudeArgv(profile)] });
 }
 

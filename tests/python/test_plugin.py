@@ -22,6 +22,9 @@ printf '%s\\n' "$*" >> "$HERDR_APP_HOME/calls.log"
 case "$2" in
   kelpie.show-passage) name=passage ;;
   kelpie.apply-profile) name=profile-apply ;;
+  kelpie.get-next) name=next-get ;;
+  kelpie.add-next) name=next-add ;;
+  kelpie.suggest-next) name=next-suggest ;;
   *) name="" ;;
 esac
 [ -n "$name" ] && cp "$dir/$name.json" "$HERDR_APP_HOME/last-request.json" 2>/dev/null
@@ -31,6 +34,11 @@ case "$FAKE_ANSWER" in
   refuse) answer '{"ok": false, "error": "XYZ-1 isn\\u0027t a story in the shown profile\\u0027s list."}' ;;
   pending) answer '{"ok": false, "pending": true, "error": "Waiting for the person to confirm these changes in Kelpie."}' ;;
   badset) answer '{"ok": false, "error": "jira.url: a Jira Cloud board\\u0027s address."}' ;;
+  next) case "$name" in
+      next-get) answer '{"ok": true, "profile": "Acme", "items": [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}]}' ;;
+      next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
+      next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a Jira key"}]}' ;;
+    esac ;;
   fail) echo "no Herdr window" >&2; exit 1 ;;
   silent) ;;
 esac
@@ -44,10 +52,11 @@ class Server(unittest.TestCase):
         fake = write(os.path.join(self.bin, "herdr-app"), FAKE)
         os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
 
-    def talk(self, *messages, answer="ok", path=None):
-        """The server's replies to `messages` (one JSON-RPC message per line), by id."""
+    def talk(self, *messages, answer="ok", path=None, env=None):
+        """The server's replies to `messages` (one JSON-RPC message per line), by id. `env`: more of
+        the server's environment (the agent's terminal, What next?'s profile)."""
         env = {"PATH": path if path is not None else f"{self.bin}:/usr/bin:/bin", "HOME": self.home,
-               "HERDR_APP_HOME": self.home, "FAKE_ANSWER": answer, "LANG": "C", "KELPIE_SHOW_WAIT": "0.5"}
+               "HERDR_APP_HOME": self.home, "FAKE_ANSWER": answer, "LANG": "C", "KELPIE_SHOW_WAIT": "0.5", **(env or {})}
         stdin = "".join((m if isinstance(m, str) else json.dumps(m)) + "\n" for m in messages)
         r = subprocess.run([sys.executable, "-I", SERVER], input=stdin, capture_output=True, text=True, env=env, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -77,10 +86,15 @@ class Server(unittest.TestCase):
         self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
         self.assertIn("tools", init["result"]["capabilities"])
         tools = {t["name"]: t for t in listed["result"]["tools"]}
-        self.assertEqual(sorted(tools), ["get_profile", "open_profile_page", "save_profile", "save_status", "show_passage"])
+        self.assertEqual(sorted(tools), ["add_to_next", "get_next", "get_profile", "open_profile_page", "save_profile", "save_status", "show_passage", "suggest_next"])
         self.assertEqual(tools["show_passage"]["inputSchema"]["required"], ["key", "quote"])
         self.assertEqual(tools["save_profile"]["inputSchema"]["required"], ["id", "set"])
         self.assertTrue(tools["get_profile"]["annotations"]["readOnlyHint"])
+        # What next?'s Claude runs in plan mode, which lets only read-only tools through.
+        self.assertTrue(tools["suggest_next"]["annotations"]["readOnlyHint"])
+        self.assertTrue(tools["get_next"]["annotations"]["readOnlyHint"])
+        self.assertFalse(tools["add_to_next"]["annotations"]["readOnlyHint"])
+        self.assertEqual(tools["add_to_next"]["inputSchema"]["required"], ["action"])
 
     def test_unknown_methods_tools_and_bad_lines_are_errors_not_crashes(self):
         bad, unknown, tool, ping = self.talk(
@@ -217,6 +231,51 @@ class Server(unittest.TestCase):
         text, failed = self.call({"page": "jira; rm -rf ~"}, tool="open_profile_page")
         self.assertTrue(failed)
         self.assertEqual(self.calls(), ["do kelpie.edit-profile-jira"], "nothing else ran")
+
+
+    def last(self):
+        with open(os.path.join(self.home, "last-request.json")) as f:
+            return json.load(f)
+
+    def test_add_to_next_sends_the_ask_with_the_agents_terminal(self):
+        text, failed = self.call({"action": "Read my plan", "why": "Two\nways", "key": "acme-7"}, tool="add_to_next", answer="next", env={"HC_TERMINAL_ID": "t11n"})
+        self.assertFalse(failed)
+        self.assertEqual(text, "Added to Next in Kelpie's profile Acme: Read my plan.")
+        self.assertEqual(self.calls(), ["do kelpie.add-next"])
+        self.assertEqual(self.last(), {"terminal": "t11n", "action": "Read my plan", "why": "Two ways", "key": "acme-7"})
+
+    def test_only_a_well_formed_terminal_and_profile_from_the_environment_go(self):
+        self.call({"action": "Read my plan"}, tool="add_to_next", answer="next", env={"HC_TERMINAL_ID": "t1; rm -rf ~", "KELPIE_PROFILE": "../work"})
+        self.assertEqual(self.last(), {"action": "Read my plan", "why": ""})
+        self.call({"action": "Read my plan"}, tool="add_to_next", answer="next", env={"KELPIE_PROFILE": "work"})
+        self.assertEqual(self.last()["profile"], "work")
+
+    def test_add_to_next_refuses_no_action_and_bad_keys_before_anything_runs(self):
+        for args in ({"action": " "}, {"action": "Look", "key": "ACME-1; rm"}, {}):
+            text, failed = self.call(args, tool="add_to_next", answer="next")
+            self.assertTrue(failed, args)
+        self.assertEqual(self.calls(), [])
+
+    def test_suggest_next_hands_the_picks_in_and_says_what_was_kept_and_dropped(self):
+        picks = [{"key": "ACME-2", "action": "Start it", "why": "next"}, {"key": "nope", "action": "x"}, "not a pick"]
+        text, failed = self.call({"items": picks}, tool="suggest_next", answer="next", env={"KELPIE_PROFILE": "work"})
+        self.assertFalse(failed)
+        self.assertEqual(text, "Kelpie shows 1 in Next for Acme: ACME-2: Start it. Dropped: nope (not a Jira key).")
+        self.assertEqual(self.last(), {"profile": "work", "items": picks[:2]})
+        text, failed = self.call({"items": []}, tool="suggest_next", answer="next")
+        self.assertTrue(failed)
+        self.assertEqual(self.calls(), ["do kelpie.suggest-next"], "an empty list runs nothing")
+
+    def test_get_next_returns_the_queue(self):
+        text, failed = self.call({}, tool="get_next", answer="next")
+        self.assertFalse(failed)
+        self.assertTrue(text.startswith("Next, in Kelpie's profile Acme: 1 item(s), in order.\n"))
+        self.assertEqual(json.loads(text.split("\n", 1)[1]), [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}])
+
+    def test_kelpies_refusal_of_a_next_request_is_an_error(self):
+        text, failed = self.call({"action": "Read my plan"}, tool="add_to_next", answer="refuse")
+        self.assertTrue(failed)
+        self.assertTrue(text.startswith("Kelpie didn't add it: "))
 
 
 if __name__ == "__main__":

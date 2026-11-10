@@ -16,7 +16,7 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { PREVIEWS, STORIES, chooseProfile, claudeArgv, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
 import { approvePull, pullBody, searchPulls } from "./pulls.js";
 import { adfBlocks, adfLines, adfText, findPassage, markdownBlocks } from "./adf.js";
@@ -523,18 +523,80 @@ const pullWords = (p) => (p.isDraft ? "Draft" : ["PENDING", "EXPECTED"].includes
 // What needs you, in the order Next and cmd-shift-j go through it: the stories that need you, most
 // urgent first (the list's order among equals), then the reviews waiting for you.
 const needQueue = (items, reviews) => [...items.filter((x) => x.n[0] <= NEEDS_YOU).sort((a, b) => a.n[0] - b.n[0]).map((x) => x.it), ...reviews];
-// The same, then the Desk while one of its agents waits for you (an item { key: "desk", desk }), and
+// The same with what agents asked of you in between (asksIn()), then the Desk while one of its agents
+// waits for you (an item { key: "desk", desk }), and
 // last one item for every finished story with something to clean up ({ key: "clean", clean:
 // [stories] }: Clean up all, so it's one press however many there are), then what the What next?
 // agent suggested (suggestedIn()). With nothing in it, Next's place holds the What next? button
 // (StoryList magic()).
 const DESK_ITEM = { key: "desk", desk: true };
 const needQueueOf = (profile, items, reviews = []) => {
-  const needs = [...needQueue(items, reviews), ...(deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [])];
+  const needs = [...needQueue(items, []), ...asksIn(profile, items), ...reviews, ...(deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [])];
   const dirty = items.map((x) => x.it).filter((it) => cleanable(profile, it).length);
   const clean = dirty.length ? [{ key: "clean", clean: dirty }] : [];
   return [...needs, ...clean, ...suggestedIn(profile, items, new Set(needs.map((x) => x.key)))];
 };
+
+// What agents asked of you (the plugin's add_to_next, addAsk()), by profile: a list of { id, at,
+// action, why, key, url, terminal, tab }, `terminal` the asking agent's, when known. In the queue each
+// is { key: "ask:<id>", ask, it }, `it` its story while the list has it. It goes when it's clicked or
+// dismissed, after a day, or once its agent's terminal is gone (nobody's left waiting for it).
+const ASKS = "kelpie.next.asks";
+const ASK_FOR = 24 * 3600 * 1000;
+const ASK_MAX = 10; // per profile
+const ASK_EACH = 3; // per agent
+function asksIn(profile, items) {
+  const list = (shared(ASKS) ?? {})[profile?.id] ?? [];
+  if (!list.length) return [];
+  const live = new Set(agents().map((a) => a.address));
+  return list.filter((a) => Date.now() - a.at < ASK_FOR && (!a.terminal || live.has(a.terminal)))
+    .map((a) => ({ key: `ask:${a.id}`, ask: a, it: a.key ? items.find((x) => x.it.key === a.key)?.it ?? null : null }));
+}
+function dismissAsk(profile, id) {
+  const all = shared(ASKS) ?? {};
+  if (all[profile?.id]) setShared(ASKS, { ...all, [profile.id]: all[profile.id].filter((a) => a.id !== id) });
+}
+// The agent that asked, while it runs.
+const askerOf = (ask) => (ask?.terminal ? agents().find((a) => a.address === ask.terminal) ?? null : null);
+// A link an agent's ask may open: GitHub, or the profile's own Jira site. Anything else (a page an
+// agent was misled into offering) isn't taken.
+function askLink(profile, url, site) {
+  if (!/^https:\/\/[^\s"'<>]+$/.test(url)) return false;
+  return url.startsWith("https://github.com/") || Boolean(site && url.startsWith(`${site.replace(/\/+$/, "")}/`));
+}
+// An agent's ask, checked: `action` what to do (a few words), `why` a line, `key` a ticket (a
+// subtask becomes its story, as Next lists stories), `url` a link (askLink()), `terminal` the asking
+// agent's (from its environment, by the plugin). Kept per profile; the newest ASK_EACH per agent and
+// ASK_MAX in all, the same action from one agent replacing the last. Exported for the tests.
+export function addAsk(profile, { action, why, key, url, terminal } = {}) {
+  const data = (shared(DATA) ?? {})[profile.id]?.data;
+  const site = data?.site ?? profile.jira?.site ?? "";
+  const act = passageText(action, 80), because = passageText(why, 300);
+  if (act.length < 3) throw new Error("action: what you ask the person to do, a few words.");
+  let k = "";
+  if (key != null && key !== "") {
+    k = passageText(key, 40).toUpperCase();
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(k)) throw new Error("key: a Jira key, like ABC-12.");
+    k = new Map((data?.children ?? []).map((c) => [c.key, c.fields?.parent?.key])).get(k) ?? k;
+  }
+  let link = "";
+  if (url != null && url !== "") {
+    link = passageText(url, 500);
+    if (!askLink(profile, link, site)) throw new Error("url: a GitHub link, or a link to this profile's Jira.");
+  }
+  if (!link && k && site) link = `${site}/browse/${k}`;
+  const term = typeof terminal === "string" && /^[\w-]{1,40}$/.test(terminal) ? terminal : "";
+  const asker = term ? agents().find((a) => a.address === term) : null;
+  const now = Date.now();
+  const all = shared(ASKS) ?? {};
+  let list = (all[profile.id] ?? []).filter((a) => now - a.at < ASK_FOR && !(term && a.terminal === term && a.action === act));
+  const ask = { id: String(now) + (list.some((a) => a.id === String(now)) ? `-${list.length}` : ""), at: now, action: act, why: because,
+    ...(k ? { key: k } : {}), ...(link ? { url: link } : {}), ...(term ? { terminal: term } : {}), ...(asker?.tab_name ? { tab: passageText(asker.tab_name, 60) } : {}) };
+  if (term) { const mine = list.filter((a) => a.terminal === term); if (mine.length >= ASK_EACH) { const drop = new Set(mine.slice(0, mine.length - ASK_EACH + 1).map((a) => a.id)); list = list.filter((a) => !drop.has(a.id)); } }
+  list = [...list, ask].slice(-ASK_MAX);
+  setShared(ASKS, { ...all, [profile.id]: list });
+  return ask;
+}
 
 // Suggested: what the What next? Claude picked for Next (brew(), applyPicks()), by
 // profile: { at, items: [{ key, title, action, why, url, from }] }; `key` a story key (a subtask's
@@ -562,11 +624,13 @@ function dismissSuggestion(profile, key) {
 }
 // What a queue item says, in Next and in the queue list.
 const queueLabel = (x) => (x.desk ? "Desk: an agent needs you"
+  : x.ask ? x.ask.action
   : x.clean ? (x.clean.length === 1 ? `${x.clean[0].key}: finished, clean up` : `${x.clean.length} finished stories: clean up all`)
   : x.suggest ? x.suggest.action
   : `${lonePr(x) ? prName(lonePr(x)) : x.key}: ${need(x)[1]}`);
 // Its second line: what it is (the story's title, who asked for the review), or why Claude picked it.
 const queueDetail = (x) => (x.desk ? "Its agent is waiting for your answer"
+  : x.ask ? [askerOf(x.ask)?.tab_name ?? x.ask.tab, x.ask.why || x.it?.title].filter(Boolean).join(" · ")
   : x.clean ? x.clean.map((it) => it.key).join(", ")
   : x.suggest ? x.suggest.why || x.suggest.title
   : x.review ? `${x.review.author?.login ? `${x.review.author.login} · ` : ""}${x.title}`
@@ -575,7 +639,7 @@ const queueDetail = (x) => (x.desk ? "Its agent is waiting for your answer"
 // Claude's picks.
 function queueMark(t, x, size = 16) {
   const box = (el) => div().flex().flex_none().size(size).items_center().justify_center().child(el);
-  if (x.desk) return mark(t, "needs-you", size);
+  if (x.desk || x.ask) return mark(t, "needs-you", size);
   if (x.clean) return box(icon(own("brush-cleaning"), size - 3).text_color(t.dim));
   if (x.suggest?.idea) return box(icon(own("lightbulb"), size - 3).text_color(t.accent));
   if (x.suggest) return box(icon(own("sparkles"), size - 3).text_color(t.accent));
@@ -583,7 +647,7 @@ function queueMark(t, x, size = 16) {
   return mark(t, storyState(x), size);
 }
 // Where a click on it goes, when that's off Herdr (a pick the list doesn't have opens on the web).
-const queueAway = (x) => Boolean(x.suggest && !x.it && !x.suggest.idea);
+const queueAway = (x) => Boolean((x.suggest && !x.it && !x.suggest.idea) || (x.ask && !x.it && x.ask.url));
 // One item of the queue, as Next's card and the open queue draw it: its mark, what to do, and under
 // it what it is or why (muted, one line); ↗ when a click opens the web. `on`: the one Next shows.
 function queueRow(t, x, on, go, { card = false } = {}) {
@@ -1207,24 +1271,87 @@ export function showPassage({ key, quote, note = "" }) {
 // yes; values are checked (a ticket key, text of sensible length, no control characters) and the
 // outcome goes to passage.result.json beside it, the request removed.
 const passageText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
-export async function showPassageRequest() {
+export function showPassageRequest() {
+  return answerRequest("passage", (req) => {
+    const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a Jira key, like ABC-12.");
+    if (quote.length < 3) throw new Error("quote: the passage's words, as the description has them.");
+    return showPassage({ key, quote, note }) ? { ok: true } : { ok: false, error: `${key} isn't a story in the shown profile's list.` };
+  });
+}
+
+// A request from the plugin (plugin/server.py): `<home>/kelpie/<name>.json` read and handed to
+// `handle`, whose result (or the error it throws) goes to <name>.result.json, the request removed.
+async function answerRequest(name, handle) {
   const dir = `${appHome()}/kelpie`;
-  const file = `${dir}/passage.json`;
+  const file = `${dir}/${name}.json`;
   let result;
   try {
     const read = await exec("cat", [file]);
     if (read.code) throw new Error(`No request at ${file}.`);
-    const req = JSON.parse(read.stdout);
-    const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
-    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a Jira key, like ABC-12.");
-    if (quote.length < 3) throw new Error("quote: the passage's words, as the description has them.");
-    result = showPassage({ key, quote, note }) ? { ok: true } : { ok: false, error: `${key} isn't a story in the shown profile's list.` };
+    result = await handle(JSON.parse(read.stdout));
   } catch (e) {
     result = { ok: false, error: String(e?.message ?? e) };
   }
   const out = JSON.stringify({ ...result, at: new Date().toISOString() }, null, 2);
-  await exec("sh", ["-c", 'mkdir -p "$1" && printf "%s\\n" "$2" > "$1/passage.result.json" && rm -f "$3"', "sh", dir, out, file]).catch(() => {});
+  await exec("sh", ["-c", 'mkdir -p "$1" && printf "%s\\n" "$2" > "$1/$4.result.json" && rm -f "$3"', "sh", dir, out, file, name]).catch(() => {});
   return result;
+}
+
+// Which profile a plugin request is about: the one What next? started it for (`profile`, from its
+// environment), else the asking agent's (`terminal`: its space's profile), else the one shown.
+function requestProfile(req) {
+  const named = typeof req?.profile === "string" ? profiles().find((p) => p.id === req.profile) : null;
+  if (named) return named;
+  const agent = typeof req?.terminal === "string" ? agents().find((a) => a.address === req.terminal) : null;
+  const space = agent && spaces().find((x) => x.id === agent.space);
+  return (space && profileOf(space)) || shownProfile();
+}
+// A profile's stories and reviews as the list has them (storyItems(), for any profile).
+function itemsFor(profile) {
+  const data = (shared(DATA) ?? {})[profile?.id]?.data;
+  if (!profile?.jira || !data) return null;
+  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), profile.jira?.handover)), reviews: reviewsOf(data) };
+}
+const profileHasNext = (profile) => {
+  if (!profile) throw new Error("No Kelpie profile is shown.");
+  if (!profile.jira) throw new Error(`The profile ${profile.name} has no Jira board, so Kelpie shows no Next queue for it.`);
+  return profile;
+};
+
+// kelpie.get-next (the plugin's get_next): the profile's Next queue, as Next lists it, for an agent
+// to read: { ok, profile, items: [{ kind, key, action, detail, url }] }.
+export function getNextRequest() {
+  return answerRequest("next-get", (req) => {
+    const profile = profileHasNext(requestProfile(req));
+    const s = itemsFor(profile);
+    if (!s) throw new Error(`${profile.name}'s stories haven't loaded yet.`);
+    const kind = (x) => (x.desk ? "desk" : x.clean ? "clean" : x.ask ? "agent-ask" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
+    const keyOfItem = (x) => (x.clean ? x.clean.map((it) => it.key).join(", ") : x.ask ? x.ask.key : x.suggest ? (x.suggest.idea ? "" : x.suggest.key.replace(/^pr:/, "")) : x.review ? prName(x.review) : x.desk ? "" : x.key);
+    const urlOf = (x) => (x.ask ? x.ask.url : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && x.key && !lonePr(x) ? `${s.data.site}/browse/${x.key}` : lonePr(x)?.url);
+    const items = needQueueOf(profile, s.items, s.reviews).map((x) => Object.fromEntries(Object.entries({ kind: kind(x), key: keyOfItem(x), action: queueLabel(x), detail: queueDetail(x), url: urlOf(x) }).filter(([, v]) => v)));
+    return { ok: true, profile: profile.name, items };
+  });
+}
+// kelpie.add-next (the plugin's add_to_next): an agent asks the person for something (addAsk()).
+// It only adds a line to Next, which the person may take or drop, so nothing waits for a yes.
+export function addNextRequest() {
+  return answerRequest("next-add", (req) => {
+    const profile = profileHasNext(requestProfile(req));
+    const ask = addAsk(profile, { action: req?.action, why: req?.why, key: req?.key, url: req?.url, terminal: req?.terminal });
+    return { ok: true, profile: profile.name, ask: { action: ask.action, ...(ask.key ? { key: ask.key } : {}) } };
+  });
+}
+// kelpie.suggest-next (the plugin's suggest_next): Claude's picks for Next, checked by applyPicks()
+// and replacing the profile's earlier ones. What next? hands its picks in this way.
+const PICKS_IN = 20;
+export function suggestNextRequest() {
+  return answerRequest("next-suggest", async (req) => {
+    const profile = profileHasNext(requestProfile(req));
+    if (!Array.isArray(req?.items)) throw new Error("items: a list of picks.");
+    const { kept, dropped } = await applyPicks(profile, req.items.slice(0, PICKS_IN));
+    return { ok: true, profile: profile.name, kept: kept.map((k) => (k.idea ? `idea: ${k.action}` : `${k.key.replace(/^pr:/, "")}: ${k.action}`)), dropped };
+  });
 }
 
 // What the last action said (pausing, asking, cleaning up), shown under the story's title row. In
@@ -3198,18 +3325,19 @@ export class StoryList extends Stories {
   // What next? button, to ask for suggestions (again). The item shown is lit (a pick by its story),
   // not Next's, which is the one after it: lighting that lit the row under the one clicked.
   queueList(t, st, items, reviews, queue, shownKey) {
-    const lit = (x) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest) && x.it?.key === shownKey));
+    const lit = (x) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask) && x.it?.key === shownKey));
+    const drop = (x) => (x.ask ? () => dismissAsk(st.profile, x.ask.id) : () => dismissSuggestion(st.profile, x.suggest.key));
     const row = (x) => queueRow(t, x, lit(x), () => goNext(st.profile, x))
-      .when(Boolean(x.suggest), (el) => el.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
+      .when(Boolean(x.suggest || x.ask), (el) => el.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
         .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .tooltip("Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); dismissSuggestion(st.profile, x.suggest.key); })
+        .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(x)(); })
         .child(icon(chrome("x"), 12))));
     const part = (label, list) => (list.length ? [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(t.dim)
       .child(div().child(label)).child(div().text_color(t.muted).child(String(list.length))), ...list.map(row)] : []);
-    const asked = queue.filter((x) => !x.clean && !x.suggest && !x.review), review = queue.filter((x) => x.review && !x.suggest),
+    const asked = queue.filter((x) => !x.clean && !x.suggest && !x.review && !x.ask), fromAgents = queue.filter((x) => x.ask), review = queue.filter((x) => x.review && !x.suggest),
       clean = queue.filter((x) => x.clean), said = queue.filter((x) => x.suggest);
     return v_flex().flex_none().gap(2).pb(2)
-      .children([...part("Needs you", asked), ...part("To review", review), ...part("Clean up", clean)])
+      .children([...part("Needs you", asked), ...part("From agents", fromAgents), ...part("To review", review), ...part("Clean up", clean)])
       // Claude's picks in a glowing box of their own, so they read as generated (with none, the What
       // next? button shows under Next instead).
       .when(said.length > 0, (el) => el.child(div().pt(4).child(this.suggestBox(t, st, items, reviews, said, row))));
@@ -3821,6 +3949,15 @@ function goNext(profile, it) {
   // ticket (or pull request) on the web.
   if (it.suggest?.idea) return startIdea(profile, it.suggest);
   if (it.suggest) return it.it ? selectStory(profile, it.it) : open(it.suggest.url);
+  // An agent's ask: its story (and the agent, when it's that story's), else its link, else the agent.
+  if (it.ask) {
+    dismissAsk(profile, it.ask.id);
+    const asker = askerOf(it.ask);
+    if (it.it) { selectStory(profile, it.it); if (asker && allAgents(it.it).some((a) => a.address === asker.address)) focusAgent(profile, it.it, asker); return; }
+    if (it.ask.url) return open(it.ask.url);
+    if (asker) { run("space.select", { id: asker.space }); run("pane.focus", { pane: asker.pane }); }
+    return;
+  }
   setPoint(profile, it);
   selectStory(profile, it);
   const asking = lonePr(it) ? null : allAgents(it).find((a) => a.status === "blocked");
@@ -3919,7 +4056,9 @@ const setBrewing = (profile, at) => setShared(BREWING, { ...(shared(BREWING) ?? 
 
 // Asks Claude for picks: `claude -p` on the profile's account, in its folder, no session saved,
 // with no file-editing tools (read only as the prompt says; what else it may use is its own
-// settings' call). Its answer ends in a JSON block of picks (applyPicks); a failure is a toast.
+// settings' call). It hands its picks in through the plugin's suggest_next (suggestNextRequest(),
+// which applyPicks), so the plugin must be on the profile's account (askPlugin() otherwise); a run
+// that ends without handing any in, or fails, is a toast.
 function startSuggest(st, items, reviews) {
   if (brewingIn(st.profile)) return;
   brew(st.profile, suggestTask(st, items, reviews)).catch(() => {});
@@ -3930,26 +4069,27 @@ export function whatNext() {
   if (s) startSuggest(s.st, s.items, s.reviews);
 }
 export async function brew(profile, task) {
-  setBrewing(profile, Date.now());
+  const started = Date.now();
+  setBrewing(profile, started);
   try {
     if (isDemo(profile)) {
       const { kept } = await applyPicks(profile, await demoSuggest());
       if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
       return;
     }
+    if (!(await hasPlugin(profile))) { await askPlugin(profile, "what-next"); return; }
     // Read only: plan mode (whatever the person's own default mode is, auto or bypass included) and
-    // no editing tools. Reading through the person's own access (plugins, MCP, tools) still works.
-    const [cmd, ...args] = claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task);
+    // no editing tools. Reading through the person's own access (plugins, MCP, tools) still works, and
+    // so does suggest_next, marked read only: it changes only what Kelpie suggests. KELPIE_PROFILE
+    // tells the plugin which profile the picks are for, as this Claude runs in no terminal of Herdr's.
+    const [cmd, ...args] = ["env", `KELPIE_PROFILE=${profile.id}`, ...claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task)];
     const r = await exec(cmd, args, { cwd: profile.folder, timeout: BREW_FOR });
     let out = null;
     try { out = JSON.parse(r.stdout); } catch { /* not JSON: said below */ }
     if (!out || out.is_error) throw new Error(String(out?.result ?? r.stderr ?? "").trim().split("\n").pop() || `Claude stopped (code ${r.code}).`);
-    const blocks = [...String(out.result ?? "").matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1]);
-    let picks = null;
-    for (const b of blocks.reverse()) { try { picks = JSON.parse(b); break; } catch { /* the next one */ } }
-    if (!Array.isArray(picks?.items)) throw new Error("Claude's answer had no picks in it.");
-    const { kept, dropped } = await applyPicks(profile, picks.items);
-    if (!kept.length) notify({ title: "No suggestions this time", body: dropped.length ? `Dropped: ${dropped.map((d) => `${d.item} (${d.why})`).join("; ")}` : "Claude found nothing worth suggesting.", level: "info", timeout: 6000 });
+    const got = (shared(SUGGESTED) ?? {})[profile.id];
+    if (!got || got.at < started) throw new Error(`Claude finished without handing its suggestions to Kelpie. ${String(out.result ?? "").trim().split("\n").pop()}`.trim());
+    if (!got.items?.length) notify({ title: "No suggestions this time", body: "Claude found nothing worth suggesting.", level: "info", timeout: 6000 });
   } catch (e) {
     notify({ title: "What next? didn't work", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 });
   } finally {
@@ -3958,9 +4098,11 @@ export async function brew(profile, task) {
 }
 // An idea of Claude's, picked: a Claude on the Desk starts on it with the profile's message
 // (prompts.idea, config.js ASK_PROMPTS), a tab named after it; the idea leaves the queue.
-function startIdea(profile, s) {
+// Exported for the tests.
+export function startIdea(profile, s) {
   const name = `Idea: ${s.action}`.slice(0, 60);
-  openDesk(profile, { name, argv: claudeArgv(profile), task: askText(profile, "idea", { idea: s.idea, where: s.where || "not said", why: s.why || "not said" }) });
+  // The idea is Claude's words, maybe drawn from others' (tickets, pull requests): information.
+  openDesk(profile, { name, argv: claudeArgv(profile), task: `${askText(profile, "idea", { idea: s.idea, where: s.where || "not said", why: s.why || "not said" })}\n\n${OTHERS}` });
   dismissSuggestion(profile, s.key);
 }
 function suggestTask(st, items, reviews) {

@@ -13,7 +13,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
 import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, status, stop, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -620,6 +620,11 @@ async function command(c) {
   if (c.startsWith("preview-")) return showStoryByKey(c.slice("preview-".length));
   // show-passage: a story with a passage of its description marked, from a request file (stories.js).
   if (c === "show-passage") return showPassageRequest();
+  // get-next, add-next, suggest-next: Next's queue read, an agent's ask added to it, Claude's picks
+  // handed in, each from a request file (the plugin's tools; stories.js).
+  if (c === "get-next") return getNextRequest();
+  if (c === "add-next") return addNextRequest();
+  if (c === "suggest-next") return suggestNextRequest();
   if (c.startsWith("pause-story-")) return pauseStoryByKey(c.slice("pause-story-".length));
   if (c.startsWith("clean-story-")) return cleanStoryByKey(c.slice("clean-story-".length));
   if (c === "clean-all") return cleanAll();

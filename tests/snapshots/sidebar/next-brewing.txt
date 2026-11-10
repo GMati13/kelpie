@@ -44,7 +44,7 @@ v_flex
         div [fg=dim]
           "Next"
         div [fg=muted]
-          "1 of 7"
+          "1 of 8"
         div
         h_flex #story-next-tools {down:left click}
           h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="Claude is looking for what to do next"

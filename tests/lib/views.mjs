@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { mock } from "herdr";
 import { REPO, repoFile } from "./helpers.mjs";
+import { demoAsks } from "../../mods/kelpie/demo.js";
 
 // --- A fixed clock: every Date.now() and new Date() is NOW (a Tuesday, 10:00 UTC) ---------------
 process.env.TZ = "UTC";
@@ -76,6 +77,8 @@ export function setupDemoWorld({ layout = "Kelpie", shown = null, agentOf, space
   const p = {};
   for (const [key, list] of Object.entries(paused ?? {})) p[key] = list.map((x, n) => ({ sessionId: x.id ?? `demo-paused-${key}-${n}`, cwd: FOLDER, name: x.name ?? key, at: when(x.at ?? "-3h") }));
   shared.set("kelpie.paused", { [DEMO]: p });
+  // What agents asked of the person (the fixture's `asks`), from the agent of each one's tab.
+  shared.set("kelpie.next.asks", { [DEMO]: demoAsks(FIXTURE, (tab) => w.agents.find((x) => x.tab_name === tab)?.address) });
   // Shown with no space of its own: as picked in the profile menu.
   if (!w.spaces.some((s) => s.active)) shared.set("kelpie.profile.chosen", { id: DEMO, space: null });
   // demo.js asks the shell for $HOME; the rest of exec (sleep, python3, ...) answers nothing.

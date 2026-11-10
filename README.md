@@ -84,7 +84,7 @@ A profile is a folder you work in, plus whatever you connect to it: a Jira board
 
   It saves the limits for Kelpie and prints nothing, so it replaces a status line you already have. A word after the path names the account in the footer (`… claude-statusline.sh Work`). With `HERDR_APP_HOME`, use that folder in the path.
 - **The Web panel:** run `terminal-browser config set render.presenter patched` once, for its images to draw in place.
-- **Kelpie's Claude Code plugin:** lets Claude set up a profile with you ("Let me configure it for you" in the profile dialog, which offers to install it), and show you where a story says something: ask the Claude you're talking to "where does the story say…?", and it opens the story in Kelpie with the passage marked in its description, instead of only quoting it. Install it on each Claude account a profile uses; in Claude Code, from anywhere:
+- **Kelpie's Claude Code plugin:** lets Claude set up a profile with you ("Let me configure it for you" in the profile dialog, which offers to install it), and show you where a story says something: ask the Claude you're talking to "where does the story say…?", and it opens the story in Kelpie with the passage marked in its description, instead of only quoting it. It also connects Claude to Next: any Claude can read your queue ("what's on my plate?") and add something it needs from you, such as a choice or a plan to read, which shows in Next under its name; What next? hands its suggestions in through it too, so it needs the plugin as well. Install it on each Claude account a profile uses; in Claude Code, from anywhere:
 
   ```
   /plugin marketplace add <path to your Kelpie clone>
