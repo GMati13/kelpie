@@ -99,12 +99,12 @@ export function notice(t, text, color) {
 // A source's "nothing here": ui.js's empty text, centred in the view.
 export const empty = (t, text) => emptyText(t, text, { fill: true });
 
-// A source this space hasn't been set up for: what it would show, and the button to set it up. The
-// profile shown (one picked in the menu, say) is the one set up, not the shown space's.
-export function needsSetup(t, st, what, glyph, line) {
+// A source this space hasn't been set up for: what it would show, and the button to set it up (`focus`,
+// the profile dialog's tab it opens, when `what` isn't its name). The profile shown (one picked in the
+// menu, say) is the one set up, not the shown space's.
+export function needsSetup(t, st, what, glyph, line, focus = what.toLowerCase()) {
   const profile = st.profile ?? st.setup?.profile ?? null;
   if (!st.space && !profile) return empty(t, "No space is shown.");
-  const focus = what.toLowerCase();
   return v_flex().size_full().items_center().justify_center().gap(6).text_size(TEXT)
     .child(div().flex().size(40).mb(6).items_center().justify_center().rounded(12).bg(t.raised).border_1().border_color(t.border)
       .child(icon(chrome(glyph), 18).text_color(t.muted)))

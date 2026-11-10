@@ -109,7 +109,7 @@ describe("applyPicks: Claude's picks checked against the sidebar's rules", () =>
   test("unknown keys, non-keys and picks without an action are dropped, saying why", async () => {
     const { kept, dropped } = await applyPicks(profile, [pick({ key: "AA-99" }), pick({ key: "hello" }), pick({ key: "CC-1", action: " " }), pick({})]);
     assert.deepEqual(kept, []);
-    assert.deepEqual(dropped.map((d) => d.why), ["unknown to Jira", "not a Jira key", "no action", "no Jira key, pull request link or idea"]);
+    assert.deepEqual(dropped.map((d) => d.why), ["not found on the board", "not a ticket key, like ABC-12", "no action", "no ticket key, pull request link or idea"]);
   });
   test("one pick per story", async () => {
     const { kept, dropped } = await applyPicks(profile, [pick({ key: "FF-1" }), pick({ key: "FF-3" }), pick({ key: "FF-2" })]);
