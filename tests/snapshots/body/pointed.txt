@@ -1,0 +1,147 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    v_flex #story-detail
+      h_flex
+        v_flex #point-box [bg=accent/12 border=accent opacity=0] ~transition ~transition {size_change}
+          div [border=accent/4d]
+          div #point-zoom-probe {size_change}
+          h_flex
+            div [fg=accent]
+              "Next"
+            div [fg=foreground] tip="All 2 pull requests are approved: merge them"
+              "All 2 pull requests are approved: merge them"
+            div #point-close [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Put this away"
+              svg chrome:x
+          div [fg=muted]
+            "Merge all asks an agent to check them and plan the merge"
+          v_flex
+            h_flex
+              h_flex #point-pr-charts#58 [hover(fg=accent)] {click} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts"
+                div
+                  div
+                    svg chrome:circle-check [fg=done]
+                div [fg=dim]
+                  "ACME-173"
+                div
+                  "Dark palette for the dashboard charts"
+                div [fg=dim]
+                  "charts#58"
+                div [fg=done]
+                  "Approved"
+            h_flex
+              h_flex #point-pr-web#415 [hover(fg=accent)] {click} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle"
+                div
+                  div
+                    svg chrome:circle-check [fg=done]
+                div [fg=dim]
+                  "ACME-172"
+                div
+                  "Theme tokens and the dark mode toggle"
+                div [fg=dim]
+                  "web#415"
+                div [fg=done]
+                  "Approved"
+          h_flex
+            Popup.new "point-merge-menu"
+              h_flex #point-merge-all [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Merge all asks an agent to check them and plan the merge"
+                "Merge all ▾"
+                div
+                  div
+                    div [bg=#7fb3ae]
+      div #story-overview-view {size_change}
+        v_flex #story-overview-1794304800000
+          v_flex #story-overview-content {size_change}
+            div
+              h_flex
+                div #story-desc-body [font="Fraunces" fg=foreground/c4]
+                  v_flex
+                    v_flex [fg=foreground/e0]
+                      TextView.html "story-desc-0-text-0" "<span>The dashboard is the last screen without a dark theme. Move its colours to the shared theme tokens and add the toggle to the account menu, following the system setting by default.</span>" [fg=foreground/e0]
+            h_flex
+              v_flex
+                div #sub-cols-zoom-probe {size_change}
+                v_flex #sub-row-ACME-172 [border=border hover(bg=hover)] {hover}
+                  h_flex
+                    div #sub-assignee-ACME-172
+                      div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
+                        "AM"
+                    div [font="DM Mono" fg=dim]
+                      "ACME-172"
+                    h_flex #sub-main-ACME-172
+                      div #sub-title-ACME-172 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                        "Theme tokens and the dark mode toggle"
+                    h_flex #sub-mark-ACME-172 tip="ACME-172: idle"
+                      div
+                        div [border=muted]
+                    h_flex
+                      h_flex #sub-status-cell-ACME-172 {size_change}
+                        Popup.new "sub-status-ACME-172-menu"
+                          div #sub-status-ACME-172-more [hover(bg=hover)] {click} tip="Change the status"
+                            div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                              "In review"
+                              div
+                                div
+                                  div [bg=#7fb3ae]
+                  h_flex
+                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle"
+                      div
+                        div
+                          svg chrome:circle-check [fg=done]
+                      div
+                        "Theme tokens and the dark mode toggle"
+                      h_flex
+                        h_flex #sub-pr-where-cell-web#415 [fg=dim] {size_change}
+                          "web#415"
+                      h_flex
+                        h_flex #sub-pr-state-cell-web#415 {size_change}
+                          div [fg=done]
+                            "Approved"
+                          div [fg=dim]
+                            "now"
+                    h_flex
+                      h_flex #sub-pr-ask-cell-web#415 {size_change}
+                        h_flex #ask-merge-web#415 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to ask ACME-172's agent to merge web#415"
+                          "Merge"
+                v_flex #sub-row-ACME-173 [border=border hover(bg=hover)] {hover}
+                  h_flex
+                    div #sub-assignee-ACME-173
+                      div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
+                        "AM"
+                    div [font="DM Mono" fg=dim]
+                      "ACME-173"
+                    h_flex #sub-main-ACME-173
+                      div #sub-title-ACME-173 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                        "Dark colours for the dashboard charts"
+                    h_flex #sub-mark-ACME-173
+                    h_flex
+                      h_flex #sub-status-cell-ACME-173 {size_change}
+                        Popup.new "sub-status-ACME-173-menu"
+                          div #sub-status-ACME-173-more [hover(bg=hover)] {click} tip="Change the status"
+                            div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                              "In review"
+                              div
+                                div
+                                  div [bg=#7fb3ae]
+                  h_flex
+                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts"
+                      div
+                        div
+                          svg chrome:circle-check [fg=done]
+                      div
+                        "Dark palette for the dashboard charts"
+                      h_flex
+                        h_flex #sub-pr-where-cell-charts#58 [fg=dim] {size_change}
+                          "charts#58"
+                      h_flex
+                        h_flex #sub-pr-state-cell-charts#58 {size_change}
+                          div [fg=done]
+                            "Approved"
+                          div [fg=dim]
+                            "now"
+                    h_flex
+                      h_flex #sub-pr-ask-cell-charts#58 {size_change}
+                        h_flex #ask-merge-charts#58 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to ask ACME-173's agent to merge charts#58"
+                          "Merge"

@@ -59,7 +59,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
           div [font="DM Sans" fg=foreground]
             "Dark mode for the dashboard"
         div [fg=done]
-          "Approved, checks pass · ready to merge"
+          "Approved, checks pass or none · ready to merge"
       div [fg=dim]
         "Open"
     h_flex #sp-ACME-175 [hover(bg=hover)] {click}

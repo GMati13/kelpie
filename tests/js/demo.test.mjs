@@ -76,7 +76,7 @@ describe("demoJira: what Kelpie asks Jira", () => {
 describe("demoPulls and the local helpers", () => {
   test("yours open, yours merged, and the reviews waiting for you", async () => {
     const mine = await searchPulls("user:kelpie--demo is:pr is:open author:@me", { demo: true });
-    assert.deepEqual(mine.map((p) => `${p.repository.name}#${p.number}`), ["web#418", "payments#97", "search#233", "web#415", "web#423", "docs#58", "docs#61"]);
+    assert.deepEqual(mine.map((p) => `${p.repository.name}#${p.number}`), ["web#418", "payments#97", "search#233", "charts#58", "web#415", "web#423", "docs#58", "docs#61"]);
     assert.deepEqual((await demoPulls("user:kelpie--demo is:pr is:merged author:@me merged:>=2026-01-01")).map((p) => p.number), [291, 409, 298]);
     const reviews = await demoPulls("user:kelpie--demo is:pr is:open review-requested:@me");
     assert.deepEqual(reviews.map((p) => [p.number, p.author.login]), [[421, "priya-n"], [305, "tomas-r"]]);

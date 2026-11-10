@@ -158,7 +158,7 @@ v_flex [fg=foreground]
               div [bg=working]
             div [fg=dim]
               "0/1"
-    h_flex #story-ACME-171 [hover(bg=hover)] {click} tip="Approved, checks pass · ready to merge"
+    h_flex #story-ACME-171 [hover(bg=hover)] {click} tip="Approved, checks pass or none · ready to merge"
       div
         div
           svg chrome:circle-check [fg=done]
@@ -168,14 +168,15 @@ v_flex [fg=foreground]
         h_flex
           div [fg=dim]
             "ACME-171"
-          h_flex #b-pr-ACME-171 [fg=done] tip="web#415: Approved, checks pass: ready to merge"
+          h_flex #b-pr-ACME-171 [fg=done] tip="web#415: Approved, checks pass: ready to merge\ncharts#58: Approved, no checks: ready to merge"
             div
               svg chrome:circle-check [fg=done]
-          h_flex #b-subs-ACME-171 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in review"
+            "2"
+          h_flex #b-subs-ACME-171 tip="Your subtasks: 0 of 2 past testing · 2 in progress\nAll: 2 subtasks · 2 in review"
             h_flex [bg=raised]
               div [bg=working]
             div [fg=dim]
-              "0/1"
+              "0/2"
     h_flex #story-ACME-175 [hover(bg=hover)] {click} tip="Agent working · PR in review"
       div
         div
@@ -261,7 +262,7 @@ v_flex [fg=foreground]
       div [fg=muted]
         "Your pull requests"
       div [fg=dim]
-        "7"
+        "8"
     h_flex #mine-story-ACME-175 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-175"
       div #mine-story-fold-ACME-175 [hover(bg=hover)] {down:left click} tip="Fold ACME-175's pull requests"
         svg chrome:chevron-down [fg=dim]
@@ -353,6 +354,39 @@ v_flex [fg=foreground]
             "ACME-152 Apple Pay button and merchant session"
         div [fg=muted]
           "payments#97 · 1h"
+    h_flex #mine-story-ACME-171 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-171"
+      div #mine-story-fold-ACME-171 [hover(bg=hover)] {down:left click} tip="Fold ACME-171's pull requests"
+        svg chrome:chevron-down [fg=dim]
+      div
+        "ACME-171"
+      div
+        "Dark mode for the dashboard"
+      div
+        h_flex
+          div #merge-wrap-ACME-171 {down:left click}
+            Popup.new "merge-ACME-171-menu"
+              div #merge-ACME-171-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge for ACME-171, with a new agent or an open Claude"
+                svg own:git-merge
+    h_flex #mine-charts#58 [hover(bg=hover)] {click} tip="Approved, no checks: ready to merge. Show ACME-171 on its Changes"
+      div
+        div
+          svg chrome:circle-check [fg=done]
+      v_flex
+        h_flex
+          div
+            "ACME-173 Dark palette for the dashboard charts"
+        div [fg=muted]
+          "charts#58 · 2h"
+    h_flex #mine-web#415 [hover(bg=hover)] {click} tip="Approved, checks pass: ready to merge. Show ACME-171 on its Changes"
+      div
+        div
+          svg chrome:circle-check [fg=done]
+      v_flex
+        h_flex
+          div
+            "ACME-172 Theme tokens and the dark mode toggle"
+        div [fg=muted]
+          "web#415 · 5h"
     h_flex #mine-story-ACME-160 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-160"
       div #mine-story-fold-ACME-160 [hover(bg=hover)] {down:left click} tip="Fold ACME-160's pull requests"
         svg chrome:chevron-down [fg=dim]
@@ -380,29 +414,6 @@ v_flex [fg=foreground]
             "ACME-161 Fuzzy matching with a trigram index"
         div [fg=muted]
           "search#233 · 3h"
-    h_flex #mine-story-ACME-171 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-171"
-      div #mine-story-fold-ACME-171 [hover(bg=hover)] {down:left click} tip="Fold ACME-171's pull requests"
-        svg chrome:chevron-down [fg=dim]
-      div
-        "ACME-171"
-      div
-        "Dark mode for the dashboard"
-      div
-        h_flex
-          div #merge-wrap-ACME-171 {down:left click}
-            Popup.new "merge-ACME-171-menu"
-              div #merge-ACME-171-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge for ACME-171, with a new agent or an open Claude"
-                svg own:git-merge
-    h_flex #mine-web#415 [hover(bg=hover)] {click} tip="Approved, checks pass: ready to merge. Show ACME-171 on its Changes"
-      div
-        div
-          svg chrome:circle-check [fg=done]
-      v_flex
-        h_flex
-          div
-            "ACME-172 Theme tokens and the dark mode toggle"
-        div [fg=muted]
-          "web#415 · 5h"
     h_flex #mine-story-none [fg=dim]
       div #mine-story-fold-none [hover(bg=hover)] {down:left click} tip="Fold the pull requests without a ticket"
         svg chrome:chevron-down [fg=dim]

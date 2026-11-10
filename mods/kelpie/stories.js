@@ -1163,6 +1163,34 @@ function passageFor(profile, key) {
   const p = shared(PASSAGE);
   return p && p.profile === profile?.id && p.key === key && Date.now() - p.at < PASSAGE_FOR ? p : null;
 }
+// What Next pointed at when it opened a story (goNext): the step the story needs from you, by
+// profile: { key, kind, at }, `kind` one of POINT_KINDS. While the story still needs that step
+// (pointFor), it's marked as a passage is: a bar over the details saying what to do (pointBar), the
+// header's button for it lit, and the pull request lines it acts on tinted. Taking the step, the
+// bar's ✕, Next pointing elsewhere or POINT_FOR ends it. Only Next points (not yet agents).
+const POINT = "kelpie.point";
+const POINT_FOR = 60 * 60 * 1000;
+const POINT_GLINT = 5000; // how long the box's glint runs when it comes in (two passes), then it rests
+// need()'s ranks of what needs you, as the step each asks for.
+const POINT_KINDS = { 0: "peek", 1: "comments", 2: "fix", 3: "merge" };
+const pointKind = (it) => (lonePr(it) ? null : POINT_KINDS[need(it)[0]] ?? null);
+// Exported for the tests.
+export function pointFor(profile, it) {
+  const p = (shared(POINT) ?? {})[profile?.id];
+  return p && it && p.key === it.key && Date.now() - p.at < POINT_FOR && p.kind === pointKind(it) ? p : null;
+}
+// Exported for the tests.
+export function setPoint(profile, it) {
+  const kind = pointKind(it);
+  setShared(POINT, { ...(shared(POINT) ?? {}), [profile.id]: kind ? { key: it.key, kind, at: Date.now() } : null });
+  // The bar is in the details: they unfold, as they do for a passage.
+  if (kind && headFolded()) foldHead(false);
+}
+function clearPoint(profile, key) {
+  const all = shared(POINT) ?? {};
+  if (all[profile?.id] && (!key || all[profile.id].key === key)) setShared(POINT, { ...all, [profile.id]: null });
+}
+
 // Shows the story `key` of the shown profile with `quote` found and marked in its description; false
 // when the list doesn't hold that story. Its details unfold, as they're what's shown.
 export function showPassage({ key, quote, note = "" }) {
@@ -1298,6 +1326,31 @@ function sendStoryTask(kind, profile, it, prs, agent) {
 
 // A pull request as the Merge and Request approval tasks list it.
 const prLine = (t, p) => ({ name: prName(p), title: p.title, url: p.url, state: prLook(t, p, checksOf(p))[1] });
+
+// The Merge and Request approval menus' rows, the same on a story's heading under Your pull requests
+// and in the story's header: a new agent with the task, or the task sent to one of the story's
+// Claudes already open (in its space, or on one of its keys elsewhere; not another story's or
+// profile's). `story` null: pull requests with no ticket, the Desk's, so its agents. Either way
+// taking it ends what Next pointed at on the story.
+const TASK_LOOK = { merge: { label: "Merge", glyph: "git-merge" }, approval: { label: "Request approval", glyph: "user-check" } };
+function storyTaskRows(t, profile, story, kind, list) {
+  const prs = list.map((p) => prLine(t, p));
+  const names = new Map(spaces().map((s) => [s.id, s.name]));
+  const desk = !story;
+  const keys = desk ? [] : storyKeys(story);
+  const open = desk ? deskAgents(profile) : agents().filter((a) => (story.space && a.space === story.space.id) || keys.includes(keyOf(a.tab_name)));
+  const what = desk ? "pull requests without a ticket" : story.key;
+  const took = () => { if (story) clearPoint(profile, story.key); };
+  return [
+    { header: `${TASK_LOOK[kind].label} for ${what} with` },
+    { label: "New agent", hint: desk ? "on the Desk" : `in ${story.key}'s space`, action: () => { took(); desk ? startDeskTask(kind, profile, prs) : startStoryTask(kind, profile, story, prs); } },
+    ...(open.length ? [{ header: desk ? "Or send it to the Desk's" : `Or send it to ${story.key}'s` }, ...open.map((a) => ({
+      label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
+      hint: `${names.get(a.space) ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
+      action: () => { took(); sendStoryTask(kind, profile, story ?? NO_TICKET, prs, a); },
+    }))] : []),
+  ];
+}
 
 // Your pull requests with no ticket are the Desk's: an agent on one is a Desk tab "PR <repo>#<n>". What
 // one needs goes to that agent (not while it waits for your answer), else opens one there with it as
@@ -1682,6 +1735,23 @@ export class Stories extends Source {
     return menuButton(this, t, id, label, rows, { tip, ...opts });
   }
 
+  // A shining box's size (borderGlint() needs it) and the zoom (from shineProbe()), kept on this
+  // copy; redrawn only when one changes.
+  shineSize(id, size, cx) {
+    const was = this.shine?.[id];
+    if (was && Math.abs(was.width - size.width) < 0.01) return;
+    this.shine = { ...(this.shine ?? {}), [id]: { ...(was ?? {}), width: size.width } };
+    cx.notify();
+  }
+  shineProbe(id) {
+    return div().id(`${id}-zoom-probe`).absolute().top(0).left(0).w(100).h(0).on_size_change((size, cx) => {
+      const zoom = size.width / 100, was = this.shine?.[id];
+      if (!zoom || (was && Math.abs((was.zoom ?? 0) - zoom) < 0.001)) return;
+      this.shine = { ...(this.shine ?? {}), [id]: { ...(was ?? {}), zoom } };
+      cx.notify();
+    });
+  }
+
   // A ticket's status chip. A click lists the statuses Jira lets it move to (its workflow's
   // transitions, loaded when the menu opens); picking one moves it and loads the stories again. The
   // new status shows at once, for a minute or until the loaded data has it (Jira's search lags).
@@ -1795,6 +1865,7 @@ export class Stories extends Source {
   // its paused session or latest session brought back, else of a new agent. An agent waiting for an
   // answer gets nothing typed into it: what it asked comes first.
   ask(st, it, key, text, cx) {
+    clearPoint(st.profile, it.key);
     const sub = it.subs.find((s) => s.key === key);
     const agent = sub?.agent ?? (key === it.key ? it.agent : null) ?? (sub && !sub.paused && !sub.last ? it.agent : null);
     if (agent) {
@@ -1876,7 +1947,7 @@ export class Stories extends Source {
     const folds = viewOf(st.profile, it) !== "start";
     const lone = lonePr(it);
     const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: "Open in Jira", url: `${st.data.site}/browse/${it.key}` };
-    const { actions, clean, more } = this.headActions(t, st, it, cx);
+    const { actions, tasks = [], clean, more } = this.headActions(t, st, it, cx);
     // A skin may draw the story's subtasks as a meter (none by default).
     const subMeter = it.story ? skinMeter(t, { kind: "subtasks", label: "Subtasks", done: it.subs.filter((s) => s.category === "done").length, total: it.subs.length }) : null;
     // As wide as the block, never wider: a long title truncates so the actions stay on screen.
@@ -1903,7 +1974,8 @@ export class Stories extends Source {
       .child(div().w(1).h(16).mx(2).flex_none().bg(t.border))
       // Its width spelled out: measured from its parts it came out near zero on an open story (the
       // icons then drew over each other, under the actions, or past the edge).
-      .child(h_flex().flex_none().min_w((2 + (clean ? 1 : 0) + (more ? 1 : 0) + (folds ? 1 : 0)) * (CONTROL + 2)).gap(2).items_center()
+      .child(h_flex().flex_none().min_w((2 + tasks.length + (clean ? 1 : 0) + (more ? 1 : 0) + (folds ? 1 : 0)) * (CONTROL + 2)).gap(2).items_center()
+        .children(tasks)
         .when(Boolean(clean), (el) => el.child(clean))
         .child(iconButton(t, "story-refresh", own("refresh-cw"), () => setShared(REFRESH, Date.now()), "Refresh: load the stories again"))
         .child(iconButton(t, "story-open", own("external-link"), () => open(where.url), where.tip))
@@ -1935,9 +2007,29 @@ export class Stories extends Source {
       : ticket.last ? { label: "Resume", tip: `Continue "${ticket.last.title}" (${ago(ticket.last.updated)} ago)`, last: true }
       : { label: it.space ? "Start agent" : "Start work", tip: `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`, fresh: true };
     const go = work && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
-    const primary = waiting ? primaryButton(t, "story-peek", "Peek", () => run("terminal.peek", { terminal: waiting.address }), { tip: `Answer ${waiting.tab_name} here, without switching spaces` })
-      : headAsk ? this.askButton(t, st, it, `story-ask-${headAsk.kind}`, headAsk.kind, headAsk.prs, true)
-      : go;
+    // Its open pull requests, for Merge and Request approval (the menus of its heading under Your
+    // pull requests). With more than one ready to merge, the main action is Merge all: the Merge
+    // menu, filled (an agent checks them and plans merging them together).
+    const openPrs = allPrs(it).filter((p) => !p.merged);
+    const unapproved = openPrs.filter((p) => !p.isDraft && p.reviewDecision !== "APPROVED");
+    const taskMenu = (kind, list, filled = false) => {
+      const { label, glyph } = TASK_LOOK[kind];
+      const tip = `${label} ${kind === "merge" ? "its pull requests" : "for its pull requests waiting on reviewers"}, with a new agent or an open Claude`;
+      return this.menuButton(t, `story-${kind}`, "", storyTaskRows(t, st.profile, it, kind, list), tip, filled
+        ? { width: 340, trigger: (toggle) => primaryButton(t, `story-${kind}-all`, `${label} all ▾`, toggle, { tip }) }
+        : { width: 340, iconPath: own(glyph) });
+    };
+    const mergeAll = headKind === "merge" && headPrs.length > 1 ? taskMenu("merge", openPrs, true) : null;
+    const peek = waiting && primaryButton(t, "story-peek", "Peek", () => { clearPoint(st.profile, it.key); run("terminal.peek", { terminal: waiting.address }); },
+      { tip: `Answer ${waiting.tab_name} here, without switching spaces` });
+    const [primary, step] = peek ? [peek, "peek"] : mergeAll ? [mergeAll, "merge"]
+      : headAsk ? [this.askButton(t, st, it, `story-ask-${headAsk.kind}`, headAsk.kind, headAsk.prs, true), headAsk.kind] : [go, null];
+    // What Next pointed at (pointFor): its button lit, a soft halo breathing slowly behind it (native,
+    // 3.2 s), so the eye finds it without anything blinking.
+    const lit = step && pointFor(st.profile, it)?.kind === step;
+    const main = lit ? div().id("story-pointed").flex_none().relative().p(3)
+      .child(div().absolute().inset_0().rounded(10).bg(tint(t.accent, "40")).loop("opacity", { from: 0.35, to: 1, period: 3200, easing: "ease-in-out" }))
+      .child(primary) : primary;
     // Pausing the story pauses every agent in its space and closes it: it asks first when an agent is
     // at work, or the space holds tabs with no agent, which close with it.
     const why = it.space ? pauseWhy(it) : "";
@@ -1958,7 +2050,8 @@ export class Stories extends Source {
     ];
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
     const clean = cleanable(st.profile, it).length ? this.cleanButton(t, st, it) : null;
-    return { actions: [primary, pauseIt].filter(Boolean), clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
+    const tasks = [unapproved.length ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null].filter(Boolean);
+    return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
 
   // A review previewed: start its review agent (or show the one open); headRow's open icon opens it on GitHub.
@@ -2117,7 +2210,10 @@ export class Stories extends Source {
       .when(it.prs.length > 0, (el) => el.child(heading("prs-story", "On the story itself")).children(prOrder(it.prs).map((p) => this.pr(t, p, st, it).px(8))))
       .when(own.length > 0, (el) => el.child(heading("prs-own", own.length === 1 ? "Pull request" : `Pull requests · ${own.length}`)).children(prOrder(own).map((p) => this.pr(t, p, st, it).px(8))))
       .children(it.story ? subGroups(it.subs) : []);
-    const overview = v_flex().id("story-overview").flex_1().min_h(0).gap(0).overflow_y_scrollbar()
+    // Next pointing at a step opens the details at their top, where its box is: a new id is a new
+    // scroll position (a mod can't scroll this one itself).
+    const point = pointFor(st.profile, it);
+    const overview = v_flex().id(point ? `story-overview-${point.at}` : "story-overview").flex_1().min_h(0).gap(0).overflow_y_scrollbar()
       .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
         .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
         .child(h_flex().flex_none().w_full().justify_center().px(40).pb(16).child(rows)));
@@ -2136,9 +2232,72 @@ export class Stories extends Source {
     const hl = passageFor(st.profile, it.key);
     if (hl) return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8).child(this.reader(t, st, it, hl, cx));
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
+      // As wide as the subtask rows at most (ROWS), centred like them.
+      .when(Boolean(point), (el) => el.child(h_flex().flex_none().w_full().justify_center().child(this.pointBox(t, st, it, point, cx))))
       .when(Boolean(line), (el) => el.child(line))
       .when(Boolean(note), (el) => el.child(note))
       .child(view);
+  }
+
+  // What Next pointed at (pointFor), in one box over the details, marked as a passage is (an accent
+  // tint, an accent edge): what to do in plain words and ✕, then the pull requests it's about with
+  // the button for each, and for merging several tickets' Merge all, so the step is in one place
+  // instead of tinted lines down the list. It fades in once, sliding a few pixels down (native
+  // transitions: drawn hidden first, shown on the next frame); nothing in it moves after that.
+  pointBox(t, st, it, point, cx) {
+    const prs = prOrder(allPrs(it).filter((p) => askFor(p) === point.kind));
+    const live = allPrs(it).filter((p) => !p.merged);
+    const names = prs.length <= 2 ? prs.map(prName).join(" and ") : `${prs.length} pull requests`;
+    // More than one to merge: one Merge all for them, whether one ticket's or several's.
+    const all = point.kind === "merge" && prs.length > 1;
+    const asking = allAgents(it).find((a) => a.status === "blocked");
+    const who = asking ? sessionTitle(asking.title) ?? asking.tab_name : "Its agent";
+    const [what, how] = {
+      peek: [`${who} is asking you something: answer it`, "Peek answers it here, without switching spaces"],
+      comments: [`Changes were requested on ${names}: address them`, "Address comments sends the review to its agent"],
+      fix: [`Checks are failing on ${names}: fix them`, "Fix checks sends the failures to its agent"],
+      merge: [prs.length === live.length && live.length > 1 ? `All ${live.length} pull requests are approved: merge them` : `${names} ${prs.length === 1 ? "is" : "are"} approved: merge ${prs.length === 1 ? "it" : "them"}`,
+        all ? "Merge all asks an agent to check them and plan the merge" : "Merge asks its agent to merge it, after a second click"],
+    }[point.kind];
+    const row = (p) => {
+      const [state, words, color] = prLook(t, p, checksOf(p));
+      const title = String(p.title ?? "").replace(/^\s*(?:\[[^\]]*\]|[A-Z][A-Z0-9_]*-\d+)[\s:\u2014-]*/, "") || prName(p);
+      return h_flex().flex_none().h(CONTROL).gap(8).items_center().text_size(SMALL)
+        .child(h_flex().id(`point-pr-${prName(p)}`).flex_1().min_w(0).h_full().gap(8).items_center().cursor_pointer().hover((x) => x.text_color(t.accent))
+          .tooltip(`${words} · ${p.title}`).on_click(() => open(p.url))
+          .child(div().flex_none().child(mark(t, state, 14)))
+          .child(div().flex_none().text_color(t.dim).child(p.key ?? it.key))
+          .child(div().flex_1().min_w(0).truncate().text_size(TEXT).child(title))
+          .child(div().flex_none().text_color(t.dim).child(prName(p)))
+          .child(div().flex_none().text_color(color).child(PR_SHORT[state] ?? words)))
+        // Several to merge are one Merge all below; anything else, each line its own button.
+        .when(!all, (el) => el.child(this.askButton(t, st, it, `point-ask-${point.kind}-${prName(p)}`, point.kind, [p])));
+    };
+    const action = point.kind === "peek" && asking
+      ? primaryButton(t, "point-peek", "Peek", () => { clearPoint(st.profile, it.key); run("terminal.peek", { terminal: asking.address }); }, { tip: how })
+      : all
+        ? this.menuButton(t, "point-merge", "", storyTaskRows(t, st.profile, it, "merge", live), how,
+          { width: 340, trigger: (toggle) => primaryButton(t, "point-merge-all", "Merge all ▾", toggle, { tip: how }) })
+        : null;
+    // Drawn hidden the first time, then shown: the transitions below carry it in. Then, to catch the
+    // eye, a glint runs along its border twice (POINT_GLINT, borderGlint() as on Claude's picks) and
+    // stops: the box then holds still.
+    const shown = this.pointShown === point.at;
+    if (!shown) cx.timer.after(30, (cx) => { this.pointShown = point.at; this.pointGlint = Date.now() + POINT_GLINT; cx.notify(); cx.timer.after(POINT_GLINT, (cx) => cx.notify()); });
+    const glinting = shown && Date.now() < (this.pointGlint ?? 0);
+    const glow = (a) => alpha(t.accent, a);
+    return v_flex().id("point-box").flex_none().w_full().min_w(0).max_w(ROWS).relative().overflow_hidden().gap(2).pl(12).pr(8).py(8).rounded(8)
+      .bg(tint(t.accent, "12")).border_l_2().border_color(t.accent).child(edgeOf(glow(0.3), 8))
+      .on_size_change((size, cx) => this.shineSize("point", size, cx)).child(this.shineProbe("point"))
+      .when(glinting, (el) => el.children(borderGlint(glow, this.shine?.point, 8, POINT_GLINT / 2)))
+      .opacity(shown ? 1 : 0).top(shown ? 0 : -6).transition("opacity", { duration: 420, easing: "ease-out" }).transition("top", { duration: 420, easing: "ease-out" })
+      .child(h_flex().flex_none().gap(10).items_center().text_size(SMALL)
+        .child(div().flex_none().font_semibold().text_color(t.accent).child("Next"))
+        .child(div().flex_1().min_w(0).truncate().font_medium().text_color(t.foreground).tooltip(what).child(what))
+        .child(iconButton(t, "point-close", chrome("x"), (_e, cx) => { clearPoint(st.profile, it.key); cx.notify(); }, "Put this away")))
+      .child(div().flex_none().text_size(SMALL).text_color(t.muted).child(how))
+      .when(prs.length > 0 && point.kind !== "peek", (el) => el.child(v_flex().flex_none().pt(4).children(prs.map(row))))
+      .when(Boolean(action), (el) => el.child(h_flex().flex_none().pt(6).justify_end().child(action)));
   }
 
   // A passage pointed to (showPassage) in the story's description: the whole description as a list
@@ -3079,22 +3238,6 @@ export class StoryList extends Stories {
   // background suggests what to do (startSuggest). A glint glides along its border and its sparkles
   // breathe slowly; brewing, the glint goes quicker, the sparkles turn with bubbles drifting up and
   // the words change every few seconds (borderGlint(), brewMark(), sparkle()). Native loops only.
-  // A shining box's size (borderGlint() needs it) and the zoom (from shineProbe()), kept on this
-  // copy; redrawn only when one changes.
-  shineSize(id, size, cx) {
-    const was = this.shine?.[id];
-    if (was && Math.abs(was.width - size.width) < 0.01) return;
-    this.shine = { ...(this.shine ?? {}), [id]: { ...(was ?? {}), width: size.width } };
-    cx.notify();
-  }
-  shineProbe(id) {
-    return div().id(`${id}-zoom-probe`).absolute().top(0).left(0).w(100).h(0).on_size_change((size, cx) => {
-      const zoom = size.width / 100, was = this.shine?.[id];
-      if (!zoom || (was && Math.abs((was.zoom ?? 0) - zoom) < 0.001)) return;
-      this.shine = { ...(this.shine ?? {}), [id]: { ...(was ?? {}), zoom } };
-      cx.notify();
-    });
-  }
 
   // `slim`: under a Next that has work in it, quieter so it doesn't outshout what needs you.
   magic(t, st, items, reviews, { slim = false } = {}) {
@@ -3190,24 +3333,9 @@ export class StoryList extends Stories {
     // with its task, or sends it to one of the story's Claudes already open (by its session's name and
     // its space); other stories' and profiles' agents aren't offered.
     const taskMenu = (g, kind, list) => {
-      const { label, glyph } = { merge: { label: "Merge", glyph: "git-merge" }, approval: { label: "Request approval", glyph: "user-check" } }[kind];
-      const prs = list.map((p) => ({ name: prName(p), title: p.title, url: p.url, state: prLook(t, p, checksOf(p))[1] }));
-      const names = new Map(spaces().map((s) => [s.id, s.name]));
-      // Only the story's own agents: in its space, or on one of its keys elsewhere. Pull requests with
-      // no ticket are the Desk's: its agents.
-      const desk = !g.story;
-      const keys = desk ? [] : storyKeys(g.story);
-      const open = desk ? deskAgents(st.profile) : agents().filter((a) => (g.story.space && a.space === g.story.space.id) || keys.includes(keyOf(a.tab_name)));
-      const what = desk ? "pull requests without a ticket" : g.key;
-      const rows = [
-        { header: `${label} for ${what} with` },
-        { label: "New agent", hint: desk ? "on the Desk" : `in ${g.key}'s space`, action: () => (desk ? startDeskTask(kind, st.profile, prs) : startStoryTask(kind, st.profile, g.story, prs)) },
-        ...(open.length ? [{ header: desk ? "Or send it to the Desk's" : `Or send it to ${g.key}'s` }, ...open.map((a) => ({
-          label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
-          hint: `${names.get(a.space) ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
-          action: () => sendStoryTask(kind, st.profile, g.story ?? NO_TICKET, prs, a),
-        }))] : []),
-      ];
+      const { label, glyph } = TASK_LOOK[kind];
+      const what = g.story ? g.key : "pull requests without a ticket";
+      const rows = storyTaskRows(t, st.profile, g.story, kind, list);
       const id = g.key || "none";
       return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340 }));
     };
@@ -3689,6 +3817,7 @@ function goNext(profile, it) {
   // ticket (or pull request) on the web.
   if (it.suggest?.idea) return startIdea(profile, it.suggest);
   if (it.suggest) return it.it ? selectStory(profile, it.it) : open(it.suggest.url);
+  setPoint(profile, it);
   selectStory(profile, it);
   const asking = lonePr(it) ? null : allAgents(it).find((a) => a.status === "blocked");
   if (asking) focusAgent(profile, it, asking);

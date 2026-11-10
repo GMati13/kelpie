@@ -24,13 +24,14 @@ async function header({ space = null, preview = null, view = null, shared = {}, 
   for (const [k, v] of Object.entries(shared)) mock.state.shared.set(k, v);
   return draw(new Stories());
 }
-const mainAction = (el) => texts(byId(el, "story-main") ?? byId(el, "story-peek") ?? byId(el, "review-start") ?? byId(el, "story-ask-fix") ?? byId(el, "story-ask-comments") ?? byId(el, "story-ask-merge") ?? []);
+const mainAction = (el) => texts(byId(el, "story-main") ?? byId(el, "story-peek") ?? byId(el, "review-start") ?? byId(el, "story-ask-fix") ?? byId(el, "story-ask-comments") ?? byId(el, "story-ask-merge") ?? byId(el, "story-merge-all") ?? []);
 
 const CASES = [
   ["needs-you", { space: "ACME-142" }, "Peek"],
   ["failing", { space: "ACME-151" }, "Fix checks"],
   ["changes", { space: "ACME-160" }, "Address comments"],
-  ["ready", { space: "ACME-171" }, "Merge"],
+  // Its approved pull requests are two tickets': Merge all, the Merge menu (point.test.mjs).
+  ["ready", { space: "ACME-171" }, "Merge all ▾"],
   ["working", { space: "ACME-175", view: "changes" }, "Show agent"],
   ["paused", { preview: "ACME-138" }, "Resume"],
   ["not-open", { preview: "ACME-180" }, "Start work"],

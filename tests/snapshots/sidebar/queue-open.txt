@@ -107,7 +107,7 @@ v_flex
         v_flex
           h_flex
             div
-              "ACME-171: Approved, checks pass · ready to merge"
+              "ACME-171: Approved, checks pass or none · ready to merge"
           div [fg=muted]
             "Dark mode for the dashboard"
       h_flex [fg=dim]

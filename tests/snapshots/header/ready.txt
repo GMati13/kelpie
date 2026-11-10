@@ -7,10 +7,10 @@ div
       h_flex #story-head-text
         div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
           "ACME-171"
-        div #story-title [font="Fraunces"] tip="Dark mode for the dashboard\nApproved, checks pass · ready to merge"
+        div #story-title [font="Fraunces"] tip="Dark mode for the dashboard\nApproved, checks pass or none · ready to merge"
           "Dark mode for the dashboard"
-        div #story-need [fg=done font="DM Sans"] tip="Approved, checks pass · ready to merge"
-          "Approved, checks pass · ready to merge"
+        div #story-need [fg=done font="DM Sans"] tip="Approved, checks pass or none · ready to merge"
+          "Approved, checks pass or none · ready to merge"
         div
         div #story-assignee
           div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
@@ -23,11 +23,12 @@ div
                 div
                   div [bg=#7fb3ae]
       h_flex
-        h_flex #story-ask-merge [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Click again to ask ACME-172's agent to merge web#415"
-          "Merge"
-          div
+        Popup.new "story-merge-menu"
+          h_flex #story-merge-all [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
+            "Merge all ▾"
             div
-              div [bg=#7fb3ae]
+              div
+                div [bg=#7fb3ae]
         h_flex #story-pause [font="DM Sans" fg=muted hover(bg=hover fg=foreground) border=#e6dcc81f] {down:left click} tip="Pause every agent of this story and close its space; their sessions are kept ⌥⌘P"
           "Pause"
           div

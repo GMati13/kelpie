@@ -155,6 +155,13 @@
       "mine": true
     },
     {
+      "key": "ACME-173",
+      "summary": "Dark colours for the dashboard charts",
+      "parent": "ACME-171",
+      "status": "In Review",
+      "mine": true
+    },
+    {
       "key": "ACME-175",
       "summary": "Fix the flaky login test",
       "type": "Task",
@@ -299,6 +306,19 @@
         {
           "path": "src/query.py",
           "patch": "@@ -18,11 +18,15 @@ def search(term: str, limit: int = 20):\n     \"\"\"Destinations and hotels whose name matches the term, best first.\"\"\"\n-    rows = db.fetch(\n-        \"SELECT id, name, kind FROM places WHERE name ILIKE %s ORDER BY popularity DESC LIMIT %s\",\n-        (f\"%{term}%\", limit),\n-    )\n+    rows = db.fetch(\n+        \"\"\"SELECT id, name, kind, similarity(name, %s) AS score\n+           FROM places WHERE name %% %s\n+           ORDER BY name ILIKE %s DESC, score DESC, popularity DESC\n+           LIMIT %s\"\"\",\n+        (term, term, term, limit),\n+    )\n     return [Place(**row) for row in rows]"
+        }
+      ]
+    },
+    {
+      "repo": "charts",
+      "number": 58,
+      "title": "ACME-173 Dark palette for the dashboard charts",
+      "updated": "-2h",
+      "review": "APPROVED",
+      "files": [
+        {
+          "path": "src/palette.ts",
+          "patch": "@@ -1,3 +1,8 @@\n export const series = [\"#2f6fde\", \"#e07b39\", \"#3c9d5d\"];\n+\n+// On a dark page the light series blur into the background.\n+export const seriesDark = [\"#6d9cf0\", \"#f0a06a\", \"#6cc08a\"];\n+\n+export const paletteFor = (theme: string) => (theme === \"dark\" ? seriesDark : series);"
         }
       ]
     },
