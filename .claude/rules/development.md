@@ -8,6 +8,10 @@ How to work on this repo. `CLAUDE.md` is the reference for how each part works; 
 - Keep a change minimal and focused. No drive-by refactors, no renames unless asked.
 - Kelpie is a product for anyone (see the top of `CLAUDE.md` and `product.md`): nothing personal, no company, account, path or tool of one person in code, docs, prompts or tests.
 
+## Working on the Claude plugin
+
+Anything under `plugin/` (its skills, its MCP tools and their descriptions, the server's instructions) is what steers other people's Claudes, so it's written and checked with the `skill-creator` skill, every time: load it before changing any of it. Whether a new tool or behaviour needs a skill, or its description is enough, is settled by evals (`plugin/skills/<skill>/evals/`, `claude plugin eval`'s layout), not by guessing; keep the evals beside the skill either way. The plugin's own tests (`tests/python/test_plugin.py`) still cover what the server does.
+
 ## Seeing a change working
 
 Herdr runs the mods from `~/.config/herdr-app/mods/` (links into this repo). After editing:
