@@ -16,10 +16,11 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
-import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { lozenge } from "./sprint.js";
+import { boardSite, description as boardDescription, loadBoard, lookUp, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
-import { adfBlocks, adfLines, adfText, findPassage, markdownBlocks } from "./adf.js";
+import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix } from "./skins/common.js";
@@ -28,7 +29,6 @@ import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo }
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
 const MERGED_DAYS = 14; // merged pull requests stay in view this long
-const PAGES = 5;
 const open = openExternal;
 const keyOf = (text) => KEY.exec(text ?? "")?.[1] ?? null;
 
@@ -67,18 +67,6 @@ async function once(key, fn) {
   markLaunch(key, { at, done: null });
   let ok = false;
   try { const r = await fn(); ok = true; return r; } finally { markLaunch(key, ok ? { at, done: Date.now() } : null); }
-}
-
-async function search(cfg, jql) {
-  const out = [];
-  let page = "";
-  for (let i = 0; i < PAGES; i++) {
-    const r = await jira(cfg, "search", jql, page);
-    out.push(...(r.body?.issues ?? []));
-    page = r.body?.nextPageToken ?? "";
-    if (r.body?.isLast !== false || !page) break;
-  }
-  return out;
 }
 
 const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null;
@@ -299,8 +287,9 @@ async function resumeAll(profile, it, keys) {
 // of the ticket prompt (the orchestrator's).
 function ticketTask(st, it, key, template) {
   const s = key === it.key && it.story ? it : it.subs.find((x) => x.key === key) ?? it;
-  return jiraTask(st.setup.jira, {
-    key, url: `${st.data.site}/browse/${key}`, summary: s.title || it.title, type: s.type, status: s.status,
+  const board = boardOf(st.setup);
+  return jiraTask(board, {
+    key, url: ticketUrl(board, st.data, key) ?? "", summary: s.title || it.title, type: s.type, status: s.status,
     parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
     subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
   }, ...(template ? [template] : []));
@@ -570,7 +559,8 @@ function askLink(profile, url, site) {
 // ASK_MAX in all, the same action from one agent replacing the last. Exported for the tests.
 export function addAsk(profile, { action, why, key, url, terminal } = {}) {
   const data = (shared(DATA) ?? {})[profile.id]?.data;
-  const site = data?.site ?? profile.jira?.site ?? "";
+  const board = boardOf(profile);
+  const site = boardSite(board, data);
   const act = passageText(action, 80), because = passageText(why, 300);
   if (act.length < 3) throw new Error("action: what you ask the person to do, a few words.");
   let k = "";
@@ -584,7 +574,7 @@ export function addAsk(profile, { action, why, key, url, terminal } = {}) {
     link = passageText(url, 500);
     if (!askLink(profile, link, site)) throw new Error("url: a GitHub link, or a link to this profile's Jira.");
   }
-  if (!link && k && site) link = `${site}/browse/${k}`;
+  if (!link && k && site) link = ticketUrl(board, data, k);
   const term = typeof terminal === "string" && /^[\w-]{1,40}$/.test(terminal) ? terminal : "";
   const asker = term ? agents().find((a) => a.address === term) : null;
   const now = Date.now();
@@ -1313,12 +1303,12 @@ function requestProfile(req) {
 // A profile's stories and reviews as the list has them (storyItems(), for any profile).
 function itemsFor(profile) {
   const data = (shared(DATA) ?? {})[profile?.id]?.data;
-  if (!profile?.jira || !data) return null;
-  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), profile.jira?.handover)), reviews: reviewsOf(data) };
+  if (!hasBoard(profile) || !data) return null;
+  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover)), reviews: reviewsOf(data) };
 }
 const profileHasNext = (profile) => {
   if (!profile) throw new Error("No Kelpie profile is shown.");
-  if (!profile.jira) throw new Error(`The profile ${profile.name} has no Jira board, so Kelpie shows no Next queue for it.`);
+  if (!hasBoard(profile)) throw new Error(`The profile ${profile.name} has no Jira board, so Kelpie shows no Next queue for it.`);
   return profile;
 };
 
@@ -1331,7 +1321,7 @@ export function getNextRequest() {
     if (!s) throw new Error(`${profile.name}'s stories haven't loaded yet.`);
     const kind = (x) => (x.desk ? "desk" : x.clean ? "clean" : x.ask ? "agent-ask" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
     const keyOfItem = (x) => (x.clean ? x.clean.map((it) => it.key).join(", ") : x.ask ? x.ask.key : x.suggest ? (x.suggest.idea ? "" : x.suggest.key.replace(/^pr:/, "")) : x.review ? prName(x.review) : x.desk ? "" : x.key);
-    const urlOf = (x) => (x.ask ? x.ask.url : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && x.key && !lonePr(x) ? `${s.data.site}/browse/${x.key}` : lonePr(x)?.url);
+    const urlOf = (x) => (x.ask ? x.ask.url : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && x.key && !lonePr(x) ? ticketUrl(boardOf(profile), s.data, x.key) : lonePr(x)?.url);
     const items = needQueueOf(profile, s.items, s.reviews).map((x) => Object.fromEntries(Object.entries({ kind: kind(x), key: keyOfItem(x), action: queueLabel(x), detail: queueDetail(x), url: urlOf(x) }).filter(([, v]) => v)));
     return { ok: true, profile: profile.name, items };
   });
@@ -1545,14 +1535,13 @@ async function checkoutReview(profile, p) {
 async function reviewTicket(profile, p) {
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
   const ticket = keyIn(p.title, data ? projectsOf(data) : null);
-  if (!ticket || !profile.jira) return ticket ? { ticket } : {};
-  const get = async (key) => (await jira(profile.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,parent`)).body?.fields ?? {};
+  const board = boardOf(profile);
+  if (!ticket || !board) return ticket ? { ticket } : {};
   try {
-    const f = await get(ticket);
-    const own = adfText(adfBlocks(f.description));
-    const parent = f.parent?.key ? await get(f.parent.key).catch(() => null) : null;
-    const story = parent ? [`Story ${f.parent.key}: ${parent.summary ?? ""}`, adfText(adfBlocks(parent.description))].filter(Boolean).join("\n") : "";
-    return { ticket, summary: f.summary ?? "", description: [own, story].filter(Boolean).join("\n\n") };
+    const f = await ticketText(board, ticket);
+    const parent = f.parent ? await ticketText(board, f.parent).catch(() => null) : null;
+    const story = parent ? [`Story ${f.parent}: ${parent.summary}`, parent.text].filter(Boolean).join("\n") : "";
+    return { ticket, summary: f.summary, description: [f.text, story].filter(Boolean).join("\n\n") };
   } catch { return { ticket }; }
 }
 
@@ -1620,7 +1609,7 @@ function notifyPulls(ctx, data) {
   const before = all[profile.id] ?? {};
   const now = {};
   const on = profile.notify?.pulls !== false;
-  for (const it of build(data, new Map(), pausedIn(profile), storySpaces(profile), ctx.setup.jira?.handover)) {
+  for (const it of build(data, new Map(), pausedIn(profile), storySpaces(profile), boardOf(ctx.setup)?.handover)) {
     for (const p of allPrs(it)) {
       const s = prState(p);
       if (!s) continue;
@@ -1656,7 +1645,7 @@ function orderAgents(profile, items) {
 
 export class Stories extends Source {
   constructor() {
-    super("stories", 2 * 60 * 1000, "jira");
+    super("stories", 2 * 60 * 1000);
     this.cache = CACHE;
     this.busy = BUSY;
     this.started = STARTED;
@@ -1670,7 +1659,7 @@ export class Stories extends Source {
   }
 
   keyOf(setup) {
-    return [setup.jira, setup.github, setup.folder];
+    return [boardOf(setup)?.cfg ?? null, setup.github, setup.folder];
   }
 
   get flash() { return noteNow()?.text ?? null; }
@@ -1685,7 +1674,7 @@ export class Stories extends Source {
   }
 
   ready(ctx) {
-    return Boolean(ctx.profile && ctx.setup.jira);
+    return Boolean(ctx.profile && hasBoard(ctx.setup));
   }
 
   // Claude sessions under the folder, with the keys they were started on (sessions.py); null when
@@ -1719,7 +1708,6 @@ export class Stories extends Source {
   }
 
   async fetch({ space, setup }) {
-    const cfg = setup.jira;
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -1734,32 +1722,12 @@ export class Stories extends Source {
     // What doesn't wait on Jira runs beside it.
     const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account }).catch(() => []) : Promise.resolve([]);
     const sessionsP = this.fetchSessions({ space, setup });
-    // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
-    const [config, active] = await Promise.all([
-      jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}/configuration`),
-      activeSprints(cfg),
-    ]);
-    const columns = (config.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
-    // A scrum board's active sprints, or a Kanban board's open work (sprint.js boardScope).
-    const { sprints, jql: scope } = boardScope(active, config);
-    const mine = scope ? await search(cfg, `${scope} AND assignee = currentUser() ORDER BY Rank`) : [];
-    // The stories: parents of your subtasks, and your own issues, in the board's order.
-    const parents = new Map();
-    for (const i of mine) {
-      const p = i.fields?.issuetype?.subtask ? i.fields.parent : i;
-      if (p && !parents.has(p.key)) parents.set(p.key, { key: p.key, fields: p.fields });
-    }
-    // The children and, in the same search, the parents themselves: a subtask's embedded parent
-    // carries no assignee, so a story's own fields come from here when it answers.
-    const keys = [...parents.keys()].join(", ");
-    const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
-    for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
-    const children = found.filter((i) => !parents.has(i.key));
+    const { site, columns, sprints, mine, parents, children } = await loadBoard(boardOf(setup));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     return {
-      site: active.site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: [...parents.values()].map(issue), children: children.map(issue), prError,
+      site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     };
@@ -1906,9 +1874,7 @@ export class Stories extends Source {
     MOVES[key] = { loading: true, at: 0 };
     cx.spawn(async (cx) => {
       try {
-        const r = await jira(st.setup.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`);
-        MOVES[key] = { list: (r.body?.transitions ?? []).filter((x) => x.isAvailable !== false)
-          .map((x) => ({ id: x.id, name: x.name, to: x.to?.name ?? x.name, category: x.to?.statusCategory?.key })), at: Date.now() };
+        MOVES[key] = { list: await statusOptions(boardOf(st.setup), key), at: Date.now() };
       } catch (e) {
         MOVES[key] = { error: String(e?.message ?? e), at: Date.now() };
       }
@@ -1921,7 +1887,7 @@ export class Stories extends Source {
     say(`Moving ${key} to ${x.to}…`);
     cx.spawn(async (cx) => {
       try {
-        await jira(st.setup.jira, "transition", key, x.id);
+        await moveStatus(boardOf(st.setup), key, x);
         MOVED[key] = { status: x.to, category: x.category, at: Date.now() };
         delete MOVES[key];
         say(`${key} moved to ${x.to}.`);
@@ -2076,7 +2042,7 @@ export class Stories extends Source {
     // A story not opened always shows its details (they're all there is), so it has no fold.
     const folds = viewOf(st.profile, it) !== "start";
     const lone = lonePr(it);
-    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: "Open in Jira", url: `${st.data.site}/browse/${it.key}` };
+    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: "Open in Jira", url: ticketUrl(boardOf(st.setup), st.data, it.key) };
     const { actions, tasks = [], clean, more } = this.headActions(t, st, it, cx);
     // A skin may draw the story's subtasks as a meter (none by default).
     const subMeter = it.story ? skinMeter(t, { kind: "subtasks", label: "Subtasks", done: it.subs.filter((s) => s.category === "done").length, total: it.subs.length }) : null;
@@ -2166,7 +2132,7 @@ export class Stories extends Source {
     const pauseIt = it.space ? this.carefulButton(t, "story-pause", "Pause", Boolean(why), (cx) => this.pauseStory(st, it, cx),
       { tip: "Pause every agent of this story and close its space; their sessions are kept ⌥⌘P", confirmTip: `${capitalize(why)}: click again to pause the story anyway` }) : null;
     const start = () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key) }));
-    const conductor = it.story ? st.setup.jira?.orchestrator?.trim() : null;
+    const conductor = it.story ? boardOf(st.setup)?.orchestrator?.trim() : null;
     const earlier = sessionsFor(st.data, key).filter((x) => !(work?.last && x.id === ticket.last.id));
     const rows = [
       // The main action, when a pull request's or the agent's took its place.
@@ -2553,7 +2519,7 @@ export class Stories extends Source {
   // A ticket's description, loaded when first shown and again after the stories reload (st.at) once
   // it's DESC_EVERY old, or after a Refresh press. `load` gives the blocks of something else's (a
   // pull request's, by its own key); the default asks Jira for the ticket's.
-  descriptionOf(st, key, cx, load = async () => adfBlocks((await jira(st.setup.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description)) {
+  descriptionOf(st, key, cx, load = () => boardDescription(boardOf(st.setup), key)) {
     const d = this.descs[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
@@ -3203,7 +3169,7 @@ export class Stories extends Source {
       if ([...sig].some(([pane, now]) => was.get(pane) === "working" && (now === "done" || now === "idle"))) this.loadAfterAgent(cx);
       else if (sig.size !== was.size || [...sig.keys()].some((pane) => !was.has(pane))) this.loadSessions(cx);
     }
-    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), st.setup.jira?.handover));
+    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover));
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
@@ -3663,8 +3629,8 @@ export function syncTracking(baseline = false) {
   }
   lastProfile = ctx.profile?.id ?? null;
   const data = sharedData(ctx)?.data;
-  const spaceKey = ctx.profile && ctx.setup.jira && data && profileOf(ctx.space)?.id === ctx.profile.id ? keyOf(ctx.space?.name) : null;
-  const listed = spaceKey && build(data, new Map(), {}, storySpaces(ctx.profile), ctx.setup.jira?.handover).some((x) => x.key === spaceKey);
+  const spaceKey = ctx.profile && hasBoard(ctx.setup) && data && profileOf(ctx.space)?.id === ctx.profile.id ? keyOf(ctx.space?.name) : null;
+  const listed = spaceKey && build(data, new Map(), {}, storySpaces(ctx.profile), boardOf(ctx.setup)?.handover).some((x) => x.key === spaceKey);
   lastStory = listed ? { profile: ctx.profile.id, key: spaceKey } : null;
 }
 
@@ -3699,12 +3665,12 @@ export function storyNow() {
 export function storyItems() {
   const ctx = READER.context();
   const data = sharedData(ctx)?.data;
-  if (!ctx.profile || !ctx.setup.jira || !data) return null;
-  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), ctx.setup.jira?.handover)), reviews: reviewsOf(data), lone: loneOf(data) };
+  if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
+  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), boardOf(ctx.setup)?.handover)), reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).
-export const storyKeyOf = (space) => (profileOf(space)?.jira ? keyOf(space?.name) : null);
+export const storyKeyOf = (space) => (hasBoard(profileOf(space)) ? keyOf(space?.name) : null);
 
 // The header's main action, from a key: show the story's agent (the one asking first) when one runs,
 // else resume what's paused, else its latest session, else start an agent on it.
@@ -3981,7 +3947,7 @@ function suggestSnapshot(st, items, reviews) {
   const agentsOf = (it) => allAgents(it).map((a) => a.status).join(", ");
   const out = [`Sprint: ${(st.data.sprints ?? []).map((s) => s.name).join(", ") || "none running"}`];
   const columns = st.data.columns ?? [];
-  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; my part is done from ${columns[handoverFrom(columns, st.setup.jira?.handover)]?.name ?? "the last"}`);
+  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; my part is done from ${columns[handoverFrom(columns, boardOf(st.setup)?.handover)]?.name ?? "the last"}`);
   out.push("", "My stories (in the sprint, assigned to me or with my subtasks):");
   const stories = items.map((x) => x.it).filter((it) => !it.review && !it.pull);
   if (!stories.length) out.push("- none");
@@ -4112,7 +4078,7 @@ export function startIdea(profile, s) {
   dismissSuggestion(profile, s.key);
 }
 function suggestTask(st, items, reviews) {
-  const cfg = st.setup.jira;
+  const cfg = boardOf(st.setup)?.cfg;
   return suggestText(st.profile, { name: st.profile.name, snapshot: suggestSnapshot(st, items, reviews), board: cfg?.url ?? "", owner: st.setup.github?.owner ?? "" });
 }
 
@@ -4151,14 +4117,13 @@ async function applyPicks(profile, items) {
       if (!listed.has(key)) {
         // Not in the list (someone else's, unassigned, the backlog): Jira says whether it exists
         // and, for a subtask, its story. Only a subtask goes to its parent: a story's is its epic.
-        const r = await jira(profile.jira, "get", `/rest/api/3/issue/${key}?fields=summary,parent,issuetype`).catch(() => null);
-        if (!r?.body?.key) { drop("unknown to Jira"); continue; }
-        const parent = r.body.fields?.issuetype?.subtask ? r.body.fields?.parent : null;
-        key = parent?.key ?? r.body.key;
-        title = parent ? parent.fields?.summary ?? "" : r.body.fields?.summary ?? "";
+        const found = await lookUp(boardOf(profile), key);
+        if (!found) { drop("unknown to Jira"); continue; }
+        key = found.story?.key ?? found.key;
+        title = found.story ? found.story.summary : found.summary;
       }
       title = titles.get(key) || title;
-      url = `${data.site}/browse/${key}`;
+      url = ticketUrl(boardOf(profile), data, key) ?? "";
     } else {
       const m = /^https:\/\/github\.com\/[\w.-]+\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(text(raw?.url));
       if (!m) { drop("no Jira key, pull request link or idea"); continue; }

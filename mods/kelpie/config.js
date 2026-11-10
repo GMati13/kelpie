@@ -90,11 +90,11 @@ export function shownProfile() {
   const picked = chosen?.id && chosen.space === (space?.id ?? null) ? profileById(chosen.id) : null;
   return picked ?? profileOf(space);
 }
-// A profile with Jira picked in the menu while another profile's (or no profile's) space is shown: its
-// stories show, not that space's terminals. One without Jira has no screen of its own to show.
+// A profile with a board picked in the menu while another profile's (or no profile's) space is shown:
+// its stories show, not that space's terminals. One without a board has no screen of its own to show.
 export function profileElsewhere() {
   const p = shownProfile();
-  return Boolean(p?.jira) && p.id !== profileOf(shownSpace())?.id;
+  return hasBoard(p) && p.id !== profileOf(shownSpace())?.id;
 }
 // When the shown space closes, Herdr shows another, maybe another profile's: the profile that was
 // shown stays (as if picked in the menu), so closing a story's last tab doesn't move you elsewhere.
@@ -114,7 +114,7 @@ export function keepProfileOnClose(baseline = false) {
     // A profile without stories shows its next open space; one with stories keeps the closed story
     // previewed (syncTracking() in stories.js), so it's only picked.
     const p = profileById(last.profile);
-    const next = p && !p.jira ? spacesOf(p).find((s) => s.id !== last.space) : null;
+    const next = p && !hasBoard(p) ? spacesOf(p).find((s) => s.id !== last.space) : null;
     if (next) { run("space.select", { id: next.id }); last = { space: next.id, profile: p.id }; return; }
     setShared(CHOSEN, { id: last.profile, space: space?.id ?? null });
   }
@@ -139,7 +139,7 @@ export function switchProfile(p) {
   const seen = (shared(LAST) ?? {})[p.id];
   const back = seen ? own.find((s) => s.id === seen) : null;
   if (back) { chooseProfile(null); if (back.id !== shownSpace()?.id) run("space.select", { id: back.id }); }
-  else if (seen === null && p.jira && profileOf(shownSpace())?.id !== p.id) chooseProfile(p.id);
+  else if (seen === null && hasBoard(p) && profileOf(shownSpace())?.id !== p.id) chooseProfile(p.id);
   else if (profileOf(shownSpace())?.id === p.id) chooseProfile(null);
   else if (own[0]) { chooseProfile(null); run("space.select", { id: own[0].id }); }
   else chooseProfile(p.id);
@@ -296,7 +296,7 @@ export const SOURCE_IDS = ["stories", "sprint", "pulls", "sessions"];
 // Which sources a space's Hub shows: its saved choice, else the ones it's set up for (Sessions needs
 // only a folder, so it's on by default). A source added after the choice was saved (not in its
 // `seen`) follows the default until the space's setup is saved again.
-const byDefault = (id, saved) => (id === "stories" || id === "sprint" ? Boolean(saved?.jira) : id === "pulls" ? Boolean(saved?.github) : true);
+const byDefault = (id, saved) => (id === "stories" ? hasBoard(saved) : id === "sprint" ? Boolean(saved?.jira) : id === "pulls" ? Boolean(saved?.github) : true);
 export function sourcesOf(saved) {
   if (!Array.isArray(saved?.sources)) return SOURCE_IDS.filter((id) => byDefault(id, saved));
   const seen = saved.seen ?? ["sprint", "pulls", "sessions"];
@@ -307,6 +307,15 @@ export function sourcesOf(saved) {
 export function setupOf(space, profile = profileOf(space)) {
   return { saved: Boolean(profile), profile, folder: profile?.folder || liveFolder(space), jira: profile?.jira ?? null, github: profile?.github ?? null, sources: sourcesOf(profile) };
 }
+
+// A profile's board (or a setup's: both carry the same sections), what board.js asks: { kind, cfg,
+// name, prompt, orchestrator, handover }, `cfg` the board's own section; null when it has none. Every
+// "does this profile show stories" goes through here, never through `jira` itself.
+export function boardOf(p) {
+  if (p?.jira) return { kind: "jira", cfg: p.jira, name: "Jira", prompt: p.jira.prompt, orchestrator: p.jira.orchestrator, handover: p.jira.handover };
+  return null;
+}
+export const hasBoard = (p) => Boolean(boardOf(p));
 
 // A Jira board URL, as the browser shows it: https://<name>.atlassian.net/jira/software/.../boards/<id>.
 // Jira Cloud only, and nothing else: the API token goes to this site, so a profile (or an agent

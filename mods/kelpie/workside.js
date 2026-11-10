@@ -11,7 +11,7 @@ import { div } from "gpui-kit";
 import { Popup, h_flex, v_flex } from "gpui-base";
 import { agents, run, setShared, shared, spaces, window, layout, openOverlay } from "herdr";
 import { SMALL, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, mark, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
-import { chooseProfile, deskOf, newSpace, openProfile, profileOf, profiles, shownProfile, shownSpace, spacesOf, switchProfile } from "./config.js";
+import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profileOf, profiles, shownProfile, shownSpace, spacesOf, switchProfile } from "./config.js";
 import { startAgent } from "./source.js";
 import { StoryList } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
@@ -73,7 +73,7 @@ export class SpacePicker {
       .child(trigger)
       .child(div().flex_1())
       .when(Boolean(find(layout(), "story-head")), (el) => el.child(iconButton(t, "side-hide", chrome("sidebar"), toggleSide, "Hide the sidebar ⌘B")))
-      .child(space?.jira ? iconButton(t, "search", chrome("search"), () => openStoryPicker(), "Go to a story ⌘⇧K")
+      .child(hasBoard(space) ? iconButton(t, "search", chrome("search"), () => openStoryPicker(), "Go to a story ⌘⇧K")
         : iconButton(t, "search", chrome("search"), () => run("mod.open", { name: "picker" }), "Search"));
     // The whole bar is the anchor, so the menu starts at the block's bottom left (just under the
     // window buttons on a windowed Mac too) and lines up with the sidebar, not with the name.
@@ -100,8 +100,8 @@ export class SpacePicker {
       items.push({
         id: `menu-profile-${p.id}`, lead: glyph(t, p), label: p.name, on: p.id === shown?.id,
         ask: here.filter((a) => a.status === "blocked").length, busy: here.filter((a) => a.status === "working").length,
-        hint: n ? `${n} space${n === 1 ? "" : "s"}` : p.jira ? "Jira" : "",
-        tip: [p.folder, p.jira ? "Jira" : "", p.github?.owner ? "GitHub" : ""].filter(Boolean).join(" · "),
+        hint: n ? `${n} space${n === 1 ? "" : "s"}` : boardOf(p)?.name ?? "",
+        tip: [p.folder, boardOf(p)?.name ?? "", p.github?.owner ? "GitHub" : ""].filter(Boolean).join(" · "),
         action: pick(() => switchProfile(p)),
       });
     }
@@ -173,7 +173,7 @@ export class WorkSide {
   render(cx) {
     const t = skinTheme();
     const profile = shownProfile();
-    const body = profile?.jira ? this.stories.render(cx) : this.plain(t, cx);
+    const body = hasBoard(profile) ? this.stories.render(cx) : this.plain(t, cx);
     return decor("blockDecor", t, body, { role: "work-side", now: new Date(), profile });
   }
 

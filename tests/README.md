@@ -140,6 +140,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
   `patchHash`'s stable values.
+- `board.test.mjs`: `boardOf()`/`hasBoard()` (a profile or a setup, none without a board), `ticketUrl()`,
+  the board's questions answered for the demo (`loadBoard`, `description`, `ticketText`, `statusOptions`,
+  `lookUp`), and that no view but board.js calls `jira()` or reads a profile's `jira` section itself.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.
