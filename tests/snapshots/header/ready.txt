@@ -1,0 +1,40 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+          "ACME-171"
+        div #story-title [font="Fraunces"] tip="Dark mode for the dashboard\nApproved, checks pass · ready to merge"
+          "Dark mode for the dashboard"
+        div #story-need [fg=done font="DM Sans"] tip="Approved, checks pass · ready to merge"
+          "Approved, checks pass · ready to merge"
+        div
+        Popup.new "story-status-menu-menu"
+          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+            div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+              "In review"
+              div
+                div
+                  div [bg=#7fb3ae]
+      h_flex
+        h_flex #story-ask-merge [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Click again to ask ACME-172's agent to merge web#415"
+          "Merge"
+          div
+            div
+              div [bg=#7fb3ae]
+        h_flex #story-pause [font="DM Sans" fg=muted hover(bg=hover fg=foreground) border=#e6dcc81f] {down:left click} tip="Pause every agent of this story and close its space; their sessions are kept ⌥⌘P"
+          "Pause"
+          div
+            div
+              div [bg=#c195ab]
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+          svg own:external-link
+        div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+          svg chrome:chevron-down

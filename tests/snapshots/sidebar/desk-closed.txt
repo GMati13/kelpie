@@ -1,0 +1,18 @@
+h_flex
+  div
+    div
+      div [font="DM Sans" fg=muted]
+        "DESK"
+      div
+        div
+          div [bg=dim/f2] ×32 … [bg=dim/1a]
+  h_flex
+    Popup.new "desk-new-menu"
+      div #desk-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal on the Desk"
+        svg chrome:plus
+Popup.new "desk-open-menu"
+  h_flex #desk-open-more [hover(bg=hover) fg=muted] {click} tip="For work without a ticket: a space in the profile's folder, with Claude or a terminal ⌥⌘D"
+    div
+      svg own:house [fg=dim]
+    div
+      "Open the Desk"

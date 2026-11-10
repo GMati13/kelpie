@@ -1,0 +1,195 @@
+v_flex
+  h_flex
+    div
+      h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
+        "Updated just now ↻"
+    h_flex
+      div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up the finished story with something left"
+        svg own:brush-cleaning
+      div [fg=dim]
+        "1"
+  h_flex
+    h_flex #count-needs-you [fg=working] tip="1 need you"
+      div
+        div [bg=working/40] ~loop(opacity)
+          div [bg=working]
+      "1"
+    h_flex #count-changes [fg=working] tip="1 with changes requested"
+      div
+        svg own:message-square [fg=working]
+      "1"
+    h_flex #count-failing [fg=blocked] tip="1 with checks failing"
+      div
+        svg own:circle-x [fg=blocked]
+      "1"
+    h_flex #count-ready [fg=done] tip="1 ready to merge"
+      div
+        svg chrome:circle-check [fg=done]
+      "1"
+    h_flex #count-review [fg=accent] tip="2 to review"
+      div
+        svg own:eye [fg=accent]
+      "2"
+    h_flex #count-working [fg=accent] tip="1 working"
+      div
+        svg chrome:spinner [fg=accent] ~spin
+      "1"
+    h_flex #count-paused [fg=muted] tip="1 paused"
+      div
+        svg own:pause [fg=dim]
+      "1"
+  v_flex
+    v_flex #story-next [bg=raised border=border]
+      h_flex
+        div [fg=dim]
+          "Next"
+        div [fg=muted]
+          "1 of 10"
+        div
+        h_flex #story-next-tools {down:left click}
+          h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="3 suggested by Claude: open the queue to see them"
+            svg own:sparkles
+            "3"
+          div #story-queue [bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="Hide the queue"
+            svg chrome:chevron-down
+      h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
+        div
+          div
+            div [bg=working/40] ~loop(opacity)
+              div [bg=working]
+        v_flex
+          h_flex
+            div
+              "ACME-142: ACME-143's agent needs you"
+          div [fg=muted]
+            "Offline mode for saved trips"
+    v_flex
+      h_flex [fg=dim]
+        div
+          "Needs you"
+        div [fg=muted]
+          "6"
+      h_flex #queue-ACME-142 [bg=selected] {click}
+        div
+          div
+            div [bg=working/40] ~loop(opacity)
+              div [bg=working]
+        v_flex
+          h_flex
+            div
+              "ACME-142: ACME-143's agent needs you"
+          div [fg=muted]
+            "Offline mode for saved trips"
+      h_flex #queue-ACME-160 [hover(bg=hover)] {click}
+        div
+          div
+            svg own:message-square [fg=working]
+        v_flex
+          h_flex
+            div
+              "ACME-160: Changes requested on ACME-161 (search#233)"
+          div [fg=muted]
+            "Typo-tolerant search"
+      h_flex #queue-ACME-151 [hover(bg=hover)] {click}
+        div
+          div
+            svg own:circle-x [fg=blocked]
+        v_flex
+          h_flex
+            div
+              "ACME-151: Checks failing on ACME-152 (payments#97)"
+          div [fg=muted]
+            "Pay with Apple Pay at checkout"
+      h_flex #queue-ACME-171 [hover(bg=hover)] {click}
+        div
+          div
+            svg chrome:check [fg=done]
+        v_flex
+          h_flex
+            div
+              "ACME-171: Approved, checks pass · ready to merge"
+          div [fg=muted]
+            "Dark mode for the dashboard"
+      h_flex #queue-review:web#421 [hover(bg=hover)] {click}
+        div
+          div
+            svg own:eye [fg=accent]
+        v_flex
+          h_flex
+            div
+              "web#421: Review requested by priya-n"
+          div [fg=muted]
+            "priya-n · ACME-166 Share a trip with a link"
+      h_flex #queue-review:api#305 [hover(bg=hover)] {click}
+        div
+          div
+            svg own:eye [fg=accent]
+        v_flex
+          h_flex
+            div
+              "api#305: Review requested by tomas-r"
+          div [fg=muted]
+            "tomas-r · Bump OpenTelemetry to 1.28"
+      h_flex [fg=dim]
+        div
+          "Clean up"
+        div [fg=muted]
+          "1"
+      h_flex #queue-clean [hover(bg=hover)] {click}
+        div
+          div
+            svg own:brush-cleaning [fg=dim]
+        v_flex
+          h_flex
+            div
+              "ACME-122: finished, clean up"
+          div [fg=muted]
+            "ACME-122"
+      div
+        v_flex #queue-suggested [bg=accent/0d] {size_change}
+          div [border=accent/4d]
+          div #picks-zoom-probe {size_change}
+          h_flex
+            svg own:sparkles [fg=accent]
+            div [fg=accent]
+              "Suggested by Claude · 20m"
+            h_flex #queue-remagic [fg=dim hover(bg=accent/24 fg=accent)] {click} tip="Ask Claude again, from where things stand now"
+              svg own:sparkles
+              "Re-magic"
+          h_flex #queue-suggest:ACME-180 [hover(bg=hover)] {click}
+            div
+              div
+                svg own:sparkles [fg=accent]
+            v_flex
+              h_flex
+                div
+                  "Start the PDF itinerary layout"
+              div [fg=muted]
+                "Next in the sprint's order, and nobody has started on Export an itinerary as PDF yet."
+            div #queue-drop-suggest:ACME-180 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
+              svg chrome:x
+          h_flex #queue-suggest:pr:web#421 [hover(bg=hover)] {click}
+            div
+              div
+                svg own:sparkles [fg=accent]
+            v_flex
+              h_flex
+                div
+                  "Review Priya's trip sharing links"
+                svg own:external-link [fg=dim]
+              div [fg=muted]
+                "It's waited almost a day and ACME-166 can't move until it's reviewed."
+            div #queue-drop-suggest:pr:web#421 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
+              svg chrome:x
+          h_flex #queue-suggest:idea:2 [hover(bg=hover)] {click}
+            div
+              div
+                svg own:lightbulb [fg=accent]
+            v_flex
+              h_flex
+                div
+                  "Load the map library on demand"
+              div [fg=muted]
+                "The Desk found it's half the bundle and every page pays for it."
+            div #queue-drop-suggest:idea:2 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
+              svg chrome:x

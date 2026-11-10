@@ -1,0 +1,37 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+          "ACME-122"
+        div #story-title [font="Fraunces"] tip="Upgrade the services to Node 22\n1 subtask · 1 done"
+          "Upgrade the services to Node 22"
+        div #story-need [fg=dim font="DM Sans"] tip="1 subtask · 1 done"
+          "1 subtask · 1 done"
+        div
+        Popup.new "story-status-menu-menu"
+          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+            div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+              "Done"
+              div
+                div
+                  div [bg=#9dbb84]
+      h_flex
+        h_flex #story-pause [font="DM Sans" fg=muted hover(bg=hover fg=foreground) border=#e6dcc81f] {down:left click} tip="Pause every agent of this story and close its space; their sessions are kept ⌥⌘P"
+          "Pause"
+          div
+            div
+              div [bg=#c195ab]
+      div [bg=border]
+      h_flex
+        div #story-clean [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-122: closes its space"
+          svg own:brush-cleaning
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+          svg own:external-link
+        div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+          svg chrome:chevron-down

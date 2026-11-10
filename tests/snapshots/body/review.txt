@@ -1,0 +1,16 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    v_flex #story-detail
+      h_flex [fg=muted]
+        div
+          "web#421 by priya-n · updated 20h ago"
+        div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+          "Checks pass"
+          div
+            div
+              div [bg=#9dbb84]
+      div [fg=dim]
+        "Start review opens a Claude agent on it, in the Reviews space."

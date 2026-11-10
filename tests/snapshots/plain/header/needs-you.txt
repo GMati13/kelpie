@@ -1,0 +1,27 @@
+v_flex [fg=foreground]
+  h_flex
+    h_flex #story-head-text
+      div #story-key [fg=accent] {click} tip="Open in Jira"
+        "ACME-142"
+      div #story-title tip="Offline mode for saved trips\nACME-143's agent needs you"
+        "Offline mode for saved trips"
+      div #story-need [fg=working] tip="ACME-143's agent needs you"
+        "ACME-143's agent needs you"
+      div
+      Popup.new "story-status-menu-menu"
+        div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+          div [bg=accent/26 fg=accent]
+            "In progress"
+    h_flex
+      h_flex #story-peek [bg=accent fg=accent_foreground hover(opacity=0.88)] {down:left click} tip="Answer ACME-143 here, without switching spaces"
+        "Peek"
+      h_flex #story-pause [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A tab with no agent close too: click again to pause the story anyway"
+        "Pause"
+    div [bg=border]
+    h_flex
+      div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+        svg own:refresh-cw
+      div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+        svg own:external-link
+      div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+        svg chrome:chevron-down

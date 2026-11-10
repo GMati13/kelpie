@@ -1,0 +1,236 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    v_flex #story-detail
+      div #story-overview-view {size_change}
+        v_flex #story-overview
+          v_flex #story-overview-content {size_change}
+            div
+              h_flex
+                v_flex
+                  div #story-desc-body [font="Fraunces" fg=foreground/c4]
+                    v_flex
+                      v_flex [fg=foreground/e0]
+                        TextView.html "story-desc-0-text-0" "<span>Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.</span>" [fg=foreground/e0]
+                      v_flex [fg=accent]
+                        TextView.html "story-desc-1-text-0" "<span>WHAT WE WANT</span>" [fg=accent]
+                      v_flex
+                        TextView.html "story-desc-2-text-0" "<span>Saved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.</span>" [fg=foreground/c4]
+                      v_flex
+                        h_flex
+                          div [fg=dim]
+                            "•"
+                          div
+                            v_flex
+                              v_flex
+                                h_flex
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-0" "<span>Cache</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-1" "<span>every</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-2" "<span>trip</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-3" "<span>the</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-4" "<span>traveller</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-5" "<span>opened</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-6" "<span>in</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-7" "<span>the</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-8" "<span>last</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-9" "<span>30</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-10" "<span>days</span>" [fg=foreground/c4]
+                                  div
+                                    TextView.html "story-desc-3-0-0-w-0-11" "<span>in</span>" [fg=foreground/c4]
+                                  div [bg=foreground/1c]
+                                    TextView.html "story-desc-3-0-0-w-0-12" "<span>IndexedDB</span>" [fg=foreground/c4 font="JetBrains Mono" font="DM Mono" fg=foreground]
+                        h_flex
+                          div [fg=dim]
+                            "•"
+                          div
+                            v_flex
+                              v_flex
+                                TextView.html "story-desc-3-1-0-text-0" "<span>Queue edits made offline and replay them in order</span>" [fg=foreground/c4]
+                        h_flex
+                          div [fg=dim]
+                            "•"
+                          div
+                            v_flex
+                              v_flex
+                                TextView.html "story-desc-3-2-0-text-0" "<span>Show a calm banner while offline, never a blocking error</span>" [fg=foreground/c4]
+                      v_flex [fg=accent]
+                        TextView.html "story-desc-4-text-0" "<span>OUT OF SCOPE</span>" [fg=accent]
+                      v_flex
+                        TextView.html "story-desc-5-text-0" "<span>Downloading map tiles: that's ACME-190.</span>" [fg=foreground/c4]
+                      v_flex [fg=accent]
+                        TextView.html "story-desc-6-text-0" "<span>DONE WHEN</span>" [fg=accent]
+                      v_flex
+                        h_flex
+                          div [fg=dim]
+                            "1."
+                          div
+                            v_flex
+                              v_flex
+                                TextView.html "story-desc-7-0-0-text-0" "<span>A trip opened once opens again in airplane mode, within 300 ms</span>" [fg=foreground/c4]
+                        h_flex
+                          div [fg=dim]
+                            "2."
+                          div
+                            v_flex
+                              v_flex
+                                TextView.html "story-desc-7-1-0-text-0" "<span>An edit made offline shows on another device a minute after going back online</span>" [fg=foreground/c4]
+                        h_flex
+                          div [fg=dim]
+                            "3."
+                          div
+                            v_flex
+                              v_flex
+                                TextView.html "story-desc-7-2-0-text-0" "<span>Conflicts keep the newest change and say so in the trip's history</span>" [fg=foreground/c4]
+                  div #story-desc-more [fg=dim hover(fg=foreground)] {click}
+                    "Show less"
+            h_flex
+              v_flex
+                v_flex #sub-row-ACME-143 [border=border hover(bg=hover)]
+                  h_flex
+                    div [font="DM Mono" fg=dim]
+                      "ACME-143"
+                    div #sub-title-ACME-143 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Hide the description"
+                      "Cache trips in IndexedDB"
+                    Popup.new "sub-status-ACME-143-menu"
+                      div #sub-status-ACME-143-more [hover(bg=hover)] {click} tip="Change the status"
+                        div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                          "In progress"
+                          div
+                            div
+                              div [bg=#7fb3ae]
+                    div
+                      div
+                        div [bg=#e8603f52] ~loop(opacity)
+                        div [bg=#e8603f]
+                        div [bg=#ffb39a opacity=0.75]
+                    h_flex #sub-agent-ACME-143-peek [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Answer ACME-143 here, without switching spaces"
+                      "Peek"
+                    h_flex #sub-agent-ACME-143-show [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Show ACME-143"
+                      "Show agent"
+                    h_flex #sub-agent-ACME-143-pause [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Close its tab and keep its Claude session to resume later"
+                      "Pause"
+                  div
+                    div #sub-desc-ACME-143-body [font="Fraunces" fg=foreground/c4]
+                      v_flex
+                        v_flex
+                          h_flex
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-0" "<span>Add</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-1" "<span>a</span>" [fg=foreground/c4]
+                            div [bg=foreground/1c]
+                              TextView.html "sub-desc-ACME-143-0-w-0-2" "<span>TripCache</span>" [fg=foreground/c4 font="JetBrains Mono" font="DM Mono" fg=foreground]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-3" "<span>on</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-4" "<span>top</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-5" "<span>of</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-6" "<span>the</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-7" "<span>trips</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-8" "<span>store:</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-9" "<span>write</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-10" "<span>a</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-11" "<span>trip</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-12" "<span>through</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-13" "<span>on</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-14" "<span>every</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-15" "<span>successful</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-16" "<span>load,</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-17" "<span>read</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-18" "<span>it</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-19" "<span>first</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-20" "<span>when</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-21" "<span>the</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-22" "<span>network</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-23" "<span>fails.</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-24" "<span>Keep</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-25" "<span>at</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-26" "<span>most</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-27" "<span>30</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-28" "<span>days</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-29" "<span>of</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-30" "<span>trips</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-31" "<span>and</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-32" "<span>drop</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-33" "<span>the</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-34" "<span>oldest</span>" [fg=foreground/c4]
+                            div
+                              TextView.html "sub-desc-ACME-143-0-w-0-35" "<span>first.</span>" [fg=foreground/c4]
+                  h_flex
+                    h_flex #pr-web#418 [fg=foreground hover(fg=accent)] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use"
+                      div
+                        svg own:git-pull-request [fg=accent]
+                      "web#418"
+                v_flex #sub-row-ACME-144 [border=border hover(bg=hover)]
+                  h_flex
+                    div [font="DM Mono" fg=dim]
+                      "ACME-144"
+                    div #sub-title-ACME-144 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                      "Queue offline edits and sync them back"
+                    div [fg=dim]
+                      "No PR yet"
+                    Popup.new "sub-status-ACME-144-menu"
+                      div #sub-status-ACME-144-more [hover(bg=hover)] {click} tip="Change the status"
+                        div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                          "To do"
+                          div
+                            div
+                              div [border=dim]
+                    h_flex #sub-agent-ACME-144-start [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start a Claude agent on ACME-144"
+                      "Start agent"
+                v_flex #sub-row-ACME-145 [border=border hover(bg=hover)]
+                  h_flex
+                    div [font="DM Mono" fg=dim]
+                      "ACME-145"
+                    div #sub-title-ACME-145 [font="DM Sans" fg=muted hover(fg=accent)] {click} tip="Show the description"
+                      "Design the offline banner"
+                    Popup.new "sub-status-ACME-145-menu"
+                      div #sub-status-ACME-145-more [hover(bg=hover)] {click} tip="Change the status"
+                        div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                          "Done"
+                          div
+                            div
+                              div [bg=#9dbb84]

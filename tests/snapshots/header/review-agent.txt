@@ -1,0 +1,34 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open on GitHub"
+          "web#421"
+        div #story-title [font="Fraunces"] tip="ACME-166 Share a trip with a link\nReview requested by priya-n"
+          "ACME-166 Share a trip with a link"
+        div #story-need [fg=accent font="DM Sans"] tip="Review requested by priya-n"
+          "Review requested by priya-n"
+        div
+      h_flex
+        h_flex #review-start [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Show its review agent ⌘⇧R"
+          "Show review"
+          div
+            div
+              div [bg=#7fb3ae]
+        h_flex #review-post [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Have the agent post its comments as a review: click again to send it to its agent"
+          "Post comments"
+        h_flex #review-approve [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Have the agent approve it: click again to send it to its agent"
+          "Approve"
+        h_flex #review-changes [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Have the agent request changes, with its findings: click again to send it to its agent"
+          "Request changes"
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open on GitHub"
+          svg own:external-link
+        div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+          svg chrome:chevron-down
