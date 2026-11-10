@@ -1,0 +1,34 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+          "ACME-118"
+        div #story-title [font="Fraunces"] tip="Show prices in the traveller's currency\n1 subtask · 1 done"
+          "Show prices in the traveller's currency"
+        div #story-need [fg=dim font="DM Sans"] tip="1 subtask · 1 done"
+          "1 subtask · 1 done"
+        div
+        div #story-assignee
+          div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
+            "PN"
+        Popup.new "story-status-menu-menu"
+          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+            div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+              "Done"
+              div
+                div
+                  div [bg=#9dbb84]
+      h_flex
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+          svg own:external-link
+        Popup.new "story-more-menu"
+          div #story-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="More for this story"
+            svg own:ellipsis

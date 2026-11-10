@@ -92,6 +92,17 @@ test("the story picker: every story, then filtered", () => {
   snap("dialogs/story-picker-filtered", byId(filtered, "sp-list"));
 });
 
+test("the story picker finds a finished story the list left out, saying it's done", () => {
+  setupDemoWorld({ stories, props: { role: "story-picker", overlay: "overlay-1" } });
+  const picker = new StoryPicker();
+  const cx = fakeCx();
+  picker.init(cx);
+  picker.filter = "currency";
+  const row = byId(picker.render(cx), "sp-ACME-118");
+  assert.ok(row, "ACME-118 is found");
+  assert.ok(texts(row).includes("Done"));
+});
+
 test("Kelpie-Plain: the story picker and a confirm", () => {
   setupDemoWorld({ stories, layout: "Kelpie-Plain", props: { role: "story-picker", overlay: "overlay-1" } });
   const picker = new StoryPicker();

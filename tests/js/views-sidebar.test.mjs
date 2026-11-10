@@ -32,8 +32,8 @@ for (const layout of ["Kelpie", "Kelpie-Plain"]) {
   const dir = layout === "Kelpie" ? "sidebar" : "plain/sidebar";
   // Every state the demo has at once: needs you (ACME-142), failing checks (151), changes requested
   // (160), ready to merge (171), working (175), finished with a space (122, the broom), paused (138),
-  // not open (180), waiting on others (129); the reviews, your pull requests by story and "No ticket",
-  // the Desk with its agent, Next without picks.
+  // not open (180), waiting on others (129), done and cleaned up (118, the folded Done group); the
+  // reviews, your pull requests by story and "No ticket", the Desk with its agent, Next without picks.
   test(`${layout}: the story list in every state`, async () => {
     snap(`${dir}/list`, await list({ layout }));
   });
@@ -182,6 +182,30 @@ test("a story's pull requests fold under its heading", async () => {
   handlers(shut).find((h) => h.id === "mine-story-fold-ACME-142").fn({}, { ...cx, stop_propagation() {} });
   assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: {} });
   assert.ok(byId(view.render(cx), "mine-web#418"), "unfolded again");
+});
+
+// A finished story cleaned up (done, no space, nothing open: ACME-118) stays reachable in the Done
+// group, last and folded: its chevron unfolds it per profile, a click on its row previews it, and a
+// done story shown keeps its row while the group is folded.
+test("finished stories stay in a folded Done group", async () => {
+  setupDemoWorld({ stories });
+  const { el, view, cx } = await draw(new StoryList());
+  assert.equal(byId(el, "story-ACME-118"), null, "not among the stories in play");
+  assert.ok(byId(el, "stories-done"), "the Done group's heading");
+  assert.equal(byId(el, "done-ACME-118"), null, "folded at first");
+  handlers(el).find((h) => h.id === "stories-done").fn({}, cx);
+  assert.deepEqual(mock.state.shared.get("kelpie.done.open"), { [DEMO]: true });
+  const open = view.render(cx);
+  const row = byId(open, "done-ACME-118");
+  assert.ok(row, "its row shows once unfolded");
+  snap("sidebar/done-row", row);
+  handlers(row).find((h) => h.id === "done-ACME-118").fn({}, cx);
+  assert.equal(mock.state.shared.get("kelpie.stories.preview")[DEMO], "ACME-118", "a click previews it");
+  handlers(open).find((h) => h.id === "stories-done").fn({}, cx);
+  assert.deepEqual(mock.state.shared.get("kelpie.done.open"), {});
+  const shut = view.render(cx);
+  assert.ok(byId(shut, "done-ACME-118"), "folded, the story shown keeps its row");
+  assert.equal(byId(shut, "story-ACME-118"), null);
 });
 
 // A profile with no board yet: the list asks for one, Jira or a GitHub Project, naming neither as

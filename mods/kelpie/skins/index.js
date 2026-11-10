@@ -53,7 +53,7 @@
 //       the toolbar.
 //       For backgrounds, a scene image (absolute children), a lamp pool, a band.
 //   rowDecor(t, el, { selected, state, story, now }) -> el     a sidebar story row (plate, glow, firefly)
-//   groupDecor(t, el, { label, count }) -> el                  a list's group heading (ink rule)
+//   groupDecor(t, el, { label, count, trail }) -> el           a list's group heading (ink rule; trail: after the count)
 //   tabDecor(t, el, { tab, active, state, agentTab, now }) -> el
 //       A tab-bar tab; `agentTab` when it holds an agent, `state` its agent's (underline, sprite).
 //   controlDecor(t, el, { kind, id, label, on }) -> el

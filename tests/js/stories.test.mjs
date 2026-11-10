@@ -66,6 +66,13 @@ describe("build: stories from issues and subtasks", () => {
     assert.equal(build(d([pr("ABC-1 x")]), new Map()).length, 1);
     assert.equal(build(d(), new Map(), {}, new Map([["ABC-1", { id: "s1" }]])).length, 1);
   });
+  test("with `done`, the finished stories the list leaves out instead, still reachable", () => {
+    const d = data({ mine: ["ABC-1", "ABC-5", "ABC-7", "ABC-8"], prs: [pr("ABC-1 x", { merged: true }), pr("ABC-7 y")],
+      parents: [issue("ABC-1", "done"), issue("ABC-5", "doing"), issue("ABC-7", "done"), issue("ABC-8", "done")] });
+    const spaces = new Map([["ABC-8", { id: "s8" }]]);
+    assert.deepEqual(build(d, new Map(), {}, spaces).map((it) => it.key), ["ABC-5", "ABC-7", "ABC-8"], "an open pull request or a space keeps one in the list");
+    assert.deepEqual(build(d, new Map(), {}, spaces, null, true).map((it) => it.key), ["ABC-1"], "done, nothing open: the Done group's");
+  });
 });
 
 describe("build: pull requests attach by the key in their title", () => {
