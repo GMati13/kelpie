@@ -381,6 +381,16 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
   return items.filter((it) => it.category !== "done" || it.space || it.subs.some((s) => s.prs.some((p) => !p.merged)));
 }
 
+// Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
+// "on <its name>".
+const sprintsWord = (data) => (data.sprints[0]?.kanban ? `on ${data.sprints[0].name}` : `in ${data.sprints.map((x) => x.name).join(" and ")}`);
+// Why "Not open" is empty: no sprint running, nothing of yours in it at all (Exported for the tests),
+// or every story of yours already open.
+export function noneWaiting(data, items) {
+  if (!data.sprints.length) return "No sprint running right now.";
+  return items.length ? "Every story of yours is open." : `Nothing ${sprintsWord(data)} is yours yet: tickets assigned to you show here.`;
+}
+
 const allPrs = (it) => [...it.prs, ...it.subs.flatMap((s) => s.prs)];
 // Open pull requests first, then the merged, each the most recently changed first.
 const prOrder = (list) => list.slice().sort((a, b) => Number(Boolean(a.merged)) - Number(Boolean(b.merged)) || String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
@@ -3532,7 +3542,7 @@ export class StoryList extends Stories {
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
         .child(group("Not open", waiting.length))
         .children(waiting.length ? rows(waiting)
-          : [empty(t, st.data.sprints.length ? "Every story of yours is open." : "No sprint running right now.")])
+          : [empty(t, noneWaiting(st.data, items))])
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))
           .children(others.map((s) => plain(`space-${s.id}`, s.active && !shown, t.dim, s.name, `${s.tabs.length} tab${s.tabs.length === 1 ? "" : "s"} · no story`,
             () => { setPreview(st.profile, null); run("space.select", { id: s.id }); }, true)))));
@@ -3600,12 +3610,13 @@ export class StoryView extends Stories {
   }
 
   render(cx) {
-    const { st, t, early, shown } = this.prepare(cx);
+    const { st, t, early, shown, items } = this.prepare(cx);
     if (early) return early;
     const mode = shown ? viewOf(st.profile, shown) : null;
     if (!shown) return v_flex().size_full().items_center().justify_center().gap(4)
       .child(div().text_size(TITLE).font_semibold().child(st.profile.name))
-      .child(div().text_size(SMALL).text_color(t.muted).child(spacesOf(st.profile).length ? "Pick a story on the left." : "No story of it is open. Pick one on the left and start work: it gets a space of its own."));
+      .child(div().text_size(SMALL).text_color(t.muted).child(!items?.length && st.data.sprints.length ? `Nothing ${sprintsWord(st.data)} is yours yet: tickets assigned to you show on the left.`
+        : spacesOf(st.profile).length ? "Pick a story on the left." : "No story of it is open. Pick one on the left and start work: it gets a space of its own."));
     const extra = this.extra[shown.key];
     if (mode === "changes" && (!extra || (!extra.loading && extra.at < st.at))) this.loadExtra(st, shown, cx);
     // A story not started has its details above, filling the column (work.js hides this block), and
