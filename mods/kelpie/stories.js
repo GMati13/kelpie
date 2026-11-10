@@ -1221,7 +1221,7 @@ async function reviewTicket(profile, p) {
 
 // Start review: the pull request checked out, its ticket looked up, then a Claude agent on it in the
 // profile's Reviews space (a tab "PR <repo>#<n>"), started with the profile's review prompt.
-function startReview(profile, p) {
+export function startReview(profile, p) {
   const name = `PR ${prName(p)}`;
   setPreview(profile, null);
   const open = reviewTab(p);
@@ -3140,7 +3140,7 @@ function leftoverItems(profile, it) {
 // must be Done in Jira (a pull request without a ticket: merged), with no pull request still open and
 // no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted work is
 // checked when it's cleaned (cleanUp), as that takes a look at its folders.
-function cleanBlockers(it) {
+export function cleanBlockers(it) {
   const why = [];
   const lone = it.pull || it.review;
   if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't Done in Jira");
@@ -3174,7 +3174,7 @@ async function uncommitted(profile, it) {
 // Cleans up a finished story (the confirm dialog's Clean up): closes its space, forgets what shared
 // state kept of it, runs the clean-up command when it left something (once per key it was found under,
 // 25 s each), then looks again, so the broom goes once nothing's left.
-async function cleanUp(profile, it) {
+export async function cleanUp(profile, it) {
   // Checked again now: an agent may have started, or a pull request opened, since the dialog showed.
   const why = cleanBlockers(it);
   if (why.length) return say(`${it.key} wasn't cleaned up: ${why.join(", ")}.`);
@@ -3369,7 +3369,7 @@ export function whatNext() {
   const s = storyItems();
   if (s) startSuggest(s.st, s.items, s.reviews);
 }
-async function brew(profile, task) {
+export async function brew(profile, task) {
   setBrewing(profile, Date.now());
   try {
     if (isDemo(profile)) {
