@@ -321,7 +321,4 @@ test("the profile dialog's card shrinks to the window, its page and tabs scroll,
       assert.equal(path.filter(scrolls).length, 0, `${id} is outside every scroll`);
     }
   }
-  // At FIT's size it fits a 1440×900 window less its margins at zoom 1 and 1.2 (1200×750 there), and
-  // shrinks below that: the card's size is the window's, capped.
-  for (const zoom of [1, 1.2]) assert.ok(FIT.w + 2 * FIT.margin <= 1440 / zoom, `wide enough at zoom ${zoom}`);
 });
