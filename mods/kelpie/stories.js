@@ -18,7 +18,7 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { boardSite, description as boardDescription, loadBoard, lookUp, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { boardSite, description as boardDescription, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
@@ -1538,8 +1538,8 @@ async function reviewTicket(profile, p) {
   const board = boardOf(profile);
   if (!ticket || !board) return ticket ? { ticket } : {};
   try {
-    const f = await ticketText(board, ticket);
-    const parent = f.parent ? await ticketText(board, f.parent).catch(() => null) : null;
+    const f = await ticketText(board, ticket, data);
+    const parent = f.parent ? await ticketText(board, f.parent, data).catch(() => null) : null;
     const story = parent ? [`Story ${f.parent}: ${parent.summary}`, parent.text].filter(Boolean).join("\n") : "";
     return { ticket, summary: f.summary, description: [f.text, story].filter(Boolean).join("\n\n") };
   } catch { return { ticket }; }
@@ -1852,10 +1852,15 @@ export class Stories extends Source {
 
   // A ticket's status chip. A click lists the statuses Jira lets it move to (its workflow's
   // transitions, loaded when the menu opens); picking one moves it and loads the stories again. The
-  // new status shows at once, for a minute or until the loaded data has it (Jira's search lags).
+  // new status shows at once, for a minute or until the loaded data has it (Jira's search lags). A
+  // GitHub Project's issue moves among the Project's Status options; one that isn't on the Project has
+  // no Status there, so its chip is only the lozenge.
   statusChip(t, st, key, status, category, id, cx) {
     const moved = MOVED[key];
     const shown = moved && moved.status !== status && Date.now() - moved.at < 60 * 1000 ? moved : { status, category };
+    if (!movable(boardOf(st.setup), key, st.data)) {
+      return div().id(`${id}-more`).flex_none().p(2).tooltip("Not on the board's Project, so its status can't be changed here").child(lozenge(t, shown.status, shown.category));
+    }
     const m = this.menu === id ? this.transitionsOf(st, key, cx) : MOVES[key];
     const list = (m?.list ?? []).filter((x) => x.to !== shown.status);
     const rows = !m || m.loading ? [{ header: "Loading…" }] : m.error ? [{ header: m.error }]
@@ -1874,7 +1879,7 @@ export class Stories extends Source {
     MOVES[key] = { loading: true, at: 0 };
     cx.spawn(async (cx) => {
       try {
-        MOVES[key] = { list: await statusOptions(boardOf(st.setup), key), at: Date.now() };
+        MOVES[key] = { list: await statusOptions(boardOf(st.setup), key, st.data), at: Date.now() };
       } catch (e) {
         MOVES[key] = { error: String(e?.message ?? e), at: Date.now() };
       }
@@ -1887,7 +1892,7 @@ export class Stories extends Source {
     say(`Moving ${key} to ${x.to}…`);
     cx.spawn(async (cx) => {
       try {
-        await moveStatus(boardOf(st.setup), key, x);
+        await moveStatus(boardOf(st.setup), key, x, st.data);
         MOVED[key] = { status: x.to, category: x.category, at: Date.now() };
         delete MOVES[key];
         say(`${key} moved to ${x.to}.`);
@@ -2519,7 +2524,7 @@ export class Stories extends Source {
   // A ticket's description, loaded when first shown and again after the stories reload (st.at) once
   // it's DESC_EVERY old, or after a Refresh press. `load` gives the blocks of something else's (a
   // pull request's, by its own key); the default asks Jira for the ticket's.
-  descriptionOf(st, key, cx, load = () => boardDescription(boardOf(st.setup), key)) {
+  descriptionOf(st, key, cx, load = () => boardDescription(boardOf(st.setup), key, st.data)) {
     const d = this.descs[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
@@ -4117,7 +4122,7 @@ async function applyPicks(profile, items) {
       if (!listed.has(key)) {
         // Not in the list (someone else's, unassigned, the backlog): Jira says whether it exists
         // and, for a subtask, its story. Only a subtask goes to its parent: a story's is its epic.
-        const found = await lookUp(boardOf(profile), key);
+        const found = await lookUp(boardOf(profile), key, data);
         if (!found) { drop("unknown to Jira"); continue; }
         key = found.story?.key ?? found.key;
         title = found.story ? found.story.summary : found.summary;

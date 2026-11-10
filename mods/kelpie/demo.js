@@ -126,6 +126,14 @@ export async function demoJira(args) {
   return ok({ key: i.key, fields: { ...fields(f, i), description: adfOf(i.description) } });
 }
 
+// A Status move on the demo's GitHub Project (issues.js setStatus()): the issue takes the column's
+// first status, as a transition to it does on the demo's Jira.
+export async function demoMoveTo(key, column) {
+  const c = (await demoFixture()).board.columns.find((x) => x.name === column);
+  if (!c?.statuses?.length) throw new Error(`The demo has no column ${column}.`);
+  MOVED[key] = c.statuses[0].name;
+}
+
 // --- GitHub -----------------------------------------------------------------------------------
 
 const prUrl = (f, p) => `https://github.com/${f.profile.owner}/${p.repo}/pull/${p.number}`;
