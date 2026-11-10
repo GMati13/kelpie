@@ -1,6 +1,6 @@
 ---
 name: configure-profile
-description: Set up a Kelpie profile with the person — its folder, Claude account, Jira board and sign-in, GitHub owner, Web start page, agent prompts, button messages and story commands — and save it through Kelpie's own tools. Use this whenever a message says "Configure my Kelpie profile" (Kelpie's "Let me configure it for you" sends that, naming the profile and a scope), and whenever the person asks to set up, change, fix or check anything in a Kelpie profile, connect Kelpie to Jira or GitHub, or write a leftovers, clean-up or status command for their stories.
+description: Set up a Kelpie profile with the person — its folder, the Claude and GitHub accounts it runs on, Jira board and sign-in, GitHub owner, Web start page, agent prompts, button messages and story commands — and save it through Kelpie's own tools. Use this whenever a message says "Configure my Kelpie profile" (Kelpie's "Let me configure it for you" sends that, naming the profile and a scope), and whenever the person asks to set up, change, fix or check anything in a Kelpie profile, connect Kelpie to Jira or GitHub, or write a leftovers, clean-up or status command for their stories.
 ---
 
 # Configuring a Kelpie profile
@@ -76,9 +76,14 @@ For `all`, go in this order, skipping what the person doesn't use: ask early whe
 
 - **Name** (`name`): what this work is called, e.g. the team or client. Short.
 - **Folder** (`folder`): an absolute path. Does the current one hold the work's repos (git clones, directly or one level down)? Too broad (the home folder) makes every space this profile's; too narrow misses repos. Suggest the closest folder holding all of them.
-- **Claude account** (`claude.config`, on the dialog's Agents page, which also guides adding an account): the candidates are the `~/.claude*` folders with a `settings.json` or `projects/` (`ls -d ~/.claude*`). No `claude` section means Claude's own `~/.claude`. Ask which account this work runs on; it affects new agents only, resumed sessions keep theirs. With several accounts, a folder of each (`CLAUDE_CONFIG_DIR=~/.claude-work claude`, signed in once) is what makes them pickable here; the README's "Several accounts" guides both this and the GitHub account. The Kelpie plugin must be installed on that account too, for this setup to work from it.
 
-### 2. Jira
+### 2. Agents
+
+The accounts the profile's agents run on, a section each on the dialog's Agents page (`open_profile_page` with `agents`). For now that's Claude's; the GitHub account is on the GitHub page (below), as it goes with the owner.
+
+- **Claude account** (`claude.config`, scope `claude`; the page also guides adding an account): the candidates are the `~/.claude*` folders with a `settings.json` or `projects/` (`ls -d ~/.claude*`). No `claude` section means Claude's own `~/.claude`. Ask which account this work runs on; it affects new agents only, resumed sessions keep theirs. With several accounts, a folder of each (`CLAUDE_CONFIG_DIR=~/.claude-work claude`, signed in once) is what makes them pickable here; the README's "Several accounts" guides both this and the GitHub account. The Kelpie plugin must be installed on that account too, for this setup to work from it.
+
+### 3. Jira
 
 Jira Cloud only (`https://<name>.atlassian.net`). Server and Data Center sign in differently: say so and stop if that's what they use.
 
@@ -93,17 +98,19 @@ Jira Cloud only (`https://<name>.atlassian.net`). Server and Data Center sign in
 - **Check it** in Kelpie, not yourself: once the sign-in is in place (saved, or stored by the person in their own terminal), ask them to press Check on the Jira page (`open_profile_page` with `jira`), rather than only offering to: it's the step that tells them it works. It signs in with what they stored and says whether it worked and which board it found.
 - **Your part** (`jira.handover`, scope `handover`): the board column from which the person's part of a ticket is done (usually the first testing or review column). A story whose subtasks assigned to them are all there or further right waits on others, so it sinks to the end of their list. Find the board's columns through your own Jira access if you have it, else ask: after Check, the Jira page's "My part is done from column" lists them. Save the column's exact name. Unset, Kelpie picks the first column named like test, QA or verify, else the last.
 
-### 3. GitHub
+### 4. GitHub
 
 - **Owner** (`github.owner`): the organisation (or user) whose repositories hold the work. Find it through your own GitHub access if you have it (their organisations, where their pull requests are), else ask. Kelpie reads GitHub through the GitHub CLI signed in as the person (`gh auth login`, in a terminal of theirs); the GitHub page's Check button (`open_profile_page` with `github`) says whether it finds their pull requests.
-- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret. Kelpie's own lists use it at once, but the `gh` its agents and terminals run uses it only once the person's shell setup has the small `gh()` function Kelpie gives for it (agents and terminals start with `KELPIE_GH_ACCOUNT` set; the function reads it). After it's saved, open the GitHub page (`open_profile_page` with `github`): it shows the lines to copy and a Check my shell button that says whether it works. The shell setup is the person's own: add it there only if they ask you to, and then have them press Check my shell. Without it, `gh` in their agents acts as whichever account gh has active, which can be someone else.
+- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret. Kelpie's own lists use it at once, but the `gh` its agents and terminals run uses it only once the person's shell setup has the small `gh()` function Kelpie gives for it (agents and terminals start with `KELPIE_GH_ACCOUNT` set; the function reads it). After it's saved, open the GitHub page (`open_profile_page` with `github`): it shows the lines to copy and a Check my shell button that says whether it works. The shell setup is the person's own: add it there only if they ask you to, and then have them press Check my shell. Without it, `gh` in their agents acts as whichever account gh has active, which can be someone else. Two things worth telling them:
+  - The function reaches agents started after it was added. A Claude already running, or a session resumed since, may still run its commands through the shell setup it read before, so start a new one to pick it up.
+  - It helps to keep their main account the one gh has active (`gh auth switch --user <login>`, in a terminal of theirs; each account signed in with `gh auth login`, all in gh's own config). Then anything the function doesn't reach still acts as their main account. A second gh config folder (`GH_CONFIG_DIR`) doesn't keep accounts apart: gh keeps one active sign-in per host for every folder, so signing in there can replace the main one.
 - **Notifications** (`notify.pulls`, default true): a notification when one of their pull requests starts failing checks, gets changes requested, or becomes ready to merge.
 
-### 4. Web
+### 5. Web
 
 - **Start page** (`web.home`): what the profile's browser opens on, often the team's chat or a dashboard (a full `https://…` address); empty, a blank page. The Web panel needs `terminal-browser`; if `command -v terminal-browser` finds nothing, say so.
 
-### 5. Story commands
+### 6. Story commands
 
 All optional. Each runs through the person's shell in the profile's folder, with `{key}` replaced by a ticket key (`ABC-123`). The leftovers check and clean-up run **once per key of a story: its own and each of its subtasks'**, as work is often done under a subtask's key, so a command only ever deals with the key it's given: never look up a story's subtasks yourself. The status command gets the story's key.
 
@@ -119,7 +126,7 @@ First look at how the folder is laid out: clones, worktrees, folders per ticket 
 - **Clean-up** (`commands.cleanUp`): removes what the check prints. The broom asks first, closes the story's space, then runs this for each key the check found something under, 25 seconds each. It must be safe: never delete uncommitted or unpushed work; say so instead. Its last line is what the person reads, so end with a short summary (`removed worktrees/ABC-123`, or why it refused). Afterwards the check runs again, so the broom goes once nothing's left.
 - **Status** (`commands.status`): while a story has a space, the first line this prints shows in its header, refreshed every few minutes, with 4 seconds to run. Short and plain, read at a glance (`dev server running on :3000`).
 
-### 6. Prompts
+### 7. Prompts
 
 Change one only when the person wants agents to work differently: a slash command or skill they use for tickets, their merge or deploy steps, who approves. The profile dialog's Prompts page shows each default (`open_profile_page` with `prompts`). A line whose placeholders all come out empty is left out.
 
@@ -134,7 +141,7 @@ Change one only when the person wants agents to work differently: a slash comman
 
 `jira.*` prompts are kept only while Jira is connected, `github.*` ones only while GitHub is. For `prompts.suggest`, ask what kind of work the person picks up (frontend, say) and add it, so unassigned tickets of that kind are pointed out. Like every prompt, say what to look at or do, never how to reach Jira or GitHub: each agent uses its own access.
 
-### 7. Messages
+### 8. Messages
 
 Sent to an agent already working on a pull request when a button is pressed (`prompts.<id>`; the Messages page shows the defaults). `{prs}` is the pull request's link, several joined by "and".
 

@@ -100,8 +100,9 @@ TOOLS = [
             "claude) given as an object is merged into the saved one; a key or section set to null is removed. "
             "Values are strings, except jira.board (a number) and notify.pulls (true/false). An id that doesn't "
             "exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token "
-            "or password are refused. Changes that can run commands, steer agents or move the Jira sign-in "
-            "(commands, prompts, claude, web, the jira sign-in and address, the github prompts) aren't saved "
+            "or password are refused. Changes that can run commands, steer agents, move the Jira sign-in or pick "
+            "the GitHub account (commands, prompts, claude, web, the jira sign-in and address, the github "
+            "account and prompts) aren't saved "
             "until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at "
             "Kelpie, and call save_status once they've answered. Save only what the person agreed to."
         ),
@@ -131,9 +132,10 @@ TOOLS = [
         "title": "Open the profile dialog on a page",
         "description": (
             "Opens Kelpie's profile dialog, for the profile Kelpie shows, on one page: general, jira, github, "
-            "web, agents, prompts, messages or commands. Use it for the person to press a Check button (Jira's checks "
-            "their sign-in and lists the board's columns; GitHub's checks their pull requests) or to look over "
-            "what you saved. It only opens the dialog."
+            "web, agents (the accounts its agents run on), prompts, messages or commands. Use it for the person to "
+            "press a Check button (Jira's checks their sign-in and lists the board's columns; GitHub's checks "
+            "their pull requests, and its Check my shell whether their agents' gh acts as the profile's GitHub "
+            "account) or to look over what you saved. It only opens the dialog."
         ),
         "inputSchema": {
             "type": "object",

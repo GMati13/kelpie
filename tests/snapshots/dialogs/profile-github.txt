@@ -115,10 +115,10 @@ v_flex #work-setup [bg=popover fg=foreground] {key_down}
           h_flex #setup-github-account-1 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click}
             "kelpie-demo"
         div [fg=dim]
-          "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change."
+          "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change: keep your main account active (gh auth switch), and pick the others here."
       v_flex
         div [fg=dim]
-          "For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=kelpie-demo. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account:"
+          "For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=kelpie-demo. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account. Agents started before it, and sessions resumed since, may still run without it: start a new one."
         h_flex [bg=background border=border]
           v_flex [fg=muted]
             div

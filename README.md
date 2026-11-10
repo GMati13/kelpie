@@ -94,7 +94,7 @@ Each profile can run on its own Claude account and its own GitHub account, so wo
   }
   ```
 
-  Without it, gh there acts as gh's active account, and gh keeps one active sign-in for the whole machine: signing in to another account, anywhere, can switch it. Git itself (push, fetch) signs in its own way, over SSH or a credential helper, and neither setting changes it.
+  Without it, gh there acts as gh's active account, and gh keeps one active sign-in for the whole machine: signing in to another account, anywhere, can switch it, and a second gh config folder (`GH_CONFIG_DIR`) doesn't keep them apart. So keep your main account the active one (`gh auth switch --user <login>`) and pick the others per profile. The function reaches agents started after you add it: a Claude already running, or a session resumed since, may still run its commands through the shell setup it read before, so start a new one. Git itself (push, fetch) signs in its own way, over SSH or a credential helper, and neither setting changes it.
 
 ### Optional
 

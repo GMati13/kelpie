@@ -2,7 +2,9 @@
 // start in (spaces in it belong to it), its Jira Cloud board (a pasted board URL and how to sign in:
 // a Keychain item on macOS, or a command that prints the API token, with the email; the prompts, and
 // the column where your part of a ticket is done),
-// its GitHub owner (and whether its pull requests notify), its Claude account (and the machine's default one) and its optional story commands. No profile id: a new one, starting from
+// its GitHub owner and account (whether its pull requests notify; the gh() function its agents'
+// shell setup needs, with a check), its Agents page (the accounts agents run on: Claude's, with a
+// guide to adding another) and its optional story commands. No profile id: a new one, starting from
 // the space's folder. Each part has a check that asks the service; Save keeps it in shared state
 // (config.js).
 
@@ -546,9 +548,9 @@ export class Setup {
         field("GitHub account", choice("setup-github-account", [
           { label: "Default", value: null, on: !this.githubAccount, tip: "The account gh has active" },
           ...ghAccounts.map((a) => ({ label: a, value: a, on: this.githubAccount === a })),
-        ], (v) => { this.githubAccount = v; delete this.checks["github-shell"]; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change."),
+        ], (v) => { this.githubAccount = v; delete this.checks["github-shell"]; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change: keep your main account active (gh auth switch), and pick the others here."),
         this.githubAccount && v_flex().pt(DIALOG.section)
-          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account:`))
+          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account. Agents started before it, and sessions resumed since, may still run without it: start a new one.`))
           .child(h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
             .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(GH_FUNCTION.split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
             .child(textButton(t, "setup-gh-copy", "Copy", (_e, cx) => cx.write_to_clipboard(GH_FUNCTION))))
