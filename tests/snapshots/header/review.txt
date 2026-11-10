@@ -1,0 +1,28 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open on GitHub"
+          "web#421"
+        div #story-title [font="Fraunces"] tip="ACME-166 Share a trip with a link\nReview requested by priya-n"
+          "ACME-166 Share a trip with a link"
+        div #story-need [fg=accent font="DM Sans"] tip="Review requested by priya-n"
+          "Review requested by priya-n"
+        div
+      h_flex
+        h_flex #review-start [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Check it out and start a review agent on it, in Acme's Reviews space ⌘⇧R"
+          "Start review"
+          div
+            div
+              div [bg=#7fb3ae]
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open on GitHub"
+          svg own:external-link
+        div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+          svg chrome:chevron-down

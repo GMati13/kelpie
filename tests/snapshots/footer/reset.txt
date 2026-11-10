@@ -1,0 +1,14 @@
+div #acct [fg=muted] tip="Claude · Opus · 1m ago"
+  "Claude"
+h_flex #acct-five tip="Reset: the next session that runs shows the new share"
+  h_flex
+    div
+      "5h"
+    div [font="DM Mono" fg=dim]
+      "reset"
+h_flex #acct-week tip="Resets Fri 10:00 AM"
+  h_flex
+    div
+      "Week"
+    div [font="DM Mono" fg=working]
+      "61%"

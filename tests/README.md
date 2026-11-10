@@ -33,7 +33,10 @@ tests/stubs/            the host modules a mod imports, for Node
   gpui-base.js          h_flex, v_flex, components (Button.new, TextView.html, ...) and state handles
 tests/lib/helpers.mjs   temp folders, fake programs, running scripts, git fixtures, until(), bodyOf()
 tests/lib/stories.mjs   story data: the demo loaded as the story list loads it, small hand-built issues and PRs
-tests/js/*.test.mjs     mods' logic, under the stubs
+tests/lib/views.mjs     the demo as a Herdr world at a fixed time, a fake cx, draw() (Snapshots, below)
+tests/lib/snapshot.mjs  a view's element tree as text, compared with tests/snapshots/ (Snapshots, below)
+tests/js/*.test.mjs     mods' logic, under the stubs; views-*.test.mjs, what the views draw
+tests/snapshots/        the views' snapshots, one .txt per state (plain/: the Kelpie-Plain layout)
 tests/shell/*.test.mjs  shell scripts run for real in temp folders (jira.sh, install.sh, ...)
 tests/python/test_*.py  kittyfix.py, changes.py, sessions.py (unittest; helpers in kelpie_test.py)
 ```
@@ -85,6 +88,7 @@ AvatarImage(path)`, ...) returns a recording element: any method call is recorde
 returns the same element, so any chain a view builds works. `.when(cond, fn)`, `.when_some(value, fn)` and
 `.when_else(cond, yes, no)` run their branch as gpui does. State handles (`InputState.new(cx)`,
 `TextareaState.new(...)`, `VirtualListScrollHandle.new()`) keep `set_value()`/`value()` and record the rest.
+`.map(fn)` runs `fn` on the element, as gpui's does.
 `View` is a plain base class (`this.props`).
 
 For inspecting what a view rendered (import from `"gpui-kit"`):
@@ -143,7 +147,84 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally, in a fake HOME).
+- `views-*.test.mjs`: what the views draw, as snapshots (next section).
 
-Known bugs, as `todo` tests: `wordChanges()` splits two changed words around a shared space
-(diff.test.mjs); a profile folder saved with a trailing slash doesn't own a space started exactly there
-(config.test.mjs).
+## Snapshots: what the views draw
+
+`tests/js/views-*.test.mjs` render Kelpie's views under the stubs and compare what they drew with a
+text file in `tests/snapshots/` (`plain/` holds the same views in the Kelpie-Plain layout; the rest are
+the Kelpie layout, with its Quiet Pages skin). A view that changes what it draws for a state fails its
+test with a diff, so a change to a view shows exactly what it changed.
+
+| File | Covers |
+| --- | --- |
+| `views-sidebar` | the story list in every state the demo has (needs you, changes requested, failing checks, ready to merge, working, finished with the broom, paused, not open, waiting on others), reviews, your pull requests and "No ticket", the Desk (open, closed, without an agent), Next (no picks, Claude's picks, brewing, the Desk asking, all clear) and the opened queue; a finished story with a working agent has no broom |
+| `views-header` | the title row's main action per state (Peek, Merge, Show agent, Resume, Start work; Fix checks and Address comments are `todo`, see below), Pause, the icons, More open, folded; a review before and while its agent runs (and Approve asking twice); a pull request with no ticket |
+| `views-body` | the details: the description folded with Show more and opened, a subtask's own description, the subtasks with their actions, the fade only while the details overflow (`fits()`), a review's details |
+| `views-toolbar` | the tab bar: agent tabs, the + menu, Changes and Screenshots with counts; a preview (Overview, the rest only when they hold something), a review (Changes alone), the Desk |
+| `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered) |
+| `views-footer` | the Claude limits line (usual, near a limit with its reset time, past a reset), the profile picker row and menu |
+
+Not covered yet: the Changes view (`StoryView`, a virtual list whose rows Herdr draws on demand), the
+profile dialog (`setup.js`), the pane headers (`panes.js`), the plain sidebar of a profile without
+Jira (`WorkSide.plain`), the older Hub roles and the `kelpie-artifacts` mod.
+
+**The world.** `tests/lib/views.mjs` pins the clock (every `Date.now()` and `new Date()` is Tuesday
+2026-11-10 10:00 UTC) and the time zone, and builds Herdr's state from the demo fixture
+(`mods/kelpie/demo/demo.json`): the demo profile as `kelpie.demo` saves it, the fixture's spaces as
+spaces `s0`… with tabs `t<space>-<tab>`, panes and agents (`a<space>-<tab>`), owned by the profile, the
+Desk and paused agents. `loadStories(StoryList)` loads the stories the way the sidebar does (the demo
+answers from the fixture), once per file; `setupDemoWorld({ stories, shown, layout, agentOf, spaces,
+profile, props })` puts a test's situation in place; `draw(view)` does init, a first render, waits for
+what it started (`cx.spawn`) and renders again. A new situation goes in the fixture or in the test's
+own options, never in the mods.
+
+**Reading one.** One element per line, children indented under it:
+
+```
+h_flex #story-ACME-151 [hover(bg=hover)] {click} tip="Checks failing on ACME-152 (payments#97)"
+  svg own:circle-x [fg=blocked]
+  "Pay with Apple Pay at checkout"
+```
+
+the element's kind (`svg chrome:…`/`own:…` for Herdr's and Kelpie's icons), `#id`, its colours as the
+theme's token names (`accent/26` is a tint; a colour no token has stays as `#rrggbb`), what hovering
+changes, a font family or weight a skin set, `opacity=`, motion (`~spin`, `~loop(opacity)`,
+`~frames(n)`), the handlers it has (`{click down:left}`, not what they do) and its tooltip; text
+children in quotes; `@content` for an element given to a method other than `child` (an open Popup's
+list); four or more sibling leaves alike but for their colours (a skin's bands) as one line with
+`×N`. Padding, margins, gaps, sizes, flex, radius and text size are left out, so spacing tweaks don't
+churn every snapshot; a colour, text, id, handler or structure change does show.
+
+**Updating.** A view changed on purpose: re-record, then read the diff before committing.
+
+```sh
+UPDATE_SNAPSHOTS=1 ./test.sh js      # or one file: UPDATE_SNAPSHOTS=1 node --import ./tests/stubs/register.mjs --test tests/js/views-header.test.mjs
+git diff tests/snapshots/
+```
+
+A changed snapshot is reviewed like code: every changed line should be one you meant. Never re-record
+to make a failing test pass without knowing why it changed. A missing snapshot fails (CI never
+records); a test renamed or removed leaves its old file behind, so delete it by hand. A real bug a
+snapshot shows is a `todo` test that asserts the right thing (and records its snapshot once fixed).
+
+## The end-to-end demo check (macOS, not in CI)
+
+`scripts/e2e-demo.sh <throwaway Herdr home>` checks Kelpie in a real Herdr: it installs Kelpie into that
+home (`install.sh` with `HERDR_APP_HOME`), starts a second Herdr window on it (`HERDR_BIN`, else the
+binary in `/Applications/Herdr.app`), runs `herdr-app check` on both mods, switches the window to the
+Kelpie layout, opens the demo (`kelpie.demo`), checks `herdr-app status` names no errors, takes the
+README's shots (story, changes, next, review, overview, plain, through `kelpie.preview-<KEY>`,
+`kelpie.view-*`, `kelpie.what-next` and `layout.switch`) into `<home>/e2e-shots/`, and compares each
+with `docs/screenshots/` (python3 with Pillow: the share of pixels that differ, `E2E_TOLERANCE`,
+default 0.08; skipped with a message without Pillow). However it ends, it runs `kelpie.demo-remove`
+and quits that window.
+
+Run it only with the person's OK: spaces live in herdr-core, shared by every Herdr window, so the
+demo's spaces show in their own window while it runs, and `layout.switch` closes the test window's
+other windows. It refuses `~/.config/herdr-app`, anything inside it or linked to it, the home folder,
+and a non-empty folder it didn't make (it leaves a `.kelpie-e2e` marker in the ones it makes), and
+runs only on macOS; `tests/shell/e2e-demo.test.mjs` checks those refusals with every program faked.
+`herdr-app` is called with `HERDR_APP_HOME` set to the throwaway home, so it talks to the test window.
+The Next shot is taken with the queue closed (no command opens it), so expect `next.png` to differ
+more than the rest.

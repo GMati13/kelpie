@@ -1,0 +1,23 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open on GitHub"
+          "docs#58"
+        div #story-title [font="Fraunces"] tip="Fix typos in the onboarding guide\nDraft"
+          "Fix typos in the onboarding guide"
+        div #story-need [fg=muted font="DM Sans"] tip="Draft"
+          "Draft"
+        div
+      h_flex
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open on GitHub"
+          svg own:external-link
+        div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+          svg chrome:chevron-down

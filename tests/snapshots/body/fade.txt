@@ -1,0 +1,51 @@
+div #story-overview-view {size_change}
+  v_flex #story-overview
+    v_flex #story-overview-content {size_change}
+      div
+        h_flex
+          div #story-desc-body [font="Fraunces" fg=foreground/c4]
+            v_flex
+              v_flex [fg=foreground/e0]
+                TextView.html "story-desc-0-text-0" "<span>Travellers want a printable itinerary: every booking of a trip on one page, with confirmation numbers and addresses, as a PDF from the trip's share menu.</span>" [fg=foreground/e0]
+      h_flex
+        v_flex
+          v_flex #sub-row-ACME-181 [border=border hover(bg=hover)]
+            h_flex
+              div [font="DM Mono" fg=dim]
+                "ACME-181"
+              div #sub-title-ACME-181 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                "PDF layout for itineraries"
+              div [fg=dim]
+                "No PR yet"
+              Popup.new "sub-status-ACME-181-menu"
+                div #sub-status-ACME-181-more [hover(bg=hover)] {click} tip="Change the status"
+                  div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                    "To do"
+                    div
+                      div
+                        div [border=dim]
+              div [fg=dim]
+                "last session 2d ago"
+              h_flex #sub-agent-ACME-181-resume [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Continue \"Sketch the PDF itinerary layout\" (2d ago)"
+                "Resume"
+              h_flex #sub-agent-ACME-181-new [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start a fresh Claude agent on ACME-181"
+                "Start fresh"
+          v_flex #sub-row-ACME-182 [border=border hover(bg=hover)]
+            h_flex
+              div [font="DM Mono" fg=dim]
+                "ACME-182"
+              div #sub-title-ACME-182 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
+                "Export from the share sheet"
+              div [fg=dim]
+                "No PR yet"
+              Popup.new "sub-status-ACME-182-menu"
+                div #sub-status-ACME-182-more [hover(bg=hover)] {click} tip="Change the status"
+                  div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+                    "To do"
+                    div
+                      div
+                        div [border=dim]
+              h_flex #sub-agent-ACME-182-start [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Start a Claude agent on ACME-182, in a new space for the story"
+                "Start work"
+  div
+    div [bg=background/17] ×10 … [bg=background/e6]

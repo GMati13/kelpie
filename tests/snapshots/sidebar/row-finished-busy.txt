@@ -1,0 +1,21 @@
+h_flex #story-ACME-122 [hover(bg=hover)] {click} tip="Agent working · 1 subtask · 1 done"
+  div
+    div
+      svg chrome:spinner [fg=accent] ~spin
+  v_flex
+    div [font="DM Sans" fg=muted]
+      "Upgrade the services to Node 22"
+    h_flex [opacity=0.6]
+      div [font="DM Mono" fg=dim]
+        "ACME-122"
+      h_flex #b-busy-ACME-122 [fg=accent] tip="An agent is working"
+        div
+          svg chrome:spinner [fg=accent] ~spin
+      h_flex #b-pr-ACME-122 [fg=muted] tip="Every pull request merged"
+        div
+          svg own:git-merged [fg=ansi4]
+      h_flex #b-subs-ACME-122 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+        h_flex [bg=raised]
+          div [bg=done]
+        div [fg=dim]
+          "1/1"

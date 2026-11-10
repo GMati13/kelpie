@@ -1,0 +1,19 @@
+v_flex #kelpie-confirm [bg=popover] {key_down}
+  div [fg=foreground]
+    "Claude wants to change Acme"
+  v_flex #confirm-detail
+    div [fg=muted]
+      "These settings can run commands, send your Jira sign-in somewhere or steer your agents, so they wait for your yes:"
+    v_flex
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "commands.status"
+        div [fg=foreground]
+          "git -C {key} status --short"
+  h_flex
+    h_flex #confirm-no [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      "Cancel"
+    h_flex #confirm-yes [bg=accent fg=accent_foreground hover(opacity=0.88)] {down:left click}
+      "Save these changes"

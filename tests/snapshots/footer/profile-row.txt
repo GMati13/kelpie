@@ -1,0 +1,13 @@
+Popup.new "space-picker-menu"
+  h_flex [fg=foreground]
+    h_flex #space-picker [hover(bg=raised)] {down:left click} tip="Switch profile"
+      div [bg=#2c4436 fg=#b4dcbf]
+        "A"
+      div
+        "Acme"
+      svg chrome:chevron-down [fg=dim]
+    div
+    div #side-hide [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Hide the sidebar ⌘B"
+      svg chrome:sidebar
+    div #search [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Go to a story ⌘⇧K"
+      svg chrome:search

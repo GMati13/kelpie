@@ -1,0 +1,41 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+          "ACME-138"
+        div #story-title [font="Fraunces"] tip="Rate-limit the public API\nPaused · 1 subtask · 1 in progress"
+          "Rate-limit the public API"
+        div #story-need [fg=muted font="DM Sans"] tip="Paused · 1 subtask · 1 in progress"
+          "Paused · 1 subtask · 1 in progress"
+        div
+        Popup.new "story-status-menu-menu"
+          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+            div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+              "In progress"
+              div
+                div
+                  div [bg=#7fb3ae]
+      h_flex
+        h_flex #story-main [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Bring back its paused session where they left off ⌘⇧R"
+          "Resume"
+          div
+            div
+              div [bg=#7fb3ae]
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+          svg own:external-link
+        Popup.new "story-more-menu"
+          div #story-more-more [bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="More for this story"
+            svg own:ellipsis
+          @content
+            v_flex #story-more-menu-list [bg=popover border=border fg=foreground] {down_out}
+              h_flex #story-more-row-0 [hover(bg=hover)] {click} tip="Start a fresh Claude agent on ACME-138"
+                div
+                  "Start fresh"

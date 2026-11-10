@@ -1,0 +1,16 @@
+v_flex #kelpie-confirm [bg=popover] {key_down}
+  div [fg=foreground]
+    "Leave ACME-122?"
+  v_flex #confirm-detail
+    div [fg=muted]
+      "Pause keeps its agents' sessions, to Resume from the story list. Close just closes its space."
+  h_flex
+    h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      "Cancel"
+    h_flex #confirm-alt [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      "Close"
+    h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+      "Pause"
+      div
+        div
+          div [bg=#7fb3ae]

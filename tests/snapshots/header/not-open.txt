@@ -1,0 +1,33 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+          "ACME-180"
+        div #story-title [font="Fraunces"] tip="Export an itinerary as PDF\n2 subtasks · 2 to do"
+          "Export an itinerary as PDF"
+        div #story-need [fg=muted font="DM Sans"] tip="2 subtasks · 2 to do"
+          "2 subtasks · 2 to do"
+        div
+        Popup.new "story-status-menu-menu"
+          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+            div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+              "To do"
+              div
+                div
+                  div [border=dim]
+      h_flex
+        h_flex #story-main [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Start a Claude agent on ACME-180, in a new space for the story ⌘⇧R"
+          "Start work"
+          div
+            div
+              div [bg=#7fb3ae]
+      div [bg=border]
+      h_flex
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+          svg own:external-link

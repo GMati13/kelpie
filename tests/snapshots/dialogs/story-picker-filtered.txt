@@ -1,0 +1,14 @@
+v_flex #sp-list
+  h_flex #sp-ACME-151 [bg=hover hover(bg=hover)] {click}
+    div
+      div [bg=#ef7f62]
+    v_flex
+      h_flex
+        div [font="DM Mono" fg=accent]
+          "ACME-151"
+        div [font="DM Sans" fg=foreground]
+          "Pay with Apple Pay at checkout"
+      div [fg=blocked]
+        "Checks failing on ACME-152 (payments#97)"
+    div [fg=dim]
+      "Open"

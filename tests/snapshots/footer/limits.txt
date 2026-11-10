@@ -1,0 +1,40 @@
+v_flex
+  v_flex [border=border fg=dim]
+    h_flex
+      div #acct [fg=muted] tip="Claude · Opus · 1m ago"
+        "Claude"
+      h_flex #acct-five tip="Resets in 2h 0m, at 12:00 PM"
+        h_flex
+          div
+            "5h"
+          div [font="DM Mono" fg=muted]
+            "38%"
+      h_flex #acct-week tip="Resets Fri 10:00 AM"
+        h_flex
+          div
+            "Week"
+          div [font="DM Mono" fg=working]
+            "61%"
+    h_flex
+      h_flex
+        div
+          "CPU"
+        div [font="DM Mono" fg=muted]
+          "–"
+      h_flex
+        div
+          "Mem"
+        div [font="DM Mono" fg=muted]
+          "–"
+      div
+      div #qp-safelight {click} tip="An agent needs you: show the next ⌘⇧J"
+        div
+          div [bg=#e8603f52] ~loop(opacity)
+          div [bg=#e8603f]
+          div [bg=#ffb39a opacity=0.75]
+        div [font="DM Mono" fg=working]
+          "1"
+      div [fg=muted font="DM Mono"]
+        "10:00 AM"
+      div #settings [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Settings"
+        svg chrome:settings

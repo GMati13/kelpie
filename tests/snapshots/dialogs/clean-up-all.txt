@@ -1,0 +1,22 @@
+v_flex #kelpie-confirm [bg=popover] {key_down}
+  div [fg=foreground]
+    "Clean up 1 finished story?"
+  v_flex #confirm-detail
+    div [fg=muted]
+      "Each is done or merged, and leaves something behind:"
+    v_flex
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-122"
+        div [fg=foreground]
+          "closes its space"
+  h_flex
+    h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      "Cancel"
+    h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+      "Clean up all"
+      div
+        div
+          div [bg=#7fb3ae]

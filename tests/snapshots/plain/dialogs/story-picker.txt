@@ -1,0 +1,104 @@
+v_flex #story-picker [bg=popover] {key_down scroll_wheel}
+  h_flex
+    div [fg=foreground]
+      "Go to a story"
+    div [fg=dim]
+      "Esc"
+  h_flex [border=accent bg=background]
+    svg chrome:search [fg=dim]
+    Input.new [fg=foreground]
+  v_flex #sp-list
+    h_flex #sp-ACME-142 [bg=hover hover(bg=hover)] {click}
+      div [bg=working]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-142"
+          div [fg=foreground]
+            "Offline mode for saved trips"
+        div [fg=working]
+          "ACME-143's agent needs you"
+      div [fg=dim]
+        "Open"
+    h_flex #sp-ACME-151 [hover(bg=hover)] {click}
+      div [bg=blocked]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-151"
+          div [fg=foreground]
+            "Pay with Apple Pay at checkout"
+        div [fg=blocked]
+          "Checks failing on ACME-152 (payments#97)"
+      div [fg=dim]
+        "Open"
+    h_flex #sp-ACME-160 [hover(bg=hover)] {click}
+      div [bg=working]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-160"
+          div [fg=foreground]
+            "Typo-tolerant search"
+        div [fg=working]
+          "Changes requested on ACME-161 (search#233)"
+      div [fg=dim]
+        "Open"
+    h_flex #sp-ACME-171 [hover(bg=hover)] {click}
+      div [bg=done]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-171"
+          div [fg=foreground]
+            "Dark mode for the dashboard"
+        div [fg=done]
+          "Approved, checks pass · ready to merge"
+      div [fg=dim]
+        "Open"
+    h_flex #sp-ACME-175 [hover(bg=hover)] {click}
+      div [bg=accent]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-175"
+          div [fg=foreground]
+            "Fix the flaky login test"
+        div [fg=accent]
+          "Agent working · PR in review"
+      div [fg=dim]
+        "Open"
+    h_flex #sp-ACME-138 [hover(bg=hover)] {click}
+      div [bg=dim]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-138"
+          div [fg=foreground]
+            "Rate-limit the public API"
+        div [fg=muted]
+          "Paused · 1 subtask · 1 in progress"
+    h_flex #sp-ACME-180 [hover(bg=hover)] {click}
+      div [bg=dim]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-180"
+          div [fg=foreground]
+            "Export an itinerary as PDF"
+        div [fg=muted]
+          "2 subtasks · 2 to do"
+    h_flex #sp-ACME-129 [hover(bg=hover)] {click}
+      div [bg=dim]
+      v_flex
+        h_flex
+          div [fg=accent]
+            "ACME-129"
+          div [fg=foreground]
+            "Password reset emails"
+        div [fg=muted]
+          "2 subtasks · 2 in progress"
+  div [fg=dim]
+    "1 of 9"
+  div [fg=dim]
+    "↑↓ choose · Enter open · ⌘⇧J next that needs you · ⌘⇧R start or resume · ⌥⌘P pause"
