@@ -3,29 +3,31 @@ v_flex
     div
       h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
         "Updated just now ↻"
-  v_flex
-    v_flex #story-next [bg=raised border=border]
-      h_flex
-        div [fg=dim]
-          "Next"
+  v_flex #story-next [bg=raised border=border]
+    h_flex
+      div [fg=dim]
+        "Next"
+      div [fg=muted]
+        "1"
+      div
+      h_flex #story-next-tools {down:left click}
+        div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
+          svg chrome:chevron-right
+    h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
+      div
         div
-        h_flex #story-next-tools {down:left click}
-          div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
-            svg chrome:chevron-right
-      h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
-        div
+          div [bg=working/40] ~loop(opacity)
+            div [bg=working]
+      v_flex
+        h_flex
           div
-            div [bg=working/40] ~loop(opacity)
-              div [bg=working]
-        v_flex
-          h_flex
-            div
-              "Desk: an agent needs you"
-          div [fg=muted]
-            "Its agent is waiting for your answer"
-    h_flex #story-magic [bg=accent/0d hover(bg=accent/29)] {click size_change} tip="Claude looks at the sprint, the backlog, your pull requests and reviews in the background, and fills Next with what to do"
-      div [border=accent/33]
-      div #magic-zoom-probe {size_change}
-      svg own:sparkles [fg=accent] ~loop(opacity)
-      div [fg=accent]
-        "Conjure more to do"
+            "Desk: an agent needs you"
+        div [fg=muted]
+          "Its agent is waiting for your answer"
+    div
+      h_flex #story-magic [bg=accent/0d hover(bg=accent/29)] {click size_change} tip="Claude looks at the sprint, the backlog, your pull requests and reviews in the background, and fills Next with what to do"
+        div [border=accent/33]
+        div #magic-zoom-probe {size_change}
+        svg own:sparkles [fg=accent] ~loop(opacity)
+        div [fg=accent]
+          "Conjure more to do"

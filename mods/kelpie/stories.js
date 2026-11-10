@@ -648,15 +648,18 @@ function queueMark(t, x, size = 16) {
 }
 // Where a click on it goes, when that's off Herdr (a pick the list doesn't have opens on the web).
 const queueAway = (x) => Boolean((x.suggest && !x.it && !x.suggest.idea) || (x.ask && !x.it && x.ask.url));
-// One item of the queue, as Next's card and the open queue draw it: its mark, what to do, and under
-// it what it is or why (muted, one line); ↗ when a click opens the web. `on`: the one Next shows.
+// One item of the queue, folded Next and the open queue drawing it alike: its mark, what to do, and
+// under it what it is or why (muted, one line); ↗ when a click opens the web. `on`: the item on
+// screen, lit; `card`: folded Next's only row. The item Next goes to has no mark of its own: folded
+// it's the card's one row, unfolded the row after the lit one (a "Next" tag beside the header's
+// "Next" only confused).
 function queueRow(t, x, on, go, { card = false } = {}) {
-  return h_flex().id(`queue-${card ? "next" : x.key}`).flex_none().px(card ? 8 : 10).py(card ? 5 : 6).gap(10).items_start().rounded(card ? 7 : 7).cursor_pointer()
+  return h_flex().id(`queue-${card ? "next" : x.key}`).flex_none().px(10).py(6).gap(10).items_start().rounded(7).cursor_pointer()
     .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover))).on_click(go)
     .child(div().flex_none().mt(1).child(queueMark(t, x, 16)))
     .child(v_flex().flex_1().min_w(0).gap(1)
-      .child(h_flex().min_w(0).gap(4).items_center()
-        .child(div().flex_1().min_w(0).truncate().text_size(card ? TEXT : SMALL).font_medium().child(queueLabel(x)))
+      .child(h_flex().min_w(0).gap(6).items_center()
+        .child(div().flex_1().min_w(0).truncate().text_size(TEXT).font_medium().child(queueLabel(x)))
         .when(queueAway(x), (el) => el.child(icon(own("external-link"), 12).text_color(t.dim))))
       .when(Boolean(queueDetail(x)), (el) => el.child(div().truncate().text_size(SMALL).text_color(t.muted).child(queueDetail(x)))));
 }
@@ -3280,22 +3283,25 @@ export class StoryList extends Stories {
     fetchAvatars(entry.data).catch(() => {});
   }
 
-  // Next: a card with a header line ("Next", where it is in the queue, Claude's picks as a ✨ badge,
-  // the chevron opening the whole queue) over the item itself, drawn as the queue's rows are. A pick
-  // of Claude's on top tints the card, so it reads as generated. Under it, the queue while open, and
-  // while Claude has no picks a slim magic button.
+  // Next: one card, the whole queue's. A header line ("Next", how many items, Claude's picks as a ✨
+  // badge, the chevron) over, folded, the item Next goes to, or, unfolded, the whole queue inside the
+  // same border (queueList()), in order, the item shown lit: Next goes to the row after it. Folded on a pick of Claude's, the card is tinted, so it reads as generated. While Claude has
+  // no picks, a slim magic button is the card's last row.
   // `shownKey`: the item on screen now (the story or review shown, "desk"), lit in the open queue.
   nextCard(t, st, items, reviews, queue, top, shownKey) {
     const glow = (a) => alpha(t.accent, a);
     const picks = queue.filter((x) => x.suggest).length;
     const brewing = Boolean(brewingIn(st.profile));
-    const at = queue.indexOf(top) + 1;
     const toggle = (_e, cx) => { this.queueOpen = !this.queueOpen; cx.notify(); };
-    const card = v_flex().id("story-next").flex_none().p(4).gap(0).rounded(10).border_1()
-      .bg(top.suggest ? glow(0.07) : t.raised).border_color(top.suggest ? glow(0.3) : t.border)
+    const open = Boolean(this.queueOpen);
+    const tint = !open && Boolean(top.suggest);
+    const card = v_flex().id("story-next").flex_none().p(4).gap(2).rounded(10).border_1()
+      .bg(tint ? glow(0.07) : t.raised).border_color(tint ? glow(0.3) : t.border)
       .child(h_flex().flex_none().h(24).pl(8).gap(6).items_center().text_size(SMALL)
         .child(div().flex_none().font_medium().text_color(t.dim).child("Next"))
-        .when(queue.length > 1, (el) => el.child(div().flex_none().text_color(t.muted).child(`${at} of ${queue.length}`)))
+        // How many, as every group counts: where you are is the lit row, and Next goes to the one
+        // after it. A position here ("3 of 3") read as another marker, disagreeing with the lit row.
+        .child(div().flex_none().text_color(t.muted).child(String(queue.length)))
         .child(div().flex_1())
         .child(h_flex().id("story-next-tools").flex_none().gap(2).items_center().on_mouse_down("left", stop).on_click(stop)
           // Claude's picks: how many are in the queue (turning while Claude brews); opens the queue.
@@ -3305,12 +3311,11 @@ export class StoryList extends Stories {
             .child(brewing ? brewMark(t, 12) : icon(own("sparkles"), 12)).when(picks > 0, (x) => x.child(String(picks)))))
           .child(iconButton(t, "story-queue", chrome(this.queueOpen ? "chevron-down" : "chevron-right"), toggle,
             this.queueOpen ? "Hide the queue" : "Show the whole queue", { on: Boolean(this.queueOpen) }))))
-      .child(queueRow(t, top, false, () => goNext(st.profile, top), { card: true })
-        .tooltip(`${queueAway(top) ? "Opens on the web" : top.suggest?.idea ? "Starts a Claude on the Desk with this idea" : "Go there"} ⌘⇧J`));
-    return v_flex().flex_none().gap(6)
-      .child(card)
-      .when(Boolean(this.queueOpen), (el) => el.child(this.queueList(t, st, items, reviews, queue, shownKey)))
-      .when(!picks, (el) => el.child(this.magic(t, st, items, reviews, { slim: true })));
+      .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
+      .when(!open, (el) => el.child(queueRow(t, top, false, () => goNext(st.profile, top), { card: true })
+        .tooltip(`${queueAway(top) ? "Opens on the web" : top.suggest?.idea ? "Starts a Claude on the Desk with this idea" : "Go there"} ⌘⇧J`)))
+      .when(!picks, (el) => el.child(div().pt(2).child(this.magic(t, st, items, reviews, { slim: true }))));
+    return card;
   }
 
   // Nothing in the queue: a calm "All clear" line over the magic button, at its fullest.
@@ -3325,6 +3330,7 @@ export class StoryList extends Stories {
   // suggestions (each with why, and an ✕ to drop it); a click does what Next would. At its foot the
   // What next? button, to ask for suggestions (again). The item shown is lit (a pick by its story),
   // not Next's, which is the one after it: lighting that lit the row under the one clicked.
+  // Its rows, for inside Next's card.
   queueList(t, st, items, reviews, queue, shownKey) {
     const lit = (x) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask) && x.it?.key === shownKey));
     const drop = (x) => (x.ask ? () => dismissAsk(st.profile, x.ask.id) : () => dismissSuggestion(st.profile, x.suggest.key));
@@ -3333,27 +3339,26 @@ export class StoryList extends Stories {
         .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
         .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(x)(); })
         .child(icon(chrome("x"), 12))));
-    const part = (label, list) => (list.length ? [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(t.dim)
-      .child(div().child(label)).child(div().text_color(t.muted).child(String(list.length))), ...list.map(row)] : []);
+    // A group's label only when there's more than one group: alone it repeats the card's header.
+    const groups = [queue.some((x) => !x.clean && !x.suggest && !x.review && !x.ask), queue.some((x) => x.ask), queue.some((x) => x.review && !x.suggest), queue.some((x) => x.clean)].filter(Boolean).length;
+    const part = (label, list) => (!list.length ? [] : groups < 2 ? list.map(row) : [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(t.dim)
+      .child(div().child(label)).child(div().text_color(t.muted).child(String(list.length))), ...list.map(row)]);
     const asked = queue.filter((x) => !x.clean && !x.suggest && !x.review && !x.ask), fromAgents = queue.filter((x) => x.ask), review = queue.filter((x) => x.review && !x.suggest),
       clean = queue.filter((x) => x.clean), said = queue.filter((x) => x.suggest);
-    return v_flex().flex_none().gap(2).pb(2)
-      .children([...part("Needs you", asked), ...part("From agents", fromAgents), ...part("To review", review), ...part("Clean up", clean)])
-      // Claude's picks in a glowing box of their own, so they read as generated (with none, the What
-      // next? button shows under Next instead).
-      .when(said.length > 0, (el) => el.child(div().pt(4).child(this.suggestBox(t, st, items, reviews, said, row))));
+    return [...part("Needs you", asked), ...part("From agents", fromAgents), ...part("To review", review), ...part("Clean up", clean),
+      // Claude's picks last, a tinted group of the card, so they read as generated (with none, the
+      // What next? button is the card's last row instead).
+      ...(said.length ? [div().pt(4).child(this.suggestBox(t, st, items, reviews, said, row))] : [])];
   }
 
-  // The suggestions' box: the magic button's tint and border shine (slow, as it's read), a header
-  // "Suggested by Claude" with their age, and a small Re-magic that asks again (brewing in its place
-  // while Claude runs; the new picks replace these).
+  // The suggestions' group, the card's last: tinted as the magic button is, a header "Suggested by
+  // Claude" with their age, and a small Re-magic that asks again (brewing in its place while Claude
+  // runs; the new picks replace these). No border of its own: it's part of Next.
   suggestBox(t, st, items, reviews, said, row) {
     const glow = (a) => alpha(t.accent, a);
     const at = (shared(SUGGESTED) ?? {})[st.profile.id]?.at;
-    return v_flex().id("queue-suggested").relative().overflow_hidden().flex_none().p(4).gap(2).rounded(8).bg(glow(0.05)).child(edgeOf(glow(0.3), 8))
-      .on_size_change((size, cx) => this.shineSize("picks", size, cx)).child(this.shineProbe("picks"))
-      .children(borderGlint(glow, this.shine?.picks, 8, brewingIn(st.profile) ? 2600 : 9000))
-      .child(h_flex().flex_none().pl(6).pr(2).pt(2).gap(6).items_center()
+    return v_flex().id("queue-suggested").flex_none().pb(2).gap(2).rounded(8).bg(glow(0.07))
+      .child(h_flex().flex_none().pl(10).pr(2).pt(4).gap(6).items_center()
         .child(icon(own("sparkles"), 12).text_color(t.accent))
         .child(div().flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.accent).child(`Suggested by Claude${at ? ` · ${ago(at)}` : ""}`))
         .child(brewingIn(st.profile)

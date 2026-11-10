@@ -90,8 +90,44 @@ const putShared = (key, value) => mock.state.shared.set(key, JSON.parse(JSON.str
 // loader keeps what it loaded in the module (and would load the whole fixture again), so a test that
 // shares other data draws it with this.
 const sharedCopy = async () => (await draw(new StoryList(), { init: () => {} })).el;
+const sharedDraw = () => draw(new StoryList(), { init: () => {} });
 // The stories with no pull requests or reviews: nothing of GitHub's needs you.
 const quiet = (e) => ({ ...e, data: { ...e.data, prs: [], reviews: [] } });
+
+// Next is one card: unfolded, the whole queue is inside its border, nothing copied on top, and
+// Claude's picks are the card's last group.
+test("unfolded, the queue is inside Next's card", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await draw(new StoryList());
+  view.queueOpen = true;
+  const card = byId(view.render(cx), "story-next");
+  assert.equal(byId(card, "queue-next"), null, "no copy of the next item on top");
+  assert.ok(byId(card, "queue-ACME-142"), "the item Next goes to, in its place");
+  assert.ok(byId(card, "queue-review:web#421"), "reviews are in the card");
+  assert.ok(byId(byId(card, "queue-suggested"), "queue-suggest:ACME-180"), "and Claude's picks, its last group");
+  view.queueOpen = false;
+  const folded = byId(view.render(cx), "story-next");
+  assert.match(render(byId(folded, "queue-next"), skinTheme()), /ACME-142/, "folded, the one item it goes to");
+  assert.equal(byId(folded, "queue-ACME-160"), null);
+});
+
+// The header counts the queue, as every group counts: a position there ("3 of 3") disagreed with the
+// lit row (where you are). With one group, it has no label of its own.
+test("Next's header counts the queue; a lone group has no label", async () => {
+  // Only stories that need you: no reviews, spaces (so no agents or clean-up), asks or picks.
+  setupDemoWorld({ stories: { ...stories, data: { ...stories.data, reviews: [] } }, spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  const { view, cx } = await sharedDraw();
+  view.queueOpen = true;
+  const card = byId(view.render(cx), "story-next");
+  const text = render(card, skinTheme());
+  const rows = text.match(/#queue-ACME-\d+ /g) ?? [];
+  assert.ok(rows.length > 1, "several stories queued");
+  assert.doesNotMatch(text, / of \d/, "no position in the header");
+  assert.match(text, new RegExp(`"Next"\\n\\s+div \\[fg=muted\\]\\n\\s+"${rows.length}"`), "the header says how many");
+  assert.doesNotMatch(text, /"Needs you"/, "no label for the only group");
+});
 
 // A pick of a pull request already waiting for your review ("pr:web#421", the demo's own pick) drops
 // out: the review is in the queue already ("review:web#421").
