@@ -1,182 +1,184 @@
-v_flex #work-setup [bg=popover fg=foreground] {key_down}
-  h_flex
-    v_flex [bg=background border=border]
-      v_flex
-        div [fg=dim]
-          "Profile"
-        div
-          "Acme"
-      h_flex #setup-tab-general [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg own:house
-        v_flex
-          div [fg=muted]
-            "General"
+div #work-setup-fit
+  v_flex #work-setup [border=border bg=popover fg=foreground] {key_down}
+    h_flex
+      v_flex [bg=background border=border]
+        v_flex #setup-tabs
+          v_flex
+            div [fg=dim]
+              "Profile"
+            div
+              "Acme"
+          h_flex #setup-tab-general [hover(bg=hover)] {click}
+            div [fg=dim]
+              svg own:house
+            v_flex
+              div [fg=muted]
+                "General"
+              div [fg=dim]
+                "acme"
           div [fg=dim]
-            "acme"
-      div [fg=dim]
-        "Connections"
-      h_flex #setup-tab-jira [bg=selected hover(bg=selected)] {click}
-        div [fg=foreground]
-          svg chrome:layers
-        v_flex
-          div [fg=foreground]
-            "Board"
+            "Connections"
+          h_flex #setup-tab-jira [bg=selected hover(bg=selected)] {click}
+            div [fg=foreground]
+              svg chrome:layers
+            v_flex
+              div [fg=foreground]
+                "Board"
+              div [fg=dim]
+                "GitHub · Acme"
+          h_flex #setup-tab-github [hover(bg=hover)] {click}
+            div [fg=dim]
+              svg own:git-pull-request
+            v_flex
+              div [fg=muted]
+                "GitHub"
+              div [fg=dim]
+                "kelpie--demo"
+          h_flex #setup-tab-web [hover(bg=hover)] {click}
+            div [fg=dim]
+              svg own:globe
+            v_flex
+              div [fg=muted]
+                "Web"
+              div [fg=dim]
+                "Blank page"
           div [fg=dim]
-            "GitHub · Acme"
-      h_flex #setup-tab-github [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg own:git-pull-request
-        v_flex
-          div [fg=muted]
-            "GitHub"
-          div [fg=dim]
-            "kelpie--demo"
-      h_flex #setup-tab-web [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg own:globe
-        v_flex
-          div [fg=muted]
-            "Web"
-          div [fg=dim]
-            "Blank page"
-      div [fg=dim]
-        "Agents"
-      h_flex #setup-tab-agents [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg own:bot
-        v_flex
-          div [fg=muted]
             "Agents"
-          div [fg=dim]
-            "Claude: default account"
-      h_flex #setup-tab-prompts [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg chrome:file-text
-        v_flex
-          div [fg=muted]
-            "Prompts"
-          div [fg=dim]
-            "Defaults"
-      h_flex #setup-tab-messages [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg own:message-square
-        v_flex
-          div [fg=muted]
-            "Messages"
-          div [fg=dim]
-            "Defaults"
-      h_flex #setup-tab-commands [hover(bg=hover)] {click}
-        div [fg=dim]
-          svg chrome:terminal
-        v_flex
-          div [fg=muted]
-            "Story commands"
-          div [fg=dim]
-            "None set"
-      div
-      Popup.new "setup-configure-all-menu"
-        v_flex #setup-configure-all-more [border=border bg=popover hover(bg=hover)] {click} tip="Asks a Claude on the Desk to set this up with you"
-          h_flex
-            div [fg=accent]
+          h_flex #setup-tab-agents [hover(bg=hover)] {click}
+            div [fg=dim]
+              svg own:bot
+            v_flex
+              div [fg=muted]
+                "Agents"
+              div [fg=dim]
+                "Claude: default account"
+          h_flex #setup-tab-prompts [hover(bg=hover)] {click}
+            div [fg=dim]
+              svg chrome:file-text
+            v_flex
+              div [fg=muted]
+                "Prompts"
+              div [fg=dim]
+                "Defaults"
+          h_flex #setup-tab-messages [hover(bg=hover)] {click}
+            div [fg=dim]
               svg own:message-square
-            div
-              "Let me configure it for you"
-          div [fg=dim]
-            "A Claude on the Desk goes through every setting with you, checks them and saves them."
-    v_flex #work-setup-body-jira
-      v_flex
-        h_flex
-          div
-            "Board"
-          Popup.new "setup-ask-project-menu"
-            h_flex #setup-ask-project-more [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
-              "Set up with Claude"
-        div [fg=dim]
-          "The GitHub Project its stories come from: your issues in its current iteration, or in all of its open work when it has no iteration field. On github.com."
-      v_flex
-        h_flex
-          div [fg=muted]
-            "Where its stories come from"
-        h_flex
-          h_flex #setup-board-kind-0 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A board on a Jira Cloud site"
-            "Jira"
-          h_flex #setup-board-kind-1 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="A Project on github.com, its issues as tickets"
-            "GitHub Project"
-      v_flex
-        h_flex
-          div [fg=muted]
-            "Project address"
-        h_flex
-          div
-            Input.new [border=input bg=background fg=foreground]
-          h_flex #setup-project-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Reads the Project and what Kelpie may do there"
-            "Check"
-        div [fg=dim]
-          "Open the Project on GitHub and copy its address. Kelpie reads it as the GitHub account you're signed in to with gh (the GitHub page can name another)."
-      div [fg=done]
-        "Found “Acme”: 5 columns (To Do, In Progress, Review, QA, Done), 1 repo. Stories come from the current iteration of its “Sprint” field. Kelpie can move its tickets."
-      v_flex
-        h_flex [border=border]
-          div
-            "Ticket keys"
-      v_flex
+            v_flex
+              div [fg=muted]
+                "Messages"
+              div [fg=dim]
+                "Defaults"
+          h_flex #setup-tab-commands [hover(bg=hover)] {click}
+            div [fg=dim]
+              svg chrome:terminal
+            v_flex
+              div [fg=muted]
+                "Story commands"
+              div [fg=dim]
+                "None set"
+        div
+          Popup.new "setup-configure-all-menu"
+            v_flex #setup-configure-all-more [border=border bg=popover hover(bg=hover)] {click} tip="Asks a Claude on the Desk to set this up with you"
+              h_flex
+                div [fg=accent]
+                  svg own:message-square
+                div
+                  "Let me configure it for you"
+              div [fg=dim]
+                "A Claude on the Desk goes through every setting with you, checks them and saves them."
+      v_flex #work-setup-body-jira
         v_flex
           h_flex
             div
-              "kelpie--demo/acme"
+              "Board"
+            Popup.new "setup-ask-project-menu"
+              h_flex #setup-ask-project-more [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
+                "Set up with Claude"
+          div [fg=dim]
+            "The GitHub Project its stories come from: your issues in its current iteration, or in all of its open work when it has no iteration field. On github.com."
+        v_flex
+          h_flex
+            div [fg=muted]
+              "Where its stories come from"
+          h_flex
+            h_flex #setup-board-kind-0 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A board on a Jira Cloud site"
+              "Jira"
+            h_flex #setup-board-kind-1 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="A Project on github.com, its issues as tickets"
+              "GitHub Project"
+        v_flex
+          h_flex
+            div [fg=muted]
+              "Project address"
+          h_flex
             div
               Input.new [border=input bg=background fg=foreground]
-      div [fg=dim]
-        "An issue's key is its repo's prefix and its number, like ACME-42, and names its space and ticket folder. A prefix is a letter, then letters or digits; change one to make keys shorter."
-      v_flex
-        h_flex [border=border]
-          div
-            "Your part"
-          Popup.new "setup-ask-handover-menu"
-            h_flex #setup-ask-handover-more [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
-              "Ask Claude"
-      v_flex
-        h_flex
-          div [fg=muted]
-            "Done from column"
-        h_flex
-          h_flex #setup-handover-0 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
-            "To Do"
-          h_flex #setup-handover-1 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
-            "In Progress"
-          h_flex #setup-handover-2 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
-            "Review"
-          h_flex #setup-handover-3 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click}
-            "QA"
-          h_flex #setup-handover-4 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
-            "Done"
+            h_flex #setup-project-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Reads the Project and what Kelpie may do there"
+              "Check"
+          div [fg=dim]
+            "Open the Project on GitHub and copy its address. Kelpie reads it as the GitHub account you're signed in to with gh (the GitHub page can name another)."
+        div [fg=done]
+          "Found “Acme”: 5 columns (To Do, In Progress, Review, QA, Done), 1 repo. Stories come from the current iteration of its “Sprint” field. Kelpie can move its tickets."
+        v_flex
+          h_flex [border=border]
+            div
+              "Ticket keys"
+        v_flex
+          v_flex
+            h_flex
+              div
+                "kelpie--demo/acme"
+              div
+                Input.new [border=input bg=background fg=foreground]
         div [fg=dim]
-          "A story whose subtasks of yours are all in QA or further right waits on others: it sinks to the end of your list. Not chosen: the first testing column, else the board's last."
-      h_flex #setup-solo {click}
+          "An issue's key is its repo's prefix and its number, like ACME-42, and names its space and ticket folder. A prefix is a letter, then letters or digits; change one to make keys shorter."
         v_flex
-          div
-            "I work alone"
-          div [fg=dim]
-            "Off: the stories past your part are listed as waiting on others."
-        h_flex [bg=border]
-          div [bg=muted]
-      h_flex #setup-move-to-done {click}
+          h_flex [border=border]
+            div
+              "Your part"
+            Popup.new "setup-ask-handover-menu"
+              h_flex #setup-ask-handover-more [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
+                "Ask Claude"
         v_flex
-          div
-            "Move to Done"
+          h_flex
+            div [fg=muted]
+              "Done from column"
+          h_flex
+            h_flex #setup-handover-0 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "To Do"
+            h_flex #setup-handover-1 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "In Progress"
+            h_flex #setup-handover-2 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "Review"
+            h_flex #setup-handover-3 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click}
+              "QA"
+            h_flex #setup-handover-4 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "Done"
           div [fg=dim]
-            "A double check in the story's header, and on each built story in the list, moves your subtasks and then the story to the board's last column in one go."
-        h_flex [bg=accent]
-          div [bg=accent_foreground]
-  h_flex [border=border]
-    h_flex #setup-remove [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks once more"
-      "Delete profile"
-    div
-    h_flex #setup-cancel [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Esc"
-      "Cancel"
-    h_flex #setup-save [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
-      "Save"
+            "A story whose subtasks of yours are all in QA or further right waits on others: it sinks to the end of your list. Not chosen: the first testing column, else the board's last."
+        h_flex #setup-solo {click}
+          v_flex
+            div
+              "I work alone"
+            div [fg=dim]
+              "Off: the stories past your part are listed as waiting on others."
+          h_flex [bg=border]
+            div [bg=muted]
+        h_flex #setup-move-to-done {click}
+          v_flex
+            div
+              "Move to Done"
+            div [fg=dim]
+              "A double check in the story's header, and on each built story in the list, moves your subtasks and then the story to the board's last column in one go."
+          h_flex [bg=accent]
+            div [bg=accent_foreground]
+    h_flex [border=border]
+      h_flex #setup-remove [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks once more"
+        "Delete profile"
       div
+      h_flex #setup-cancel [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Esc"
+        "Cancel"
+      h_flex #setup-save [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+        "Save"
         div
-          div [bg=#7fb3ae]
+          div
+            div [bg=#7fb3ae]
