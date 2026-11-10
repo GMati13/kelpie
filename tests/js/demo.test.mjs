@@ -93,7 +93,7 @@ describe("demoPulls and the local helpers", () => {
     const [p] = await demoPulls("is:open");
     assert.ok(Math.abs(Date.now() - 25 * MIN - Date.parse(p.updatedAt)) < MIN, p.updatedAt);
     const sessions = await demoSessions("/f");
-    assert.deepEqual(sessions.map((s) => s.id), ["demo-s2", "demo-s4", "demo-s1", "demo-s6", "demo-s3", "demo-s5"], "newest first");
+    assert.deepEqual(sessions.map((s) => s.id), ["demo-s2", "demo-s4", "demo-s7", "demo-s1", "demo-s6", "demo-s3", "demo-s5"], "newest first");
     assert.ok(Math.abs(Date.now() - 3 * 60 * MIN - sessions[0].updated) < MIN);
     assert.deepEqual(sessions[0], { ...sessions[0], cwd: "/f", running: false, first: ["ACME-139"], keys: ["ACME-139"], title: "Token bucket per API key" });
   });

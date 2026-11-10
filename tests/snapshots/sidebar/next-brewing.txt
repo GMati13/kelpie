@@ -4,10 +4,10 @@ v_flex
       h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
         "Updated just now ↻"
     h_flex
-      div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 2 finished stories with something left"
+      div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 3 stories with something left"
         svg own:brush-cleaning
       div [fg=dim]
-        "2"
+        "3"
   h_flex
     h_flex #count-needs-you [fg=working] tip="1 need you"
       div
