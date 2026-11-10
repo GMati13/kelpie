@@ -99,6 +99,6 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
         div [fg=muted]
           "2 subtasks · 2 to do"
   div [fg=dim]
-    "1 of 12"
+    "1 of 13"
   div [fg=dim]
     "↑↓ choose · Enter open · ⌘⇧J next that needs you · ⌘⇧R start or resume · ⌥⌘P pause"

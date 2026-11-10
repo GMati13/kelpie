@@ -1,6 +1,6 @@
 h_flex
   h_flex #tab-list {hover up:left}
-    h_flex #tab-t6-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="Claude"
+    h_flex #tab-t7-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="Claude"
       div
         div [border=dim]
       div

@@ -255,6 +255,21 @@
       "status": "In Progress"
     },
     {
+      "key": "ACME-190",
+      "assignee": "Priya Nair",
+      "summary": "Remember the last search filters",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "Travellers set the same filters on every search. Keep the last filters they used and set them again on the next search, with a way to clear them."
+    },
+    {
+      "key": "ACME-191",
+      "assignee": "Jordan Blake",
+      "summary": "Save the filters with the search",
+      "parent": "ACME-190",
+      "status": "In Progress"
+    },
+    {
       "key": "ACME-122",
       "assignee": "Sam Okafor",
       "summary": "Upgrade the services to Node 22",
@@ -562,6 +577,12 @@
       "title": "Currency conversion in the price service",
       "first": ["ACME-119"],
       "updated": "-6d"
+    },
+    {
+      "id": "demo-s7",
+      "title": "Read the last filters back on a new search",
+      "first": ["ACME-190"],
+      "updated": "-1d"
     }
   ],
   "spaces": [
@@ -726,6 +747,23 @@
       ]
     },
     {
+      "name": "ACME-190",
+      "tabs": [
+        {
+          "name": "ACME-191",
+          "agent": "idle",
+          "title": "Saved search filters",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme/ACME-190/web\\033[0m",
+            "",
+            "\\033[0m● The filters now save with each search. Next: setting them again when a search opens.",
+            ""
+          ]
+        }
+      ]
+    },
+    {
       "name": "Desk",
       "tabs": [
         {
@@ -758,6 +796,13 @@
         "id": "demo-s6",
         "name": "ACME-117",
         "at": "-2d"
+      }
+    ],
+    "ACME-190": [
+      {
+        "id": "demo-s7",
+        "name": "ACME-190",
+        "at": "-1d"
       }
     ]
   },

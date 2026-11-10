@@ -8,8 +8,9 @@
 // `kelpie.demo-github` turns the same profile's board into a GitHub Project made of the same issues
 // (demoProject()); `kelpie.demo` puts Jira back.
 //   Only what Kelpie asks is answered: the board's configuration, active sprint, JQL searches (yours,
-//   and `parent in (...)`), an issue's fields and transitions, a transition (kept until a reload of
-//   the mod), pull request searches and files, uncommitted work, sessions and the footer's limits.
+//   and `key in (...) OR parent in (...)`; a Project's issue by key too), an issue's fields and
+//   transitions, a transition (kept until a reload of the mod), pull request searches and files,
+//   uncommitted work, sessions and the footer's limits.
 // Times in the fixture are relative ("-2h", "-3d", "+40m"), so the demo never looks stale.
 
 import { agents, exec, readTextFile, run, setShared, shared, spaces } from "herdr";
@@ -192,6 +193,10 @@ export async function demoProject(args) {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
     return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };
   }
+  if (op === "KelpieKept") {
+    const i = `${v.owner}/${v.repo}` === f.project.repo ? f.issues.find((x) => numberOf(x.key) === Number(v.number)) : null;
+    return { data: { viewer: { login: f.profile.me }, repository: { issue: i ? { id: nodeId(i.key), parent: i.parent ? { id: nodeId(i.parent) } : null } : null } } };
+  }
   if (op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
   const sprint = f.sprints?.[0];
   const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(when("-7d")), duration: 14 } : null;
@@ -278,7 +283,10 @@ export async function demoLocal(folder, keys) {
 // sessions.py for a demo profile: earlier Claude sessions, newest first.
 export async function demoSessions(folder) {
   const f = await demoFixture();
-  return (f.sessions ?? []).map((s) => ({ id: s.id, title: s.title, cwd: folder, updated: when(s.updated), running: false, first: s.first ?? [], keys: s.first ?? [] }))
+  // One now for all: sessions with the same time ("-2d") then keep the fixture's order, whatever
+  // millisecond each was worked out in (a slow machine once swapped them).
+  const now = Date.now();
+  return (f.sessions ?? []).map((s) => ({ id: s.id, title: s.title, cwd: folder, updated: when(s.updated, now), running: false, first: s.first ?? [], keys: s.first ?? [] }))
     .sort((a, b) => b.updated - a.updated);
 }
 // Whether the demo's browser plays sound (its globe turns into moving bars): the fixture's web.playing.

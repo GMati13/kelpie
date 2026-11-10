@@ -267,11 +267,13 @@ describe("Move to Done on the demo's board", async () => {
   });
 });
 
-describe("Move to Done on the demo's GitHub Project", async () => {
+// Its stories load when its test runs: loaded in the describe's body, beside the Jira suite's own load
+// above, the two loads shared one mocked world and took turns in it.
+describe("Move to Done on the demo's GitHub Project", () => {
   const profile = { jira: null, project: { url: "https://github.com/users/kelpie--demo/projects/1", owner: "kelpie--demo", ownerType: "user", number: 1, demo: true } };
-  setupDemoWorld({ profile });
-  const stories = await loadStories(StoryList);
   test("moves to the Project's last Status option", async () => {
+    setupDemoWorld({ profile });
+    const stories = await loadStories(StoryList);
     setupDemoWorld({ stories, profile });
     assert.equal(boardOf(storyItems().st.setup).kind, "project");
     const r = await moveStoryToDone({ profile: DEMO, key: "ACME-171" });

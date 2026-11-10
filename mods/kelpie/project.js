@@ -5,7 +5,8 @@
 //   field the board as a whole, like a Kanban board (open work and work closed in the last 14 days).
 //   Your work: the Project's issues assigned to the account gh runs as. A story is such an issue's
 //   parent (one level, as Jira's), else the issue itself; its sub-issues are its subtasks, on the
-//   Project or not. Keys: the repo's prefix (config.js prefixFor()) and the issue's number.
+//   Project or not. Keys: the repo's prefix (config.js prefixFor()) and the issue's number. Then the
+//   stories `keep` names (something of them is still here) that your items left out, by key.
 // Everything goes through gh (pulls.js gh(), as the profile's GitHub account). Every query is a
 // constant with its own operation name, and every value (owner, number, cursor, ids) goes as a
 // variable, never into the query's text. A demo profile's (demo.js demoProject()) answers from its
@@ -29,7 +30,7 @@ const DEMO_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
 // What Kelpie reads of every issue: enough to dress it as Jira's, find its status in this Project and
 // the pull requests that close it.
 const ISSUE = `id number title url state closedAt repository { nameWithOwner }
-  assignees(first: 1) { nodes { login name avatarUrl(size: 48) } }
+  assignees(first: 10) { nodes { login name avatarUrl(size: 48) } }
   parent { id number repository { nameWithOwner } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { url } }
   projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } } } }`;
@@ -47,6 +48,8 @@ export const QUERIES = Object.freeze({
   user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String) { user(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
   org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String) { organization(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
   stories: `query KelpieStories($ids: [ID!]!) { nodes(ids: $ids) { ... on Issue { ${ISSUE} subIssues(first: 50) { nodes { ${ISSUE} } } } } }`,
+  // A kept story's issue by its key (keptProject()): its node id and its parent's, and who gh runs as.
+  kept: `query KelpieKept($owner: String!, $repo: String!, $number: Int!) { viewer { login } repository(owner: $owner, name: $repo) { issue(number: $number) { id parent { id } } } }`,
 });
 
 // One GraphQL call, answered as its data, or an error in gh's own words.
@@ -57,7 +60,12 @@ async function ask(board, args) {
   let out = null;
   try { out = JSON.parse(r.stdout || "null"); } catch { out = null; }
   const said = out?.errors?.[0]?.message ?? (r.stderr || "").trim().split("\n")[0].replace(/^gh: /, "");
-  if (r.code !== 0 || !out?.data) throw new Error(said || "GitHub didn't answer the Project's question.");
+  if (r.code !== 0 || !out?.data) {
+    const e = new Error(said || "GitHub didn't answer the Project's question.");
+    // Only things GitHub says aren't there (an issue deleted or moved): keptProject() skips those.
+    e.notFound = Boolean(out?.errors?.length) && out.errors.every((x) => x?.type === "NOT_FOUND");
+    throw e;
+  }
   return out.data;
 }
 
@@ -74,8 +82,31 @@ function target(cfg) {
 const dayOf = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s ?? "")); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5 : NaN; };
 const today = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5; };
 
+// The stories of `keep.keys` (stories.js hereKeys(): something of them is still here) that the load
+// doesn't have (`have`): each key's issue found in its repo (`repos`, by key prefix: a key of no known
+// repo is skipped), a sub-issue's story taken instead. { ids: the stories' node ids, viewer: the login
+// gh runs as }. A key GitHub says isn't there (an issue deleted or moved) is skipped; any other
+// failure fails the load, as one that left kept stories out would have their paused agents pruned.
+const REPO_PART = /^[A-Za-z0-9._-]{1,100}$/;
+async function keptProject(board, keep, have, repos) {
+  const ids = [];
+  let viewer = null;
+  for (const key of new Set(keep.keys ?? [])) {
+    if (!KEY.test(key) || have.has(key)) continue;
+    const at = key.lastIndexOf("-");
+    const [owner, repo, extra] = String(repos[key.slice(0, at)] ?? "").split("/");
+    if (extra !== undefined || !REPO_PART.test(owner ?? "") || !REPO_PART.test(repo ?? "")) continue;
+    const data = await ask(board, ["-f", `owner=${owner}`, "-f", `repo=${repo}`, "-F", `number=${key.slice(at + 1)}`, "-f", `query=${QUERIES.kept}`]).catch((e) => { if (e?.notFound) return null; throw e; });
+    viewer ??= data?.viewer?.login ?? null;
+    const issue = data?.repository?.issue;
+    const id = issue?.parent?.id ?? issue?.id;
+    if (typeof id === "string" && NODE_ID.test(id) && !ids.includes(id)) ids.push(id);
+  }
+  return { ids, viewer };
+}
+
 // The board's raw load, as board.js's header describes it.
-export async function loadProject(board) {
+export async function loadProject(board, keep = {}) {
   const { owner, number, query } = target(board.cfg);
   let project = null;
   const items = [];
@@ -127,12 +158,16 @@ export async function loadProject(board) {
     const id = x.content.parent?.id ?? x.content.id;
     if (NODE_ID.test(id) && !ids.includes(id)) ids.push(id);
   }
-  const stories = [];
-  for (let at = 0; at < ids.length; at += NODES) {
-    const chunk = ids.slice(at, at + NODES);
-    const data = await ask(board, [...chunk.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${QUERIES.stories}`]);
-    stories.push(...(data.nodes ?? []).filter((n) => n?.id));
-  }
+  const storiesOf = async (list) => {
+    const out = [];
+    for (let at = 0; at < list.length; at += NODES) {
+      const chunk = list.slice(at, at + NODES);
+      const data = await ask(board, [...chunk.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${QUERIES.stories}`]);
+      out.push(...(data.nodes ?? []).filter((n) => n?.id));
+    }
+    return out;
+  };
+  const stories = await storiesOf(ids);
 
   const links = {};
   const dress = (i) => {
@@ -164,18 +199,31 @@ export async function loadProject(board) {
   const parents = [];
   const children = [];
   const seen = new Set();
-  for (const s of stories) {
-    const story = dress({ ...s, parent: null });
-    if (!story || seen.has(story.key)) continue;
-    seen.add(story.key);
-    parents.push(story);
-    for (const c of s.subIssues?.nodes ?? []) {
-      const child = dress({ ...c, parent: { number: s.number, repository: s.repository } });
-      if (child && !seen.has(child.key)) { seen.add(child.key); children.push(child); }
+  // Each story and its sub-issues, dressed; `own(raw, dressed)` hears of each one added.
+  const add = (list, own = () => {}) => {
+    for (const s of list) {
+      const story = dress({ ...s, parent: null });
+      if (!story || seen.has(story.key)) continue;
+      seen.add(story.key);
+      parents.push(story);
+      own(s, story);
+      for (const c of s.subIssues?.nodes ?? []) {
+        const child = dress({ ...c, parent: { number: s.number, repository: s.repository } });
+        if (child && !seen.has(child.key)) { seen.add(child.key); children.push(child); own(c, child); }
+      }
     }
-  }
+  };
+  add(stories);
+  // Then the stories `keep` names that your items left out (reassigned since, or out of the
+  // iteration), after the board's own; the issues of them assigned to the account gh runs as are yours.
+  const kept = await keptProject(board, keep, seen, { ...(keep.repos ?? {}), ...repos });
+  const fresh = kept.ids.filter((id) => !ids.includes(id));
+  const before = parents.length;
+  if (fresh.length) add(await storiesOf(fresh), (raw, dressed) => {
+    if (kept.viewer && (raw.assignees?.nodes ?? []).some((n) => n?.login === kept.viewer)) mine.push(dressed);
+  });
   return {
-    site: "https://github.com", columns, sprints, mine, parents, children, links, repos,
+    site: "https://github.com", columns, sprints, mine, parents, children, links, repos, kept: parents.slice(before).map((i) => i.key),
     project: { id: project.id, statusField: project.field?.id ?? null, title: project.title ?? "", url: project.url ?? "" },
   };
 }

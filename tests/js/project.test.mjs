@@ -356,3 +356,58 @@ describe("an issue on the Project with no Status set", () => {
     assert.equal(d.parents[0].item, "PVTI_20");
   });
 });
+
+// KELPIE-47: stories something of which is still here (stories.js hereKeys()) that your items left
+// out, reassigned since, are asked for by key, through a constant query with its values as variables.
+describe("kept stories, by key", () => {
+  const PRIYA = { login: "priya", name: "Priya Nair", avatarUrl: null };
+  // `down`: GitHub fails the kept question for another reason than an issue not being there.
+  function keptBoard({ down = false } = {}) {
+    const { pages, stories } = sprintBoard();
+    const gone = ghIssue("acme/web", 30, { title: "Saved filters", assignee: PRIYA, option: "o2" });
+    const sub = ghIssue("acme/web", 31, { title: "Save them", assignee: PRIYA, parent: gone, option: "o2" });
+    const back = ghIssue("acme/web", 40, { title: "Mine still", assignee: ME, option: "o2" });
+    const all = { ...stories, [gone.id]: { ...gone, subIssues: { nodes: [sub] } }, [back.id]: { ...back, subIssues: { nodes: [] } } };
+    const issues = { 30: gone, 31: sub, 40: back };
+    return fakeGh({ answer: (gh) => {
+      const v = vars(gh);
+      const json = (data) => ({ code: 0, stdout: JSON.stringify({ data }), stderr: "" });
+      if (opOf(gh) === "KelpieStories") return json({ nodes: v.ids.map((id) => all[id] ?? null) });
+      if (opOf(gh) !== "KelpieKept") return json({ user: { projectV2: pages[v.cursor ?? null] ?? null } });
+      if (down) return { code: 1, stdout: "", stderr: "gh: HTTP 502: Bad Gateway" };
+      const i = v.owner === "acme" && v.repo === "web" ? issues[v.number] : null;
+      if (!i) return { code: 1, stdout: JSON.stringify({ data: { viewer: { login: "alex" }, repository: { issue: null } }, errors: [{ type: "NOT_FOUND", message: "Could not resolve to an Issue" }] }), stderr: "" };
+      return { code: 0, stdout: JSON.stringify({ data: { viewer: { login: "alex" }, repository: { issue: { id: i.id, parent: i.parent ? { id: i.parent.id } : null } } } }), stderr: "" };
+    } });
+  }
+
+  test("a sub-issue's key brings its story; yours are the viewer's; the rest is someone else's", async () => {
+    const calls = keptBoard();
+    const d = await loadBoard(boardWith(), { keys: ["WEB-31", "WEB-40", "WEB-11", "WEB-99", "OTHER-5"] });
+    assert.deepEqual(d.kept, ["WEB-30", "WEB-40"]);
+    assert.ok(d.children.some((i) => i.key === "WEB-31"));
+    assert.deepEqual(d.mine.map((i) => i.key), ["WEB-11", "WEB-40"]);
+    const kept = calls.filter((c) => opOf(c.args) === "KelpieKept");
+    assert.deepEqual(kept.map((c) => vars(c.args).number), ["31", "40", "99"], "WEB-11 is loaded, OTHER has no repo");
+    for (const { args } of kept) {
+      assert.deepEqual(Object.keys(vars(args)).sort(), ["number", "owner", "query", "repo"]);
+      assert.equal(vars(args).query, QUERIES.kept);
+      assert.equal(args[args.indexOf(`number=${vars(args).number}`) - 1], "-F", "the number goes as a number");
+    }
+    const loaded = { ...dataOf({ mine: d.mine.map((i) => i.key), parents: d.parents.map(issue), children: d.children.map(issue) }), kept: d.kept };
+    const items = build(loaded, new Map(), {});
+    assert.deepEqual(items.find((x) => x.key === "WEB-30").reassigned, { to: ["Priya Nair"] });
+    assert.equal(items.find((x) => x.key === "WEB-40").reassigned, null);
+  });
+
+  test("a kept question GitHub can't answer fails the load, so nothing is pruned", async () => {
+    keptBoard({ down: true });
+    await assert.rejects(loadBoard(boardWith(), { keys: ["WEB-31"] }), /Bad Gateway/);
+  });
+
+  test("a key that isn't one isn't sent", async () => {
+    const calls = keptBoard();
+    await loadBoard(boardWith(), { keys: ["WEB-31 }", "web-31", "WEB-", "-WEB-3"], repos: { WEB: "acme/web" } });
+    assert.ok(!calls.some((c) => opOf(c.args) === "KelpieKept"));
+  });
+});
