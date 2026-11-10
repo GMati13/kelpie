@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: connect-a-github-project
+expected_outcome: |
+  A profile with no board yet, connected to a GitHub Project. Saves the Project's address as project.url with save_profile (no jira section, no secret, no prefixes since the repos' own are fine), sees that the change waits for the person's yes and tells them to confirm it in Kelpie, then asks them to press Check on the profile dialog's board page (or opens it), which says whether gh's sign-in may move tickets. Never handles a token and never changes the person's GitHub sign-in itself.
