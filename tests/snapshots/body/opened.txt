@@ -117,6 +117,8 @@ div
                           "In review"
                         div [fg=dim]
                           "now"
+                  h_flex
+                    h_flex #sub-pr-ask-cell-docs#61 {size_change}
                 div #subs-mine [fg=muted]
                   "Assigned to you"
                 v_flex #sub-row-ACME-143 [border=border hover(bg=hover)] {hover}
@@ -243,6 +245,8 @@ div
                             "In review"
                           div [fg=dim]
                             "now"
+                    h_flex
+                      h_flex #sub-pr-ask-cell-web#418 {size_change}
                 v_flex #sub-row-ACME-144 [border=border hover(bg=hover)] {hover}
                   h_flex
                     div #sub-assignee-ACME-144

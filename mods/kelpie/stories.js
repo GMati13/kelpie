@@ -83,7 +83,8 @@ async function search(cfg, jql) {
 
 const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null;
 const failing = (p) => ["FAILURE", "ERROR"].includes(checksOf(p));
-const ready = (p) => !p.merged && !p.isDraft && checksOf(p) === "SUCCESS" && p.reviewDecision === "APPROVED";
+// Ready to merge: approved, and its checks passed or it has none (a repo without CI), as prState() says.
+const ready = (p) => !p.merged && !p.isDraft && [null, "SUCCESS"].includes(checksOf(p)) && p.reviewDecision === "APPROVED";
 const prName = (p) => `${p.repository.name}#${p.number}`;
 // A pull request's state in a few words, for its line (prState's full words are its tooltip).
 const PR_SHORT = { "pr-merged": "Merged", "pr-changes": "Changes requested", "pr-failing": "Checks failing", "pr-approved": "Approved",
@@ -505,7 +506,7 @@ function need(it) {
   const fail = prs.find(failing);
   if (fail) return [2, `${pre}Checks failing${where(fail)}`, "blocked"];
   const done = prs.filter(ready);
-  if (done.length) return [3, pre + (done.length === prs.length ? "Approved, checks pass · ready to merge" : `${done.map(prName).join(", ")} ready to merge`), "done"];
+  if (done.length) return [3, pre + (done.length === prs.length ? `Approved, ${done.every((p) => checksOf(p)) ? "checks pass" : done.some((p) => checksOf(p)) ? "checks pass or none" : "no checks"} · ready to merge` : `${done.map(prName).join(", ")} ready to merge`), "done"];
   // One of your pull requests with no ticket, waiting on nothing of yours: where it stands.
   if (it.pull) return [6, pullWords(it.pull), "dim"];
   if (isPaused(it)) return [7, `Paused · ${progress(it)}`, "dim"];
@@ -1762,8 +1763,8 @@ export class Stories extends Source {
 
   // A pull request's line: its state's mark and its title (the ticket key it starts with left out,
   // as the row it's under says it), then where it is, its state in a few words in its colour and how
-  // long since it changed, in columns that line up down the list (column()), and the button for what
-  // it needs. The whole line opens it; a merged one sits back.
+  // long since it changed, and the button for what it needs, in columns that line up down the list
+  // (column()). The whole line opens it; a merged one sits back.
   pr(t, p, st, it) {
     const [state, words, color] = prLook(t, p, checksOf(p));
     const kind = askFor(p);
@@ -1778,7 +1779,9 @@ export class Stories extends Source {
         .child(this.column("pr-state", name, h_flex().flex_none().gap(6).items_center()
           .child(div().text_color(p.merged ? t.dim : color).child(PR_SHORT[state] ?? words))
           .when(Boolean(p.updatedAt), (el) => el.child(div().text_color(t.dim).child(ago(p.updatedAt)))))))
-      .when(Boolean(kind), (el) => el.child(this.askButton(t, st, it, `ask-${kind}-${name}`, kind, [p])));
+      // The button keeps a column of its own, empty on lines with none, so the columns before it line up.
+      .child(this.column("pr-ask", name, h_flex().flex_none().items_center()
+        .when(Boolean(kind), (el) => el.child(this.askButton(t, st, it, `ask-${kind}-${name}`, kind, [p])))));
   }
 
   // A story in the list: its title, then its key and what it needs. A sunk one is drawn quieter, as

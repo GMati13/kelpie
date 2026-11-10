@@ -153,7 +153,10 @@ describe("need: what a story needs from you, most urgent first", () => {
     assert.equal(rank(story([pr("ABC-2 x", { checks: "ERROR" })])), 2);
     assert.deepEqual(need(story([pr("ABC-2 x", { checks: "SUCCESS", review: "APPROVED" })])), [3, "Approved, checks pass · ready to merge", "done"]);
   });
-  test("ready to merge needs checks passing, an approval and no draft", () => {
+  test("an approved pull request in a repo with no checks is ready to merge too", () => {
+    assert.deepEqual(need(story([pr("ABC-2 x", { review: "APPROVED" })])), [3, "Approved, no checks · ready to merge", "done"]);
+  });
+  test("ready to merge needs checks passing (or none), an approval and no draft", () => {
     assert.equal(rank(story([pr("ABC-2 x", { checks: "PENDING", review: "APPROVED" })])), 6);
     assert.equal(rank(story([pr("ABC-2 x", { checks: "SUCCESS", review: "APPROVED", draft: true })])), 6);
     assert.equal(rank(story([pr("ABC-2 x", { checks: "SUCCESS" })])), 6);
