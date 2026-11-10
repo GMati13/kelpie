@@ -16,7 +16,7 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
@@ -3424,14 +3424,15 @@ export class StoryList extends Stories {
     const shownKey = shown?.key ?? (onDesk ? DESK_ITEM.key : undefined);
     const top = nextIn(queue, shownKey);
     const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey) : this.allClear(t, st, items, reviews);
-    // A list of stories; the sunk ones (sorted last) under a small "Waiting on others" divider.
+    // A list of stories; the sunk ones (sorted last) under a small divider (sunkWords).
+    const words = sunkWords(boardOf(st.setup));
     const rows = (list) => {
       const at = list.findIndex((x) => sunk(x.it, x.n));
       const row = ({ it }) => this.row(t, it, it.key === shown?.key, cx, st);
       if (at < 0) return list.map(row);
-      // Every one of them waits on others: say so, or the group would look empty above the divider.
-      return [...(at === 0 ? [empty(t, "Nothing waiting on you.")] : list.slice(0, at).map(row)),
-        groupHeader(t, "Waiting on others", list.length - at), ...list.slice(at).map(row)];
+      // Every one of them is sunk: say so, or the group would look empty above the divider.
+      return [...(at === 0 ? [empty(t, words.none)] : list.slice(0, at).map(row)),
+        groupHeader(t, words.heading, list.length - at), ...list.slice(at).map(row)];
     };
     const group = (label, n) => groupHeader(t, label, n);
     // `badge`: a chip after the title (an approved pull request's).
@@ -3990,17 +3991,21 @@ function goNext(profile, it) {
 // Where things stand, as lines: the sprints, each story (its status, what it needs, your subtasks,
 // its pull requests and agents), the reviews waiting for you, your pull requests naming no ticket,
 // the Desk's agents.
-function suggestSnapshot(st, items, reviews) {
+// Exported for the tests only (tests/js/stories.test.mjs).
+export function suggestSnapshot(st, items, reviews) {
   const pr = (p) => `${prName(p)} ${p.merged ? "merged" : pullWords(p).toLowerCase()}${failing(p) ? ", checks failing" : ""}${p.reviewDecision === "CHANGES_REQUESTED" ? ", changes requested" : ""} ${p.url}`;
   const agentsOf = (it) => allAgents(it).map((a) => a.status).join(", ");
   const out = [`Sprint: ${(st.data.sprints ?? []).map((s) => s.name).join(", ") || "none running"}`];
   const columns = st.data.columns ?? [];
-  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; my part is done from ${columns[handoverFrom(columns, boardOf(st.setup)?.handover)]?.name ?? "the last"}`);
+  const board = boardOf(st.setup);
+  const handover = columns[handoverFrom(columns, board?.handover)]?.name ?? "the last";
+  const solo = Boolean(board?.cfg?.solo);
+  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; ${solo ? `I work alone: from ${handover} on, a ticket waits on me to check it` : `my part is done from ${handover}`}`);
   out.push("", "My stories (in the sprint, assigned to me or with my subtasks):");
   const stories = items.map((x) => x.it).filter((it) => !it.review && !it.pull);
   if (!stories.length) out.push("- none");
   for (const it of stories) {
-    out.push(`- ${it.key} ${it.title} [${it.status ?? it.type}]: ${need(it)[1]}${it.space ? " · open here" : ""}${agentsOf(it) ? ` · agents: ${agentsOf(it)}` : ""}${sunk(it) ? " · my part is done" : ""}`);
+    out.push(`- ${it.key} ${it.title} [${it.status ?? it.type}]: ${need(it)[1]}${it.space ? " · open here" : ""}${agentsOf(it) ? ` · agents: ${agentsOf(it)}` : ""}${sunk(it) ? (solo ? " · built, mine to check" : " · my part is done") : ""}`);
     if (it.story) for (const s of it.subs) out.push(`  - ${s.key} ${s.title} [${s.status ?? "?"}]${s.mine ? " (mine)" : ""}`);
     for (const p of allPrs(it)) out.push(`  - PR ${pr(p)}`);
   }

@@ -1,7 +1,7 @@
 // What the sidebar draws (stories.js StoryList, desk.js deskRows), pinned as snapshots
 // (tests/README.md, Snapshots): the demo's stories in every state, reviews, the "No ticket" pull
 // requests, the Desk, and Next with and without Claude's picks.
-import { NOW, DEMO, FIXTURE, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
+import { NOW, DEMO, FIXTURE, demoProfile, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
@@ -38,6 +38,15 @@ for (const layout of ["Kelpie", "Kelpie-Plain"]) {
     snap(`${dir}/list`, await list({ layout }));
   });
 }
+
+// Working alone: the stories past your part are under "Built", not "Waiting on others".
+test("the story list of someone who works alone", async () => {
+  // Kelpie-Plain: Quiet Pages sets group headings in capitals.
+  const el = await list({ layout: "Kelpie-Plain", profile: { jira: { ...demoProfile().jira, solo: true } } });
+  const words = texts(el);
+  assert.ok(words.includes("Built"), "built, nobody else to wait on");
+  assert.ok(!words.includes("Waiting on others"), "nobody else to wait on");
+});
 
 test("a finished story whose agent is working has no broom", async () => {
   const el = await list({ agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });

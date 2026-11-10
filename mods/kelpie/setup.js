@@ -15,7 +15,7 @@ import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
-import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { githubAccounts, searchPulls } from "./pulls.js";
@@ -179,6 +179,8 @@ export class Setup {
     // the ones the stories last loaded, until a Check asks the board itself. For that board only: a
     // Project's are its Status options.
     this.handover = board?.handover ?? null;
+    // Whether the person works alone on the board: what the stories past that column wait on.
+    this.solo = board?.solo === true;
     const columns = board ? loadedColumns(this.profile) : [];
     this.columns = columns.length && saved.jira ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
     this.projectColumns = columns.length && saved.project && !saved.jira ? { key: projectKey(saved.project), list: columns } : null;
@@ -385,7 +387,7 @@ export class Setup {
     const prefixRows = project ? this.prefixList() : [];
     const badPrefix = prefixRows.find((r) => r.error);
     const prefixes = prefixRows.filter((r) => r.own).map((r) => `${r.key}=${r.own}`).join(", ");
-    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
+    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
     const error = onJira && url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
       : onJira && parsed && missing ? ["jira", missing]
       : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
@@ -683,9 +685,11 @@ export class Setup {
         group("Your part", null, "handover"),
         columns
           ? field("Done from column", choice("setup-handover", columns.map((c, i) => ({ label: c.name, value: c.name, on: i === from })), (v) => { this.handover = v; }),
-            `A story whose subtasks of yours are all in ${columns[from]?.name ?? "it"} or further right waits on others: it sinks to the end of your list.${this.handover ? "" : " Not chosen: the first testing column, else the board's last."}`,
+            `A story whose subtasks of yours are all in ${columns[from]?.name ?? "it"} or further right ${this.solo ? "is yours to check" : "waits on others"}: it sinks to the end of your list.${this.handover ? "" : " Not chosen: the first testing column, else the board's last."}`,
             this.handover ? { id: "setup-handover-reset", action: (_e, cx) => { this.handover = null; cx.notify(); } } : null)
           : hint(onJira ? "Check the connection to choose the column where your part of a story is done." : "Check the Project to choose the column where your part of a story is done."),
+        toggle("setup-solo", "I work alone", this.solo, (_e, cx) => { this.solo = !this.solo; cx.notify(); },
+          this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
       ],
 
       github: () => [

@@ -171,6 +171,14 @@ v_flex #work-setup [bg=popover fg=foreground] {key_down}
             "Done"
         div [fg=dim]
           "A story whose subtasks of yours are all in QA or further right waits on others: it sinks to the end of your list. Not chosen: the first testing column, else the board's last."
+      h_flex #setup-solo {click}
+        v_flex
+          div
+            "I work alone"
+          div [fg=dim]
+            "Off: the stories past your part are listed as waiting on others."
+        h_flex [bg=border]
+          div [bg=muted]
   h_flex [border=border]
     h_flex #setup-remove [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks once more"
       "Delete profile"
