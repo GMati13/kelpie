@@ -10,9 +10,16 @@ export const DEMO_PROFILE = Object.freeze({
   github: { owner: "kelpie--demo", demo: true },
 });
 
+// The same demo profile with its board a GitHub Project of the same issues (kelpie.demo-github,
+// demo.js demoBoard()).
+export const DEMO_PROJECT_PROFILE = Object.freeze({
+  ...DEMO_PROFILE, jira: null,
+  project: { url: "https://github.com/users/kelpie--demo/projects/1", owner: "kelpie--demo", ownerType: "user", number: 1, demo: true },
+});
+
 // What the story list's load gives for the demo (StoryList.fetch, every request answered by demo.js).
 export async function demoData(profile = DEMO_PROFILE) {
-  const setup = { saved: true, profile, folder: profile.folder, jira: profile.jira, github: profile.github };
+  const setup = { saved: true, profile, folder: profile.folder, jira: profile.jira ?? null, project: profile.project ?? null, github: profile.github };
   return new StoryList().fetch({ space: null, setup });
 }
 

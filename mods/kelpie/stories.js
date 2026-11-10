@@ -16,10 +16,11 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
-import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { lozenge } from "./sprint.js";
+import { boardSite, description as boardDescription, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
-import { adfBlocks, adfLines, adfText, findPassage, markdownBlocks } from "./adf.js";
+import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix } from "./skins/common.js";
@@ -28,7 +29,6 @@ import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo }
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
 const MERGED_DAYS = 14; // merged pull requests stay in view this long
-const PAGES = 5;
 const open = openExternal;
 const keyOf = (text) => KEY.exec(text ?? "")?.[1] ?? null;
 
@@ -44,6 +44,9 @@ function keyIn(text, known) {
   for (const [, k] of s.matchAll(KEYS)) if (!known?.size || known.has(k.split("-")[0])) return k;
   return null;
 }
+// The ticket a pull request belongs to: the key its title names, else the board's link to it (a
+// GitHub Project's issue it closes, data.links), so a key in the title still wins.
+const prKey = (p, data, known) => keyIn(p.title, known) ?? data?.links?.[p.url] ?? null;
 
 // Starting, resuming and opening agents for a story takes a moment (a space is made, sessions are
 // read) while the button still shows: a second click inside that time would start a second one, or a
@@ -67,18 +70,6 @@ async function once(key, fn) {
   markLaunch(key, { at, done: null });
   let ok = false;
   try { const r = await fn(); ok = true; return r; } finally { markLaunch(key, ok ? { at, done: Date.now() } : null); }
-}
-
-async function search(cfg, jql) {
-  const out = [];
-  let page = "";
-  for (let i = 0; i < PAGES; i++) {
-    const r = await jira(cfg, "search", jql, page);
-    out.push(...(r.body?.issues ?? []));
-    page = r.body?.nextPageToken ?? "";
-    if (r.body?.isLast !== false || !page) break;
-  }
-  return out;
 }
 
 const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null;
@@ -299,8 +290,9 @@ async function resumeAll(profile, it, keys) {
 // of the ticket prompt (the orchestrator's).
 function ticketTask(st, it, key, template) {
   const s = key === it.key && it.story ? it : it.subs.find((x) => x.key === key) ?? it;
-  return jiraTask(st.setup.jira, {
-    key, url: `${st.data.site}/browse/${key}`, summary: s.title || it.title, type: s.type, status: s.status,
+  const board = boardOf(st.setup);
+  return jiraTask(board, {
+    key, url: ticketUrl(board, st.data, key) ?? "", summary: s.title || it.title, type: s.type, status: s.status,
     parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
     subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
   }, ...(template ? [template] : []));
@@ -336,7 +328,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
   const lastOf = (k) => (byAgent.has(k) || paused[k] ? null : last.get(k) ?? null);
   const prs = new Map();
   for (const p of data.prs) {
-    const k = keyIn(p.title, known);
+    const k = prKey(p, data, known);
     if (k) prs.set(k, [...(prs.get(k) ?? []), { ...p, key: k }]);
   }
   const used = new Set();
@@ -389,6 +381,16 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null)
   return items.filter((it) => it.category !== "done" || it.space || it.subs.some((s) => s.prs.some((p) => !p.merged)));
 }
 
+// Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
+// "on <its name>".
+const sprintsWord = (data) => (data.sprints[0]?.kanban ? `on ${data.sprints[0].name}` : `in ${data.sprints.map((x) => x.name).join(" and ")}`);
+// Why "Not open" is empty: no sprint running, nothing of yours in it at all (Exported for the tests),
+// or every story of yours already open.
+export function noneWaiting(data, items) {
+  if (!data.sprints.length) return "No sprint running right now.";
+  return items.length ? "Every story of yours is open." : `Nothing ${sprintsWord(data)} is yours yet: tickets assigned to you show here.`;
+}
+
 const allPrs = (it) => [...it.prs, ...it.subs.flatMap((s) => s.prs)];
 // Open pull requests first, then the merged, each the most recently changed first.
 const prOrder = (list) => list.slice().sort((a, b) => Number(Boolean(a.merged)) - Number(Boolean(b.merged)) || String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
@@ -402,11 +404,11 @@ const isPaused = (it) => !allAgents(it).length && allPaused(it).length > 0;
 // Assignees' pictures. Jira gives each person's avatar as a link; Herdr draws images only from its own
 // folder, so each is downloaded once (avatar.sh) into art/<mod>/avatars, named after its link, and
 // drawn from there, with the initials until it's there or when it can't be had. Only links to
-// Gravatar and Atlassian's public avatar host count: the Jira site's own need a sign-in, and nothing
-// here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
+// Gravatar, GitHub's avatar host (a Project's assignees) and Atlassian's public avatar host count:
+// the Jira site's own need a sign-in, and nothing here signs in (those keep the initials). Shared `kelpie.avatars`: { [name]: { file, at } or { failed: at } }.
 const AVATARS = "kelpie.avatars";
 const AVATAR_RETRY = 24 * 60 * 60 * 1000; // a picture that failed is tried again a day later
-const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
+const AVATAR_HOST = /^https:\/\/(secure\.gravatar\.com|avatars\.githubusercontent\.com|avatar-management--avatars\.[a-z0-9-]+\.prod\.public\.atl-paas\.net)\/[A-Za-z0-9._~%/?=&+-]*$/;
 // Exported for the tests.
 export const avatarUrl = (u) => typeof u === "string" && u.length < 1000 && AVATAR_HOST.test(u);
 const avatarName = (url) => `${fnv(url)}${fnv(`${url.length}:${url}`)}`;
@@ -570,21 +572,22 @@ function askLink(profile, url, site) {
 // ASK_MAX in all, the same action from one agent replacing the last. Exported for the tests.
 export function addAsk(profile, { action, why, key, url, terminal } = {}) {
   const data = (shared(DATA) ?? {})[profile.id]?.data;
-  const site = data?.site ?? profile.jira?.site ?? "";
+  const board = boardOf(profile);
+  const site = boardSite(board, data);
   const act = passageText(action, 80), because = passageText(why, 300);
   if (act.length < 3) throw new Error("action: what you ask the person to do, a few words.");
   let k = "";
   if (key != null && key !== "") {
     k = passageText(key, 40).toUpperCase();
-    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(k)) throw new Error("key: a Jira key, like ABC-12.");
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(k)) throw new Error("key: a ticket key, like ABC-12.");
     k = new Map((data?.children ?? []).map((c) => [c.key, c.fields?.parent?.key])).get(k) ?? k;
   }
   let link = "";
   if (url != null && url !== "") {
     link = passageText(url, 500);
-    if (!askLink(profile, link, site)) throw new Error("url: a GitHub link, or a link to this profile's Jira.");
+    if (!askLink(profile, link, site)) throw new Error("url: a GitHub link, or a link to this profile's board.");
   }
-  if (!link && k && site) link = `${site}/browse/${k}`;
+  if (!link && k && site) link = ticketUrl(board, data, k);
   const term = typeof terminal === "string" && /^[\w-]{1,40}$/.test(terminal) ? terminal : "";
   const asker = term ? agents().find((a) => a.address === term) : null;
   const now = Date.now();
@@ -717,7 +720,7 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
-const issue = (i) => ({ key: i.key, fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -752,7 +755,7 @@ const pullItem = (p) => ({
 });
 const pullsOf = (data) => {
   const known = projectsOf(data ?? {});
-  return (data?.prs ?? []).filter((p) => !p.merged && !keyIn(p.title, known)).map(pullItem);
+  return (data?.prs ?? []).filter((p) => !p.merged && !prKey(p, data, known)).map(pullItem);
 };
 // The pull request an item is, when it's shown on its own (a review, or one of yours with no ticket).
 const lonePr = (it) => it?.review ?? it?.pull ?? null;
@@ -1048,7 +1051,7 @@ function knownKeys() {
     if (!d) continue;
     const known = projectsOf(d);
     for (const i of [...(d.parents ?? []), ...(d.children ?? [])]) keys.add(i.key);
-    for (const p of d.prs ?? []) keys.add(keyIn(p.title, known) ?? `pull:${prName(p)}`);
+    for (const p of d.prs ?? []) keys.add(prKey(p, d, known) ?? `pull:${prName(p)}`);
     // Items shown on their own keep theirs by their own key.
     for (const p of d.reviews ?? []) keys.add(`review:${prName(p)}`);
   }
@@ -1277,7 +1280,7 @@ const passageText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u00
 export function showPassageRequest() {
   return answerRequest("passage", (req) => {
     const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
-    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a Jira key, like ABC-12.");
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
     if (quote.length < 3) throw new Error("quote: the passage's words, as the description has them.");
     return showPassage({ key, quote, note }) ? { ok: true } : { ok: false, error: `${key} isn't a story in the shown profile's list.` };
   });
@@ -1313,12 +1316,12 @@ function requestProfile(req) {
 // A profile's stories and reviews as the list has them (storyItems(), for any profile).
 function itemsFor(profile) {
   const data = (shared(DATA) ?? {})[profile?.id]?.data;
-  if (!profile?.jira || !data) return null;
-  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), profile.jira?.handover)), reviews: reviewsOf(data) };
+  if (!hasBoard(profile) || !data) return null;
+  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover)), reviews: reviewsOf(data) };
 }
 const profileHasNext = (profile) => {
   if (!profile) throw new Error("No Kelpie profile is shown.");
-  if (!profile.jira) throw new Error(`The profile ${profile.name} has no Jira board, so Kelpie shows no Next queue for it.`);
+  if (!hasBoard(profile)) throw new Error(`The profile ${profile.name} has no board, so Kelpie shows no Next queue for it.`);
   return profile;
 };
 
@@ -1331,7 +1334,7 @@ export function getNextRequest() {
     if (!s) throw new Error(`${profile.name}'s stories haven't loaded yet.`);
     const kind = (x) => (x.desk ? "desk" : x.clean ? "clean" : x.ask ? "agent-ask" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
     const keyOfItem = (x) => (x.clean ? x.clean.map((it) => it.key).join(", ") : x.ask ? x.ask.key : x.suggest ? (x.suggest.idea ? "" : x.suggest.key.replace(/^pr:/, "")) : x.review ? prName(x.review) : x.desk ? "" : x.key);
-    const urlOf = (x) => (x.ask ? x.ask.url : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && x.key && !lonePr(x) ? `${s.data.site}/browse/${x.key}` : lonePr(x)?.url);
+    const urlOf = (x) => (x.ask ? x.ask.url : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && x.key && !lonePr(x) ? ticketUrl(boardOf(profile), s.data, x.key) : lonePr(x)?.url);
     const items = needQueueOf(profile, s.items, s.reviews).map((x) => Object.fromEntries(Object.entries({ kind: kind(x), key: keyOfItem(x), action: queueLabel(x), detail: queueDetail(x), url: urlOf(x) }).filter(([, v]) => v)));
     return { ok: true, profile: profile.name, items };
   });
@@ -1544,15 +1547,14 @@ async function checkoutReview(profile, p) {
 // own description ("Story KEY: summary" and the story's), as subtasks often say little themselves.
 async function reviewTicket(profile, p) {
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
-  const ticket = keyIn(p.title, data ? projectsOf(data) : null);
-  if (!ticket || !profile.jira) return ticket ? { ticket } : {};
-  const get = async (key) => (await jira(profile.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,parent`)).body?.fields ?? {};
+  const ticket = data ? prKey(p, data, projectsOf(data)) : keyIn(p.title, null);
+  const board = boardOf(profile);
+  if (!ticket || !board) return ticket ? { ticket } : {};
   try {
-    const f = await get(ticket);
-    const own = adfText(adfBlocks(f.description));
-    const parent = f.parent?.key ? await get(f.parent.key).catch(() => null) : null;
-    const story = parent ? [`Story ${f.parent.key}: ${parent.summary ?? ""}`, adfText(adfBlocks(parent.description))].filter(Boolean).join("\n") : "";
-    return { ticket, summary: f.summary ?? "", description: [own, story].filter(Boolean).join("\n\n") };
+    const f = await ticketText(board, ticket, data);
+    const parent = f.parent ? await ticketText(board, f.parent, data).catch(() => null) : null;
+    const story = parent ? [`Story ${f.parent}: ${parent.summary}`, parent.text].filter(Boolean).join("\n") : "";
+    return { ticket, summary: f.summary, description: [f.text, story].filter(Boolean).join("\n\n") };
   } catch { return { ticket }; }
 }
 
@@ -1620,7 +1622,7 @@ function notifyPulls(ctx, data) {
   const before = all[profile.id] ?? {};
   const now = {};
   const on = profile.notify?.pulls !== false;
-  for (const it of build(data, new Map(), pausedIn(profile), storySpaces(profile), ctx.setup.jira?.handover)) {
+  for (const it of build(data, new Map(), pausedIn(profile), storySpaces(profile), boardOf(ctx.setup)?.handover)) {
     for (const p of allPrs(it)) {
       const s = prState(p);
       if (!s) continue;
@@ -1656,7 +1658,7 @@ function orderAgents(profile, items) {
 
 export class Stories extends Source {
   constructor() {
-    super("stories", 2 * 60 * 1000, "jira");
+    super("stories", 2 * 60 * 1000);
     this.cache = CACHE;
     this.busy = BUSY;
     this.started = STARTED;
@@ -1670,7 +1672,7 @@ export class Stories extends Source {
   }
 
   keyOf(setup) {
-    return [setup.jira, setup.github, setup.folder];
+    return [boardOf(setup)?.cfg ?? null, setup.github, setup.folder];
   }
 
   get flash() { return noteNow()?.text ?? null; }
@@ -1685,7 +1687,7 @@ export class Stories extends Source {
   }
 
   ready(ctx) {
-    return Boolean(ctx.profile && ctx.setup.jira);
+    return Boolean(ctx.profile && hasBoard(ctx.setup));
   }
 
   // Claude sessions under the folder, with the keys they were started on (sessions.py); null when
@@ -1719,7 +1721,6 @@ export class Stories extends Source {
   }
 
   async fetch({ space, setup }) {
-    const cfg = setup.jira;
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -1734,32 +1735,15 @@ export class Stories extends Source {
     // What doesn't wait on Jira runs beside it.
     const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account }).catch(() => []) : Promise.resolve([]);
     const sessionsP = this.fetchSessions({ space, setup });
-    // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
-    const [config, active] = await Promise.all([
-      jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}/configuration`),
-      activeSprints(cfg),
-    ]);
-    const columns = (config.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
-    // A scrum board's active sprints, or a Kanban board's open work (sprint.js boardScope).
-    const { sprints, jql: scope } = boardScope(active, config);
-    const mine = scope ? await search(cfg, `${scope} AND assignee = currentUser() ORDER BY Rank`) : [];
-    // The stories: parents of your subtasks, and your own issues, in the board's order.
-    const parents = new Map();
-    for (const i of mine) {
-      const p = i.fields?.issuetype?.subtask ? i.fields.parent : i;
-      if (p && !parents.has(p.key)) parents.set(p.key, { key: p.key, fields: p.fields });
-    }
-    // The children and, in the same search, the parents themselves: a subtask's embedded parent
-    // carries no assignee, so a story's own fields come from here when it answers.
-    const keys = [...parents.keys()].join(", ");
-    const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
-    for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
-    const children = found.filter((i) => !parents.has(i.key));
+    // A GitHub Project's load also says which pull requests close its issues, which repo each key's
+    // issues are in, and the Project itself (board.js); Jira's has none of those.
+    const { site, columns, sprints, mine, parents, children, links, repos, project } = await loadBoard(boardOf(setup));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     return {
-      site: active.site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: [...parents.values()].map(issue), children: children.map(issue), prError,
+      site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
+      ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}),
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     };
@@ -1884,10 +1868,15 @@ export class Stories extends Source {
 
   // A ticket's status chip. A click lists the statuses Jira lets it move to (its workflow's
   // transitions, loaded when the menu opens); picking one moves it and loads the stories again. The
-  // new status shows at once, for a minute or until the loaded data has it (Jira's search lags).
+  // new status shows at once, for a minute or until the loaded data has it (Jira's search lags). A
+  // GitHub Project's issue moves among the Project's Status options; one that isn't on the Project has
+  // no Status there, so its chip is only the lozenge.
   statusChip(t, st, key, status, category, id, cx) {
     const moved = MOVED[key];
     const shown = moved && moved.status !== status && Date.now() - moved.at < 60 * 1000 ? moved : { status, category };
+    if (!movable(boardOf(st.setup), key, st.data)) {
+      return div().id(`${id}-more`).flex_none().p(2).tooltip("Not on the board's Project, so its status can't be changed here").child(lozenge(t, shown.status, shown.category));
+    }
     const m = this.menu === id ? this.transitionsOf(st, key, cx) : MOVES[key];
     const list = (m?.list ?? []).filter((x) => x.to !== shown.status);
     const rows = !m || m.loading ? [{ header: "Loading…" }] : m.error ? [{ header: m.error }]
@@ -1906,9 +1895,7 @@ export class Stories extends Source {
     MOVES[key] = { loading: true, at: 0 };
     cx.spawn(async (cx) => {
       try {
-        const r = await jira(st.setup.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`);
-        MOVES[key] = { list: (r.body?.transitions ?? []).filter((x) => x.isAvailable !== false)
-          .map((x) => ({ id: x.id, name: x.name, to: x.to?.name ?? x.name, category: x.to?.statusCategory?.key })), at: Date.now() };
+        MOVES[key] = { list: await statusOptions(boardOf(st.setup), key, st.data), at: Date.now() };
       } catch (e) {
         MOVES[key] = { error: String(e?.message ?? e), at: Date.now() };
       }
@@ -1921,7 +1908,7 @@ export class Stories extends Source {
     say(`Moving ${key} to ${x.to}…`);
     cx.spawn(async (cx) => {
       try {
-        await jira(st.setup.jira, "transition", key, x.id);
+        await moveStatus(boardOf(st.setup), key, x, st.data);
         MOVED[key] = { status: x.to, category: x.category, at: Date.now() };
         delete MOVES[key];
         say(`${key} moved to ${x.to}.`);
@@ -2076,7 +2063,7 @@ export class Stories extends Source {
     // A story not opened always shows its details (they're all there is), so it has no fold.
     const folds = viewOf(st.profile, it) !== "start";
     const lone = lonePr(it);
-    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: "Open in Jira", url: `${st.data.site}/browse/${it.key}` };
+    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: boardOf(st.setup)?.kind === "project" ? "Open on GitHub" : `Open in ${boardOf(st.setup)?.name ?? "the board"}`, url: ticketUrl(boardOf(st.setup), st.data, it.key) };
     const { actions, tasks = [], clean, more } = this.headActions(t, st, it, cx);
     // A skin may draw the story's subtasks as a meter (none by default).
     const subMeter = it.story ? skinMeter(t, { kind: "subtasks", label: "Subtasks", done: it.subs.filter((s) => s.category === "done").length, total: it.subs.length }) : null;
@@ -2166,7 +2153,7 @@ export class Stories extends Source {
     const pauseIt = it.space ? this.carefulButton(t, "story-pause", "Pause", Boolean(why), (cx) => this.pauseStory(st, it, cx),
       { tip: "Pause every agent of this story and close its space; their sessions are kept ⌥⌘P", confirmTip: `${capitalize(why)}: click again to pause the story anyway` }) : null;
     const start = () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key) }));
-    const conductor = it.story ? st.setup.jira?.orchestrator?.trim() : null;
+    const conductor = it.story ? boardOf(st.setup)?.orchestrator?.trim() : null;
     const earlier = sessionsFor(st.data, key).filter((x) => !(work?.last && x.id === ticket.last.id));
     const rows = [
       // The main action, when a pull request's or the agent's took its place.
@@ -2553,7 +2540,7 @@ export class Stories extends Source {
   // A ticket's description, loaded when first shown and again after the stories reload (st.at) once
   // it's DESC_EVERY old, or after a Refresh press. `load` gives the blocks of something else's (a
   // pull request's, by its own key); the default asks Jira for the ticket's.
-  descriptionOf(st, key, cx, load = async () => adfBlocks((await jira(st.setup.jira, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description)) {
+  descriptionOf(st, key, cx, load = () => boardDescription(boardOf(st.setup), key, st.data)) {
     const d = this.descs[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
@@ -3190,7 +3177,7 @@ export class Stories extends Source {
     const t = skinTheme();
     // Only the sidebar's list asks for Jira; the story's own blocks just stay empty (they're hidden
     // where the profile has no Jira, but may show for a moment while the layout catches up).
-    if (!this.ready(st)) return { st, t, early: this.loader ? needsSetup(t, st, "Jira", "circle-check", "Set up this profile's Jira board to see your stories here: their subtasks, pull requests, checks and reviews in one place.") : div().size_full() };
+    if (!this.ready(st)) return { st, t, early: this.loader ? needsSetup(t, st, "a board", "circle-check", "Set up this profile's board, Jira or a GitHub Project, to see your stories here: their subtasks, pull requests, checks and reviews in one place.", "jira") : div().size_full() };
     if (!st.data) return { st, t, early: frame(t, { ...st, error: st.error && `Couldn't load your stories: ${st.error}` }, [], st.error ? div().flex_1() : empty(t, "Gathering your stories…", { fill: true })) };
     // The agents' tabs and states, by pane: one finishing its turn (working, then done or idle) may
     // have pushed or opened a pull request, so the stories reload; a tab merely opening or closing
@@ -3203,7 +3190,7 @@ export class Stories extends Source {
       if ([...sig].some(([pane, now]) => was.get(pane) === "working" && (now === "done" || now === "idle"))) this.loadAfterAgent(cx);
       else if (sig.size !== was.size || [...sig.keys()].some((pane) => !was.has(pane))) this.loadSessions(cx);
     }
-    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), st.setup.jira?.handover));
+    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover));
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
@@ -3439,7 +3426,7 @@ export class StoryList extends Stories {
     // story on its Changes (the pull request's files); any other opens on GitHub.
     const known = projectsOf(st.data);
     const storyOf = (p) => {
-      const k = keyIn(p.title, known);
+      const k = prKey(p, st.data, known);
       return k ? items.find(({ it }) => it.key === k || it.subs.some((s) => s.key === k))?.it ?? null : null;
     };
     const minePrs = (st.data.prs ?? []).filter((p) => !p.merged).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
@@ -3448,7 +3435,7 @@ export class StoryList extends Stories {
       const story = storyOf(p);
       const [state, words, color] = prLook(t, p, checksOf(p));
       // One naming no ticket of the board is shown on its own (pullItem), on its Changes too.
-      const lone = story || keyIn(p.title, known) ? null : pullItem(p);
+      const lone = story || prKey(p, st.data, known) ? null : pullItem(p);
       const target = story ?? lone;
       return plain(`mine-${prName(p)}`, Boolean(lone) && lone.key === shown?.key, color, p.title.replace(/^\s*\[[^\]]*\]\s*/, ""), `${prName(p)}${p.updatedAt ? ` · ${ago(Date.parse(p.updatedAt))}` : ""}`,
         () => { if (target) { selectStory(st.profile, target); setView(st.profile, target, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
@@ -3460,7 +3447,7 @@ export class StoryList extends Stories {
     const byStory = (list, prOf) => {
       const groups = new Map();
       for (const x of list) {
-        const p = prOf(x), story = storyOf(p), key = story?.key ?? keyIn(p.title, known) ?? "";
+        const p = prOf(x), story = storyOf(p), key = story?.key ?? prKey(p, st.data, known) ?? "";
         if (!groups.has(key)) groups.set(key, { key, story, list: [] });
         groups.get(key).list.push(x);
       }
@@ -3555,7 +3542,7 @@ export class StoryList extends Stories {
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
         .child(group("Not open", waiting.length))
         .children(waiting.length ? rows(waiting)
-          : [empty(t, st.data.sprints.length ? "Every story of yours is open." : "No sprint running right now.")])
+          : [empty(t, noneWaiting(st.data, items))])
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))
           .children(others.map((s) => plain(`space-${s.id}`, s.active && !shown, t.dim, s.name, `${s.tabs.length} tab${s.tabs.length === 1 ? "" : "s"} · no story`,
             () => { setPreview(st.profile, null); run("space.select", { id: s.id }); }, true)))));
@@ -3623,12 +3610,13 @@ export class StoryView extends Stories {
   }
 
   render(cx) {
-    const { st, t, early, shown } = this.prepare(cx);
+    const { st, t, early, shown, items } = this.prepare(cx);
     if (early) return early;
     const mode = shown ? viewOf(st.profile, shown) : null;
     if (!shown) return v_flex().size_full().items_center().justify_center().gap(4)
       .child(div().text_size(TITLE).font_semibold().child(st.profile.name))
-      .child(div().text_size(SMALL).text_color(t.muted).child(spacesOf(st.profile).length ? "Pick a story on the left." : "No story of it is open. Pick one on the left and start work: it gets a space of its own."));
+      .child(div().text_size(SMALL).text_color(t.muted).child(!items?.length && st.data.sprints.length ? `Nothing ${sprintsWord(st.data)} is yours yet: tickets assigned to you show on the left.`
+        : spacesOf(st.profile).length ? "Pick a story on the left." : "No story of it is open. Pick one on the left and start work: it gets a space of its own."));
     const extra = this.extra[shown.key];
     if (mode === "changes" && (!extra || (!extra.loading && extra.at < st.at))) this.loadExtra(st, shown, cx);
     // A story not started has its details above, filling the column (work.js hides this block), and
@@ -3663,8 +3651,8 @@ export function syncTracking(baseline = false) {
   }
   lastProfile = ctx.profile?.id ?? null;
   const data = sharedData(ctx)?.data;
-  const spaceKey = ctx.profile && ctx.setup.jira && data && profileOf(ctx.space)?.id === ctx.profile.id ? keyOf(ctx.space?.name) : null;
-  const listed = spaceKey && build(data, new Map(), {}, storySpaces(ctx.profile), ctx.setup.jira?.handover).some((x) => x.key === spaceKey);
+  const spaceKey = ctx.profile && hasBoard(ctx.setup) && data && profileOf(ctx.space)?.id === ctx.profile.id ? keyOf(ctx.space?.name) : null;
+  const listed = spaceKey && build(data, new Map(), {}, storySpaces(ctx.profile), boardOf(ctx.setup)?.handover).some((x) => x.key === spaceKey);
   lastStory = listed ? { profile: ctx.profile.id, key: spaceKey } : null;
 }
 
@@ -3699,12 +3687,12 @@ export function storyNow() {
 export function storyItems() {
   const ctx = READER.context();
   const data = sharedData(ctx)?.data;
-  if (!ctx.profile || !ctx.setup.jira || !data) return null;
-  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), ctx.setup.jira?.handover)), reviews: reviewsOf(data), lone: loneOf(data) };
+  if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
+  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), boardOf(ctx.setup)?.handover)), reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).
-export const storyKeyOf = (space) => (profileOf(space)?.jira ? keyOf(space?.name) : null);
+export const storyKeyOf = (space) => (hasBoard(profileOf(space)) ? keyOf(space?.name) : null);
 
 // The header's main action, from a key: show the story's agent (the one asking first) when one runs,
 // else resume what's paused, else its latest session, else start an agent on it.
@@ -3830,13 +3818,13 @@ function leftoverItems(profile, it) {
 }
 
 // Why a story can't be cleaned up yet, if anything: only work that's done and settled goes. A story
-// must be Done in Jira (a pull request without a ticket: merged), with no pull request still open and
-// no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted work is
-// checked when it's cleaned (cleanUp), as that takes a look at its folders.
+// must be done on its board (a pull request without a ticket: merged), with no pull request still
+// open and no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted
+// work is checked when it's cleaned (cleanUp), as that takes a look at its folders.
 export function cleanBlockers(it) {
   const why = [];
   const lone = it.pull || it.review;
-  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't Done in Jira");
+  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't done on the board");
   if (!lone && allPrs(it).some((p) => !p.merged)) why.push("a pull request of it is still open");
   const live = [...allAgents(it), ...(it.space ? agents().filter((a) => a.space === it.space.id) : [])];
   if (live.some((a) => a.status === "working")) why.push("an agent is working on it");
@@ -3981,7 +3969,7 @@ function suggestSnapshot(st, items, reviews) {
   const agentsOf = (it) => allAgents(it).map((a) => a.status).join(", ");
   const out = [`Sprint: ${(st.data.sprints ?? []).map((s) => s.name).join(", ") || "none running"}`];
   const columns = st.data.columns ?? [];
-  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; my part is done from ${columns[handoverFrom(columns, st.setup.jira?.handover)]?.name ?? "the last"}`);
+  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; my part is done from ${columns[handoverFrom(columns, boardOf(st.setup)?.handover)]?.name ?? "the last"}`);
   out.push("", "My stories (in the sprint, assigned to me or with my subtasks):");
   const stories = items.map((x) => x.it).filter((it) => !it.review && !it.pull);
   if (!stories.length) out.push("- none");
@@ -4112,7 +4100,7 @@ export function startIdea(profile, s) {
   dismissSuggestion(profile, s.key);
 }
 function suggestTask(st, items, reviews) {
-  const cfg = st.setup.jira;
+  const cfg = boardOf(st.setup)?.cfg;
   return suggestText(st.profile, { name: st.profile.name, snapshot: suggestSnapshot(st, items, reviews), board: cfg?.url ?? "", owner: st.setup.github?.owner ?? "" });
 }
 
@@ -4146,22 +4134,21 @@ async function applyPicks(profile, items) {
     }
     if (text(raw?.key)) {
       from = text(raw.key).toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(from)) { drop("not a Jira key"); continue; }
+      if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(from)) { drop("not a ticket key, like ABC-12"); continue; }
       key = parentOf.get(from) ?? from;
       if (!listed.has(key)) {
         // Not in the list (someone else's, unassigned, the backlog): Jira says whether it exists
         // and, for a subtask, its story. Only a subtask goes to its parent: a story's is its epic.
-        const r = await jira(profile.jira, "get", `/rest/api/3/issue/${key}?fields=summary,parent,issuetype`).catch(() => null);
-        if (!r?.body?.key) { drop("unknown to Jira"); continue; }
-        const parent = r.body.fields?.issuetype?.subtask ? r.body.fields?.parent : null;
-        key = parent?.key ?? r.body.key;
-        title = parent ? parent.fields?.summary ?? "" : r.body.fields?.summary ?? "";
+        const found = await lookUp(boardOf(profile), key, data);
+        if (!found) { drop("not found on the board"); continue; }
+        key = found.story?.key ?? found.key;
+        title = found.story ? found.story.summary : found.summary;
       }
       title = titles.get(key) || title;
-      url = `${data.site}/browse/${key}`;
+      url = ticketUrl(boardOf(profile), data, key) ?? "";
     } else {
       const m = /^https:\/\/github\.com\/[\w.-]+\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(text(raw?.url));
-      if (!m) { drop("no Jira key, pull request link or idea"); continue; }
+      if (!m) { drop("no ticket key, pull request link or idea"); continue; }
       key = `pr:${m[1]}#${m[2]}`;
       url = text(raw.url);
     }

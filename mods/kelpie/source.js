@@ -99,18 +99,18 @@ export function notice(t, text, color) {
 // A source's "nothing here": ui.js's empty text, centred in the view.
 export const empty = (t, text) => emptyText(t, text, { fill: true });
 
-// A source this space hasn't been set up for: what it would show, and the button to set it up. The
-// profile shown (one picked in the menu, say) is the one set up, not the shown space's.
-export function needsSetup(t, st, what, glyph, line) {
+// A source this space hasn't been set up for: what it would show, and the button to set it up (`focus`,
+// the profile dialog's tab it opens, when `what` isn't its name). The profile shown (one picked in the
+// menu, say) is the one set up, not the shown space's.
+export function needsSetup(t, st, what, glyph, line, focus = what.toLowerCase()) {
   const profile = st.profile ?? st.setup?.profile ?? null;
   if (!st.space && !profile) return empty(t, "No space is shown.");
-  const focus = what.toLowerCase();
   return v_flex().size_full().items_center().justify_center().gap(6).text_size(TEXT)
     .child(div().flex().size(40).mb(6).items_center().justify_center().rounded(12).bg(t.raised).border_1().border_color(t.border)
       .child(icon(chrome(glyph), 18).text_color(t.muted)))
     .child(div().font_medium().text_color(t.foreground).child(`Connect ${what} to ${profile?.name ?? st.space.name}`))
     .child(div().max_w(380).text_size(SMALL).text_color(t.dim).text_center().child(line))
-    .child(primaryButton(t, `setup-${what}`, `Set up ${what}`, () => (profile ? openProfile(profile.id, { space: st.space, focus }) : openSetup(st.space, focus))).mt(8));
+    .child(primaryButton(t, `setup-${focus.replace(/\W+/g, "-")}`, `Set up ${what}`, () => (profile ? openProfile(profile.id, { space: st.space, focus }) : openSetup(st.space, focus))).mt(8));
 }
 
 // Starts (or, if a tab with this name is open, shows) a Claude agent in the space, in its folder.

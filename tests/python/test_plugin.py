@@ -4,6 +4,7 @@ open_profile_page) or reading what Kelpie saved (get_profile, save_status). A fa
 in for Kelpie, in a temp Herdr home; nothing real is reached."""
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -37,7 +38,7 @@ case "$FAKE_ANSWER" in
   next) case "$name" in
       next-get) answer '{"ok": true, "profile": "Acme", "items": [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}]}' ;;
       next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
-      next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a Jira key"}]}' ;;
+      next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
     esac ;;
   fail) echo "no Herdr window" >&2; exit 1 ;;
   silent) ;;
@@ -232,6 +233,35 @@ class Server(unittest.TestCase):
         self.assertTrue(failed)
         self.assertEqual(self.calls(), ["do kelpie.edit-profile-jira"], "nothing else ran")
 
+    def test_open_profile_page_opens_the_board_page_by_any_of_its_names(self):
+        for page in ("board", "project"):
+            text, failed = self.call({"page": page}, tool="open_profile_page")
+            self.assertFalse(failed, text)
+        self.assertEqual(self.calls(), ["do kelpie.edit-profile-board", "do kelpie.edit-profile-project"])
+
+    def test_the_pages_offered_are_the_profile_dialogs(self):
+        # Every page the tool takes opens one in the dialog (setup.js TABS and TAB_ALIAS), and every
+        # dialog page can be opened, so the two lists can't drift apart.
+        with open(os.path.join(REPO, "mods", "kelpie", "setup.js")) as f:
+            setup = f.read()
+        tabs = re.search(r"^const TABS = \[(.*?)^\];", setup, re.S | re.M).group(1)
+        ids = re.findall(r'\{ id: "([\w-]+)"', tabs)
+        aliases = re.findall(r"(\w+): \"\w+\"", re.search(r"^const TAB_ALIAS = \{(.*?)\};", setup, re.M).group(1))
+        self.assertTrue(ids and aliases)
+        sys.path.insert(0, os.path.join(REPO, "plugin"))
+        try:
+            import server
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(sorted(server.TABS), sorted(ids + aliases))
+
+    def test_a_github_project_key_is_a_ticket_key(self):
+        text, failed = self.call({"key": "WEB2-42", "quote": "Done when it works"})
+        self.assertFalse(failed, text)
+        text, failed = self.call({"key": "42", "quote": "Done when it works"})
+        self.assertTrue(failed)
+        self.assertIn("a ticket key, like ABC-123", text)
+
 
     def last(self):
         with open(os.path.join(self.home, "last-request.json")) as f:
@@ -260,7 +290,7 @@ class Server(unittest.TestCase):
         picks = [{"key": "ACME-2", "action": "Start it", "why": "next"}, {"key": "nope", "action": "x"}, "not a pick"]
         text, failed = self.call({"items": picks}, tool="suggest_next", answer="next", env={"KELPIE_PROFILE": "work"})
         self.assertFalse(failed)
-        self.assertEqual(text, "Kelpie shows 1 in Next for Acme: ACME-2: Start it. Dropped: nope (not a Jira key).")
+        self.assertEqual(text, "Kelpie shows 1 in Next for Acme: ACME-2: Start it. Dropped: nope (not a ticket key, like ABC-12).")
         self.assertEqual(self.last(), {"profile": "work", "items": picks[:2]})
         text, failed = self.call({"items": []}, tool="suggest_next", answer="next")
         self.assertTrue(failed)

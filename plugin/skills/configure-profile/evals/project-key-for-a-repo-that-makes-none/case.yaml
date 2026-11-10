@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: project-key-for-a-repo-that-makes-none
+expected_outcome: |
+  The Project's repos are acme/web (its own prefix, WEB, is fine) and acme/2024, whose name is all digits and so makes no key prefix. Explains the keys (WEB-42 for issue #42 of acme/web), says acme/2024 needs a prefix of its own, proposes one that follows the rule (a capital letter, then capitals or digits, 2 to 20) and asks the person before saving it. Saves no prefix for acme/web.

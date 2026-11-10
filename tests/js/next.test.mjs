@@ -109,7 +109,7 @@ describe("applyPicks: Claude's picks checked against the sidebar's rules", () =>
   test("unknown keys, non-keys and picks without an action are dropped, saying why", async () => {
     const { kept, dropped } = await applyPicks(profile, [pick({ key: "AA-99" }), pick({ key: "hello" }), pick({ key: "CC-1", action: " " }), pick({})]);
     assert.deepEqual(kept, []);
-    assert.deepEqual(dropped.map((d) => d.why), ["unknown to Jira", "not a Jira key", "no action", "no Jira key, pull request link or idea"]);
+    assert.deepEqual(dropped.map((d) => d.why), ["not found on the board", "not a ticket key, like ABC-12", "no action", "no ticket key, pull request link or idea"]);
   });
   test("one pick per story", async () => {
     const { kept, dropped } = await applyPicks(profile, [pick({ key: "FF-1" }), pick({ key: "FF-3" }), pick({ key: "FF-2" })]);
@@ -155,6 +155,20 @@ describe("applyPicks: Claude's picks checked against the sidebar's rules", () =>
   test("refuses before the stories have loaded", async () => {
     mock.state.shared.set("kelpie.stories.data", {});
     await assert.rejects(applyPicks(profile, [pick({ key: "CC-1" })]), /haven't loaded/);
+  });
+  test("on a GitHub Project: a sub-issue not in the list goes to its story, as GitHub says; an unknown prefix is dropped", async () => {
+    const gp = { id: "g", name: "G", folder: "/g", project: { url: "https://github.com/orgs/acme/projects/3", owner: "acme", ownerType: "org", number: 3 }, github: { owner: "acme" } };
+    const it = (key, parent = null) => ({ key, url: `https://github.com/acme/web/issues/${key.split("-")[1]}`, item: `PVTI_${key.split("-")[1]}`, fields: { summary: `${key} title`, parent: parent ? { key: parent } : null } });
+    mock.state.shared.set("kelpie.stories.data", { g: { data: { site: "https://github.com", columns: [], repos: { WEB: "acme/web" }, mine: [{ key: "WEB-2" }], parents: [it("WEB-1")], children: [it("WEB-2", "WEB-1")] } } });
+    mock.on.exec = (cmd, args) => {
+      if (cmd !== "sh" || !String(args[0]).endsWith("gh.sh")) return undefined;
+      const n = Number(args.find((a) => String(a).startsWith("number="))?.slice(7));
+      const issue = n === 40 ? { number: 40, title: "Sub", body: "", parent: { number: 30, title: "Its story", repository: { nameWithOwner: "acme/web" } } } : null;
+      return { code: 0, stdout: JSON.stringify({ data: { repository: { issue } } }), stderr: "" };
+    };
+    const { kept, dropped } = await applyPicks(gp, [pick({ key: "WEB-2" }), pick({ key: "WEB-40" }), pick({ key: "WEB-99" }), pick({ key: "DOCS-1" })]);
+    assert.deepEqual(kept.map((x) => [x.key, x.title, x.from]), [["WEB-1", "WEB-1 title", "WEB-2"], ["WEB-30", "Its story", "WEB-40"]]);
+    assert.deepEqual(dropped.map((d) => d.item), ["WEB-99", "DOCS-1"]);
   });
   test("the demo's picks: a story, a pull request and an idea", async () => {
     mock.state.shared.set("kelpie.profiles", { demo: DEMO_PROFILE });

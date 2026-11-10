@@ -1,5 +1,5 @@
 {
-  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
+  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
   "profile": {
     "name": "Acme",
     "folder": "~/.local/share/kelpie/demo/acme",
@@ -64,6 +64,11 @@
         ]
       }
     ]
+  },
+  "project": {
+    "title": "Acme",
+    "repo": "kelpie--demo/acme",
+    "iteration": "Sprint"
   },
   "sprints": [
     {
@@ -391,6 +396,14 @@
       "title": "ACME-130 Password reset email template",
       "updated": "-2d",
       "merged": true
+    },
+    {
+      "repo": "web",
+      "number": 412,
+      "title": "Keep saved trips readable without a connection",
+      "updated": "-1d",
+      "merged": true,
+      "closes": "ACME-143"
     },
     {
       "repo": "api",

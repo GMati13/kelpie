@@ -27,7 +27,7 @@ describe("promptValue", () => {
   });
   test("is used by every filler", () => {
     const title = "T\nNew line\x1b";
-    assert.equal(jiraTask({}, { key: "ABC-1", summary: title, url: "u" }), "Work on Jira ABC-1: T New line\nu");
+    assert.equal(jiraTask({}, { key: "ABC-1", summary: title, url: "u" }), "Work on ABC-1: T New line\nu");
     assert.equal(askText({}, "merge", { prs: "x\x1by" }), "Merge xy.");
     assert.match(mergeTask({}, { ticket: "ABC-1", summary: title, prs: "p" }), /^Get ABC-1: T New line ready/);
     assert.match(approvalTask({}, { ticket: "ABC-1", summary: title, prs: "p" }), /^Get approval for ABC-1: T New line\./);

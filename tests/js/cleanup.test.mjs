@@ -18,8 +18,8 @@ describe("cleanBlockers", () => {
     assert.deepEqual(cleanBlockers(story()), []);
     assert.deepEqual(cleanBlockers(story({ prs: [pr(true)] })), []);
   });
-  test("a story not Done in Jira can't", () => {
-    for (const category of ["new", "indeterminate", undefined]) assert.match(cleanBlockers(story({ category })).join(), /isn't Done in Jira/);
+  test("a story not done on the board can't", () => {
+    for (const category of ["new", "indeterminate", undefined]) assert.match(cleanBlockers(story({ category })).join(), /isn't done on the board/);
   });
   test("an open pull request, its own or a subtask's, blocks it", () => {
     assert.match(cleanBlockers(story({ prs: [pr(false)] })).join(), /still open/);
@@ -98,7 +98,7 @@ describe("cleanUp", () => {
   test("a story that isn't settled is refused before anything is looked at", async () => {
     repoIn("ABC-1");
     await cleanUp(profile, story({ category: "indeterminate" }));
-    assert.match(note(), /wasn't cleaned up: it isn't Done in Jira/);
+    assert.match(note(), /wasn't cleaned up: it isn't done on the board/);
     assert.deepEqual(mock.of("exec").filter(([c]) => c === "python3"), []);
     assert.deepEqual(cleanRuns(), []);
   });

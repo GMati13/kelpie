@@ -9,7 +9,7 @@ import { StoryList } from "../../mods/kelpie/stories.js";
 import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
-import { handlers, nodeOf } from "gpui-kit";
+import { handlers, nodeOf, texts } from "gpui-kit";
 import { mock } from "herdr";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -182,4 +182,16 @@ test("a story's pull requests fold under its heading", async () => {
   handlers(shut).find((h) => h.id === "mine-story-fold-ACME-142").fn({}, { ...cx, stop_propagation() {} });
   assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: {} });
   assert.ok(byId(view.render(cx), "mine-web#418"), "unfolded again");
+});
+
+// A profile with no board yet: the list asks for one, Jira or a GitHub Project, naming neither as
+// the only kind, and its button opens the profile dialog on the Board tab.
+test("a profile with no board asks for one, whichever kind", async () => {
+  setupDemoWorld({ profile: { jira: null, project: null } });
+  const { el, cx } = await draw(new StoryList());
+  const words = texts(el).join("\n");
+  assert.match(words, /Connect a board to /);
+  assert.match(words, /Jira or a GitHub Project/);
+  handlers(el).find((h) => h.id === "setup-jira").fn({}, cx);
+  assert.equal(mock.of("openOverlay").at(-1)[0].props.focus, "jira", "the Board tab");
 });

@@ -119,7 +119,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 
 - `demoData(profile = DEMO_PROFILE)`: what the story list's load gives for the demo profile
   (`StoryList.fetch`, each request answered by demo.js from `mods/kelpie/demo/demo.json`), ready for
-  `build()`. Nothing runs: no exec, no network.
+  `build()`. Nothing runs: no exec, no network. `demoData(DEMO_PROJECT_PROFILE)` loads the same demo
+  with its board a GitHub Project (kelpie.demo-github), answered by demo.js `demoProject()`; the parity
+  test in `project.test.mjs` checks both build the same stories.
 - `issue(key, status, parent)`, `pr(title, { checks, review, merged, draft, repo, number })` and
   `data({ parents, children, mine, prs, sessions, reviews, columns })`: hand-built data in the shapes the
   list keeps, on a board `COLUMNS` of To Do, In Progress, QA (the default handover column) and Done.
@@ -134,18 +136,41 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   `needQueue()`; sinking at the handover column; subtask stages and `progress()`; `prState()`'s order; the
   demo's stories end to end.
 - `next.test.mjs`: `needQueueOf()` (needs you, reviews, the Desk asking, one clean-up item, Claude's
-  picks and when they drop out), `nextIn()`, `applyPicks()`'s rules (Jira lookups faked through `exec`).
+  picks and when they drop out), `nextIn()`, `applyPicks()`'s rules (Jira and GitHub Project lookups faked
+  through `exec`).
+- `issues.test.mjs`: a GitHub Project's issues (issues.js, through board.js) on hand-built data in board.js's
+  header shape: `issueRef()` (malformed keys refused), the description (only an issue page's address,
+  Markdown with only http(s) links), `ticketText`/`lookUp` (one constant query, values as variables; a
+  sub-issue goes to its story), Status options and a move (the mutation's argv, every id checked before gh
+  runs), the status chip (no menu off the Project; the new status shown at once), the demo's answers.
 - `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
   agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
   `patchHash`'s stable values.
+- `board.test.mjs`: `boardOf()`/`hasBoard()` (a profile or a setup, none without a board), `ticketUrl()`,
+  the board's questions answered for the demo (`loadBoard`, `description`, `ticketText`, `statusOptions`,
+  `lookUp`), that no view but board.js calls `jira()` or reads a profile's `jira` section itself; a GitHub
+  Project's board, `parseProject()` and the key prefixes (`defaultPrefix`, `parsePrefixes`, `prefixFor`).
+- `project.test.mjs`: a GitHub Project's load (project.js) on a faked gh: the iteration scope, no
+  iteration field, none running, sub-issues off the Project, drafts and pull request items skipped,
+  paging, user and organisation queries, every call a constant query with its values as variables (and
+  bad owners, numbers and node ids refused), keys and prefixes (collisions, repos with none), pull
+  requests attached by closing links (a title's key wins), a Project issue's link, and the demo loaded as
+  a Project building the same stories as the Jira demo (the parity test).
+- `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
+  details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
+  links.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.
 - `demo.test.mjs`: each answer demo.js gives (Jira's board, sprints, searches, issues, transitions; pull
   requests, files, uncommitted work, sessions, limits) and a schema check of `demo.json` (parents,
   statuses, pull requests, tabs for agent.sh, `demo-` session ids, links reaching no one).
+- `project-check.test.mjs`: the profile dialog's GitHub Project Check (`project-check.js`) on a faked
+  `exec`: constant queries with the owner and number only as variables, the account through gh.sh, the
+  token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
+  offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
@@ -165,11 +190,11 @@ test with a diff, so a change to a view shows exactly what it changed.
 | `views-header` | the title row's main action per state (Peek, Fix checks, Address comments, Merge, Show agent, Resume, Start work), Pause, the icons, More open, folded; a review before and while its agent runs (and Approve asking twice); a pull request with no ticket |
 | `views-body` | the details: the description folded with Show more and opened, a subtask's own description, the subtasks with their actions, the fade only while the details overflow (`fits()`), a review's details |
 | `views-toolbar` | the tab bar: agent tabs, the + menu, Changes and Screenshots with counts; a preview (Overview, the rest only when they hold something), a review (Changes alone), the Desk |
-| `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered) |
+| `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered); the profile dialog's Agents, GitHub and Board pages (Jira, and a GitHub Project after a Check), and what its Board page saves (one board, prefixes, the board's prompt moving with it) |
 | `views-footer` | the Claude limits line (usual, near a limit with its reset time, past a reset), the profile picker row and menu |
 
 Not covered yet: the Changes view (`StoryView`, a virtual list whose rows Herdr draws on demand), the
-profile dialog (`setup.js`), the pane headers (`panes.js`), the plain sidebar of a profile without
+profile dialog's other pages (`setup.js`), the pane headers (`panes.js`), the plain sidebar of a profile without
 Jira (`WorkSide.plain`), the older Hub roles and the `kelpie-artifacts` mod.
 
 **The world.** `tests/lib/views.mjs` pins the clock (every `Date.now()` and `new Date()` is Tuesday

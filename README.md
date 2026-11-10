@@ -2,7 +2,7 @@
 
 A kelpie is the sheepdog that works the flock on its own and comes back only when it's needed. This one does the same for your Claude agents in Herdr.
 
-Layouts and mods for [Herdr](https://herdr.dev) built around profiles and stories: a profile's Jira sprint in the sidebar, each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
+Layouts and mods for [Herdr](https://herdr.dev) built around profiles and stories: a profile's sprint in the sidebar (from a Jira board or a GitHub Project), each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
 
 - `layouts/Kelpie.json` (the Quiet Pages look) and `layouts/Kelpie-Plain.json` (no skin), with their themes and previews
 - `mods/kelpie`: every Kelpie view (sidebar, story header, Changes, tab bar, footer, dialogs, skins)
@@ -36,7 +36,7 @@ A story nobody has started yet:
 
 - [Herdr](https://herdr.dev), with its `herdr-app` and `hc` commands on your `PATH` (tested with Herdr 0.1.14 and herdr-core 0.1.19), and [Claude Code](https://claude.com/claude-code)
 - `git`, `jq`, `curl`, and `python3` (its standard library only)
-- For pull requests: the GitHub CLI `gh`, signed in (`gh auth login`)
+- For pull requests, and for a GitHub Project as the board: the GitHub CLI `gh`, signed in (`gh auth login`). Moving a Project's tickets from Kelpie also needs gh's `project` scope (the profile dialog checks it and gives the command)
 - For Jira (Jira Cloud only): an API token, kept in the macOS Keychain or printed by a command of your own (`op read …`, `pass …`, `secret-tool lookup …`); the profile dialog sets it up
 - Optional:
   - [ImageMagick](https://imagemagick.org) (`magick`) to mark up screenshots before sending them to an agent
@@ -72,7 +72,22 @@ Then:
 
 ### Profiles
 
-A profile is a folder you work in, plus whatever you connect to it: a Jira board (its sprint becomes the sidebar's stories), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`) and a GitHub account (below, Several accounts), a start page for the Web panel. Only the folder is needed. Without Jira, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
+A profile is a folder you work in, plus whatever you connect to it: a board, Jira or a GitHub Project (its sprint becomes the sidebar's stories; below), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`) and a GitHub account (below, Several accounts), a start page for the Web panel. Only the folder is needed. Without a board, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
+
+### A board: Jira or a GitHub Project
+
+A profile has one board at most, chosen on the profile dialog's Board page. Either way, your tickets become stories, their subtasks show under them, starting one opens a Herdr space named after its key, and its status chip moves the ticket.
+
+- **Jira** (Jira Cloud only): paste the board's address (it ends in `/boards/<number>`) and sign in with an API token, kept in the macOS Keychain or printed by a command of your own. The page gives the command that stores the token, and Check signs in and reads the board.
+- **A GitHub Project:** paste the Project's address, `https://github.com/users/<you>/projects/<number>` or `https://github.com/orgs/<org>/projects/<number>`, and press Check. There's no sign-in of its own: Kelpie reads the Project with gh, as the profile's GitHub account (Several accounts, below). To move tickets, gh's sign-in needs the `project` scope (`read:project` only reads). Check says which it has and, when it's missing, gives the command to run in a terminal:
+
+  ```sh
+  gh auth refresh -h github.com -s project
+  ```
+
+  Stories come from the Project's current iteration, or from all its open work when it has no iteration field. A story is the parent of an issue assigned to you, or that issue itself; its sub-issues are the subtasks, and the Project's Status options are the columns. Pull requests attach by the key in their title, or by GitHub's "closes #42" link.
+
+  **Ticket keys:** an issue's key is its repo's prefix and its number, like `WEB-42` for issue #42 of `acme/web`. The prefix is the repo's name in capitals, letters and digits only (`my-app` gives `MYAPP`). After a Check, the Board page lists the Project's repos with each one's prefix, and you can change any of them: a prefix is a letter, then letters or digits, 2 to 20 in all, and no two repos may share one. Keys name the story's space and its ticket folder, so change a prefix before you start work under it.
 
 ### Several accounts
 
@@ -123,6 +138,12 @@ herdr-app do kelpie.demo
 ```
 
 This adds a profile called Acme, with a made-up sprint, pull requests and agents in every state, and opens its stories as spaces. Nothing reaches Jira, GitHub or Claude. Its agents are a stand-in script, and its links can't reach anyone. What it shows comes from `mods/kelpie/demo/demo.json`: edit it and press Refresh to set up another situation.
+
+To see the same stories on a GitHub Project instead of Jira, open the demo with that board (`kelpie.demo` puts Jira back):
+
+```sh
+herdr-app do kelpie.demo-github
+```
 
 To take it away again (its spaces, the profile and its folder):
 

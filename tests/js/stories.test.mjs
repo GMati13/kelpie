@@ -3,7 +3,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, ordered, progress, projectsOf, pullsOf, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneWaiting, ordered, progress, projectsOf, pullsOf, sunk } from "../../mods/kelpie/stories.js";
 import { prState } from "../../mods/kelpie/ui.js";
 import { COLUMNS, data, demoData, issue, pr } from "../lib/stories.mjs";
 
@@ -307,5 +307,14 @@ describe("the demo's stories, as the list builds them", () => {
     ]);
     assert.equal(byKey(it["ACME-129"].subs)["ACME-131"].assignee, null, "unassigned");
     assert.deepEqual([it["ACME-175"].assignee, it["ACME-175"].mine], ["Alex Morgan", true], "a task of yours");
+  });
+});
+
+describe("noneWaiting: why Not open is empty", () => {
+  test("no sprint, nothing of yours in it, or everything open", () => {
+    assert.equal(noneWaiting({ sprints: [] }, []), "No sprint running right now.");
+    assert.equal(noneWaiting({ sprints: [{ id: 1, name: "Sprint 1" }] }, []), "Nothing in Sprint 1 is yours yet: tickets assigned to you show here.");
+    assert.equal(noneWaiting({ sprints: [{ id: null, name: "Kelpie", kanban: true }] }, []), "Nothing on Kelpie is yours yet: tickets assigned to you show here.");
+    assert.equal(noneWaiting({ sprints: [{ id: 1, name: "Sprint 1" }] }, [{ it: {} }]), "Every story of yours is open.");
   });
 });
