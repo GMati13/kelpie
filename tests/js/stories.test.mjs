@@ -3,9 +3,10 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneWaiting, ordered, progress, projectsOf, pullsOf, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneWaiting, ordered, progress, projectsOf, pullsOf, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
+import { sunkWords } from "../../mods/kelpie/config.js";
 import { prState } from "../../mods/kelpie/ui.js";
-import { COLUMNS, data, demoData, issue, pr } from "../lib/stories.mjs";
+import { COLUMNS, DEMO_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
 
 beforeEach(() => mock.reset());
 
@@ -201,6 +202,16 @@ describe("ordered and needQueue: the list's order and Next's", () => {
   });
 });
 
+describe("what the sunk group says", () => {
+  test("with a team, they wait on others", () => {
+    assert.deepEqual(sunkWords({ cfg: {} }), { heading: "Waiting on others", none: "Nothing waiting on you." });
+    assert.equal(sunkWords(null).heading, "Waiting on others", "no board");
+  });
+  test("working alone, nobody else has them: they're built, whatever the columns are called", () => {
+    assert.deepEqual(sunkWords({ cfg: { solo: true } }), { heading: "Built", none: "Everything here is built." });
+  });
+});
+
 describe("sinking at the handover column", () => {
   const story = (statuses, { handover = null, mine = statuses.map((_, i) => `ABC-${i + 2}`) } = {}) => build(data({
     mine, parents: [issue("ABC-1", "doing")], children: statuses.map((s, i) => issue(`ABC-${i + 2}`, s, "ABC-1")),
@@ -298,6 +309,22 @@ describe("the demo's stories, as the list builds them", () => {
       ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-180", 6, false],
       ["ACME-129", 6, true],
     ]);
+  });
+  // What next?'s snapshot: a story past the handover column (ACME-129) is the person's own to check
+  // when they work alone, not "my part is done".
+  test("What next? is told what the sunk stories wait on: others, or the person working alone", async () => {
+    const d = await demoData();
+    const snap = (jira) => {
+      const profile = { ...DEMO_PROFILE, jira };
+      return suggestSnapshot({ data: d, profile, setup: { profile, jira, github: profile.github } }, ordered(build(d, new Map())), []);
+    };
+    const team = snap(DEMO_PROFILE.jira);
+    assert.match(team, /; my part is done from QA$/m);
+    assert.match(team, /^- ACME-129 .* · my part is done$/m);
+    const alone = snap({ ...DEMO_PROFILE.jira, solo: true });
+    assert.match(alone, /; I work alone: from QA on, a ticket waits on me to check it$/m);
+    assert.match(alone, /^- ACME-129 .* · built, mine to check$/m);
+    assert.doesNotMatch(alone, /my part is done/);
   });
   test("the done story with no space has left; the PR naming no ticket shows on its own", async () => {
     const d = await demoData();

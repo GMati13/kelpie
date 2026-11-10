@@ -202,6 +202,23 @@ test("choosing a GitHub Project: Save keeps it and drops Jira, the board's promp
   assert.equal(d.draft().profile.jira.prompt, "Do {key}");
 });
 
+test("I work alone: the Board page's toggle saves solo with the board, and off drops it", () => {
+  const { d, cx } = profileDialog("jira", {}, { filled: true });
+  assert.equal(d.draft().profile.jira.solo, undefined, "a team by default");
+  press(d.render(cx), "setup-solo", cx);
+  assert.equal(d.draft().profile.jira.solo, true);
+  assert.equal(d.dirty(), true);
+  assert.ok(texts(d.render(cx)).some((x) => x.includes('they\'re under "Built"')), "the hint names what the list will say");
+  // It moves with the board, as the handover column does.
+  press(d.render(cx), "setup-board-kind-1", cx);
+  d.projectUrl.set_value(DEMO_PROJECT.url);
+  assert.equal(d.draft().profile.project.solo, true);
+  press(d.render(cx), "setup-board-kind-0", cx);
+  press(d.render(cx), "setup-solo", cx);
+  assert.equal(d.draft().profile.jira.solo, undefined);
+  assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, solo: true } }).d.solo, true, "a saved one opens on");
+});
+
 test("a Project's address that isn't one, and prefixes that can't be keys, stop Save with a reason", () => {
   const { d } = profileDialog("project", { jira: null, project: DEMO_PROJECT }, { filled: true });
   d.projectUrl.set_value("https://github.com/kelpie--demo/acme");

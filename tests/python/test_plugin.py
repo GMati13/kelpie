@@ -85,6 +85,9 @@ class Server(unittest.TestCase):
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
         )
         self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
+        # The version Claude is told is the plugin's own (development.md: raised with every change).
+        with open(os.path.join(REPO, "plugin", ".claude-plugin", "plugin.json")) as f:
+            self.assertEqual(init["result"]["serverInfo"]["version"], json.load(f)["version"])
         self.assertIn("tools", init["result"]["capabilities"])
         tools = {t["name"]: t for t in listed["result"]["tools"]}
         self.assertEqual(sorted(tools), ["add_to_next", "get_next", "get_profile", "open_profile_page", "save_profile", "save_status", "show_passage", "suggest_next"])

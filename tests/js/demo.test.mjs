@@ -4,7 +4,7 @@ import { before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readRepo } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { demoAccounts, demoBlob, demoFixture, demoJira, demoLocal, demoPullFiles, demoPulls, demoSessions } from "../../mods/kelpie/demo.js";
+import { demoAccounts, demoBlob, demoBoard, demoFixture, demoJira, demoLocal, demoPullFiles, demoPulls, demoSessions } from "../../mods/kelpie/demo.js";
 import { jira } from "../../mods/kelpie/sprint.js";
 import { searchPulls } from "../../mods/kelpie/pulls.js";
 import { adfBlocks, adfText } from "../../mods/kelpie/adf.js";
@@ -216,5 +216,15 @@ describe("the demo through Kelpie's own loaders", () => {
     await jira({ demo: true }, "get", "/rest/agile/1.0/board/7/configuration");
     await searchPulls("is:open author:@me", { demo: true });
     assert.deepEqual(mock.of("exec"), []);
+  });
+});
+
+describe("demoBoard: the demo profile's board", () => {
+  test("a team's by default; the fixture's solo makes it a board worked alone, Jira or Project", async () => {
+    const f = await demoFixture();
+    assert.equal(demoBoard(f).jira.solo, undefined);
+    const alone = { ...f, profile: { ...f.profile, solo: true } };
+    assert.equal(demoBoard(alone).jira.solo, true);
+    assert.equal(demoBoard(alone, "project").project.solo, true);
   });
 });
