@@ -90,7 +90,7 @@ export class StoryPicker {
         .child(Input.new(this.input).flex_1().h_full().text_size(TEXT).text_color(t.foreground)))
       .child(v_flex().id("sp-list").flex_none().gap(0)
         .children(rows.length ? rows.slice(from, from + ROWS).map((x, i) => row(x, from + i))
-          : [empty(t, !loaded ? "This profile shows no stories (it needs a Jira board), or they haven't loaded yet." : "No story matches.")]))
+          : [empty(t, !loaded ? "This profile shows no stories (it needs a board: Jira or a GitHub Project), or they haven't loaded yet." : "No story matches.")]))
       .when(rows.length > ROWS, (el) => el.child(div().px(8).text_size(SMALL).text_color(t.dim).child(`${this.at + 1} of ${rows.length}`)))
       .child(div().px(8).text_size(SMALL).text_color(t.dim).child("↑↓ choose · Enter open · ⌘⇧J next that needs you · ⌘⇧R start or resume · ⌥⌘P pause")), { role: "story-picker", now: new Date() });
   }

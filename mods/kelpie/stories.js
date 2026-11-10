@@ -569,13 +569,13 @@ export function addAsk(profile, { action, why, key, url, terminal } = {}) {
   let k = "";
   if (key != null && key !== "") {
     k = passageText(key, 40).toUpperCase();
-    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(k)) throw new Error("key: a Jira key, like ABC-12.");
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(k)) throw new Error("key: a ticket key, like ABC-12.");
     k = new Map((data?.children ?? []).map((c) => [c.key, c.fields?.parent?.key])).get(k) ?? k;
   }
   let link = "";
   if (url != null && url !== "") {
     link = passageText(url, 500);
-    if (!askLink(profile, link, site)) throw new Error("url: a GitHub link, or a link to this profile's Jira.");
+    if (!askLink(profile, link, site)) throw new Error("url: a GitHub link, or a link to this profile's board.");
   }
   if (!link && k && site) link = ticketUrl(board, data, k);
   const term = typeof terminal === "string" && /^[\w-]{1,40}$/.test(terminal) ? terminal : "";
@@ -1270,7 +1270,7 @@ const passageText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u00
 export function showPassageRequest() {
   return answerRequest("passage", (req) => {
     const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
-    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a Jira key, like ABC-12.");
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
     if (quote.length < 3) throw new Error("quote: the passage's words, as the description has them.");
     return showPassage({ key, quote, note }) ? { ok: true } : { ok: false, error: `${key} isn't a story in the shown profile's list.` };
   });
@@ -1311,7 +1311,7 @@ function itemsFor(profile) {
 }
 const profileHasNext = (profile) => {
   if (!profile) throw new Error("No Kelpie profile is shown.");
-  if (!hasBoard(profile)) throw new Error(`The profile ${profile.name} has no Jira board, so Kelpie shows no Next queue for it.`);
+  if (!hasBoard(profile)) throw new Error(`The profile ${profile.name} has no board, so Kelpie shows no Next queue for it.`);
   return profile;
 };
 
@@ -2053,7 +2053,7 @@ export class Stories extends Source {
     // A story not opened always shows its details (they're all there is), so it has no fold.
     const folds = viewOf(st.profile, it) !== "start";
     const lone = lonePr(it);
-    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: "Open in Jira", url: ticketUrl(boardOf(st.setup), st.data, it.key) };
+    const where = lone ? { label: prName(lone), tip: "Open on GitHub", url: lone.url } : { label: it.key, tip: `Open in ${boardOf(st.setup)?.name ?? "the board"}`, url: ticketUrl(boardOf(st.setup), st.data, it.key) };
     const { actions, tasks = [], clean, more } = this.headActions(t, st, it, cx);
     // A skin may draw the story's subtasks as a meter (none by default).
     const subMeter = it.story ? skinMeter(t, { kind: "subtasks", label: "Subtasks", done: it.subs.filter((s) => s.category === "done").length, total: it.subs.length }) : null;
@@ -3167,7 +3167,7 @@ export class Stories extends Source {
     const t = skinTheme();
     // Only the sidebar's list asks for Jira; the story's own blocks just stay empty (they're hidden
     // where the profile has no Jira, but may show for a moment while the layout catches up).
-    if (!this.ready(st)) return { st, t, early: this.loader ? needsSetup(t, st, "Jira", "circle-check", "Set up this profile's Jira board to see your stories here: their subtasks, pull requests, checks and reviews in one place.") : div().size_full() };
+    if (!this.ready(st)) return { st, t, early: this.loader ? needsSetup(t, st, "a board", "circle-check", "Set up this profile's board, Jira or a GitHub Project, to see your stories here: their subtasks, pull requests, checks and reviews in one place.", "jira") : div().size_full() };
     if (!st.data) return { st, t, early: frame(t, { ...st, error: st.error && `Couldn't load your stories: ${st.error}` }, [], st.error ? div().flex_1() : empty(t, "Gathering your stories…", { fill: true })) };
     // The agents' tabs and states, by pane: one finishing its turn (working, then done or idle) may
     // have pushed or opened a pull request, so the stories reload; a tab merely opening or closing
@@ -3807,13 +3807,13 @@ function leftoverItems(profile, it) {
 }
 
 // Why a story can't be cleaned up yet, if anything: only work that's done and settled goes. A story
-// must be Done in Jira (a pull request without a ticket: merged), with no pull request still open and
-// no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted work is
-// checked when it's cleaned (cleanUp), as that takes a look at its folders.
+// must be done on its board (a pull request without a ticket: merged), with no pull request still
+// open and no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted
+// work is checked when it's cleaned (cleanUp), as that takes a look at its folders.
 export function cleanBlockers(it) {
   const why = [];
   const lone = it.pull || it.review;
-  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't Done in Jira");
+  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done") why.push(lone ? "its pull request isn't merged" : "it isn't done on the board");
   if (!lone && allPrs(it).some((p) => !p.merged)) why.push("a pull request of it is still open");
   const live = [...allAgents(it), ...(it.space ? agents().filter((a) => a.space === it.space.id) : [])];
   if (live.some((a) => a.status === "working")) why.push("an agent is working on it");
@@ -4123,13 +4123,13 @@ async function applyPicks(profile, items) {
     }
     if (text(raw?.key)) {
       from = text(raw.key).toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(from)) { drop("not a Jira key"); continue; }
+      if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(from)) { drop("not a ticket key, like ABC-12"); continue; }
       key = parentOf.get(from) ?? from;
       if (!listed.has(key)) {
         // Not in the list (someone else's, unassigned, the backlog): Jira says whether it exists
         // and, for a subtask, its story. Only a subtask goes to its parent: a story's is its epic.
         const found = await lookUp(boardOf(profile), key, data);
-        if (!found) { drop("unknown to Jira"); continue; }
+        if (!found) { drop("not found on the board"); continue; }
         key = found.story?.key ?? found.key;
         title = found.story ? found.story.summary : found.summary;
       }
@@ -4137,7 +4137,7 @@ async function applyPicks(profile, items) {
       url = ticketUrl(boardOf(profile), data, key) ?? "";
     } else {
       const m = /^https:\/\/github\.com\/[\w.-]+\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(text(raw?.url));
-      if (!m) { drop("no Jira key, pull request link or idea"); continue; }
+      if (!m) { drop("no ticket key, pull request link or idea"); continue; }
       key = `pr:${m[1]}#${m[2]}`;
       url = text(raw.url);
     }

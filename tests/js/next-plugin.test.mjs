@@ -63,8 +63,8 @@ describe("kelpie.add-next: an agent asks the person for something", () => {
   });
 
   for (const [what, req, error] of [
-    ["a key that isn't a Jira key", { action: "Look", key: "ACME-1; rm -rf ~" }, /^key:/],
-    ["a link off GitHub and the profile's Jira", { action: "Look", url: "https://evil.example/login" }, /^url:/],
+    ["a key that isn't a ticket key", { action: "Look", key: "ACME-1; rm -rf ~" }, /^key:/],
+    ["a link off GitHub and the profile's board", { action: "Look", url: "https://evil.example/login" }, /^url:/],
     ["a link that looks like Jira's but isn't", { action: "Look", url: "https://jira.example.com.evil.example/x" }, /^url:/],
     ["a link that isn't https", { action: "Look", url: "javascript:alert(1)" }, /^url:/],
     ["no action", { action: " ", key: "ACME-175" }, /^action:/],
@@ -99,10 +99,10 @@ describe("kelpie.add-next: an agent asks the person for something", () => {
     assert.ok(!queue().some((x) => x.ask));
   });
 
-  test("a profile with no Jira board has no Next: refused, saying so", async () => {
+  test("a profile with no board has no Next: refused, saying so", async () => {
     mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), plain: { id: "plain", name: "Plain", folder: "/tmp/plain" } });
     request("next-add", { action: "Read my plan", profile: "plain" });
-    assert.match((await addNextRequest()).error, /Plain has no Jira board/);
+    assert.match((await addNextRequest()).error, /Plain has no board/);
   });
 
   test("clicked in the open queue: it goes, and its story shows", async () => {
@@ -124,7 +124,7 @@ describe("kelpie.suggest-next: Claude's picks handed in", () => {
     const r = await suggestNextRequest();
     assert.equal(r.ok, true);
     assert.deepEqual(r.kept, ["ACME-180: Start the PDF export"]);
-    assert.deepEqual(r.dropped, [{ item: "nope", why: "not a Jira key" }]);
+    assert.deepEqual(r.dropped, [{ item: "nope", why: "not a ticket key, like ABC-12" }]);
     assert.deepEqual(mock.sharedValue("kelpie.next.suggested")[DEMO].items.map((x) => x.key), ["ACME-180"]);
     assert.ok(!existsSync(`${home}/kelpie/next-suggest.json`));
   });
