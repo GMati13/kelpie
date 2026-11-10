@@ -158,6 +158,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   bad owners, numbers and node ids refused), keys and prefixes (collisions, repos with none), pull
   requests attached by closing links (a title's key wins), a Project issue's link, and the demo loaded as
   a Project building the same stories as the Jira demo (the parity test).
+- `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
+  details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
+  links.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.

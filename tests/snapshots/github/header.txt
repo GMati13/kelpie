@@ -1,0 +1,49 @@
+div
+  div
+    div
+      image art/kelpie/skins/quiet-pages/lamp-day-2.png
+  v_flex [fg=foreground]
+    h_flex
+      h_flex #story-head-text
+        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+          "ACME-160"
+        div #story-title [font="Fraunces"] tip="Typo-tolerant search\nChanges requested on ACME-161 (search#233)"
+          "Typo-tolerant search"
+        div #story-need [fg=working font="DM Sans"] tip="Changes requested on ACME-161 (search#233)"
+          "Changes requested on ACME-161 (search#233)"
+        div
+        div #story-assignee
+          div [bg=ansi1/33 fg=ansi1] tip="Assigned to Lena Vogel"
+            "LV"
+        Popup.new "story-status-menu-menu"
+          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+            div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
+              "Review"
+              div
+                div
+                  div [bg=#7fb3ae]
+      h_flex
+        h_flex #story-ask-comments [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Address the review comments on https://github.com/kelpie--demo/search/pull/233."
+          "Address comments"
+          div
+            div
+              div [bg=#7fb3ae]
+        h_flex #story-pause [font="DM Sans" fg=muted hover(bg=hover fg=foreground) border=#e6dcc81f] {down:left click} tip="An agent is working: click again to pause the story anyway"
+          "Pause"
+          div
+            div
+              div [bg=#c195ab]
+      div [bg=border]
+      h_flex
+        Popup.new "story-approval-menu"
+          div #story-approval-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Request approval for its pull requests waiting on reviewers, with a new agent or an open Claude"
+            svg own:user-check
+        Popup.new "story-merge-menu"
+          div #story-merge-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
+            svg own:git-merge
+        div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
+          svg own:refresh-cw
+        div #story-open [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in Jira"
+          svg own:external-link
+        div #story-fold [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the header to this row ⌘⇧H"
+          svg chrome:chevron-down
