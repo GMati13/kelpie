@@ -29,7 +29,7 @@ The Kelpie plugin gives you the tools for this: `get_profile` reads what's saved
 | Folder | Agents start here. Every Herdr space opened in it (or below) belongs to the profile, and earlier Claude sessions started here show in its sidebar. Usually the folder holding the clones of the work's repositories. |
 | Claude account | Which Claude Code config folder (`~/.claude`, `~/.claude-work`…) the profile's new agents run on, as `CLAUDE_CONFIG_DIR`, keeping work and personal accounts apart. |
 | Jira | Optional. A Jira Cloud board: the sidebar lists the person's **stories** (their issues in the active sprints, or a Kanban board's open work), and starting one opens a Herdr space named after its key with an agent in it. |
-| GitHub | Optional. An owner (organisation or user): the sidebar lists the person's open pull requests and the ones waiting on their review, attached to stories by the ticket key in their titles. |
+| GitHub | Optional. An owner (organisation or user): the sidebar lists the person's open pull requests and the ones waiting on their review, attached to stories by the ticket key in their titles. Optionally the GitHub account Kelpie acts as for it, for people signed in to more than one. |
 | Web | The Web panel's start page. Each profile has its own browser, with its own sign-ins. |
 | Prompts | The first message each kind of agent gets: on a ticket, an orchestrator, a review, a merge, an approval request, What next?. Each has a default. |
 | Messages | What the pull request and review buttons (Fix checks, Merge, Approve…) send to an agent that's already working. Each has a default. |
@@ -47,7 +47,7 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
   - `jira.url` must be a Jira Cloud board (`https://<name>.atlassian.net/…/boards/<n>`): `jira.site` and `jira.board` are filled in from it. A Jira section needs `keychain`, or `tokenCommand` with `email`; the email takes no quotes, backslashes or spaces. A `github` section needs `owner`. `web.home` starts with `https://` or `http://`.
   - A prompt or message equal to its default needn't be saved: `null` goes back to the default.
   - An id that doesn't exist yet makes a new profile; it needs `name` and `folder`.
-- **Some changes wait for the person's yes.** Whatever can run a command or steer agents (`commands`, `prompts`, the `github` prompts, `claude`, `jira.tokenCommand`), decide where the Jira sign-in goes or which one (`jira.url`, `jira.email`, `jira.keychain`), or open a page (`web`) is shown to the person in Kelpie, and only their click saves it. `save_profile` then says it's waiting: tell them to look at Kelpie, and call `save_status` after they've answered. Nothing else in that change is saved meanwhile, so send other settings in a change of their own. You can't confirm it for them, and shouldn't try: that click is what keeps a misled agent from changing what runs on their machine.
+- **Some changes wait for the person's yes.** Whatever can run a command or steer agents (`commands`, `prompts`, the `github` prompts and `github.account`, `claude`, `jira.tokenCommand`), decide where the Jira sign-in goes or which one (`jira.url`, `jira.email`, `jira.keychain`), or open a page (`web`) is shown to the person in Kelpie, and only their click saves it. `save_profile` then says it's waiting: tell them to look at Kelpie, and call `save_status` after they've answered. Nothing else in that change is saved meanwhile, so send other settings in a change of their own. You can't confirm it for them, and shouldn't try: that click is what keeps a misled agent from changing what runs on their machine.
 - If a tool says Kelpie can't be reached, Herdr isn't showing a Kelpie layout: ask the person to show it, then try again.
 
 ## Scopes
@@ -59,7 +59,7 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 | `jira` | Board, sign-in, your part (the handover column) |
 | `jira-signin` | Jira sign-in only |
 | `handover` | Your part (the handover column) only |
-| `github` | Owner, pull request notifications |
+| `github` | Owner, GitHub account, pull request notifications |
 | `web` | Start page |
 | `prompts` | The prompts |
 | `messages` | The button messages |
@@ -94,6 +94,7 @@ Jira Cloud only (`https://<name>.atlassian.net`). Server and Data Center sign in
 ### 3. GitHub
 
 - **Owner** (`github.owner`): the organisation (or user) whose repositories hold the work. Find it through your own GitHub access if you have it (their organisations, where their pull requests are), else ask. Kelpie reads GitHub through the GitHub CLI signed in as the person (`gh auth login`, in a terminal of theirs); the GitHub page's Check button (`open_profile_page` with `github`) says whether it finds their pull requests.
+- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret.
 - **Notifications** (`notify.pulls`, default true): a notification when one of their pull requests starts failing checks, gets changes requested, or becomes ready to merge.
 
 ### 4. Web

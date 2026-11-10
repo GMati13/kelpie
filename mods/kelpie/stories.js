@@ -18,7 +18,7 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
-import { approvePull, pullBody, searchPulls } from "./pulls.js";
+import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
 import { adfBlocks, adfLines, adfText, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
@@ -1719,16 +1719,17 @@ export class Stories extends Source {
     const cfg = setup.jira;
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
+    const account = setup.github?.account ?? null;
     const since = new Date(Date.now() - MERGED_DAYS * 864e5).toISOString().slice(0, 10);
     // GitHub failing (it does answer 502 now and then) mustn't hide the stories: they show without
     // their pull requests, and the frame says why.
     let prError = null;
     const pulls = owner
-      ? Promise.all([searchPulls(`user:${owner} is:pr is:open author:@me`, { demo }), searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo })])
+      ? Promise.all([searchPulls(`user:${owner} is:pr is:open author:@me`, { demo, account }), searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo, account })])
         .catch((e) => { prError = `Pull requests didn't load: ${String(e?.message ?? e)}`; return [[], []]; })
       : Promise.resolve([[], []]);
     // What doesn't wait on Jira runs beside it.
-    const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo }).catch(() => []) : Promise.resolve([]);
+    const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account }).catch(() => []) : Promise.resolve([]);
     const sessionsP = this.fetchSessions({ space, setup });
     // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
     const [config, active] = await Promise.all([
@@ -2220,7 +2221,7 @@ export class Stories extends Source {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        await approvePull(p, { demo: Boolean(st.setup.github?.demo) || isDemo(st.profile) });
+        await approvePull(p, { demo: Boolean(st.setup.github?.demo) || isDemo(st.profile), account: st.setup.github?.account });
         const now = Date.now();
         setShared(APPROVALS, { ...Object.fromEntries(Object.entries(shared(APPROVALS) ?? {}).filter(([, at]) => now - at < APPROVED_FOR)), [p.url]: now });
         say(`Approved ${prName(p)} on GitHub.`);
@@ -2258,7 +2259,7 @@ export class Stories extends Source {
     const p = lonePr(it);
     const c = CHECKS[checksOf(p)], r = REVIEW[p.reviewDecision];
     const demo = Boolean(st.setup.github?.demo) || isDemo(st.profile);
-    const about = this.description(t, st, `pr:${p.url}`, cx, { id: "pr-desc", fold: true, load: async () => markdownBlocks(await pullBody(p, { demo })) });
+    const about = this.description(t, st, `pr:${p.url}`, cx, { id: "pr-desc", fold: true, load: async () => markdownBlocks(await pullBody(p, { demo, account: st.setup?.github?.account })) });
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       .when(Boolean(note), (el) => el.child(note))
       .child(h_flex().flex_none().gap(6).items_center().text_size(SMALL).text_color(t.muted)
@@ -2609,7 +2610,7 @@ export class Stories extends Source {
           const m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(p.url);
           if (!m) return Promise.resolve([]);
           if (demo) return demoPullFiles(p.url);
-          return exec("gh", ["api", "--paginate", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/files`, "--jq", ".[] | {filename, previous_filename, status, additions, deletions, patch, sha}"])
+          return gh(st.profile?.github?.account, ["api", "--paginate", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/files`, "--jq", ".[] | {filename, previous_filename, status, additions, deletions, patch, sha}"])
             .then((r) => r.stdout.split("\n").filter(Boolean).map((l) => JSON.parse(l)));
         };
         const prs = allPrs(it);
@@ -3138,7 +3139,7 @@ export class Stories extends Source {
           // The pull request's own version of the file, by its blob (merged ones too).
           const m = /github\.com\/([^/]+)\/([^/]+)\/pull\//.exec(f.group.url ?? "");
           if (!m || !f.sha) throw new Error("GitHub didn't say which version of it to read");
-          const r = await exec("gh", ["api", "-H", "Accept: application/vnd.github.raw", `repos/${m[1]}/${m[2]}/git/blobs/${f.sha}`]);
+          const r = await gh(st.profile?.github?.account, ["api", "-H", "Accept: application/vnd.github.raw", `repos/${m[1]}/${m[2]}/git/blobs/${f.sha}`]);
           if (r.code !== 0) throw new Error((r.stderr || "gh failed").trim());
           text = r.stdout;
         }

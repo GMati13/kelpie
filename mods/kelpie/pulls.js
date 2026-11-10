@@ -6,7 +6,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { exec } from "herdr";
 import { skinTheme } from "./skins/index.js";
-import { SMALL, ago, avatar, chip, openExternal, textButton } from "./ui.js";
+import { SMALL, ago, avatar, chip, modFile, openExternal, textButton } from "./ui.js";
 import { Source, empty, frame, needsSetup, startAgent } from "./source.js";
 import { demoApprove, demoPullBody, demoPulls } from "./demo.js";
 
@@ -31,10 +31,20 @@ const checks = (pr) => pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state 
 const LIGHT = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number title url updatedAt author { login } repository { name } } } } }`;
 
-// `demo`: a demo profile's (demo.js), answered from its fixture.
-export async function searchPulls(q, { light = false, demo = false } = {}) {
+// Every gh call Kelpie makes, as a profile's GitHub account (`github.account`; none: gh's active one),
+// through gh.sh, which hands gh that account's token itself.
+export const gh = (account, args) => exec("sh", [modFile("gh.sh"), account ?? "", ...args]);
+// The GitHub accounts gh is signed in to on this machine, for the profile dialog's choice.
+export async function githubAccounts() {
+  const r = await exec("gh", ["auth", "status", "--hostname", "github.com"]);
+  const found = `${r.stdout}\n${r.stderr}`.matchAll(/Logged in to github\.com account ([A-Za-z0-9-]+)/g);
+  return [...new Set([...found].map((m) => m[1]))];
+}
+
+// `demo`: a demo profile's (demo.js), answered from its fixture. `account`: the profile's GitHub account.
+export async function searchPulls(q, { light = false, demo = false, account = null } = {}) {
   if (demo) return (await demoPulls(q)).map(decided);
-  const r = await exec("gh", ["api", "graphql", "-f", `q=${q}`, "-f", `query=${light ? LIGHT : QUERY}`]);
+  const r = await gh(account, ["api", "graphql", "-f", `q=${q}`, "-f", `query=${light ? LIGHT : QUERY}`]);
   if (r.code !== 0) throw new Error(r.stderr.trim().split("\n")[0] || "gh couldn't search pull requests.");
   return JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.number).map(decided);
 }
@@ -44,22 +54,22 @@ export async function searchPulls(q, { light = false, demo = false } = {}) {
 // taken, its parts going into the API path, no shell. Pinned to the head commit the list loaded, when
 // known, so a push after the person looked isn't approved unseen. `demo`: kept in demo.js's memory.
 const PULL_URL = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d+)$/;
-export async function approvePull(pr, { demo = false } = {}) {
+export async function approvePull(pr, { demo = false, account = null } = {}) {
   const m = PULL_URL.exec(pr?.url ?? "");
   if (!m) throw new Error("its address isn't a GitHub pull request's.");
   if (demo) return demoApprove(pr.url);
   const at = /^[0-9a-f]{40}$/.test(pr.headRefOid ?? "") ? ["-f", `commit_id=${pr.headRefOid}`] : [];
-  const r = await exec("gh", ["api", "--method", "POST", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/reviews`, "-f", "event=APPROVE", ...at]);
+  const r = await gh(account, ["api", "--method", "POST", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/reviews`, "-f", "event=APPROVE", ...at]);
   if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split("\n")[0].replace(/^gh: /, "") || "GitHub didn't take the approval.");
 }
 
 // A pull request's description (its Markdown), loaded when it's shown: the search doesn't carry it,
 // as some are long. The same address check as approvePull; `demo`: the fixture's.
-export async function pullBody(pr, { demo = false } = {}) {
+export async function pullBody(pr, { demo = false, account = null } = {}) {
   const m = PULL_URL.exec(pr?.url ?? "");
   if (!m) throw new Error("its address isn't a GitHub pull request's.");
   if (demo) return demoPullBody(pr.url);
-  const r = await exec("gh", ["api", `repos/${m[1]}/${m[2]}/pulls/${m[3]}`, "--jq", ".body // \"\""]);
+  const r = await gh(account, ["api", `repos/${m[1]}/${m[2]}/pulls/${m[3]}`, "--jq", ".body // \"\""]);
   if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split("\n")[0].replace(/^gh: /, "") || "GitHub didn't send the description.");
   return r.stdout.replace(/\n$/, "");
 }
@@ -80,7 +90,7 @@ export class Pulls extends Source {
   }
 
   async fetch({ setup }) {
-    const lists = await Promise.all(GROUPS.map((g) => searchPulls(g.q(setup.github.owner), { demo: Boolean(setup.github.demo) })));
+    const lists = await Promise.all(GROUPS.map((g) => searchPulls(g.q(setup.github.owner), { demo: Boolean(setup.github.demo), account: setup.github.account })));
     return Object.fromEntries(GROUPS.map((g, i) => [g.id, lists[i]]));
   }
 

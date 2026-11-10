@@ -15,7 +15,7 @@ import { deskAgents } from "./desk.js";
 import { ASK_PROMPTS, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile } from "./config.js";
 
 import { jira } from "./sprint.js";
-import { searchPulls } from "./pulls.js";
+import { githubAccounts, searchPulls } from "./pulls.js";
 
 
 // Stores a token without the 128-character limit of `security`'s own prompt, and without it ever
@@ -83,6 +83,13 @@ export class Setup {
     cx.spawn(async (cx) => {
       const dirs = await claudeFolders().catch(() => []);
       if (dirs.length) { this.claudeDirs = dirs; cx.notify(); }
+    });
+    // The GitHub account Kelpie uses for it: one gh is signed in to, or null for gh's active one.
+    this.githubAccount = saved.github?.account ?? null;
+    this.githubAccounts = [];
+    if (!saved.demo) cx.spawn(async (cx) => {
+      const found = await githubAccounts().catch(() => []);
+      if (found.length) { this.githubAccounts = found; cx.notify(); }
     });
     // The ticket prompt shows the default until changed; the default itself isn't saved.
     this.prompt = TextareaState.new({ value: saved.jira?.prompt || DEFAULT_PROMPT });
@@ -219,8 +226,9 @@ export class Setup {
     this.result("github", null, "Checking…", cx);
     cx.spawn(async (cx) => {
       try {
-        const mine = await searchPulls(`user:${owner} is:pr is:open author:@me`, { demo: Boolean(this.profile?.demo) });
-        this.result("github", true, `Found. ${mine.length} open pull request${mine.length === 1 ? "" : "s"} of yours.`, cx);
+        const mine = await searchPulls(`user:${owner} is:pr is:open author:@me`, { demo: Boolean(this.profile?.demo), account: this.githubAccount });
+        const as = this.githubAccount ? ` as ${this.githubAccount}` : "";
+        this.result("github", true, `Found. ${mine.length} open pull request${mine.length === 1 ? "" : "s"} of yours${as}.`, cx);
       } catch (e) {
         this.result("github", false, String(e?.message ?? e), cx);
       }
@@ -270,7 +278,7 @@ export class Setup {
         name,
         folder,
         jira: parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
-        github: owner ? { owner, ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
+        github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
         notify: { pulls: this.notifyPulls },
@@ -336,7 +344,7 @@ export class Setup {
         const parsed = parseBoard(this.board.value(), { demo: Boolean(this.profile?.demo) });
         return parsed ? `${parsed.site.replace(/^https:\/\//, "").split(".")[0]} · board ${parsed.board}` : "Not connected";
       }
-      case "github": return this.owner.value().trim() || "Not connected";
+      case "github": return this.owner.value().trim() ? [this.owner.value().trim(), this.githubAccount && `as ${this.githubAccount}`].filter(Boolean).join(" · ") : "Not connected";
       case "web": {
         const home = this.webHome.value().trim();
         return home ? home.replace(/^https?:\/\//, "").split("/")[0] : "Blank page";
@@ -435,6 +443,8 @@ export class Setup {
     // Claude accounts by folder name; a saved folder no longer found still shows, so it can be changed.
     const dirName = (d) => d.replace(/\/+$/, "").split("/").pop();
     const dirs = [...new Set([...this.claudeDirs, ...[this.claudeConfig].filter(Boolean)])].filter((d) => !isOwnClaude(d));
+    // GitHub accounts gh knows; a saved one no longer signed in still shows, so it can be changed.
+    const ghAccounts = [...new Set([...this.githubAccounts, ...[this.githubAccount].filter(Boolean)])];
     const hasJira = Boolean(parsed), hasGithub = Boolean(this.owner.value().trim());
     const dirty = this.dirty();
     const fields = (list) => `Fills in ${list.map((f) => `{${f}}`).join(" ")}.`;
@@ -481,6 +491,10 @@ export class Setup {
         field("Owner", row(grow(input(this.owner)), textButton(t, "setup-github-check", "Check", (_e, cx) => this.checkGithub(cx), { tip: "Looks for your open pull requests there" })),
           "An organisation or a user."),
         check("github"),
+        field("GitHub account", choice("setup-github-account", [
+          { label: "Default", value: null, on: !this.githubAccount, tip: "The account gh has active" },
+          ...ghAccounts.map((a) => ({ label: a, value: a, on: this.githubAccount === a })),
+        ], (v) => { this.githubAccount = v; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change."),
         toggle("setup-notify-pulls", "Notify about pull requests", this.notifyPulls, (_e, cx) => { this.notifyPulls = !this.notifyPulls; cx.notify(); },
           "When one of yours starts failing its checks, gets changes requested, or becomes ready to merge. Agents that need you notify anyway."),
       ],

@@ -658,6 +658,7 @@ export function buildProfile(id, set) {
     if (next.jira.email && !validEmail(next.jira.email)) throw new Error("jira.email: an email address, without quotes, backslashes or spaces.");
   }
   if (next.github && !next.github.owner) throw new Error("github.owner: needed while GitHub is set (null removes GitHub).");
+  if (next.github?.account && !GITHUB_LOGIN.test(next.github.account)) throw new Error("github.account: a GitHub account name gh is signed in to (null for gh's active one).");
   if (next.web?.home && !/^https?:\/\//.test(next.web.home)) throw new Error("web.home: starts with https://.");
   if (next.claude && !next.claude.config) next.claude = null;
   return next;
@@ -666,8 +667,11 @@ export function buildProfile(id, set) {
 // What an agent may not change without the person's yes: anything that runs a command (commands, the
 // token command), decides where the Jira token goes or which one (the board, the email, the Keychain
 // item), steers future agents (prompts), picks the Claude account (its settings can run hooks), or
-// opens a page (the web start page). The rest (name, folder, owner, handover, notify) applies at once.
-export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], github: ["reviewPrompt", "mergePrompt", "approvalPrompt"] };
+// opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
+// requests as it). The rest (name, folder, owner, handover, notify) applies at once.
+export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
+// A GitHub login: letters, digits and single hyphens, not starting with one (gh.sh checks it too).
+export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
 export function needsYes(id, set) {
   const saved = profileById(id) ?? {};
   const out = [];
