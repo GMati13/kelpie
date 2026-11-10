@@ -23,7 +23,7 @@ before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); }
 // A profile with a leftovers check and a clean-up command, and what the check found for ACME-122
 // (as checkLeftovers() keeps it: `ask` says what was asked, so it isn't asked again).
 const COMMANDS = { leftovers: "check-leftovers {key}", cleanUp: "clean-up {key}" };
-const LEFTOVERS = { [DEMO]: { at: Date.now(), ask: `3|${COMMANDS.leftovers}|${COMMANDS.cleanUp}|ACME-122 ACME-129`,
+const LEFTOVERS = { [DEMO]: { at: Date.now(), ask: `3|${COMMANDS.leftovers}|${COMMANDS.cleanUp}|ACME-118 ACME-122 ACME-129`,
   found: { "ACME-122": { "ACME-123": ["worktrees/ACME-123/api: 2 files not pushed", "a branch ACME-123 in api"] } } } };
 
 // The dialog the last openOverlay() asked for, drawn as Herdr would: its props, then Confirm.

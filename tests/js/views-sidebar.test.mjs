@@ -40,7 +40,8 @@ for (const layout of ["Kelpie", "Kelpie-Plain"]) {
 }
 
 test("a finished story whose agent is working has no broom", async () => {
-  const el = await list({ agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });
+  // Without ACME-118's paused session, which leaves it to clean up too.
+  const el = await list({ paused: { "ACME-138": FIXTURE.paused["ACME-138"] }, agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });
   const row = byId(el, "story-ACME-122");
   assert.ok(row, "the row is drawn");
   assert.equal(byId(row, "clean-ACME-122"), null, "no broom while its agent works");

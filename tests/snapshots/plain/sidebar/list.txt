@@ -5,10 +5,10 @@ v_flex [fg=foreground]
         h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
           "Updated just now ↻"
       h_flex
-        div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up the finished story with something left"
+        div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 2 finished stories with something left"
           svg own:brush-cleaning
         div [fg=dim]
-          "1"
+          "2"
     h_flex
       h_flex #count-needs-you [fg=working] tip="1 need you"
         div
@@ -35,10 +35,10 @@ v_flex [fg=foreground]
         div
           svg chrome:spinner [fg=accent] ~spin
         "1"
-      h_flex #count-paused [fg=muted] tip="1 paused"
+      h_flex #count-paused [fg=muted] tip="2 paused"
         div
           svg own:pause [fg=dim]
-        "1"
+        "2"
     v_flex #story-next [bg=raised border=border]
       h_flex
         div [fg=dim]
@@ -441,7 +441,7 @@ v_flex [fg=foreground]
       div [fg=muted]
         "Not open"
       div [fg=dim]
-        "3"
+        "4"
     h_flex #story-ACME-138 [hover(bg=hover)] {click} tip="Paused · 1 subtask · 1 in progress"
       div
         div
@@ -479,7 +479,7 @@ v_flex [fg=foreground]
       div [fg=muted]
         "Waiting on others"
       div [fg=dim]
-        "1"
+        "2"
     h_flex #story-ACME-129 [hover(bg=hover)] {click} tip="2 subtasks · 2 in progress"
       div
         div
@@ -498,3 +498,24 @@ v_flex [fg=foreground]
               div [bg=ansi4]
             div [fg=dim]
               "0/1"
+    h_flex #story-ACME-118 [hover(bg=hover)] {click} tip="Paused · 1 subtask · 1 done"
+      div
+        div
+          svg own:pause [fg=dim]
+      v_flex
+        div [fg=muted]
+          "Move error reports to the new tracker"
+        h_flex [opacity=0.6]
+          div [fg=dim]
+            "ACME-118"
+          h_flex #b-paused-ACME-118 [fg=muted] tip="Paused: Resume picks it up"
+            div
+              svg own:pause [fg=dim]
+          h_flex #b-subs-ACME-118 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+            h_flex [bg=raised]
+              div [bg=done]
+            div [fg=dim]
+              "1/1"
+      div #clean-ACME-118 {down:left click}
+        div #clean-ACME-118 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-118: forgets its paused session"
+          svg own:brush-cleaning

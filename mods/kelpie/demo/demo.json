@@ -246,6 +246,21 @@
       "parent": "ACME-122",
       "status": "Done",
       "mine": true
+    },
+    {
+      "key": "ACME-118",
+      "assignee": "Priya Nair",
+      "summary": "Move error reports to the new tracker",
+      "type": "Story",
+      "status": "Done",
+      "description": "The old error tracker shuts down at the end of the month. Send the API's and the web app's error reports to the new one, with the same release tags."
+    },
+    {
+      "key": "ACME-119",
+      "summary": "Report API errors to the new tracker",
+      "parent": "ACME-118",
+      "status": "Done",
+      "mine": true
     }
   ],
   "pulls": [
@@ -477,6 +492,14 @@
       "updated": "-3h"
     },
     {
+      "id": "demo-s6",
+      "title": "Report API errors to the new tracker",
+      "first": [
+        "ACME-119"
+      ],
+      "updated": "-2d"
+    },
+    {
       "id": "demo-s3",
       "title": "Reset email in the transactional template",
       "first": [
@@ -678,6 +701,13 @@
         "id": "demo-s2",
         "name": "ACME-139",
         "at": "-3h"
+      }
+    ],
+    "ACME-119": [
+      {
+        "id": "demo-s6",
+        "name": "ACME-119",
+        "at": "-2d"
       }
     ]
   },
