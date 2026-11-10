@@ -17,7 +17,7 @@ fi
 
 if [ "$only" = all ] || [ "$only" = py ]; then
   echo "== Python (unittest)"
-  python3 -I -m unittest discover -s tests/python -t tests/python -p 'test_*.py' || failed="$failed python"
+  python3 -I -B -m unittest discover -v -s tests/python -t tests/python -p 'test_*.py' || failed="$failed python"
 fi
 
 echo
