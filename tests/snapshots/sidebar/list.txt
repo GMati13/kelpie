@@ -521,7 +521,7 @@ v_flex [fg=foreground]
               div [bg=ansi4]
             div [fg=dim]
               "0/1"
-    h_flex #story-ACME-118 [hover(bg=hover)] {click} tip="Paused · 1 subtask · 1 done"
+    h_flex #story-ACME-116 [hover(bg=hover)] {click} tip="Paused · 1 subtask · 1 done"
       div
         div
           svg own:pause [fg=dim]
@@ -530,15 +530,26 @@ v_flex [fg=foreground]
           "Move error reports to the new tracker"
         h_flex [opacity=0.6]
           div [font="DM Mono" fg=dim]
-            "ACME-118"
-          h_flex #b-paused-ACME-118 [fg=muted] tip="Paused: Resume picks it up"
+            "ACME-116"
+          h_flex #b-paused-ACME-116 [fg=muted] tip="Paused: Resume picks it up"
             div
               svg own:pause [fg=dim]
-          h_flex #b-subs-ACME-118 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+          h_flex #b-subs-ACME-116 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
             h_flex [bg=raised]
               div [bg=done]
             div [fg=dim]
               "1/1"
-      div #clean-ACME-118 {down:left click}
-        div #clean-ACME-118 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-118: forgets its paused session"
+      div #clean-ACME-116 {down:left click}
+        div #clean-ACME-116 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-116: forgets its paused session"
           svg own:brush-cleaning
+    div #stories-done {click} tip="Show the stories finished this sprint"
+      div
+        div [font="DM Sans" fg=muted]
+          "DONE"
+        div [font="DM Mono" fg=dim]
+          "1"
+        div
+          svg chrome:chevron-right [fg=dim]
+        div
+          div
+            div [bg=dim/f2] ×32 … [bg=dim/1a]

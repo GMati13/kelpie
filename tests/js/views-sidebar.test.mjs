@@ -1,7 +1,7 @@
 // What the sidebar draws (stories.js StoryList, desk.js deskRows), pinned as snapshots
 // (tests/README.md, Snapshots): the demo's stories in every state, reviews, the "No ticket" pull
 // requests, the Desk, and Next with and without Claude's picks.
-import { NOW, DEMO, FIXTURE, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
+import { NOW, DEMO, FIXTURE, demoProfile, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
@@ -32,15 +32,24 @@ for (const layout of ["Kelpie", "Kelpie-Plain"]) {
   const dir = layout === "Kelpie" ? "sidebar" : "plain/sidebar";
   // Every state the demo has at once: needs you (ACME-142), failing checks (151), changes requested
   // (160), ready to merge (171), working (175), finished with a space (122, the broom), paused (138),
-  // not open (180), waiting on others (129); the reviews, your pull requests by story and "No ticket",
-  // the Desk with its agent, Next without picks.
+  // not open (180), waiting on others (129), done and cleaned up (118, the folded Done group); the
+  // reviews, your pull requests by story and "No ticket", the Desk with its agent, Next without picks.
   test(`${layout}: the story list in every state`, async () => {
     snap(`${dir}/list`, await list({ layout }));
   });
 }
 
+// Working alone: the stories past your part are under "Built", not "Waiting on others".
+test("the story list of someone who works alone", async () => {
+  // Kelpie-Plain: Quiet Pages sets group headings in capitals.
+  const el = await list({ layout: "Kelpie-Plain", profile: { jira: { ...demoProfile().jira, solo: true } } });
+  const words = texts(el);
+  assert.ok(words.includes("Built"), "built, nobody else to wait on");
+  assert.ok(!words.includes("Waiting on others"), "nobody else to wait on");
+});
+
 test("a finished story whose agent is working has no broom", async () => {
-  // Without ACME-118's paused session, which leaves it to clean up too.
+  // Without ACME-116's paused session, which leaves it to clean up too.
   const el = await list({ paused: { "ACME-138": FIXTURE.paused["ACME-138"] }, agentOf: (space, _tab, a) => (space === "ACME-122" ? { ...a, status: "working" } : a) });
   const row = byId(el, "story-ACME-122");
   assert.ok(row, "the row is drawn");
@@ -205,6 +214,41 @@ test("a story's pull requests fold under its heading", async () => {
   handlers(shut).find((h) => h.id === "mine-story-fold-ACME-142").fn({}, { ...cx, stop_propagation() {} });
   assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: {} });
   assert.ok(byId(view.render(cx), "mine-web#418"), "unfolded again");
+});
+
+// A finished story cleaned up (done, no space, nothing open: ACME-118) stays reachable in the Done
+// group, last and folded: its chevron unfolds it per profile, a click on its row previews it, and a
+// done story shown keeps its row while the group is folded.
+test("finished stories stay in a folded Done group", async () => {
+  setupDemoWorld({ stories });
+  const { el, view, cx } = await draw(new StoryList());
+  assert.equal(byId(el, "story-ACME-118"), null, "not among the stories in play");
+  assert.ok(byId(el, "stories-done"), "the Done group's heading");
+  assert.equal(byId(el, "done-ACME-118"), null, "folded at first");
+  handlers(el).find((h) => h.id === "stories-done").fn({}, cx);
+  assert.deepEqual(mock.state.shared.get("kelpie.done.open"), { [DEMO]: true });
+  const open = view.render(cx);
+  const row = byId(open, "done-ACME-118");
+  assert.ok(row, "its row shows once unfolded");
+  snap("sidebar/done-row", row);
+  handlers(row).find((h) => h.id === "done-ACME-118").fn({}, cx);
+  assert.equal(mock.state.shared.get("kelpie.stories.preview")[DEMO], "ACME-118", "a click previews it");
+  handlers(open).find((h) => h.id === "stories-done").fn({}, cx);
+  assert.deepEqual(mock.state.shared.get("kelpie.done.open"), {});
+  const shut = view.render(cx);
+  assert.ok(byId(shut, "done-ACME-118"), "folded, the story shown keeps its row");
+  assert.equal(byId(shut, "story-ACME-118"), null);
+});
+
+// KELPIE-43: a finished story that still leaves something to clean up (ACME-116: no space, its
+// subtask's session paused) isn't settled: it stays among the stories, with its broom, not in Done.
+test("a finished story with a paused session left stays listed with its broom, not in Done", async () => {
+  setupDemoWorld({ stories, props: {} });
+  putShared("kelpie.done.open", { [DEMO]: true });
+  const { el } = await draw(new StoryList());
+  assert.ok(byId(byId(el, "story-ACME-116"), "clean-ACME-116"), "listed, with its broom");
+  assert.equal(byId(el, "done-ACME-116"), null, "not in the Done group");
+  assert.ok(byId(el, "done-ACME-118"), "a story with nothing left still is");
 });
 
 // A profile with no board yet: the list asks for one, Jira or a GitHub Project, naming neither as

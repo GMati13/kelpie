@@ -157,11 +157,13 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["github.owner", { github: { owner: "other-org" } }, (p) => p.github.owner === "other-org" && p.github.reviewPrompt === "Review {url}"],
     ["notify.pulls", { notify: { pulls: false } }, (p) => p.notify.pulls === false],
     ["jira.handover", { jira: { handover: "QA" } }, (p) => p.jira.handover === "QA" && p.jira.keychain === "jira-acme"],
+    ["jira.solo", { jira: { solo: true } }, (p) => p.jira.solo === true && p.jira.keychain === "jira-acme"],
     ["an unchanged command", { commands: { status: "make status" } }, (p) => p.commands.status === "make status"],
     // Disconnecting runs nothing and sends the sign-in nowhere; connecting again needs jira.url (a yes).
     ["removing Jira", { jira: null }, (p) => p.jira === null],
     ["removing GitHub", { github: null }, (p) => p.github === null],
     ["project.handover", { project: { handover: "QA" } }, (p) => p.project.handover === "QA" && p.project.prefixes === "acme/web=WEB", "gh"],
+    ["project.solo", { project: { solo: true } }, (p) => p.project.solo === true, "gh"],
     ["removing the Project", { project: null }, (p) => p.project === null, "gh"],
   ]) {
     test(`${what}`, async () => {
@@ -191,6 +193,8 @@ describe("apply-profile: refused outright", () => {
     ["sources", { sources: ["stories"] }, /not a profile setting/],
     ["a number for a command", { commands: { status: 5 } }, /a string/],
     ["an object for a prompt", { prompts: { fix: { text: "x" } } }, /a string/],
+    // "false" would read as true: working alone is a yes or no.
+    ["a string for solo", { jira: { solo: "false" } }, /jira\.solo: true or false/],
     ["a list for a section", { commands: ["rm"] }, /an object/],
     ["a lookalike board", { jira: { url: "https://evil.com/x.atlassian.net/jira/boards/1" } }, /jira\.url/],
     ["a token command without email", { jira: { tokenCommand: "op read x", email: null } }, /jira\.email/],

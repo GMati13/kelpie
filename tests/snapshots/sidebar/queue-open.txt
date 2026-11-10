@@ -154,7 +154,7 @@ v_flex
           div
             "2 finished stories: clean up all"
         div [fg=muted]
-          "ACME-122, ACME-118"
+          "ACME-122, ACME-116"
     div
       v_flex #queue-suggested [bg=accent/12]
         h_flex

@@ -250,15 +250,30 @@
     {
       "key": "ACME-118",
       "assignee": "Priya Nair",
+      "summary": "Show prices in the traveller's currency",
+      "type": "Story",
+      "status": "Done",
+      "description": "Prices show in euros whatever the traveller's home currency, so most of them convert in their head before booking.\n\nShow every price in the currency of the traveller's account, converted at the day's rate, with the original price in a tooltip."
+    },
+    {
+      "key": "ACME-119",
+      "summary": "Convert prices in the price service",
+      "parent": "ACME-118",
+      "status": "Done",
+      "mine": true
+    },
+    {
+      "key": "ACME-116",
+      "assignee": "Priya Nair",
       "summary": "Move error reports to the new tracker",
       "type": "Story",
       "status": "Done",
       "description": "The old error tracker shuts down at the end of the month. Send the API's and the web app's error reports to the new one, with the same release tags."
     },
     {
-      "key": "ACME-119",
+      "key": "ACME-117",
       "summary": "Report API errors to the new tracker",
-      "parent": "ACME-118",
+      "parent": "ACME-116",
       "status": "Done",
       "mine": true
     }
@@ -428,6 +443,13 @@
       "merged": true
     },
     {
+      "repo": "api",
+      "number": 287,
+      "title": "ACME-119 Convert prices to the traveller's currency",
+      "updated": "-6d",
+      "merged": true
+    },
+    {
       "repo": "web",
       "number": 421,
       "title": "ACME-166 Share a trip with a link",
@@ -495,7 +517,7 @@
       "id": "demo-s6",
       "title": "Report API errors to the new tracker",
       "first": [
-        "ACME-119"
+        "ACME-117"
       ],
       "updated": "-2d"
     },
@@ -512,6 +534,12 @@
       "title": "Compare map libraries by size",
       "first": [],
       "updated": "-1d"
+    },
+    {
+      "id": "demo-s5",
+      "title": "Currency conversion in the price service",
+      "first": ["ACME-119"],
+      "updated": "-6d"
     }
   ],
   "spaces": [
@@ -703,10 +731,10 @@
         "at": "-3h"
       }
     ],
-    "ACME-119": [
+    "ACME-117": [
       {
         "id": "demo-s6",
-        "name": "ACME-119",
+        "name": "ACME-117",
         "at": "-2d"
       }
     ]

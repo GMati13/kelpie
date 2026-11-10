@@ -16,7 +16,7 @@ v_flex #kelpie-confirm [bg=popover] {key_down}
         div [fg=dim]
           "•"
         div [fg=dim]
-          "ACME-118"
+          "ACME-116"
         div [fg=foreground]
           "forgets its paused session"
   h_flex
