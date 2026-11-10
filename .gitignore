@@ -5,3 +5,4 @@ mods/**/jsconfig.json
 # Claude Code: personal permissions and local state
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/worktrees/

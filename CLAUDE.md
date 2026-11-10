@@ -1,6 +1,6 @@
 # Kelpie
 
-Herdr layouts built around profiles and stories (Jira sprint, pull requests, Claude agents). Open source, MIT (`LICENSE`); bundled fonts and icons keep their own licences beside them (OFL, ISC): anything third-party added needs its licence file and an MIT-compatible licence.
+Herdr layouts built around profiles and stories (Jira sprint, pull requests, Claude agents). How to work on it (development, security, testing, product rules) is in `.claude/rules/`, which Claude Code loads on its own; this file is the reference for how each part works. Open source, MIT (`LICENSE`); bundled fonts and icons keep their own licences beside them (OFL, ISC): anything third-party added needs its licence file and an MIT-compatible licence.
 
 ## First: universal, not personal
 
