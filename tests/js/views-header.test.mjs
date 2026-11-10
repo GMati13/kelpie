@@ -9,6 +9,7 @@ import { handlers, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
+import { demoPulls } from "../../mods/kelpie/demo.js";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
 let stories;
@@ -63,7 +64,43 @@ test("header: a review, before and while its agent runs", async () => {
   assert.deepEqual(mainAction(el), ["Show review"]);
   snap("header/review-agent", el);
   handlers(el).find((h) => h.id === "review-approve").fn({}, cx);
-  assert.deepEqual(texts(byId(view.render(cx), "review-approve")), ["Confirm approve"]);
+  assert.deepEqual(texts(byId(view.render(cx), "review-approve")), ["Confirm approve with comments"]);
+});
+
+// Approving yourself: in the header with or without an agent, a second click approves it on GitHub
+// (the demo's, kept in memory) and notes it; nothing is sent to an agent.
+test("header: approve a review yourself", async () => {
+  const before = await header({ preview: "review:web#421" });
+  assert.deepEqual(texts(byId(before.el, "review-approve-self")), ["Approve"]);
+  const { el, view, cx } = await header({ preview: "review:web#421", spaces: REVIEWS });
+  const click = (root) => handlers(root).find((h) => h.id === "review-approve-self").fn({}, cx);
+  click(el);
+  const armed = view.render(cx);
+  assert.deepEqual(texts(byId(armed, "review-approve-self")), ["Confirm approve"]);
+  click(armed);
+  // While GitHub answers: Approving…, a spinner, nothing to click.
+  const waiting = byId(view.render(cx), "review-approve-self");
+  assert.deepEqual(texts(waiting), ["Approving…"]);
+  assert.match(render(waiting, skinTheme()), /chrome:spinner/);
+  assert.deepEqual(handlers(waiting), []);
+  await cx.settle();
+  assert.equal(mock.sharedValue("kelpie.stories.note")?.text, "Approved web#421 on GitHub.");
+  assert.deepEqual(mock.of("hc"), [], "nothing sent to an agent");
+  const pr = (await demoPulls("review-requested:@me")).find((p) => p.number === 421);
+  assert.equal(pr.reviewDecision, "APPROVED");
+  // Then the button is Approved, with the approved mark, and nothing to click.
+  const done = byId(view.render(cx), "review-approve-self");
+  assert.deepEqual(texts(done), ["Approved"]);
+  assert.deepEqual(handlers(done), []);
+  snap("header/review-approved", done);
+});
+
+// Approved from GitHub's word alone (your latest review, viewerReview), as after a restart: the
+// stories loaded again, and nothing noted by Kelpie.
+test("header: a review you approved elsewhere says Approved", async () => {
+  const fresh = await loadStories(StoryList);
+  const { el } = await header({ preview: "review:web#421", stories: fresh, shared: { "kelpie.approved": {} } });
+  assert.deepEqual(texts(byId(el, "review-approve-self")), ["Approved"]);
 });
 
 test("header: a pull request of yours with no ticket", async () => {

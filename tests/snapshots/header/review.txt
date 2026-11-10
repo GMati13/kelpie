@@ -18,6 +18,8 @@ div
           div
             div
               div [bg=#7fb3ae]
+        h_flex #review-approve-self [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to approve web#421 on GitHub, as yourself"
+          "Approve"
       div [bg=border]
       h_flex
         div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"

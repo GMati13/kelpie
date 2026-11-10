@@ -13,12 +13,12 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
-import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { PREVIEWS, STORIES, chooseProfile, claudeArgv, deskOf, openDesk, handoverFrom, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { activeSprints, boardScope, jira, lozenge } from "./sprint.js";
-import { searchPulls } from "./pulls.js";
+import { approvePull, searchPulls } from "./pulls.js";
 import { adfBlocks, adfLines, adfText } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
@@ -85,6 +85,15 @@ const checksOf = (p) => p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state 
 const failing = (p) => ["FAILURE", "ERROR"].includes(checksOf(p));
 const ready = (p) => !p.merged && !p.isDraft && checksOf(p) === "SUCCESS" && p.reviewDecision === "APPROVED";
 const prName = (p) => `${p.repository.name}#${p.number}`;
+// Pull requests you approved from Kelpie (url -> when, a day at most): until the stories load again
+// after it, the header says Approved from this; after, from GitHub's own word (viewerReview, your
+// latest review), so a later change request or a dismissed approval shows too.
+const APPROVALS = "kelpie.approved";
+const APPROVED_FOR = 24 * 3600e3;
+const youApproved = (st, p) => {
+  const at = shared(APPROVALS)?.[p.url];
+  return at && Date.now() - at < APPROVED_FOR && !(st.at > at) ? true : p.viewerReview === "APPROVED";
+};
 
 // The agents in a profile's spaces, by key: one whose tab is named after a key counts for that key,
 // any other in a story's space for the story. A blocked one outranks the rest.
@@ -595,6 +604,7 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
+  ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
   author: p.author ? { login: p.author.login } : null, repository: { name: p.repository?.name }, commits: { nodes: [{ commit: { statusCheckRollup: { state: checksOf(p) } } }] } });
 const session = (x) => ({ id: x.id, title: x.title, cwd: x.cwd, updated: x.updated, running: x.running, first: x.first, ...(x.config ? { config: x.config } : {}) });
 
@@ -1773,9 +1783,10 @@ export class Stories extends Source {
   }
 
   // A review previewed: start its review agent (or show the one open); headRow's open icon opens it on GitHub.
-  // A review's header: Start review (or Show review), and once its agent runs, what to do with the
-  // review it drafted: post the comments, approve, or request changes, each sent to the agent after a
-  // second click. Nothing is posted until one is pressed; posting yourself, leave them.
+  // A review's header: Start review (or Show review), Approve (yours, straight on GitHub after a
+  // second click, agent or not), and once its agent runs, what to do with the review it drafted: post
+  // the comments, approve with them, or request changes, each sent to the agent after a second click.
+  // Nothing is posted until one is pressed; posting yourself, leave them.
   reviewActions(t, st, it) {
     const p = it.review;
     const tab = reviewTab(p);
@@ -1788,12 +1799,41 @@ export class Stories extends Source {
     const decide = (id, label, text, tip) => this.carefulButton(t, `review-${id}`, label, true, tell(text), { tip, confirmTip: `${tip}: click again to send it to its agent` });
     return [
       primaryButton(t, "review-start", tab ? "Show review" : "Start review", () => startReview(st.profile, p), { tip: `${tab ? "Show its review agent" : `Check it out and start a review agent on it, in ${st.profile.name}'s ${REVIEWS} space`} ⌘⇧R` }),
+      youApproved(st, p)
+        ? doneButton(t, "review-approve-self", "Approved", mark(t, "pr-approved", 14), t.done, { tip: `You approved ${prName(p)} on GitHub` })
+        : this.approving?.[p.url]
+          ? doneButton(t, "review-approve-self", "Approving…", mark(t, "working", 14), t.muted, { tip: `Approving ${prName(p)} on GitHub` })
+          : this.carefulButton(t, "review-approve-self", "Approve", true, (cx) => this.approvePr(st, p, cx),
+          { tip: `Approve ${prName(p)} on GitHub yourself`, confirmTip: `Click again to approve ${prName(p)} on GitHub, as yourself` }),
       ...(agent ? [
         decide("post", "Post comments", askOf(st.profile, "post", [p]), "Have the agent post its comments as a review"),
-        decide("approve", "Approve", askOf(st.profile, "approve", [p]), "Have the agent approve it"),
+        decide("approve", "Approve with comments", askOf(st.profile, "approve", [p]), "Have the agent approve it, with the comments you agreed on"),
         decide("changes", "Request changes", askOf(st.profile, "changes", [p]), "Have the agent request changes, with its findings"),
       ] : []),
     ];
+  }
+
+  // Approves a review's pull request as you (approvePull), notes it (APPROVALS) so the header says
+  // Approved at once, then loads the stories again.
+  // While GitHub answers, the button is Approving… with a spinner (`this.approving`, by url, this copy's).
+  approvePr(st, p, cx) {
+    say(`Approving ${prName(p)}…`);
+    this.approving = { ...(this.approving ?? {}), [p.url]: true };
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        await approvePull(p, { demo: Boolean(st.setup.github?.demo) || isDemo(st.profile) });
+        const now = Date.now();
+        setShared(APPROVALS, { ...Object.fromEntries(Object.entries(shared(APPROVALS) ?? {}).filter(([, at]) => now - at < APPROVED_FOR)), [p.url]: now });
+        say(`Approved ${prName(p)} on GitHub.`);
+        setShared(REFRESH, Date.now());
+      } catch (e) {
+        say(`Couldn't approve ${prName(p)}: ${String(e?.message ?? e)}`);
+      } finally {
+        delete this.approving?.[p.url];
+      }
+      cx.notify();
+    });
   }
 
   // One of your pull requests with no ticket: the main action is what it needs (fix checks, address

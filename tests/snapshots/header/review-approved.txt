@@ -1,0 +1,4 @@
+h_flex #review-approve-self [font="DM Sans" bg=done/1f border=done/55 fg=done] tip="You approved web#421 on GitHub"
+  div
+    svg chrome:circle-check [fg=done]
+  "Approved"

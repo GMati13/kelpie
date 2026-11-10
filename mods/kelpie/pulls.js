@@ -8,11 +8,11 @@ import { exec } from "herdr";
 import { skinTheme } from "./skins/index.js";
 import { SMALL, ago, avatar, chip, openExternal, textButton } from "./ui.js";
 import { Source, empty, frame, needsSetup, startAgent } from "./source.js";
-import { demoPulls } from "./demo.js";
+import { demoApprove, demoPulls } from "./demo.js";
 
 const QUERY = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
-  number title url isDraft updatedAt reviewDecision author { login } repository { name }
-  latestOpinionatedReviews(first: 20) { nodes { state } }
+  number title url isDraft updatedAt reviewDecision headRefOid author { login } repository { name }
+  viewerLatestReview { state } latestOpinionatedReviews(first: 20) { nodes { state } }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }`;
 // "user:" covers organisations too.
 const GROUPS = [
@@ -39,10 +39,25 @@ export async function searchPulls(q, { light = false, demo = false } = {}) {
   return JSON.parse(r.stdout).data.search.nodes.filter((n) => n?.number).map(decided);
 }
 
+// Approves a pull request as the person, on their own click in a review's header (never an agent's
+// message: agents approve through their own access). Only a github.com pull request's address is
+// taken, its parts going into the API path, no shell. Pinned to the head commit the list loaded, when
+// known, so a push after the person looked isn't approved unseen. `demo`: kept in demo.js's memory.
+const PULL_URL = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d+)$/;
+export async function approvePull(pr, { demo = false } = {}) {
+  const m = PULL_URL.exec(pr?.url ?? "");
+  if (!m) throw new Error("its address isn't a GitHub pull request's.");
+  if (demo) return demoApprove(pr.url);
+  const at = /^[0-9a-f]{40}$/.test(pr.headRefOid ?? "") ? ["-f", `commit_id=${pr.headRefOid}`] : [];
+  const r = await exec("gh", ["api", "--method", "POST", `repos/${m[1]}/${m[2]}/pulls/${m[3]}/reviews`, "-f", "event=APPROVE", ...at]);
+  if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim().split("\n")[0].replace(/^gh: /, "") || "GitHub didn't take the approval.");
+}
+
 // GitHub gives a review decision only where the branch requires reviews; elsewhere it's null however
 // the reviewers answered. Then each reviewer's latest review decides: a change request wins, else an
-// approval approves.
-function decided({ latestOpinionatedReviews: latest, ...pr }) {
+// approval approves. `viewerReview`: the state of your own latest review (APPROVED once you approved).
+function decided({ latestOpinionatedReviews: latest, viewerLatestReview: own, ...raw }) {
+  const pr = own === undefined ? raw : { ...raw, viewerReview: own?.state ?? null };
   if (pr.reviewDecision || !latest) return pr;
   const states = (latest.nodes ?? []).map((x) => x?.state);
   return { ...pr, reviewDecision: states.includes("CHANGES_REQUESTED") ? "CHANGES_REQUESTED" : states.includes("APPROVED") ? "APPROVED" : null };

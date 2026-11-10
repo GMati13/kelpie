@@ -125,9 +125,16 @@ const prUrl = (f, p) => `https://github.com/${f.profile.owner}/${p.repo}/pull/${
 function asPull(f, p) {
   return {
     number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
-    reviewDecision: p.review ?? null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
+    reviewDecision: APPROVED.has(prUrl(f, p)) ? "APPROVED" : p.review ?? null, viewerReview: APPROVED.has(prUrl(f, p)) ? "APPROVED" : null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };
+}
+// approvePull() for a demo profile: the pull request shows approved until the mod reloads.
+const APPROVED = new Set();
+export async function demoApprove(url) {
+  const f = await demoFixture();
+  if (!f.pulls.some((x) => prUrl(f, x) === url)) throw new Error("the demo has no such pull request.");
+  APPROVED.add(url);
 }
 // searchPulls(q) for a demo profile: yours open, yours merged, or the ones waiting for your review.
 export async function demoPulls(q) {

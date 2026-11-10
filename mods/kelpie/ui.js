@@ -151,6 +151,14 @@ export function textButton(t, id, label, action, { on = false, tip, dim = false 
     .when(on, (el) => el.bg(t.selected)).text_color(on ? t.foreground : dim ? t.dim : t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)), { kind: "text", id, label, on });
 }
 
+// What a button did, shown in its place once done (Approve, once you've approved): the same size,
+// a mark before the words, tinted in the state's `color`, and nothing to click.
+export function doneButton(t, id, label, markEl, color, { tip } = {}) {
+  return decor("controlDecor", t, skinFont(h_flex().id(id).h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(7).font_medium(), "label", SMALL)
+    .bg(tint(color, "1f")).border_1().border_color(tint(color, "55")).text_color(color).when(Boolean(tip), (el) => el.tooltip(tip))
+    .child(markEl).child(skinText(label, "label")), { kind: "done", id, label, on: false });
+}
+
 // The one main action of a view, filled in the accent colour; takes the same options as textButton.
 export function primaryButton(t, id, label, action, { tip } = {}) {
   return decor("controlDecor", t, button(t, id, label, action, tip).bg(t.accent).text_color(t.accent_foreground).hover((s) => s.opacity(0.88)), { kind: "primary", id, label, on: false });
