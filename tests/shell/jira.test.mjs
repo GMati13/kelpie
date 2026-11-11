@@ -157,6 +157,14 @@ describe("jira.sh: transition", () => {
     assert.equal(argv[argv.indexOf("-X") + 1], "POST");
     assert.deepEqual(JSON.parse(argv[argv.indexOf("--data") + 1]), { transition: { id: "31" } });
   });
+  // Labels and the type say what kind of work a ticket is on its row (#53).
+  test("a search asks for each issue's type and labels", () => {
+    const f = fakes();
+    jira(f, [...byCommand(), SITE, "", "search", "project = ABC", ""]);
+    const { argv } = f.calls("curl")[0];
+    const { fields } = JSON.parse(argv[argv.indexOf("--data") + 1]);
+    assert.ok(fields.includes("issuetype") && fields.includes("labels"), fields.join(", "));
+  });
   test("an unknown action is refused", () => {
     const f = fakes();
     assert.equal(jira(f, [...byCommand(), SITE, "", "delete", "/rest/api/3/issue/ABC-1"]).json?.error, "usage");

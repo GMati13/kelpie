@@ -13,7 +13,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
-import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
@@ -23,7 +23,7 @@ import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { alpha, bands, mix } from "./skins/common.js";
+import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -124,9 +124,9 @@ const busyWhy = (key) => {
 };
 // A busy run's mark, in a button's place: the working spinner, what it's doing as its tip, and with
 // `words` (the header) in words beside it too. Nothing to click.
-function busyMark(t, id, e, { words = false } = {}) {
+function busyMark(t, id, e, { words = false, box = CONTROL } = {}) {
   return h_flex().id(id).flex_none().gap(6).items_center().tooltip(busyText(e))
-    .child(div().flex().flex_none().size(CONTROL).items_center().justify_center().child(mark(t, "working", 14)))
+    .child(div().flex().flex_none().size(box).items_center().justify_center().child(mark(t, "working", 14)))
     .when(words, (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(busyText(e))));
 }
 
@@ -415,10 +415,13 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     if (from >= 0 && at === from) return "testing";
     return category === "new" ? "todo" : "doing";
   };
+  // The board's usual type at each level (every story a Story, every subtask a Sub-task) says
+  // nothing, so only other types are tags (tagsOf()).
+  const usualStory = usualType(data.parents), usualSub = usualType(data.children);
   const item = (key, f) => {
     const children = kids.get(key) ?? [];
     const sub = (c) => ({
-      key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, status: c.fields?.status?.name,
+      key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, tags: tagsOf(c.fields, usualSub), status: c.fields?.status?.name,
       category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
@@ -429,7 +432,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
     const gone = kept.has(key) && !mine.has(key) && !own.length;
     return {
-      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
@@ -566,7 +569,35 @@ function prSummary(t, open) {
   return [worst, open.map((p, i) => `${prName(p)}: ${states[i][1]}`).join("\n")];
 }
 
-function storyBadges(t, it) {
+// A story's subtasks assigned to you, by where they stand, and its tooltip ("2 of 3 past testing…").
+function subStages(t, it) {
+  const n = { past: 0, testing: 0, doing: 0, blocked: 0, todo: 0 };
+  const yours = it.subs.filter((s) => s.mine);
+  for (const s of yours) n[s.stage ?? "todo"]++;
+  const tip = [`Your subtasks: ${n.past} of ${yours.length} past testing`, n.testing && `${n.testing} in testing`, n.doing && `${n.doing} in progress`,
+    n.blocked && `${n.blocked} blocked`, n.todo && `${n.todo} to do`].filter(Boolean).join(" · ");
+  const parts = [{ n: n.past, color: t.done }, { n: n.testing, color: t.ansi4 ?? t.accent }, { n: n.doing, color: t.working },
+    { n: n.blocked, color: t.blocked }, { n: n.todo, color: t.dim }];
+  return { parts, tip: `${tip}\nAll: ${progress(it)}`, total: yours.length };
+}
+
+// The same as a thin line under a story row's text, a segment per subtask of yours, so the key line
+// keeps its room for the marks and labels (#53); its words are its tooltip.
+// A story row's title line, set so its actions sit centred on it and above the key line (rowActions()).
+const ROW_TITLE = 20;
+const ACTIONS_TOP = 7 + ROW_TITLE / 2 - ROW_CONTROL / 2;
+
+function subsLine(t, it) {
+  if (!it.story) return null;
+  const { parts, tip, total } = subStages(t, it);
+  if (!total) return null;
+  const segs = parts.flatMap((p) => Array.from({ length: p.n }, () => p.color));
+  return h_flex().id(`b-subs-${it.key}`).w_full().h(2).mt(3).gap(2).tooltip(tip)
+    .children(segs.map((c, i) => div().flex_1().h_full().rounded(1).bg(i < parts[0].n ? c : alpha(c, 0.45))));
+}
+
+// `bar: false` leaves the subtasks' bar out, for rows that draw it as subsLine().
+function storyBadges(t, it, { bar = true } = {}) {
   const out = [];
   const live = allAgents(it);
   const ask = live.filter((a) => a.status === "blocked").length, busy = live.filter((a) => a.status === "working").length;
@@ -578,16 +609,142 @@ function storyBadges(t, it) {
     const [worst, tip] = prSummary(t, open);
     out.push(countBadge(t, `b-pr-${it.key}`, worst[0], open.length, tip, worst[2]));
   } else if (allPrs(it).length) out.push(countBadge(t, `b-pr-${it.key}`, "pr-merged", 1, "Every pull request merged"));
-  if (it.story) {
-    const n = { past: 0, testing: 0, doing: 0, blocked: 0, todo: 0 };
-    const yours = it.subs.filter((s) => s.mine);
-    for (const s of yours) n[s.stage ?? "todo"]++;
-    const tip = [`Your subtasks: ${n.past} of ${yours.length} past testing`, n.testing && `${n.testing} in testing`, n.doing && `${n.doing} in progress`,
-      n.blocked && `${n.blocked} blocked`, n.todo && `${n.todo} to do`].filter(Boolean).join(" · ");
-    out.push(progressBar(t, `b-subs-${it.key}`, [{ n: n.past, color: t.done }, { n: n.testing, color: t.ansi4 ?? t.accent }, { n: n.doing, color: t.working },
-      { n: n.blocked, color: t.blocked }, { n: n.todo, color: t.dim }], `${tip}\nAll: ${progress(it)}`));
+  if (it.story && bar) {
+    const { parts, tip } = subStages(t, it);
+    out.push(progressBar(t, `b-subs-${it.key}`, parts, tip));
   }
   return out.filter(Boolean);
+}
+
+// --- Labels: what kind of work a ticket is, read on its row (#53) ---------------------------------
+
+// A ticket's labels as they're kept: GitHub's {name, color}, Jira's plain names. Both are strangers'
+// text: names cleaned of control characters and cut, a colour kept only as six hex digits, ten at most.
+const LABELS_KEPT = 10;
+const tagName = (v) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+export function labelsOf(f) { // exported for the tests
+  const out = [];
+  for (const l of Array.isArray(f?.labels) ? f.labels : []) {
+    const name = tagName(typeof l === "string" ? l : l?.name);
+    if (!name || out.some((x) => x.name === name)) continue;
+    const color = typeof l === "object" && /^[0-9a-f]{6}$/i.test(l?.color ?? "") ? l.color.toLowerCase() : null;
+    out.push(color ? { name, color } : { name });
+    if (out.length >= LABELS_KEPT) break;
+  }
+  return out;
+}
+
+// The type most of a level's tickets have: the one that says nothing on a row.
+function usualType(list) {
+  const n = new Map();
+  for (const i of list ?? []) { const k = i.fields?.issuetype?.madeUp ? null : i.fields?.issuetype?.name; if (k) n.set(k, (n.get(k) ?? 0) + 1); }
+  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+// A ticket's tags: its type when that says something (a bug always, else any but the level's usual
+// one; a GitHub Project's made-up Issue/Sub-issue then never shows), then its labels. A bug reads as a
+// bug on every board: Jira's Bug type and a label named like it are one tag, first, in the theme's red.
+// The whole name is the word, or the word after a group ("type: bug", "kind/bug"): "not-a-bug" or
+// "bug-bash" aren't bugs.
+const BUGGY = /^(?:[a-z]+\s*[:/]\s*)?(?:bugs?|defects?|incidents?)$/i;
+export function tagsOf(f, usual = null) { // exported for the tests
+  const out = [];
+  // Kelpie's own Issue/Sub-issue for a GitHub Project's issues (project.js) is no type of the board's.
+  const type = f?.issuetype?.madeUp ? null : tagName(f?.issuetype?.name) || null;
+  if (type && (BUGGY.test(type) || type !== usual)) out.push({ name: type, from: "type", bug: BUGGY.test(type) });
+  for (const l of labelsOf(f)) {
+    const bug = BUGGY.test(l.name);
+    if (bug && out.some((x) => x.bug)) continue;
+    out.push({ ...l, from: "label", bug });
+  }
+  return out.sort((a, b) => Number(b.bug) - Number(a.bug));
+}
+
+// A colour readable on the theme's background (a repo's pale or dark label colour, on a dark or a
+// light theme): moved toward the foreground until it stands out enough, as WCAG measures contrast.
+const luminance = (hex) => {
+  const c = parseHex(hex);
+  if (!c) return null;
+  const [r, g, b] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+export function contrast(a, b) { // exported for the tests
+  const x = luminance(a), y = luminance(b);
+  return x === null || y === null ? 21 : (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+const TAG_CONTRAST = 4;
+export function legible(t, hex) { // exported for the tests
+  for (let i = 0; i <= 10; i++) {
+    const c = i ? mix(hex, t.foreground, i / 10) : hex;
+    if (contrast(c, t.background) >= TAG_CONTRAST) return c;
+  }
+  return t.foreground;
+}
+
+// A bug in the theme's red; a label in its repo's colour, made readable; one without (Jira's) in a
+// colour of the theme that's always the same for its name. Red is kept for bugs.
+// Worked out once per theme and tag, not on every render: Herdr's script engine is slow, and a render
+// that runs too long is cut off (a sidebar of labelled stories was, in tagColor()). A plain cache, the
+// same answer for every copy of the mod, so a module variable is fine here.
+const TAG_COLORS = new Map();
+export function tagColor(t, tag) { // exported for the tests
+  if (tag.bug) return t.blocked;
+  const hues = [t.ansi4, t.ansi5, t.ansi6, t.ansi2, t.ansi3, t.accent].filter(Boolean);
+  const key = [t.background, t.foreground, t.muted, ...hues, tag.color ?? "", tag.name].join("|");
+  let c = TAG_COLORS.get(key);
+  if (c) return c;
+  if (tag.color) c = legible(t, `#${tag.color}`);
+  else {
+    // FNV-1a: the simpler (h * 31 + c) put frontend, design and accessibility on one colour.
+    let h = 0x811c9dc5;
+    for (const ch of tag.name.toLowerCase()) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    c = hues.length ? hues[h % hues.length] : t.muted;
+  }
+  if (TAG_COLORS.size > 500) TAG_COLORS.clear();
+  TAG_COLORS.set(key, c);
+  return c;
+}
+
+// A ticket's tags, small and quiet beside its key line: a tinted word each, the first `max`, then
+// "+n" with the rest in its tooltip. They give way before anything else on the line.
+const tagTip = (x) => `${x.from === "type" ? "Type" : "Label"}: ${x.name}`;
+// `whole`: words never squeezed (the story list's, where the key line keeps them room), only a name
+// past 110px cut.
+function tagRow(t, tags, id, max = 2, { whole = false } = {}) {
+  if (!tags?.length) return null;
+  const shown = tags.slice(0, max), rest = tags.slice(max);
+  return h_flex().id(id).when(whole, (el) => el.flex_none()).when(!whole, (el) => el.flex_shrink(1).min_w(0).overflow_hidden()).gap(TAG_GAP).items_center()
+    .children(shown.map((x, i) => tagChip(t, x, `${id}-${i}`, { whole })))
+    .when(rest.length > 0, (el) => el.child(tagMore(t, rest, `${id}-more`)));
+}
+// One tag: a tinted word, a name past TAG_MAX cut with an ellipsis; `whole` never squeezed by its line,
+// `w` cut to that width (the one that didn't fit whole, fitTags()).
+const TAG_GAP = 4, TAG_MAX = 110;
+function tagChip(t, x, id, { whole = false, w = null } = {}) {
+  const c = tagColor(t, x);
+  return skinFont(div().id(id).when(whole || w !== null, (el) => el.flex_none()).when(!whole && w === null, (el) => el.flex_shrink(1).min_w(0))
+    .when(w !== null, (el) => el.w(w)).max_w(TAG_MAX).h(15).px(5).rounded(4).truncate()
+    .bg(alpha(c, 0.14)).text_color(c), "label", SMALL - 1).tooltip(tagTip(x)).child(x.name);
+}
+// "+n", the rest of the tags in its tooltip.
+const tagMore = (t, rest, id) => div().id(id).flex_none().text_size(SMALL - 1).text_color(t.dim)
+  .tooltip(rest.map(tagTip).join("\n")).child(`+${rest.length}`);
+
+// How many of a row's tags fit the room its line leaves, whole, with "+n" for the rest when any are
+// left: as many as fit, never by count (#53). When not even the first fits whole it's cut to what's left
+// (`cut`, with an ellipsis) if that still reads (TAG_MIN); else only "+n" shows (`more`), or nothing.
+// Widths as drawn at zoom 1: the tags' own (`widths`), "+n"'s (`moreW`), the room (`room`).
+const TAG_MIN = 34;
+export function fitTags(widths, room, moreW, gap = TAG_GAP) { // exported for the tests
+  const n = widths.length;
+  if (!n || !(room > 0)) return { n: 0, cut: null, more: false };
+  for (let k = n; k >= 1; k--) {
+    const need = widths.slice(0, k).reduce((a, b) => a + b, 0) + gap * (k - 1) + (k < n ? gap + moreW : 0);
+    if (need <= room) return { n: k, cut: null, more: k < n };
+  }
+  const cut = Math.floor(room - (n > 1 ? gap + moreW : 0));
+  if (cut >= TAG_MIN) return { n: 1, cut: Math.min(cut, TAG_MAX), more: n > 1 };
+  return { n: 0, cut: null, more: room >= moreW };
 }
 
 // What a story needs from you, most urgent first: [rank, sentence, colour name]. Up to NEEDS_YOU it
@@ -838,7 +995,8 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
-const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+  ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -2014,21 +2172,21 @@ export class Stories extends Source {
   // Clean up, a broom icon (the header's, and each row in the list), only while a finished story
   // leaves something to clean (cleanable()); it asks first in a dialog, which says what goes.
   // While it's being cleaned up, the working mark in its place (busyMark).
-  cleanButton(t, st, it, id = "story-clean") {
+  cleanButton(t, st, it, id = "story-clean", { box = CONTROL } = {}) {
     const busy = busyOf(it.key);
-    if (busy?.kind === "clean") return busyMark(t, id, busy);
-    return iconButton(t, id, own("brush-cleaning"), () => askCleanUp(st.profile, it), `Clean up ${it.key}: ${cleanable(st.profile, it).join(", ")}`);
+    if (busy?.kind === "clean") return busyMark(t, id, busy, { box });
+    return iconButton(t, id, own("brush-cleaning"), () => askCleanUp(st.profile, it), `Clean up ${it.key}: ${cleanable(st.profile, it).join(", ")}`, { box });
   }
 
   // Move to Done, a double check (the header's icons, and each Built / Waiting on others row in the
   // list), while something of the story is yours to move; it asks first in a dialog listing each ticket.
   // While it moves, the working mark in its place, with how far it got in the header (`words`).
-  finishButton(t, st, it, id = "story-finish", { words = false } = {}) {
+  finishButton(t, st, it, id = "story-finish", { words = false, box = CONTROL } = {}) {
     const busy = busyOf(it.key);
-    if (busy?.kind === "done") return busyMark(t, id, busy, { words });
+    if (busy?.kind === "done") return busyMark(t, id, busy, { words, box });
     const done = doneName(st.data);
     return iconButton(t, id, own("check-check"), () => askMoveToDone(st, it),
-      it.story ? `Move to ${done}: your subtasks of ${it.key}, then the story` : `Move ${it.key} to ${done}`);
+      it.story ? `Move to ${done}: your subtasks of ${it.key}, then the story` : `Move ${it.key} to ${done}`, { box });
   }
 
   // A small menu (ui.js menuButton), its open state kept on this view.
@@ -2238,8 +2396,23 @@ export class Stories extends Source {
     const busy = busyOf(it.key);
     const sign = statusMark(t, state, { where: "row", size: 8, color: t[color] });
     // The second line is the key and its badges; the sentence of what it needs is the row's tooltip.
-    const badges = storyBadges(t, it);
+    const badges = storyBadges(t, it, { bar: false }), subs = subsLine(t, it);
     const tasks = st && busy?.kind !== "clean" ? this.rowTasks(t, st, it) : [];
+    const acts = [
+      // Merge and Request approval for its pull requests, at hand without opening it (rowTasks); their
+      // clicks stay off the row, as the broom's do.
+      tasks.length > 0 && h_flex().id(`tasks-${it.key}`).flex_none().gap(2).on_mouse_down("left", stop).on_click(stop).children(tasks),
+      // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
+      // it; its clicks stay off the row, as the broom's do. While it moves, the working mark in its place.
+      Boolean(st) && quiet && finishes(st?.setup) && (canMoveToDone(it) || busy?.kind === "done") && busy?.kind !== "clean"
+        && div().id(`finish-${it.key}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.finishButton(t, st, it, `finish-${it.key}-button`, { box: ROW_CONTROL })),
+      // A finished story's broom, at hand without opening it; its clicks stay off the row. While it's
+      // being cleaned up, the working mark in its place (it may have nothing left to clean by then).
+      Boolean(st) && (cleanable(st?.profile, it).length > 0 || busy?.kind === "clean")
+        && div().id(`clean-${it.key}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.cleanButton(t, st, it, `clean-${it.key}`, { box: ROW_CONTROL })),
+    ].filter(Boolean);
+    // How many buttons that is (the pull requests' menus are one or two), for the room the title leaves.
+    const buttons = acts.length - (tasks.length > 0 ? 1 : 0) + tasks.length;
     return decor("rowDecor", t, h_flex().id(`story-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .on_click(() => selectStory(this.profile, it)).tooltip(line)
@@ -2251,30 +2424,70 @@ export class Stories extends Source {
       }))
       .child(sign ? div().flex_none().mt(1).child(sign) : div().flex_none().mt(1).child(mark(t, state === "done" ? "ready" : state, 16)))
       .child(v_flex().flex_1().min_w(0).gap(2)
-        .child(skinFont(div(), "ui").truncate().font_medium().when(quiet, (el) => el.text_color(t.muted)).child(it.title))
+        // A title line of a set height, so the actions laid over the row's corner (rowActions()) are
+        // placed by numbers, not by a font's line; the title stops short of them.
+        .child(skinFont(div(), "ui").h(ROW_TITLE).line_height(`${ROW_TITLE}px`).min_w(0).truncate().font_medium().when(quiet, (el) => el.text_color(t.muted))
+          .when(buttons > 0, (el) => el.mr(buttons * ROW_CONTROL + (buttons - 1) * 2 + 6)).child(it.title))
         .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).when(quiet, (el) => el.opacity(0.6))
-          .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
-          // It has a space on this machine: a small terminal after its key (the groups go by the board).
-          .when(Boolean(it.space), (el) => el.child(div().id(`here-${it.key}`).flex_none().tooltip("Open here: it has a space on this machine")
-            .child(icon(chrome("terminal"), 11).text_color(t.dim))))
+          // It has a space on this machine: its key brighter, saying so in its tooltip (the groups go by
+          // the board). A mark of its own took the room the labels need (#53).
+          .child(it.space
+            ? skinFont(div().id(`here-${it.key}`), "numbers").flex_none().text_color(t.muted).tooltip("Open here: it has a space on this machine").child(it.key)
+            : skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
           // Someone else has it now: who, as their avatar (the row's tooltip says it in words).
           .when(Boolean(it.reassigned), (el) => el.child(div().id(`gone-${it.key}`).flex_none()
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
-          .children(badges)))
-      // Merge and Request approval for its pull requests, at hand without opening it (rowTasks); their
-      // clicks stay off the row, as the broom's do.
-      .when(tasks.length > 0, (el) => el.child(h_flex().id(`tasks-${it.key}`).flex_none().mt(2).gap(2)
-        .on_mouse_down("left", stop).on_click(stop).children(tasks)))
-      // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
-      // it; its clicks stay off the row, as the broom's do.
-      // While it moves, the working mark in its place.
-      .when(Boolean(st) && quiet && finishes(st?.setup) && (canMoveToDone(it) || busy?.kind === "done") && busy?.kind !== "clean", (el) => el.child(div().id(`finish-${it.key}`).flex_none().mt(2)
-        .on_mouse_down("left", stop).on_click(stop).child(this.finishButton(t, st, it, `finish-${it.key}-button`))))
-      // A finished story's broom, at hand without opening it; its clicks stay off the row. While it's
-      // being cleaned up, the working mark in its place (it may have nothing left to clean by then).
-      .when(Boolean(st) && (cleanable(st?.profile, it).length > 0 || busy?.kind === "clean"), (el) => el.child(div().id(`clean-${it.key}`).flex_none().mt(2)
-        .on_mouse_down("left", stop).on_click(stop).child(this.cleanButton(t, st, it, `clean-${it.key}`)))),
+          .children(badges)
+          // What kind of work it is, at the line's end in whole words: the marks before it keep their
+          // places down the list.
+          .when(Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
+        // Where your subtasks stand, as a thin line under it; muted with the key line on a sunk row.
+        .when(Boolean(subs), (el) => el.child(quiet ? subs.opacity(0.6) : subs)))
+      .when(acts.length > 0, (el) => el.relative().child(this.rowActions(it, acts))),
       { selected: on, state, story: it, now: new Date() });
+  }
+
+  // A line's tags, as many as fit the room it leaves them (fitTags()), at its end: a list row's key line
+  // and the story's title row. The room and each tag's width are measured as drawn (the room by the
+  // zone itself, the tags and "+n" by hidden copies) and kept raw on this copy (`this.tagFit`); they're
+  // turned into the layout's units at render with the zoom then known (a 100-wide probe), so which size
+  // Herdr reports first doesn't matter. Until they're known the first two show, shrinking, so nothing
+  // ever runs past the line.
+  fittedTags(t, tags, id, at) {
+    const m = (this.tagFit ??= { zoom: 100, room: {}, w: {}, more: 0 });
+    const keep = (put) => (size, cx) => { if (put(size.width)) cx.notify(); };
+    const raw = (get, set) => keep((w) => { const was = get(); if (was !== undefined && Math.abs(was - w) < 0.5) return false; set(w); return true; });
+    const z = m.zoom / 100 || 1;
+    const widths = tags.map((x) => m.w[`${x.from}:${x.name}`]);
+    const known = m.room[at] !== undefined && m.more > 0 && widths.every((w) => w !== undefined);
+    // "+n" was measured as "+2"; a count of two digits ("+10") takes a third more.
+    const more = m.more / z * (String(tags.length).length + 1) / 2;
+    const fit = known ? fitTags(widths.map((w) => w / z), m.room[at] / z, more) : null;
+    const shown = fit ? tags.slice(0, fit.n) : tags.slice(0, 2);
+    const rest = tags.slice(shown.length);
+    const probes = div().absolute().top(0).left(0).invisible()
+      .child(div().id(`${id}-zoom`).w(100).h(0).on_size_change(raw(() => m.zoom, (w) => { if (w) m.zoom = w; })))
+      .child(h_flex().gap(TAG_GAP)
+        .children(tags.map((x, i) => tagChip(t, x, `${id}-m${i}`, { whole: true })
+          .on_size_change(raw(() => m.w[`${x.from}:${x.name}`], (w) => { m.w[`${x.from}:${x.name}`] = w; }))))
+        .child(tagMore(t, [tags[0], tags[0]], `${id}-mmore`).on_size_change(raw(() => m.more, (w) => { m.more = w; }))));
+    return h_flex().id(`${id}-zone`).relative().flex_1().min_w(0).h(15).gap(TAG_GAP).items_center().justify_end().overflow_hidden()
+      .on_size_change(raw(() => m.room[at], (w) => { m.room[at] = w; }))
+      .child(probes)
+      .child(h_flex().id(id).flex_shrink(1).min_w(0).gap(TAG_GAP).items_center()
+        .children(shown.map((x, i) => tagChip(t, x, `${id}-${i}`, fit ? (fit.cut !== null && i === 0 ? { w: fit.cut } : { whole: true }) : {})))
+        .when(rest.length > 0 && (!fit || fit.more), (el) => el.child(tagMore(t, rest, `${id}-more`))));
+  }
+
+  // A story row's actions (two can show at once), compact (ROW_CONTROL) and centred on its title line,
+  // laid over the row so a row is as high with them as without and the key line's labels and the
+  // subtasks' line keep the row's whole width (#53). By the numbers (row()): the row's padding is 7
+  // and its title line ROW_TITLE (20), so the title's middle is 17; buttons 22 high from ACTIONS_TOP (6)
+  // have theirs there too and end at 28, above the key line (7 + 20 + 2 = 29; its tags, 15 high on a
+  // 14 line, from 28.5), and 6 in from the row's top. Nothing is painted behind them: the title stops
+  // short of them.
+  rowActions(it, acts) {
+    return h_flex().id(`actions-${it.key}`).absolute().top(ACTIONS_TOP).right(8).h(ROW_CONTROL).gap(2).items_center().children(acts);
   }
 
   // A story row's Merge and Request approval (the header's menus): Merge shows at rest while one of its
@@ -2288,8 +2501,8 @@ export class Stories extends Source {
     const id = (kind) => `${kind}-${it.key}`;
     const awake = (kind) => this.hoverRow === it.key || this.menu === id(kind);
     return [
-      unapproved.length && !worksAlone(st.setup) && awake("approval") ? this.taskMenu(t, st, it, "approval", unapproved, id("approval")) : null,
-      openPrs.length && (openPrs.some(ready) || awake("merge")) ? this.taskMenu(t, st, it, "merge", openPrs, id("merge")) : null,
+      unapproved.length && !worksAlone(st.setup) && awake("approval") ? this.taskMenu(t, st, it, "approval", unapproved, id("approval"), false, ROW_CONTROL) : null,
+      openPrs.length && (openPrs.some(ready) || awake("merge")) ? this.taskMenu(t, st, it, "merge", openPrs, id("merge"), false, ROW_CONTROL) : null,
     ].filter(Boolean);
   }
 
@@ -2320,7 +2533,9 @@ export class Stories extends Source {
           .tooltip(line ? `${it.title}\n${line}` : it.title).child(it.title))
         .child(skinFont(div().id("story-need").min_w(0).flex_shrink(40).truncate().font_medium()
           .text_color(sunk(it, n) ? t.dim : color === "dim" ? t.muted : t[color]), "meta", SMALL).tooltip(line).child(skinText(line, "meta")))
-        .child(div().flex_1())
+        // What kind of work it is, in the room left before the assignee: as many whole tags as fit
+        // (fittedTags()), so they give way before the title and never push the status off the line.
+        .child(it.tags?.length ? this.fittedTags(t, it.tags, "story-tags", `head:${it.key}`) : div().flex_1())
         .when(Boolean(subMeter), (el) => el.child(div().flex_none().child(subMeter)))
         .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.mine, it.avatar)))
         .when(Boolean(it.status), (el) => el.child(it.review || it.pr ? div().flex_none().child(lozenge(t, it.status, it.category))
@@ -2343,12 +2558,12 @@ export class Stories extends Source {
 
   // A story's Merge or Request approval menu (storyTaskRows), the same in its header and on its row in
   // the list: an icon, or with `filled` the header's main action "<label> all ▾".
-  taskMenu(t, st, it, kind, list, id, filled = false) {
+  taskMenu(t, st, it, kind, list, id, filled = false, box = CONTROL) {
     const { label, glyph } = TASK_LOOK[kind];
     const tip = `${label} ${kind === "merge" ? "its pull requests" : "for its pull requests waiting on reviewers"}, with a new agent or an open Claude`;
     return this.menuButton(t, id, "", storyTaskRows(t, st.profile, it, kind, list), tip, filled
       ? { width: 340, trigger: (toggle) => primaryButton(t, `${id}-all`, `${label} all ▾`, toggle, { tip }) }
-      : { width: 340, iconPath: own(glyph) });
+      : { width: 340, iconPath: own(glyph), box });
   }
 
   // The header's actions, few: one filled main action (the most urgent: answer the agent asking, the
@@ -2557,6 +2772,9 @@ export class Stories extends Source {
         // As high as a button, so a row is the same height with its actions shown or not.
         .child(h_flex().id(`sub-main-${s.key}`).relative().flex_1().min_w(0).h(CONTROL).items_center()
           .child(title(s))
+          // What kind of work it is, at the title's end (the title truncates first); the actions
+          // shown on hover lie over it.
+          .when(Boolean(s.tags?.length), (el) => el.child(tagRow(t, s.tags, `sub-tags-${s.key}`).ml(8)))
           .when(list.length > 0, (el) => el.child(actions(s, list))))
         // After the title, the same columns on every row, filled or empty, so marks and chips line up
         // down the list. The status is as wide as its widest chip in this list, measured as drawn
