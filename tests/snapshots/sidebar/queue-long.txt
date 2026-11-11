@@ -154,7 +154,6 @@ v_flex #work-side-list-demo
                 "The Desk found it's half the bundle and every page pays for it."
             div #queue-drop-suggest:idea:2 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
               svg chrome:x
-  div #story-next-end
   h_flex
     div
       div

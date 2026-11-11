@@ -514,3 +514,22 @@ test("a run whose picks are all gone since opens nothing; another profile's fold
   view.render(cx);
   assert.ok(view.queueOpen, "opens: the fold was another profile's");
 });
+
+// Opened on one profile's picks, the queue is that profile's alone; a deleted profile's run note goes
+// with the next load, as its other entries do (#124 review).
+test("a queue opened on a profile's picks shows folded on another profile", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await sharedDraw();
+  view.queueOpen = true;
+  view.queueOpenFor = "other";
+  view.render(cx);
+  assert.ok(!view.queueOpen, "folded here");
+});
+
+test("a deleted profile's run note is pruned with the next load", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW }, gone: { at: NOW - 60e3, done: NOW } });
+  await draw(new StoryList());
+  assert.deepEqual(Object.keys(mock.sharedValue("kelpie.next.picked")), [DEMO]);
+});

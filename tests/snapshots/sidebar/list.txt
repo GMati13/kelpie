@@ -70,7 +70,6 @@ v_flex [fg=foreground]
             svg own:sparkles [fg=accent] ~loop(opacity)
             div [fg=accent]
               "Conjure more to do"
-    div #story-next-end
     h_flex
       div
         div

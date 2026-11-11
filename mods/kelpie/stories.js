@@ -1499,6 +1499,7 @@ function pruneShared(profile, data) {
   keep(PR_FOLDS, ([id]) => ids.has(id));
   keep(DONE_OPEN, ([id]) => ids.has(id));
   keep(DONE_CLEAN, ([id]) => ids.has(id));
+  keep(PICKS_ASKED, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile), null, { all: true }).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
@@ -4039,16 +4040,18 @@ export class StoryList extends Stories {
   // brew()): each copy opens the queue once per run, per profile, so another profile's run opens it
   // the next time that profile shows. Not for picks that came before this copy was drawn (a reload),
   // nor when the person folded the queue after asking: their fold wins. A queue of one has nothing
-  // to open, so the run counts as seen.
+  // to open, so the run counts as seen; while no pick of it shows, it doesn't.
   picksArrived(profile, many, picks) {
     const born = this.queueBorn ?? 0;
     const run = (shared(PICKS_ASKED) ?? {})[profile?.id];
     const seen = (this.queueSeen ??= {});
     if (!run || run.at <= (seen[profile.id] ?? 0)) return false;
+    // While none of its picks shows (set aside on this draw, say), the run isn't used up.
+    if (!picks) return false;
     seen[profile.id] = run.at;
     // Picks last a day (SUGGEST_FOR): a run older than that has nothing left to show, as has one
     // whose picks were all dropped or set aside since.
-    return many && picks > 0 && run.done >= born && Date.now() - run.done < SUGGEST_FOR && !((this.queueFolded?.[profile.id] ?? 0) > run.at);
+    return many && run.done >= born && Date.now() - run.done < SUGGEST_FOR && !((this.queueFolded?.[profile.id] ?? 0) > run.at);
   }
 
   // Next: one card, the whole queue's. A header line ("Next", how many items, Claude's picks as a ✨
@@ -4060,7 +4063,7 @@ export class StoryList extends Stories {
   // picks alone leads with one, and the card is then tinted, so it reads as generated. While Claude
   // has no picks, a slim magic button is the card's last row.
   // `shownKey`: the item on screen now (the story or review shown, "desk"), lit in the open queue.
-  nextCard(t, st, items, reviews, queue, top, shownKey, cx) {
+  nextCard(t, st, items, reviews, queue, top, shownKey) {
     const glow = (a) => alpha(t.accent, a);
     const picks = queue.filter((x) => x.suggest).length;
     const brewing = Boolean(brewingIn(st.profile));
@@ -4068,22 +4071,22 @@ export class StoryList extends Stories {
     // one item folds rather than stay a list of one (#64).
     const many = queue.length > 1;
     const scroll = () => this.listScrolls?.get(st.profile?.id ?? null).box;
-    // Picks the person asked for (a What next? run of theirs) open the queue once (#124). Already
-    // open, it stays where the person has it, as does the list.
+    // Opened for another profile's picks: that profile's alone, so this one shows folded.
+    if (this.queueOpenFor && this.queueOpenFor !== st.profile?.id) { this.queueOpen = false; this.queueOpenFor = null; }
+    // Picks the person asked for (a What next? run of theirs) open the queue once (#124), its top in
+    // view as the chevron brings it: what needs you stays first, the picks under it. Already open,
+    // it stays where the person has it, as does the list.
     if (this.picksArrived(st.profile, many, picks) && !this.queueOpen) {
       this.queueOpen = true;
-      const box = scroll();
-      box?.scroll_to_item(0);
-      // Then, once drawn open, the card's end: on a short sidebar its last group, Claude's picks,
-      // comes into view (an empty line after the card is the list's third child). This profile's
-      // handle, kept now, so a profile switched to meanwhile isn't scrolled.
-      if (box) cx?.timer.after(30, (cx) => { box.scroll_to_item(2); cx.notify(); });
+      this.queueOpenFor = st.profile?.id;
+      scroll()?.scroll_to_item(0);
     }
     if (!many) this.queueOpen = false;
     // Opening it brings the card's top into view: it scrolls with the list (#125), which may be
     // scrolled past it. The list's first child is an empty line, so "to the top" is its top.
     const toggle = (_e, cx) => {
       this.queueOpen = !this.queueOpen;
+      this.queueOpenFor = null;
       if (this.queueOpen) scroll()?.scroll_to_item(0);
       else this.queueFolded = { ...this.queueFolded, [st.profile?.id]: Date.now() };
       cx.notify();
@@ -4250,7 +4253,7 @@ export class StoryList extends Stories {
     const queue = needQueueOf(st.profile, items, reviews);
     const shownKey = shown?.key ?? (onDesk ? DESK_ITEM.key : undefined);
     const top = nextIn(queue, shownKey);
-    const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey, cx) : this.allClear(t, st, items, reviews);
+    const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey) : this.allClear(t, st, items, reviews);
     // The stories, grouped by where their work is on the board: in progress (what needs you first, as
     // ordered() keeps it), to do, and the sunk ones, handed over (sunkWords), each in the list's order.
     const words = sunkWords(boardOf(st.setup));
@@ -4398,8 +4401,6 @@ export class StoryList extends Stories {
         // which for a tall first child (an open queue) already partly in view wouldn't move.
         .child(div().id("work-side-list-top").flex_none().w_full().h(0))
         .when(Boolean(next), (el) => el.child(div().id("story-next-wrap").flex_none().px(INSET - 8).pb(10).child(next)))
-        // The card's end, revealed when Claude's picks open it (picksArrived()).
-        .child(div().id("story-next-end").flex_none().w_full().h(0))
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
@@ -5159,10 +5160,15 @@ const PICKS_ASKED = "kelpie.next.picked";
 // Whether any of the profile's picks shows, not set aside as it arrived (applyPicks()): only then is
 // there something for the opened queue to show.
 const picksShow = (profile) => ((shared(SUGGESTED) ?? {})[profile.id]?.items ?? []).some((x) => !x.aside);
-// Every pick handed in was already in hand (under way, needing you, finished…): said, as the queue
-// has nothing new to open on.
-const ALL_ASIDE = { title: "Nothing new to suggest", body: "Everything Claude suggested is already under way or waiting on you.", level: "info", timeout: 6000 };
 const setPicked = (profile, at) => setShared(PICKS_ASKED, { ...(shared(PICKS_ASKED) ?? {}), [profile.id]: { at, done: Date.now() } });
+// How a run that handed picks in ended, the demo's and Claude's alike: none (`none` says why), all
+// already in hand (under way, needing you, finished…), said, as the queue has nothing new to open
+// on, or some to show, noted so Next opens on them.
+function brewed(profile, started, count, none) {
+  if (!count) notify({ title: "No suggestions this time", body: none, level: "info", timeout: 6000 });
+  else if (picksShow(profile)) setPicked(profile, started);
+  else notify({ title: "Nothing new to suggest", body: "Everything Claude suggested is already under way or waiting on you.", level: "info", timeout: 6000 });
+}
 
 // Asks Claude for picks: `claude -p` on the profile's account, in its folder, no session saved,
 // with no file-editing tools (read only as the prompt says; what else it may use is its own
@@ -5184,9 +5190,7 @@ export async function brew(profile, task) {
   try {
     if (isDemo(profile)) {
       const { kept } = await applyPicks(profile, await demoSuggest());
-      if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
-      else if (picksShow(profile)) setPicked(profile, started);
-      else notify(ALL_ASIDE);
+      brewed(profile, started, kept.length, "The demo's fixture has no picks.");
       return;
     }
     if (!(await hasPlugin(profile))) { await askPlugin(profile, "what-next"); return; }
@@ -5201,9 +5205,7 @@ export async function brew(profile, task) {
     if (!out || out.is_error) throw new Error(String(out?.result ?? r.stderr ?? "").trim().split("\n").pop() || `Claude stopped (code ${r.code}).`);
     const got = (shared(SUGGESTED) ?? {})[profile.id];
     if (!got || got.at < started) throw new Error(`Claude finished without handing its suggestions to Kelpie. ${String(out.result ?? "").trim().split("\n").pop()}`.trim());
-    if (!got.items?.length) notify({ title: "No suggestions this time", body: "Claude found nothing worth suggesting.", level: "info", timeout: 6000 });
-    else if (picksShow(profile)) setPicked(profile, started);
-    else notify(ALL_ASIDE);
+    brewed(profile, started, got.items?.length ?? 0, "Claude found nothing worth suggesting.");
   } catch (e) {
     notify({ title: "What next? didn't work", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 });
   } finally {
