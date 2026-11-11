@@ -22,6 +22,7 @@ export const isDemo = (x) => Boolean(x?.demo);
 
 let FIXTURE = null; // the last fixture read, for the few readers that can't wait (the footer, argv)
 const MOVED = {}; // key -> status name, after a transition in the demo
+const CLOSED = new Set(); // keys of the GitHub Project demo's issues closed from Kelpie (KelpieClose)
 
 const UNITS = { m: 60e3, h: 3600e3, d: 864e5 };
 const when = (v, now = Date.now()) => {
@@ -161,7 +162,9 @@ const login = (name) => String(name).toLowerCase().normalize("NFD").replace(/[\u
 function ghIssue(f, i) {
   const repo = f.project.repo;
   const column = columnOf(f, MOVED[i.key] ?? i.status);
-  const closed = column === f.board.columns.length - 1;
+  // An issue in the done column is closed, unless the fixture leaves it `open` (a Status move to done
+  // leaves an issue open on GitHub) and Kelpie hasn't closed it since.
+  const closed = CLOSED.has(i.key) || (column === f.board.columns.length - 1 && !i.open);
   const who = i.assignee ?? (i.mine ? f.profile.meName : null);
   const parent = i.parent && issueById(f).get(i.parent);
   return {
@@ -191,7 +194,14 @@ export async function demoProject(args) {
   const f = await demoFixture();
   if (!f.project) throw new Error("The demo's fixture has no GitHub Project.");
   const v = variables(args);
-  const op = /^query\s+(\w+)/.exec(v.query ?? "")?.[1];
+  const op = /^(?:query|mutation)\s+(\w+)/.exec(v.query ?? "")?.[1];
+  // Closing an issue (issues.js closeIssue()): kept in memory until the mod reloads, as moves are.
+  if (op === "KelpieClose") {
+    const i = f.issues.find((x) => nodeId(x.key) === v.issue);
+    if (!i) throw new Error("Could not resolve to a node with the global id.");
+    CLOSED.add(i.key);
+    return { data: { closeIssue: { issue: { id: v.issue, state: "CLOSED" } } } };
+  }
   if (op === "KelpieStories") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
     return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };

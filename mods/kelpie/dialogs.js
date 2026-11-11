@@ -12,7 +12,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { closeOverlay, openOverlay, props, run } from "herdr";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, primaryButton, textButton, tint } from "./ui.js";
-import { moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
+import { closeStories, moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
 import { applyPendingProfile, installPlugin } from "./config.js";
 
@@ -161,8 +161,18 @@ export class Confirm {
   // `runPicks` ({ profile }): Run all's picks started by this button (stories.js runPicks()), the ones
   // still ticked, the dialog staying open as Starting… until the last has opened: no command does it,
   // as any agent can run one and this starts agents.
+  // `closeStories` ({ profile, keys }): Close's issues closed on GitHub by this button (stories.js
+  // closeStories()), the dialog staying open as Closing… until they're done, as it writes to GitHub.
   yes(command = props().command, cx = null) {
-    const { overlay, installPlugin: install, installThen: then = null, doneStory, runPicks: picks } = props();
+    const { overlay, installPlugin: install, installThen: then = null, doneStory, runPicks: picks, closeStories: closing } = props();
+    if (closing) {
+      if (this.busy) return;
+      this.busy = true;
+      if (!cx) return closeStories(closing).catch(() => null).finally(() => closeOverlay(overlay));
+      cx.notify?.();
+      cx.spawn(async () => { await closeStories(closing).catch(() => null); closeOverlay(overlay); });
+      return;
+    }
     if (picks) {
       if (this.busy) return;
       const keys = (props().items ?? []).filter((x) => x.choose && !this.off.has(x.choose)).map((x) => x.choose);
@@ -194,7 +204,7 @@ export class Confirm {
     run(command.name, command.args ?? {});
   }
   no() {
-    if (this.busy) return; // half the tickets moved: let it finish
+    if (this.busy) return; // half the tickets moved (or closed): let it finish
     if (props().pendingProfile) applyPendingProfile(false);
     closeOverlay(props().overlay);
   }
