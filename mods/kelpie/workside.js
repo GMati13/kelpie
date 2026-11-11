@@ -42,12 +42,24 @@ function glyph(t, space, size = 20) {
 // check line up row to row.
 // `nudge`: Herdr puts the popup 6.5px in from the bar's left (measured at zoom 1.2); 1.5 more brings
 // it to the rows' 8, and with the width above its right edge meets theirs too.
-const DROP = { gutter: 8, pad: 4, row: 32, radius: 6, lead: 20, check: 14, gap: 4, min: 240, fallback: 300, nudge: 1.5 };
+// `head`: a group's heading row; `max`: the list's height at most, so the menu fits a 900px window at
+// zoom 1.2 under the bar (mods aren't told the window's size; Herdr keeps a popup clear of its edges).
+const DROP = { gutter: 8, pad: 4, row: 32, head: 24, radius: 6, lead: 20, check: 14, gap: 4, min: 240, fallback: 300, nudge: 1.5, max: 520 };
+
+// The list's height, counted from its parts: a scroll box needs a height of its own to scroll, as one
+// that takes it from what it holds grows with its rows (a long list ran past the menu's end, the
+// entries after it out of reach, KELPIE-115).
+export function menuHeight(items) { // exported for the tests
+  const parts = items.reduce((h, x) => h + (x.header ? DROP.head : x.rule ? 1 + 2 * DROP.gap : DROP.row), 0);
+  return Math.min(DROP.max, parts + Math.max(0, items.length - 1) + 2 * DROP.pad);
+}
 
 export class SpacePicker {
   init(cx) {
     this.handle = cx.focus_handle();
+    this.scroll = ScrollHandle.new();
     this.at = -1; // the row the keyboard is on, -1: none
+    this.reveal = false; // just opened: bring the shown profile's row into view
   }
 
   render(cx) {
@@ -61,7 +73,7 @@ export class SpacePicker {
     const toggle = () => {
       const show = !open && !(this.shutAt && Date.now() - this.shutAt < 400);
       setShared(MENU, show);
-      if (show) { this.at = -1; this.handle.focus(); }
+      if (show) { this.at = -1; this.reveal = true; this.handle.focus(); }
     };
     const trigger = h_flex().id("space-picker").h(30).px(8).gap(8).items_center().rounded(8).cursor_pointer().min_w(0)
       .when(open, (el) => el.bg(t.raised)).when(!open, (el) => el.hover((s) => s.bg(t.raised)))
@@ -87,6 +99,7 @@ export class SpacePicker {
   menu(t, cx, width, close) {
     const shown = shownProfile();
     const list = agents();
+    // Each list read once: every read converts the whole of it (render cost, #104).
     const all = spaces(), of = spaceProfiles(all);
     const loose = all.filter((s) => !of.get(s.id));
     const items = [];
@@ -95,7 +108,7 @@ export class SpacePicker {
     const pick = (fn) => () => { close(); fn(); };
     header("Profiles");
     for (const p of profiles()) {
-      const mine = spacesOf(p).map((s) => s.id);
+      const mine = all.filter((s) => of.get(s.id)?.id === p.id).map((s) => s.id);
       const here = list.filter((a) => mine.includes(a.space));
       const n = mine.length;
       items.push({
@@ -120,10 +133,13 @@ export class SpacePicker {
 
     const rows = items.filter((x) => x.action);
     const at = Math.min(this.at, rows.length - 1);
-    const move = (d) => { this.at = at < 0 ? (d > 0 ? 0 : rows.length - 1) : (at + d + rows.length) % rows.length; cx.notify(); };
+    // The list's own children are the items, so a row's place among them is what scroll_to_item takes.
+    const into = (row) => { const i = items.indexOf(row); if (i >= 0) this.scroll.scroll_to_item(i); };
+    const move = (d) => { this.at = at < 0 ? (d > 0 ? 0 : rows.length - 1) : (at + d + rows.length) % rows.length; into(rows[this.at]); cx.notify(); };
+    if (this.reveal) { this.reveal = false; this.scroll.scroll_to_item(0); const on = items.find((x) => x.on); if (on) into(on); }
     const slot = (w, child) => div().flex().flex_none().w(w).items_center().justify_end().child(child ?? "");
-    const draw = (x, i) => {
-      if (x.header) return div().flex_none().px(8).pt(i === 0 ? 4 : 2).pb(4).text_size(SMALL).font_semibold().text_color(t.dim).child(x.header);
+    const draw = (x) => {
+      if (x.header) return div().flex().flex_none().h(DROP.head).items_end().px(8).pb(4).text_size(SMALL).font_semibold().text_color(t.dim).child(x.header);
       if (x.rule) return div().flex_none().h(1).mx(8).my(DROP.gap).bg(t.border);
       const lit = rows[at] === x;
       const badges = [x.ask && countBadge(t, `${x.id}-ask`, "needs-you", x.ask, `${x.ask} waiting for you`, t.working),
@@ -142,7 +158,8 @@ export class SpacePicker {
     };
     // The frame (border, corners, shadow) is an outer box and the scrolling list sits inside it: a
     // scroll box with its own border loses the right one under its scrollbar's edge.
-    return v_flex().id("space-menu").track_focus(this.handle).w(width).ml(DROP.nudge).overflow_hidden()
+    const height = menuHeight(items);
+    return v_flex().id("space-menu").track_focus(this.handle).w(width).h(height + 2).ml(DROP.nudge).overflow_hidden()
       .rounded(DROP.radius + DROP.pad).bg(t.popover).border_1().border_color(t.border).shadow_lg()
       .text_size(TEXT).text_color(t.foreground)
       .on_mouse_down_out(() => { if (shared(MENU)) { this.shutAt = Date.now(); close(); } })
@@ -154,7 +171,7 @@ export class SpacePicker {
         else return;
         cx.stop_propagation();
       })
-      .child(v_flex().id("space-menu-list").max_h(520).p(DROP.pad).gap(1).overflow_y_scrollbar().children(items.map(draw)));
+      .child(v_flex().id("space-menu-list").h(height).p(DROP.pad).gap(1).overflow_y_scrollbar().track_scroll(this.scroll).children(items.map(draw)));
   }
 }
 
