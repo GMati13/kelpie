@@ -1,4 +1,4 @@
-div #work-setup-fit
+div #work-setup-fit [bg=#00000080]
   v_flex #work-setup [border=border bg=popover fg=foreground] {key_down}
     h_flex
       v_flex [bg=background border=border]
@@ -76,16 +76,6 @@ div #work-setup-fit
                 "Story commands"
               div [fg=dim]
                 "None set"
-        div
-          Popup.new "setup-configure-all-menu"
-            v_flex #setup-configure-all-more [border=border bg=popover hover(bg=hover)] {click} tip="Asks a Claude on the Desk to set this up with you"
-              h_flex
-                div [fg=accent]
-                  svg own:message-square
-                div
-                  "Let me configure it for you"
-              div [fg=dim]
-                "A Claude on the Desk goes through every setting with you, checks them and saves them."
       v_flex #work-setup-body-jira
         v_flex
           h_flex
@@ -190,8 +180,11 @@ div #work-setup-fit
           h_flex [bg=accent]
             div [bg=accent_foreground]
     h_flex [border=border]
-      h_flex #setup-remove [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Asks once more"
-        "Delete profile"
+      Popup.new "setup-configure-all-menu"
+        h_flex #setup-configure-all-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
+          div [fg=accent]
+            svg own:message-square
+          "Let me configure it for you"
       div
       h_flex #setup-cancel [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Esc"
         "Cancel"

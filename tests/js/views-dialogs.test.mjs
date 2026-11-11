@@ -413,6 +413,8 @@ test("the profile dialog's card shrinks to the window, its page and tabs scroll,
     assert.equal(calls(c, "w_full").length, 1);
     assert.equal(calls(c, "h_full").length, 1);
     assert.ok(calls(nodeOf(el), "p").some(([m]) => m === FIT.margin), "a margin to the window's edges");
+    // With no frame Herdr dims nothing behind it, so the window around the card is dimmed by the dialog.
+    assert.ok(calls(nodeOf(el), "bg").some(([c]) => /^#000000[0-9a-f]{2}$/i.test(c) && c.slice(7) !== "00"), "the window around the card is dimmed");
     assert.ok(pathTo(el, `work-setup-body-${focus}`).at(-1).calls.some(([m]) => m === "overflow_y_scrollbar"), `${focus}: the page scrolls`);
     assert.ok(scrolls(pathTo(el, "setup-tabs").at(-1)), "the side tabs scroll");
     assert.ok(pathTo(el, `setup-tab-${focus}`).some(scrolls), "each tab is inside that scroll");
@@ -421,5 +423,22 @@ test("the profile dialog's card shrinks to the window, its page and tabs scroll,
       assert.ok(path, id);
       assert.equal(path.filter(scrolls).length, 0, `${id} is outside every scroll`);
     }
+    // Let me configure it for you is a quiet button in the Save row, not a card in the side column.
+    const row = pathTo(el, "setup-save").at(-2);
+    const configure = pathTo(el, "setup-configure-all") ?? pathTo(el, "setup-configure-all-more");
+    assert.ok(configure?.includes(row), `${focus}: Let me configure it for you is in the Save row`);
+    // Delete profile is far from it: at the end of the General page, never in the Save row.
+    const remove = pathTo(el, "setup-remove");
+    if (focus === "general") assert.ok(remove && !remove.includes(row), "general: Delete profile is on the page");
+    else assert.equal(remove, null, `${focus}: no Delete profile`);
   }
+});
+
+test("Delete profile, on the General page, deletes the profile only on its second press", () => {
+  const { d, cx } = profileDialog("general");
+  press(d.render(cx), "setup-remove", cx);
+  assert.ok(mock.state.shared.get("kelpie.profiles")[DEMO], "the first press only asks");
+  assert.ok(texts(d.render(cx)).some((x) => x.startsWith("Delete ")), "it now says what it deletes");
+  press(d.render(cx), "setup-remove", cx);
+  assert.equal(mock.state.shared.get("kelpie.profiles")[DEMO], undefined);
 });
