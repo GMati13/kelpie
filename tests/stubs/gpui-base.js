@@ -95,3 +95,4 @@ export const SliderState = state("SliderState");
 export const OtpState = state("OtpState");
 export const CalendarState = state("CalendarState");
 export const VirtualListScrollHandle = state("VirtualListScrollHandle");
+export const ScrollHandle = state("ScrollHandle");

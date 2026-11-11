@@ -14,7 +14,8 @@ div
               div [bg=#9dbb84]
       div [fg=dim]
         "Start review opens a Claude agent on it, in the Reviews space."
-      div #pr-desc-view
+      div #pr-desc-view-review:web#421
+        div #demo:review:web#421-top
         h_flex
           div #pr-desc-body [font="Fraunces" fg=foreground/c4]
             v_flex

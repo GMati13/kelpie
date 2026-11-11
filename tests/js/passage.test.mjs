@@ -8,7 +8,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { put, tempDir } from "../lib/helpers.mjs";
-import { byId } from "../lib/snapshot.mjs";
+import { byId, render } from "../lib/snapshot.mjs";
+import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { StoryBody, StoryList, showPassageRequest } from "../../mods/kelpie/stories.js";
 import { findPassage, markdownBlocks } from "../../mods/kelpie/adf.js";
 
@@ -79,7 +80,7 @@ test("the details show the passage bar while it's shown, and Back to the story e
   assert.ok(bar, "the passage bar is drawn");
   assert.ok(texts(bar).includes("Here in the description"));
   assert.ok(texts(bar).includes("What the PDF holds"));
-  assert.equal(byId(el, "story-overview"), null, "the reader takes the overview's place");
+  assert.doesNotMatch(render(el, skinTheme()), /#story-overview-/, "the reader takes the overview's place");
   handlers(el).find((h) => h.id === "passage-back").fn({}, cx);
   assert.equal(passage(), null);
 });

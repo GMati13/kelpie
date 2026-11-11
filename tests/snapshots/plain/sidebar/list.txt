@@ -67,7 +67,7 @@ v_flex [fg=foreground]
           svg own:sparkles [fg=accent] ~loop(opacity)
           div [fg=accent]
             "Conjure more to do"
-  v_flex #work-side-list
+  v_flex #work-side-list-demo
     h_flex
       div
         h_flex

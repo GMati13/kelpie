@@ -41,6 +41,7 @@ export function tree(x, seen = new Set()) {
     return out;
   }
   if (typeof x === "function") return "[fn]";
+  if (x && typeof x === "object" && x.__state) return `[${x.__state.kind}]`; // a state handle (gpui-base.js)
   if (Array.isArray(x)) return x.map((v) => tree(v, seen));
   if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, tree(v, seen)]));
   return x;

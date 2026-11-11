@@ -11,9 +11,9 @@
 //   folder on `claude --resume`.
 
 import { div } from "gpui-kit";
-import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
+import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
-import { CONTROL, ROW_CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
@@ -2863,6 +2863,17 @@ export class Stories extends Source {
     return [ask, show, approval].filter(Boolean);
   }
 
+  // A scroll box of the details (StoryBody's), given the position kept for `key`. `top`, when it
+  // differs from the last one given for that key (Next's pointer), puts it back to the top. Its first
+  // child is an empty line, what "back to the top" reveals: a handle reveals a child with the least
+  // scroll, which for one tall child already at the top would scroll to its bottom.
+  scrollBox(el, key, top = null) {
+    const h = this.detailScrolls?.get(key);
+    if (!h) return el;
+    if (top !== null && h.top !== top) { h.top = top; h.box.scroll_to_item(0); }
+    return el.track_scroll(h.box).child(div().id(`${key}-top`).flex_none().w_full().h(0));
+  }
+
   // A pull request shown on its own: who opened it (a review's), its checks and review, when it last
   // changed, and its description (GitHub's Markdown, loaded when shown, folded like a ticket's). Its
   // files are in the Changes view.
@@ -2880,7 +2891,7 @@ export class Stories extends Source {
         .when(!p.isDraft && Boolean(r), (el) => el.child(chip(t, r[0], t[r[1]]))))
       .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(it.review ? "Start review opens a Claude agent on it, in the Reviews space."
         : "It names no ticket, so its agents work on the Desk."))
-      .when(Boolean(about), (el) => el.child(div().id("pr-desc-view").flex_1().min_h(0).overflow_y_scrollbar().child(about)));
+      .when(Boolean(about), (el) => el.child(this.scrollBox(div().id(`pr-desc-view-${it.key}`), `${st.profile?.id}:${it.key}`).flex_1().min_h(0).overflow_y_scrollbar().child(about)));
   }
 
   detail(t, st, it, cx, note = null) {
@@ -2951,10 +2962,15 @@ export class Stories extends Source {
       .when(it.prs.length > 0, (el) => el.child(heading("prs-story", "On the story itself")).children(prOrder(it.prs).map((p) => this.pr(t, p, st, it).px(8))))
       .when(own.length > 0, (el) => el.child(heading("prs-own", own.length === 1 ? "Pull request" : `Pull requests · ${own.length}`)).children(prOrder(own).map((p) => this.pr(t, p, st, it).px(8))))
       .children(it.story ? subGroups(it.subs) : []);
-    // Next pointing at a step opens the details at their top, where its box is: a new id is a new
-    // scroll position (a mod can't scroll this one itself).
+    // A passage shown: the reader takes the details' place (before the overview is built, so a
+    // pointing's trip to the top isn't spent on a box that isn't drawn).
+    const hl = passageFor(st.profile, it.key);
+    if (hl) return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8).child(this.reader(t, st, it, hl, cx));
+    // Each story keeps its own place in its details (scrollBox()), per profile, as two profiles may
+    // show one board. Next pointing at a step opens them at their top, where its box is, once per
+    // pointing.
     const point = pointFor(st.profile, it);
-    const overview = v_flex().id(point ? `story-overview-${point.at}` : "story-overview").flex_1().min_h(0).gap(0).overflow_y_scrollbar()
+    const overview = this.scrollBox(v_flex().id(point ? `story-overview-${it.key}-${point.at}` : `story-overview-${it.key}`), `${st.profile?.id}:${it.key}`, point?.at ?? null).flex_1().min_h(0).gap(0).overflow_y_scrollbar()
       .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
         .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
         .child(h_flex().flex_none().w_full().justify_center().px(40).pb(16).child(rows)));
@@ -2970,8 +2986,6 @@ export class Stories extends Source {
     // Under the title row (a block of its own): the status command's line, the note, then the
     // description and subtasks.
     const line = this.statusLine(t, st, it, cx);
-    const hl = passageFor(st.profile, it.key);
-    if (hl) return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8).child(this.reader(t, st, it, hl, cx));
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       // As wide as the subtask rows at most (ROWS), centred like them.
       .when(Boolean(point), (el) => el.child(h_flex().flex_none().w_full().justify_center().child(this.pointBox(t, st, it, point, cx))))
@@ -3322,7 +3336,10 @@ export class Stories extends Source {
         : begun(it) ? "No changes yet: nothing uncommitted on its branches, and no PR yet." : "No changes yet. They show here once you start work on it.", { fill: true });
     }
     const chosen = all.find((f) => f.id === this.file[it.key]) ?? all[0];
-    const whole = DIFF.all && Boolean(this.diffScroll); // every file on one page
+    const sc = this.diffScrolls?.get(`${st.profile?.id}:${it.key}`) ?? null; // this story's scroll positions (per profile)
+    // A jump to a file (n / p, ] / [, a pick) is the story's it began in, not the next one shown.
+    if (this.jumpKey !== it.key) { this.jumpKey = it.key; this.jump = null; }
+    const whole = DIFF.all && Boolean(sc); // every file on one page
     this.fileOrder = { key: it.key, ids: all.map((f) => f.id) };
     const viewed = shared(VIEWED) ?? {};
     // One file at a time, the one shown counts as looked at; on the page of all of them, each file
@@ -3418,7 +3435,7 @@ export class Stories extends Source {
     // A file picked in the list (or by ↑/↓, or the page just opened on it) is scrolled to the top.
     if (whole && this.pendingJump) {
       const fi = view.ids.indexOf(this.pendingJump);
-      if (fi >= 0) { this.diffScroll.scroll_to_item(view.starts[fi], "top"); this.jump = { fi, start: null }; }
+      if (fi >= 0) { sc.all.scroll_to_item(view.starts[fi], "top"); this.jump = { fi, start: null }; }
       this.pendingJump = null;
     }
     const langs = all.map((f) => syntaxOf(f.path));
@@ -3618,9 +3635,10 @@ export class Stories extends Source {
     // opens at its top.
     const list = whole ? `diff-all-${patchHash(it.key)}` : `diff-lines-${patchHash(chosen.id)}`;
     const pick = (f) => { this.file[it.key] = f.id; this.changeAt = null; if (whole) this.pendingJump = f.id; };
-    // One file at a time, each opens at its top (the list's scroll handle keeps its place otherwise).
-    if (!whole && this.fileScroll && this.oneFile !== chosen.id) { this.oneFile = chosen.id; this.changeAt = null; this.fileScroll.scroll_to_item(0, "top"); }
-    const scroller = whole ? this.diffScroll : this.fileScroll;
+    // One file at a time, each opens at its top (the story's scroll handle keeps its place otherwise,
+    // so coming back to the story finds the file where it was).
+    if (!whole && sc && sc.oneFile !== chosen.id) { sc.oneFile = chosen.id; this.changeAt = null; sc.one.scroll_to_item(0, "top"); }
+    const scroller = whole ? sc?.all : sc?.one;
     // Keys, once the diff or the file list has been clicked: n / p the next or previous change
     // (across files on the page of all of them), ] / [ the next or previous file, v ticks the file
     // shown as viewed; in the file list ↑ / ↓ step through the files too.
@@ -3652,10 +3670,10 @@ export class Stories extends Source {
           .child(h_flex().w_full().h(3).rounded(2).bg(t.raised).overflow_hidden()
             .child(div().h_full().rounded(2).bg(t.done).w(`${(100 * progress) / all.length}%`)))
           // Every file on one page, or one at a time.
-          .when(Boolean(this.diffScroll), (el) => el.child(h_flex().gap(2).pt(2)
+          .when(Boolean(sc), (el) => el.child(h_flex().gap(2).pt(2)
             .child(textButton(t, "diff-all", "All files", (_e, cx) => { if (!DIFF.all) { DIFF.all = true; DIFF.version++; this.pendingJump = chosen.id; cx.notify(); } }, { on: DIFF.all, tip: "Every file on one page" }))
             .child(textButton(t, "diff-one", "One file", (_e, cx) => { if (DIFF.all) { DIFF.all = false; DIFF.version++; cx.notify(); } }, { on: !DIFF.all, tip: "One file at a time" })))))
-        .child(v_flex().id("change-files").flex_1().min_h(0).py(4).pr(6).gap(1).overflow_y_scrollbar()
+        .child(v_flex().id(`change-files-${it.key}`).flex_1().min_h(0).py(4).pr(6).gap(1).overflow_y_scrollbar().when(Boolean(sc), (el) => el.track_scroll(sc.files))
           .children(extra.groups.flatMap((g, gi) => [
             // A group's heading: its repo (and pull request), whether it's uncommitted or merged, its
             // ticket key when it's another than the story's, and how many of its files are viewed.
@@ -3691,7 +3709,7 @@ export class Stories extends Source {
           // Sizes and positions come back as drawn (zoom included) while the header's are set at zoom
           // 1: a probe 100 wide says the zoom, and a press's x is divided by it.
           .child(div().id("diff-zoom-probe").absolute().top(0).left(0).w(100).h(0).on_size_change((size) => { if (size.width > 0) this.diffZoom = size.width / 100; }))
-          .child(div().id("diff-x").size_full().overflow_x_scrollbar()
+          .child(div().id(`diff-x-${it.key}`).size_full().overflow_x_scrollbar()
             // Where a press lands, for the band buttons and the Viewed box (and the press gives the diff
             // the keys); a scroll asks the page which file it's on, and n / p start from where it is.
             .child(div().w_full().min_w(width).h_full()
@@ -3871,6 +3889,8 @@ export class StoryBody extends Stories {
   init(cx) {
     super.init(cx);
     this.readerScroll = VirtualListScrollHandle.new(); // the passage reader, scrolled to the passage
+    // The details' place, per story or pull request shown (ui.js ScrollPool).
+    this.detailScrolls = new ScrollPool(() => ({ box: ScrollHandle.new(), top: null }), (h) => { h.box.scroll_to_item(0); h.top = null; });
   }
   render(cx) {
     const { st, t, early, shown } = this.prepare(cx);
@@ -3891,6 +3911,8 @@ export class StoryList extends Stories {
   init(cx) {
     this.loader = true;
     Source.prototype.init.call(this, cx);
+    // The list's place, per profile (ui.js ScrollPool).
+    this.listScrolls = new ScrollPool(() => ({ box: ScrollHandle.new() }), (h) => h.box.scroll_to_item(0), 8);
     cx.timer.every(QUICK_EVERY, (cx) => { if (this.inFlight(this.context())) this.quickPulls(cx); });
   }
 
@@ -4212,7 +4234,8 @@ export class StoryList extends Stories {
         .when(counts.some(([n]) => n), (el) => el.child(h_flex().flex_wrap().gap(12).items_center().children(counts.filter(([n]) => n)
           .map(([n, label, c, state]) => countBadge(t, `count-${state}`, state, n, `${n} ${label}`, t[c]).when(n === 1, (x) => x.child("1"))))))
         .when(Boolean(next), (el) => el.child(next)))
-      .child(v_flex().id("work-side-list").flex_1().min_h(0).px(8).pb(10).overflow_y_scrollbar()
+      .child(v_flex().id(`work-side-list-${st.profile?.id ?? "none"}`).flex_1().min_h(0).px(8).pb(10).overflow_y_scrollbar()
+        .when(Boolean(this.listScrolls), (el) => el.track_scroll(this.listScrolls.get(st.profile?.id ?? null).box))
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
@@ -4246,8 +4269,10 @@ export class StoryView extends Stories {
     this.sending = null; // the target id whose note is open
     this.target = null; // what Enter sends: { id, st, it, key, about }
     this.filesFocus = cx.focus_handle(); // the Changes view's file list, for ↑ / ↓
-    this.diffScroll = VirtualListScrollHandle.new(); // the all-files page, to jump to a file
-    this.fileScroll = VirtualListScrollHandle.new(); // one file at a time, for n / p
+    // Per story shown (ui.js ScrollPool): the all-files page (to jump to a file), one file at a time
+    // (for n / p; `oneFile` the file it holds, which opens at its top), and the file list.
+    this.diffScrolls = new ScrollPool(() => ({ all: VirtualListScrollHandle.new(), one: VirtualListScrollHandle.new(), files: ScrollHandle.new(), oneFile: null }),
+      (h) => { h.all.scroll_to_item(0, "top"); h.one.scroll_to_item(0, "top"); h.files.scroll_to_item(0); h.oneFile = null; }, 8);
     this.diffFocus = cx.focus_handle(); // the diff itself, for n / p, ] / [ and v
   }
 
