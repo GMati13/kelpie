@@ -801,19 +801,41 @@ const needQueueOf = (profile, items, reviews = []) => {
 };
 
 // What agents asked of you (the plugin's add_to_next, addAsk()), by profile: a list of { id, at,
-// action, why, key, url, terminal, tab }, `terminal` the asking agent's, when known. In the queue each
-// is { key: "ask:<id>", ask, it }, `it` its story while the list has it. It goes when it's clicked or
-// dismissed, after a day, or once its agent's terminal is gone (nobody's left waiting for it).
+// action, why, key, url, terminal, tab, rest }, `terminal` the asking agent's, when known. In the queue
+// each is { key: "ask:<id>", ask, it }, `it` its story while the list has it. It goes when it's clicked
+// or dismissed, after a day, once its agent's terminal is gone (nobody's left waiting for it), or once
+// its agent was answered (answered(), settleAsks()).
 const ASKS = "kelpie.next.asks";
 const ASK_FOR = 24 * 3600 * 1000;
 const ASK_MAX = 10; // per profile
 const ASK_EACH = 3; // per agent
+// An agent asks at the end of a turn, so it's working when the ask comes in. Seen at rest after that
+// (done or idle: its turn ended; `rest`), then working again, it started a new turn: someone answered
+// it, in its own tab or anywhere. A permission prompt (blocked) is the same turn going on, not an end.
+const RESTING = new Set(["done", "idle"]);
+const answered = (ask, status) => Boolean(ask.rest) && status === "working";
 function asksIn(profile, items) {
   const list = (shared(ASKS) ?? {})[profile?.id] ?? [];
   if (!list.length) return [];
-  const live = new Set(agents().map((a) => a.address));
-  return list.filter((a) => Date.now() - a.at < ASK_FOR && (!a.terminal || live.has(a.terminal)))
+  const live = new Map(agents().map((a) => [a.address, a.status]));
+  return list.filter((a) => Date.now() - a.at < ASK_FOR && (!a.terminal || (live.has(a.terminal) && !answered(a, live.get(a.terminal)))))
     .map((a) => ({ key: `ask:${a.id}`, ask: a, it: a.key ? items.find((x) => x.it.key === a.key)?.it ?? null : null }));
+}
+// Notes each ask whose agent is at rest, and drops each whose agent was answered since (answered()),
+// for every profile. Run by the copy that follows what's shown (syncTracking()), as agents change
+// state whatever's on screen; written only when something changed. Exported for the tests.
+export function settleAsks() {
+  const all = shared(ASKS);
+  if (!all) return;
+  const live = new Map(agents().map((a) => [a.address, a.status]));
+  let changed = false;
+  const next = Object.fromEntries(Object.entries(all).map(([id, list]) => [id, (list ?? []).flatMap((a) => {
+    const status = a.terminal ? live.get(a.terminal) : undefined;
+    if (answered(a, status)) { changed = true; return []; }
+    if (!a.rest && RESTING.has(status)) { changed = true; return [{ ...a, rest: true }]; }
+    return [a];
+  })]));
+  if (changed) setShared(ASKS, next);
 }
 function dismissAsk(profile, id) {
   const all = shared(ASKS) ?? {};
@@ -855,7 +877,8 @@ export function addAsk(profile, { action, why, key, url, terminal } = {}) {
   const all = shared(ASKS) ?? {};
   let list = (all[profile.id] ?? []).filter((a) => now - a.at < ASK_FOR && !(term && a.terminal === term && a.action === act));
   const ask = { id: String(now) + (list.some((a) => a.id === String(now)) ? `-${list.length}` : ""), at: now, action: act, why: because,
-    ...(k ? { key: k } : {}), ...(link ? { url: link } : {}), ...(term ? { terminal: term } : {}), ...(asker?.tab_name ? { tab: passageText(asker.tab_name, 60) } : {}) };
+    ...(k ? { key: k } : {}), ...(link ? { url: link } : {}), ...(term ? { terminal: term } : {}), ...(asker?.tab_name ? { tab: passageText(asker.tab_name, 60) } : {}),
+    ...(RESTING.has(asker?.status) ? { rest: true } : {}) };
   if (term) { const mine = list.filter((a) => a.terminal === term); if (mine.length >= ASK_EACH) { const drop = new Set(mine.slice(0, mine.length - ASK_EACH + 1).map((a) => a.id)); list = list.filter((a) => !drop.has(a.id)); } }
   list = [...list, ask].slice(-ASK_MAX);
   setShared(ASKS, { ...all, [profile.id]: list });
@@ -4187,6 +4210,7 @@ let lastProfile = null; // the profile shown at the last call
 // `baseline`: only note what's shown now (a copy taking the tracking over from another), act on nothing.
 export function syncTracking(baseline = false) {
   keepProfileOnClose(baseline);
+  settleAsks();
   const ctx = READER.context();
   if (baseline) { lastSpace = ctx.space?.id ?? null; lastProfile = ctx.profile?.id ?? null; }
   // Another space shown ends a preview, unless the story's own space closed (its last tab did, say):

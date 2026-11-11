@@ -110,9 +110,9 @@ v_flex
       v_flex
         h_flex
           div
-            "Pick how trips are stored offline"
+            "Pick the dark mode accent colour"
         div [fg=muted]
-          "ACME-175 · Two ways to keep trips offline: I'd like your choice before I build one."
+          "ACME-172 · Two blues read well on the dark background: I'd like your choice before I set the token."
       div #queue-drop-ask:demo-0 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this request"
         svg chrome:x
     h_flex [fg=dim]
