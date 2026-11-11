@@ -6,6 +6,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { run, setShared, shared, spaces } from "herdr";
 import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
 import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
+import { asked, began, ended, skipped, waits } from "./debug.js";
 
 export const REFRESH = "kelpie.refresh";
 const STUCK = 2 * 60 * 1000;
@@ -25,8 +26,13 @@ export class Source {
 
   init(cx) {
     this.seen = shared(REFRESH);
-    this.load(cx);
-    cx.timer.every(this.every, (cx) => this.load(cx));
+    this.load(cx, { why: "start" });
+    cx.timer.every(this.every, (cx) => this.load(cx, { why: "timer" }));
+  }
+
+  // Its name in the load record (debug.js): the source and whose data it is.
+  job(ctx) {
+    return `${this.id}:${ctx.profile?.id ?? ctx.space?.id ?? "none"}`;
   }
 
   // The shown space, its setup, and a key that changes when either (or a source's own option) does.
@@ -48,20 +54,26 @@ export class Source {
   // turn ending). A load already running began before that change, so its answer may not have it:
   // the request isn't dropped but waits, and the next draw once that load ends loads again. A timer's
   // or a stale copy's request isn't kept, as the load running answers it.
-  load(cx, { again = false } = {}) {
+  //   `why`: what asked for it, for the load record (debug.js).
+  load(cx, { again = false, why = again ? "asked again" : "asked" } = {}) {
     const ctx = this.context();
     if (!this.ready(ctx)) return;
+    const job = this.job(ctx);
+    asked(job, why);
     // A load still marked busy after STUCK was dropped (a reload or restart mid-load ends its task
     // without its finally): it no longer blocks the next one, or "Updating…" would stay for good.
     if (this.busy.has(ctx.key) && Date.now() - (this.started[ctx.key] ?? 0) < STUCK) {
-      if (again) this.again.add(ctx.key);
+      if (again) { this.again.add(ctx.key); waits(job, why, cx); }
+      else skipped(job, `${why}: the load running answers it`, cx);
       return;
     }
     this.again.delete(ctx.key);
     this.busy.add(ctx.key);
     this.started[ctx.key] = Date.now();
+    began(job, why, cx);
     cx.spawn(async (cx) => {
       const before = this.cache[ctx.key];
+      let error = null;
       try {
         const data = await this.fetch(ctx);
         this.cache[ctx.key] = { data, error: null, at: Date.now() };
@@ -70,10 +82,12 @@ export class Source {
         if (typeof n === "number" && shared(name) !== n) setShared(name, n);
         this.loaded?.(ctx); // a source shown by several copies wakes the others
       } catch (e) {
-        this.cache[ctx.key] = { data: before?.data ?? null, error: String(e?.message ?? e), at: Date.now() };
+        error = String(e?.message ?? e);
+        this.cache[ctx.key] = { data: before?.data ?? null, error, at: Date.now() };
         this.loaded?.(ctx); // the others show the error too
       } finally {
         this.busy.delete(ctx.key);
+        ended(job, error, cx);
         cx.notify();
       }
     });
@@ -84,8 +98,9 @@ export class Source {
   state(cx) {
     const ctx = this.context();
     const r = shared(REFRESH);
-    if (r !== this.seen) { this.seen = r; this.load(cx, { again: true }); }
-    else if (!this.cache[ctx.key] || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) this.load(cx);
+    if (r !== this.seen) { this.seen = r; this.load(cx, { again: true, why: "refresh" }); }
+    else if (!this.cache[ctx.key]) this.load(cx, { why: "nothing loaded yet" });
+    else if (this.again.has(ctx.key) && !this.busy.has(ctx.key)) this.load(cx, { why: "asked again while one ran" });
     return { ...ctx, ...(this.cache[ctx.key] ?? { data: null, error: null, at: 0 }), loading: this.busy.has(ctx.key) };
   }
 }

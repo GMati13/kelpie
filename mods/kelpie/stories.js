@@ -25,6 +25,7 @@ import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
+import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -2231,21 +2232,28 @@ export class Stories extends Source {
   // closing changes them, not what Jira or GitHub say. Asked for while a full load or another read
   // runs, it isn't dropped: that one read the sessions when it began, maybe before the tab changed,
   // so they're read again once it ends (`sessionsAgain`, state()).
-  loadSessions(cx) {
+  //   `why`: what asked for it, for the load record (debug.js).
+  loadSessions(cx, { why = "an agent tab opened or closed" } = {}) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !this.cache[ctx.key]?.data) return;
-    if (this.sessionsBusy || this.busy.has(ctx.key)) { this.sessionsAgain = true; return; }
+    const job = `sessions:${ctx.profile.id}`;
+    debugAsked(job, why);
+    if (this.sessionsBusy || this.busy.has(ctx.key)) { this.sessionsAgain = true; waits(job, `${why}, behind ${this.sessionsBusy ? "another sessions read" : "a full load"}`, cx); return; }
     this.sessionsAgain = false;
     this.sessionsBusy = true;
+    began(job, why, cx);
     cx.spawn(async (cx) => {
+      let error = null;
       try {
         const sessions = await this.fetchSessions(ctx);
         const entry = this.cache[ctx.key];
-        if (!sessions || !entry?.data || this.busy.has(ctx.key)) return;
+        if (!sessions) { error = "the sessions didn't load"; return; }
+        if (!entry?.data || this.busy.has(ctx.key)) { error = "not used: a full load began meanwhile"; return; }
         this.cache[ctx.key] = { ...entry, data: { ...entry.data, sessions } };
         this.loaded(ctx);
       } finally {
         this.sessionsBusy = false;
+        ended(job, error, cx);
         cx.notify();
       }
     });
@@ -2295,19 +2303,25 @@ export class Stories extends Source {
   //   `direct`: asked for because something just happened (an agent's turn ending), not by the 20 s
   // timer. Reacting to that is what the quick read is for, so while GitHub's budget runs low only the
   // full loads and the timer's reads give way (#131); used up, nothing asks, as GitHub refuses anyway.
-  quickPulls(cx, { direct = false } = {}) {
+  //   `why`: what asked for it, for the load record (debug.js).
+  quickPulls(cx, { direct = false, why = direct ? "an agent's turn ended" : "timer: something in flight" } = {}) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
+    const job = `quick:${ctx.profile.id}`;
+    debugAsked(job, why);
     const account = ctx.setup.github.account;
-    if (ctx.setup.github.demo ? demoLimit() : blockedFor(account) || (!direct && lowFor(account))) return;
-    if (this.quickBusy) { this.quickAgain = this.quickAgain === "direct" || direct ? "direct" : true; return; }
+    if (ctx.setup.github.demo ? demoLimit() : blockedFor(account)) return skipped(job, `${why}: GitHub's limit is used up`, cx);
+    if (!ctx.setup.github.demo && !direct && lowFor(account)) return skipped(job, `${why}: GitHub's budget is low, only an agent's turn ending reads`, cx);
+    if (this.quickBusy) { this.quickAgain = this.quickAgain === "direct" || direct ? "direct" : true; waits(job, why, cx); return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;
-    if (!data) return;
+    if (!data) return skipped(job, `${why}: nothing loaded yet`, cx);
     const ids = [...(data.prs ?? []).filter((p) => !p.merged), ...(data.reviews ?? [])].map((p) => p.id).filter(Boolean);
     const known = new Set([...(data.prs ?? []), ...(data.reviews ?? [])].map((p) => p.url));
     this.quickBusy = true;
+    began(job, why, cx);
     cx.spawn(async (cx) => {
+      let error = null;
       try {
         const at = Date.now();
         const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null, owner: ctx.setup.github.owner });
@@ -2316,10 +2330,12 @@ export class Stories extends Source {
           FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at, ...(opened ? { opened } : {}) };
         }
         if (found.length) patchLoaded(ctx.profile, (d) => withFresh(d, ctx.profile.id));
-      } catch {
+      } catch (e) {
         // the next load or read brings it
+        error = String(e?.message ?? e);
       } finally {
         this.quickBusy = false;
+        ended(job, error, cx);
         cx.notify();
       }
     });
@@ -2359,9 +2375,9 @@ export class Stories extends Source {
       const ctx = this.context();
       const e = sharedData(ctx);
       if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
-      if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
-      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct" });
-      if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
+      if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx, { why: "stale: older than the timer" });
+      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct", why: "asked again while one ran" });
+      if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx, { why: "asked again while one ran" });
       const st = super.state(cx);
       // A failed load (GitHub's limit, say, which lasts) shows how old the stories shown are, not
       // when it failed: the shared copy keeps their age.
@@ -2384,7 +2400,11 @@ export class Stories extends Source {
     const e = sharedData(ctx);
     if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
     const board = this.ready(ctx) ? boardOf(ctx.setup) : null;
-    if (board?.kind === "project" && !board.cfg.demo && lowFor(board.account) && this.cache[ctx.key] && Date.now() - (this.fullAt ?? 0) < LOW_EVERY) return;
+    if (board?.kind === "project" && !board.cfg.demo && lowFor(board.account) && this.cache[ctx.key] && Date.now() - (this.fullAt ?? 0) < LOW_EVERY) {
+      const why = opts?.why ?? "asked";
+      debugAsked(this.job(ctx), why);
+      return skipped(this.job(ctx), `${why}: GitHub's budget is low, at most a load every ${LOW_EVERY / 60000} minutes`, cx);
+    }
     this.fullAt = Date.now();
     super.load(cx, opts);
   }

@@ -11,6 +11,7 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
+import { toggleDebug } from "./debug.js";
 import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
@@ -634,6 +635,8 @@ async function command(c) {
   if (c === "clean-all") return cleanAll();
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
   if (c === "what-next") return whatNext();
+  // debug-loads: the load record (debug.js) written to shared state, or no longer.
+  if (c === "debug-loads") return toggleDebug();
   // demo: the demo profile and its spaces, from mods/kelpie/demo/demo.json (demo.js); demo-remove undoes it.
   // demo-github: the same profile with its board a GitHub Project of the same issues (demo puts Jira back).
   if (c === "demo-github") return setupDemo("project").catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
