@@ -68,7 +68,8 @@
   "project": {
     "title": "Acme",
     "repo": "kelpie--demo/acme",
-    "iteration": "Sprint"
+    "iteration": "Sprint",
+    "labels": {"mobile": "0e8a16", "sync": "c5def5", "payments": "fbca04", "ios": "5319e7", "search": "1d76db", "frontend": "bfd4f2", "design": "e99695", "accessibility": "006b75", "charts": "f9d0c4", "bug": "d73a4a", "ci": "ededed", "security": "b60205"}
   },
   "sprints": [
     {
@@ -81,6 +82,7 @@
       "key": "ACME-142",
       "assignee": "Priya Nair",
       "summary": "Offline mode for saved trips",
+      "labels": ["mobile"],
       "type": "Story",
       "status": "In Progress",
       "description": "Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.\n\n## What we want\n\nSaved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.\n\n- Cache every trip the traveller opened in the last 30 days in `IndexedDB`\n- Queue edits made offline and replay them in order\n- Show a calm banner while offline, never a blocking error\n\n## Out of scope\n\nDownloading map tiles: that's ACME-190.\n\n## Done when\n\n1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online\n3. Conflicts keep the newest change and say so in the trip's history"
@@ -96,6 +98,7 @@
     {
       "key": "ACME-144",
       "summary": "Queue offline edits and sync them back",
+      "labels": ["sync"],
       "parent": "ACME-142",
       "status": "To Do",
       "mine": true
@@ -111,6 +114,7 @@
       "key": "ACME-151",
       "assignee": "Priya Nair",
       "summary": "Pay with Apple Pay at checkout",
+      "labels": ["payments", "ios"],
       "type": "Story",
       "status": "In Progress",
       "description": "Let travellers pay with **Apple Pay** on the checkout page in Safari and the iOS app.\n\n## Notes\n\n- The merchant session is created by the payments service, never in the browser\n- Receipts for wallet payments go out like card receipts\n- Behind the `wallet-payments` flag until finance signs off"
@@ -133,6 +137,7 @@
       "key": "ACME-160",
       "assignee": "Lena Vogel",
       "summary": "Typo-tolerant search",
+      "labels": ["search"],
       "type": "Story",
       "status": "In Review",
       "description": "Searching for `barcleona` or `amstredam` finds nothing today. Match destinations and hotels within one or two typos, ranking exact matches first.\n\n## Approach\n\nA trigram index on names in the search service, with a similarity floor of 0.3, then the usual popularity ranking."
@@ -148,6 +153,7 @@
       "key": "ACME-171",
       "assignee": "Tomás Ruiz",
       "summary": "Dark mode for the dashboard",
+      "labels": ["frontend", "design", "accessibility"],
       "type": "Story",
       "status": "In Review",
       "description": "The dashboard is the last screen without a dark theme. Move its colours to the shared theme tokens and add the toggle to the account menu, following the system setting by default."
@@ -162,6 +168,7 @@
     {
       "key": "ACME-173",
       "summary": "Dark colours for the dashboard charts",
+      "labels": ["charts"],
       "parent": "ACME-171",
       "status": "In Review",
       "mine": true
@@ -169,7 +176,8 @@
     {
       "key": "ACME-175",
       "summary": "Fix the flaky login test",
-      "type": "Task",
+      "labels": ["bug", "ci"],
+      "type": "Bug",
       "status": "In Progress",
       "mine": true,
       "description": "`login.e2e.ts` fails about one run in eight on CI: the test clicks the profile menu before the session cookie is set. Wait for the cookie, not a fixed timeout."
@@ -208,6 +216,7 @@
       "key": "ACME-186",
       "assignee": "Sam Okafor",
       "summary": "Label times with their zone",
+      "labels": ["frontend"],
       "parent": "ACME-184",
       "status": "In Progress"
     },
@@ -251,6 +260,7 @@
     {
       "key": "ACME-131",
       "summary": "Expiring reset links",
+      "labels": ["security"],
       "parent": "ACME-129",
       "status": "In Progress"
     },

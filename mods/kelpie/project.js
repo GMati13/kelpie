@@ -31,6 +31,7 @@ const DEMO_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
 // the pull requests that close it.
 const ISSUE = `id number title url state closedAt repository { nameWithOwner }
   assignees(first: 10) { nodes { login name avatarUrl(size: 48) } }
+  labels(first: 10) { nodes { name color } }
   parent { id number repository { nameWithOwner } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { url } }
   projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } } } }`;
@@ -190,6 +191,8 @@ export async function loadProject(board, keep = {}) {
           ? { id: option, name: options[index].name, statusCategory: { key: projectCategory(index, options.length, closed, options[index].name) } }
           : { id: null, name: own ? "No status" : closed ? "Closed" : "Open", statusCategory: { key: projectCategory(-1, options.length, closed) } },
         parent: parent ? { key: parent } : null,
+        // As GitHub gives them; cleaned and checked where they're kept (labelsOf() in stories.js).
+        labels: (i.labels?.nodes ?? []).filter(Boolean).map((l) => ({ name: l.name, color: l.color })),
         ...(who ? { assignee: { displayName: who.name || who.login, avatarUrls: { "48x48": who.avatarUrl ?? null } } } : {}),
       },
     };

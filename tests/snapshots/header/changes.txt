@@ -12,6 +12,9 @@ div
         div #story-need [fg=working font="DM Sans"] tip="Changes requested on ACME-161 (search#233)"
           "Changes requested on ACME-161 (search#233)"
         div
+        h_flex #story-tags
+          div #story-tags-0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: search"
+            "search"
         div #story-assignee
           div [bg=ansi1/33 fg=ansi1] tip="Assigned to Lena Vogel"
             "LV"

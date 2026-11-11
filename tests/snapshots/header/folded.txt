@@ -12,6 +12,9 @@ div
         div #story-need [fg=working font="DM Sans"] tip="ACME-143's agent needs you"
           "ACME-143's agent needs you"
         div
+        h_flex #story-tags
+          div #story-tags-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
+            "mobile"
         div #story-assignee
           div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
             "PN"

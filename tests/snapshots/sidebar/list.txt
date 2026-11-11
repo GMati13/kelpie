@@ -128,6 +128,9 @@ v_flex [fg=foreground]
               div [bg=dim]
             div [fg=dim]
               "0/2"
+          h_flex #tags-ACME-142
+            div #tags-ACME-142-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
+              "mobile"
     h_flex #story-ACME-151 [hover(bg=hover)] {click hover} tip="Checks failing on ACME-152 (payments#97)"
       div
         div
@@ -149,6 +152,11 @@ v_flex [fg=foreground]
               div [bg=dim]
             div [fg=dim]
               "0/2"
+          h_flex #tags-ACME-151
+            div #tags-ACME-151-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: payments"
+              "payments"
+            div #tags-ACME-151-1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] tip="Label: ios"
+              "ios"
     h_flex #story-ACME-160 [hover(bg=hover)] {click hover} tip="Changes requested on ACME-161 (search#233)"
       div
         div
@@ -172,6 +180,9 @@ v_flex [fg=foreground]
               div [bg=working]
             div [fg=dim]
               "0/1"
+          h_flex #tags-ACME-160
+            div #tags-ACME-160-0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: search"
+              "search"
     h_flex #story-ACME-171 [hover(bg=hover)] {click hover} tip="Approved, checks pass or none · ready to merge"
       div
         div
@@ -193,6 +204,13 @@ v_flex [fg=foreground]
               div [bg=working]
             div [fg=dim]
               "0/2"
+          h_flex #tags-ACME-171
+            div #tags-ACME-171-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: frontend"
+              "frontend"
+            div #tags-ACME-171-1 [bg=accent/24 fg=accent font="DM Sans"] tip="Label: design"
+              "design"
+            div #tags-ACME-171-more [fg=dim] tip="Label: accessibility"
+              "+1"
       h_flex #tasks-ACME-171 {down:left click}
         Popup.new "merge-ACME-171-menu"
           div #merge-ACME-171-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
@@ -215,6 +233,11 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-175 [fg=working] tip="web#423: Checks running"
             div
               svg chrome:clock [fg=working]
+          h_flex #tags-ACME-175
+            div #tags-ACME-175-0 [bg=blocked/24 fg=blocked font="DM Sans"] tip="Type: Bug"
+              "Bug"
+            div #tags-ACME-175-1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: ci"
+              "ci"
     h_flex #story-ACME-138 [hover(bg=hover)] {click hover} tip="Paused · 1 subtask · 1 in progress"
       div
         div

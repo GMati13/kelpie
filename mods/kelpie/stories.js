@@ -23,7 +23,7 @@ import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { alpha, bands, mix } from "./skins/common.js";
+import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -415,10 +415,13 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     if (from >= 0 && at === from) return "testing";
     return category === "new" ? "todo" : "doing";
   };
+  // The board's usual type at each level (every story a Story, every subtask a Sub-task) says
+  // nothing, so only other types are tags (tagsOf()).
+  const usualStory = usualType(data.parents), usualSub = usualType(data.children);
   const item = (key, f) => {
     const children = kids.get(key) ?? [];
     const sub = (c) => ({
-      key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, status: c.fields?.status?.name,
+      key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, tags: tagsOf(c.fields, usualSub), status: c.fields?.status?.name,
       category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
@@ -429,7 +432,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
     const gone = kept.has(key) && !mine.has(key) && !own.length;
     return {
-      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
@@ -588,6 +591,96 @@ function storyBadges(t, it) {
       { n: n.blocked, color: t.blocked }, { n: n.todo, color: t.dim }], `${tip}\nAll: ${progress(it)}`));
   }
   return out.filter(Boolean);
+}
+
+// --- Labels: what kind of work a ticket is, read on its row (#53) ---------------------------------
+
+// A ticket's labels as they're kept: GitHub's {name, color}, Jira's plain names. Both are strangers'
+// text: names cleaned of control characters and cut, a colour kept only as six hex digits, ten at most.
+const LABELS_KEPT = 10;
+const tagName = (v) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+export function labelsOf(f) { // exported for the tests
+  const out = [];
+  for (const l of Array.isArray(f?.labels) ? f.labels : []) {
+    const name = tagName(typeof l === "string" ? l : l?.name);
+    if (!name || out.some((x) => x.name === name)) continue;
+    const color = typeof l === "object" && /^[0-9a-f]{6}$/i.test(l?.color ?? "") ? l.color.toLowerCase() : null;
+    out.push(color ? { name, color } : { name });
+    if (out.length >= LABELS_KEPT) break;
+  }
+  return out;
+}
+
+// The type most of a level's tickets have: the one that says nothing on a row.
+function usualType(list) {
+  const n = new Map();
+  for (const i of list ?? []) { const k = i.fields?.issuetype?.name; if (k) n.set(k, (n.get(k) ?? 0) + 1); }
+  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+// A ticket's tags: its type when that says something (a bug always, else any but the level's usual
+// one; a GitHub Project's made-up Issue/Sub-issue then never shows), then its labels. A bug reads as a
+// bug on every board: Jira's Bug type and a label named like it are one tag, first, in the theme's red.
+const BUGGY = /\b(bugs?|defects?|incidents?)\b/i;
+export function tagsOf(f, usual = null) { // exported for the tests
+  const out = [];
+  const type = tagName(f?.issuetype?.name) || null;
+  if (type && (BUGGY.test(type) || type !== usual)) out.push({ name: type, from: "type", bug: BUGGY.test(type) });
+  for (const l of labelsOf(f)) {
+    const bug = BUGGY.test(l.name);
+    if (bug && out.some((x) => x.bug)) continue;
+    out.push({ ...l, from: "label", bug });
+  }
+  return out.sort((a, b) => Number(b.bug) - Number(a.bug));
+}
+
+// A colour readable on the theme's background (a repo's pale or dark label colour, on a dark or a
+// light theme): moved toward the foreground until it stands out enough, as WCAG measures contrast.
+const luminance = (hex) => {
+  const c = parseHex(hex);
+  if (!c) return null;
+  const [r, g, b] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+export function contrast(a, b) { // exported for the tests
+  const x = luminance(a), y = luminance(b);
+  return x === null || y === null ? 21 : (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+const TAG_CONTRAST = 4;
+export function legible(t, hex) { // exported for the tests
+  for (let i = 0; i <= 10; i++) {
+    const c = i ? mix(hex, t.foreground, i / 10) : hex;
+    if (contrast(c, t.background) >= TAG_CONTRAST) return c;
+  }
+  return t.foreground;
+}
+
+// A bug in the theme's red; a label in its repo's colour, made readable; one without (Jira's) in a
+// colour of the theme that's always the same for its name. Red is kept for bugs.
+export function tagColor(t, tag) { // exported for the tests
+  if (tag.bug) return t.blocked;
+  if (tag.color) return legible(t, `#${tag.color}`);
+  // FNV-1a: the simpler (h * 31 + c) put frontend, design and accessibility on one colour.
+  let h = 0x811c9dc5;
+  for (const c of tag.name.toLowerCase()) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  const hues = [t.ansi4, t.ansi5, t.ansi6, t.ansi2, t.ansi3, t.accent].filter(Boolean);
+  return hues.length ? hues[h % hues.length] : t.muted;
+}
+
+// A ticket's tags, small and quiet beside its key line: a tinted word each, the first `max`, then
+// "+n" with the rest in its tooltip. They give way before anything else on the line.
+const tagTip = (x) => `${x.from === "type" ? "Type" : "Label"}: ${x.name}`;
+function tagRow(t, tags, id, max = 2) {
+  if (!tags?.length) return null;
+  const shown = tags.slice(0, max), rest = tags.slice(max);
+  return h_flex().id(id).flex_shrink(1).min_w(0).overflow_hidden().gap(4).items_center()
+    .children(shown.map((x, i) => {
+      const c = tagColor(t, x);
+      return skinFont(div().id(`${id}-${i}`).flex_shrink(1).min_w(0).max_w(110).h(15).px(5).rounded(4).truncate()
+        .bg(alpha(c, 0.14)).text_color(c), "label", SMALL - 1).tooltip(tagTip(x)).child(x.name);
+    }))
+    .when(rest.length > 0, (el) => el.child(div().id(`${id}-more`).flex_none().text_size(SMALL - 1).text_color(t.dim)
+      .tooltip(rest.map(tagTip).join("\n")).child(`+${rest.length}`)));
 }
 
 // What a story needs from you, most urgent first: [rank, sentence, colour name]. Up to NEEDS_YOU it
@@ -824,6 +917,7 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+  ...(labelsOf(i.fields).length ? { labels: labelsOf(i.fields) } : {}),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -2245,7 +2339,9 @@ export class Stories extends Source {
           // Someone else has it now: who, as their avatar (the row's tooltip says it in words).
           .when(Boolean(it.reassigned), (el) => el.child(div().id(`gone-${it.key}`).flex_none()
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
-          .children(badges)))
+          .children(badges)
+          // What kind of work it is, last: the marks before it keep their places down the list.
+          .when(Boolean(it.tags?.length), (el) => el.child(tagRow(t, it.tags, `tags-${it.key}`)))))
       // Merge and Request approval for its pull requests, at hand without opening it (rowTasks); their
       // clicks stay off the row, as the broom's do.
       .when(tasks.length > 0, (el) => el.child(h_flex().id(`tasks-${it.key}`).flex_none().mt(2).gap(2)
@@ -2306,6 +2402,8 @@ export class Stories extends Source {
         .child(skinFont(div().id("story-need").min_w(0).flex_shrink(40).truncate().font_medium()
           .text_color(sunk(it, n) ? t.dim : color === "dim" ? t.muted : t[color]), "meta", SMALL).tooltip(line).child(skinText(line, "meta")))
         .child(div().flex_1())
+        // What kind of work it is: gives way after the need line, before the title.
+        .when(Boolean(it.tags?.length), (el) => el.child(tagRow(t, it.tags, "story-tags", 3).flex_shrink(10)))
         .when(Boolean(subMeter), (el) => el.child(div().flex_none().child(subMeter)))
         .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.mine, it.avatar)))
         .when(Boolean(it.status), (el) => el.child(it.review || it.pr ? div().flex_none().child(lozenge(t, it.status, it.category))
@@ -2542,6 +2640,9 @@ export class Stories extends Source {
         // As high as a button, so a row is the same height with its actions shown or not.
         .child(h_flex().id(`sub-main-${s.key}`).relative().flex_1().min_w(0).h(CONTROL).items_center()
           .child(title(s))
+          // What kind of work it is, at the title's end (the title truncates first); the actions
+          // shown on hover lie over it.
+          .when(Boolean(s.tags?.length), (el) => el.child(tagRow(t, s.tags, `sub-tags-${s.key}`).ml(8)))
           .when(list.length > 0, (el) => el.child(actions(s, list))))
         // After the title, the same columns on every row, filled or empty, so marks and chips line up
         // down the list. The status is as wide as its widest chip in this list, measured as drawn
