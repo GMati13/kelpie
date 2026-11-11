@@ -4506,7 +4506,12 @@ export function checkLeftovers(profile, items, force = false) {
     // A run taken over (it outlived its limit and another began) writes nothing: the newer one's answer stands.
     if ((shared(LEFTOVERS_RUN) ?? {})[profile.id]?.at !== at) return;
     putLeftovers(profile, at, found, null, ask);
-  }).catch(() => {}).finally(() => {
+  }).catch(() => {
+    // A check that failed waits its 2 minutes like one that answered, keeping what was known: clearing
+    // the mark redraws every copy, and without a fresh record each draw would start it again at once.
+    const all = shared(LEFTOVERS) ?? {};
+    if ((shared(LEFTOVERS_RUN) ?? {})[profile.id]?.at === at) setShared(LEFTOVERS, { ...all, [profile.id]: { ...(all[profile.id] ?? { found: {} }), ask, at: Date.now() } });
+  }).finally(() => {
     const mine = (shared(LEFTOVERS_RUN) ?? {})[profile.id];
     if (mine?.at !== at) return;
     setChecking(profile.id, null);

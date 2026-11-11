@@ -66,9 +66,20 @@ test("a story cleaned up while a check runs loses its broom, whatever that check
   await until(() => checks.length === 1, 3000, "the running check");
   const done = cleanUp(profile, story());
   await until(() => cleaned.length === 1 && checks.length === 2, 3000, "the clean-up, then its own look");
-  answer("worktrees/ABC-1"); // the check that began before the clean-up ends, with the old line
-  answer(""); // the clean-up's look: nothing left
+  checks.pop().resolve({ code: 0, stdout: "", stderr: "" }); // the clean-up's own look first: nothing left
   await done;
+  answer("worktrees/ABC-1"); // then the check that began before the clean-up ends, with the old line
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(found(), {}, "nothing left, so no broom");
+});
+
+test("a check that fails waits its 2 minutes instead of starting again on every draw", async () => {
+  profile.commands = { cleanUp: "clean {key}" }; // no leftovers check: ticket folders are looked for
+  mock.on.exec = (cmd, args) => (cmd === "sh" && String(args[1]).includes("for k;") ? Promise.reject(new Error("no folder")) : undefined);
+  checkLeftovers(profile, [story()]);
+  await until(() => !mock.sharedValue("kelpie.clean.checking")?.w, 3000, "the check ending");
+  checkLeftovers(profile, [story()]); // the redraw its end makes
+  await new Promise((r) => setImmediate(r));
+  const looked = mock.of("exec").filter(([c, a]) => c === "sh" && String(a[1]).includes("for k;")).length;
+  assert.equal(looked, 1, "not looked for again at once");
 });
