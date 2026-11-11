@@ -619,7 +619,7 @@ export class Setup {
         `A shell command that prints the API token, from a password manager (op read …, pass …, secret-tool lookup …). It runs for each request${this.mac ? ", instead of the Keychain when set" : ""}; the token only goes to curl, through a pipe.`),
       field(tokenCommand ? "Jira email" : "Jira email, for storing the token", input(this.email), null),
       this.mac && !tokenCommand && v_flex().pt(DIALOG.section)
-        .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a terminal and paste it at the prompt:"))
+        .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a zsh terminal (the Mac's default shell) and paste it at the prompt:"))
         .child(h_flex().p(8).gap(8).items_center().rounded(8).bg(t.background).border_1().border_color(t.border)
           .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email)))
           .child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email))))),
@@ -714,7 +714,7 @@ export class Setup {
           ...ghAccounts.map((a) => ({ label: a, value: a, on: this.githubAccount === a })),
         ], (v) => { this.githubAccount = v; delete this.checks["github-shell"]; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change: keep your main account active (gh auth switch), and pick the others here."),
         this.githubAccount && v_flex().pt(DIALOG.section)
-          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Add this to your shell setup once (~/.zshrc or ~/.bashrc), and the gh they run acts as that account. Agents started before it, and sessions resumed since, may still run without it: start a new one.`))
+          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Add this to your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it), and the gh they run acts as that account. Agents started before it, and sessions resumed since, may still run without it: start a new one.`))
           .child(h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
             .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(GH_FUNCTION.split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
             .child(textButton(t, "setup-gh-copy", "Copy", (_e, cx) => cx.write_to_clipboard(GH_FUNCTION))))
@@ -735,11 +735,11 @@ export class Setup {
         page("Prompts", "The first message each kind of agent gets. Each starts as a default; Reset brings it back."),
         group("Stories", hasBoard ? null : "Saved once a board is connected"),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,
-          `${fields(PROMPT_FIELDS)} {parent} is the story a sub-task belongs to; {subtasks} lists a story's subtasks, a line each.`),
+          `${fields(PROMPT_FIELDS)} {parent} is the story a subtask belongs to; {subtasks} lists a story's subtasks, a line each.`),
         field("Orchestrator", textarea(this.orchestrator), "For one agent that runs a whole story through its subtasks. When set, a story's More menu offers Start orchestrator; the same placeholders."),
         group("Pull requests", hasGithub ? null : "Saved once GitHub is connected"),
         promptField("review", "Review", this.reviewPrompt, DEFAULT_REVIEW_PROMPT,
-          `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent there. ${fields(REVIEW_FIELDS)} {folder} is the checkout; {ticket}, {summary} and {description} the ticket its title names.`),
+          `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent in the profile's folder, pointed at the checkout to read, as it's someone else's code. ${fields(REVIEW_FIELDS)} {folder} is the checkout; {ticket}, {summary} and {description} the ticket its title names.`),
         promptField("merge", "Merge", this.mergePrompt, DEFAULT_MERGE_PROMPT,
           `The Merge icon on a story, in its header and on its row in the list: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
         promptField("approval", "Request approval", this.approvalPrompt, DEFAULT_APPROVAL_PROMPT,
@@ -751,7 +751,7 @@ export class Setup {
       ],
 
       messages: () => [
-        page("Messages", "What a button sends to an agent already working on the pull request. {prs} is the pull request's link, several joined by \"and\"."),
+        page("Messages", "What a button sends to an agent. A pull request's buttons send to its agent, or start one with it when none is open; {prs} is the pull request's link, several joined by \"and\"."),
         group("Your pull requests"),
         ...ASK_PROMPTS.filter((a) => !REVIEW_ASKS.includes(a.id) && !IDEA_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text, null)),
         group("Reviews", "Nothing is posted until you press one"),
@@ -771,9 +771,9 @@ export class Setup {
         page("Story commands", "Optional shell commands, run in the profile's folder. {key} is a ticket key: the finished stories' commands run once for the story and once for each of its subtasks, the status command for the story."),
         group("Finished stories"),
         field("Leftovers check", input(this.leftovers), "Prints what a finished story left behind (its worktrees, say), one human-readable line each, as the clean-up dialog lists them; nothing printed: nothing to clean. Runs every few minutes for each key of a finished story, 10 seconds at most each. Empty: a folder named after one of its keys in the profile's folder, or one level down, counts.", null, "leftovers"),
-        field("Clean-up command", input(this.cleanUp), "Removes what the leftovers check finds: a finished story's broom shows while there's some, and runs this after closing its space, for each key something was found under. Its last line shows in the story header.", null, "cleanUp"),
+        field("Clean-up command", input(this.cleanUp), "Removes what the leftovers check finds: a finished story's broom shows while there's some, and runs this after closing its space, for each key something was found under. Its last line shows in the story's details.", null, "cleanUp"),
         group("Stories in progress"),
-        field("Status command", input(this.status), "While a story has a space, its header shows the first line this prints (a dev server's state, say), refreshed with the stories and every few minutes. It gets 4 seconds.", null, "status"),
+        field("Status command", input(this.status), "While a story has a space, its details show the first line this prints (a dev server's state, say), refreshed with the stories and every few minutes. It gets 4 seconds.", null, "status"),
       ],
     };
 

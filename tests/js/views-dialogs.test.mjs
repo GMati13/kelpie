@@ -268,8 +268,31 @@ test("the profile dialog's GitHub page: with an account picked, the shell functi
   const el = profilePage("github", { github: { owner: "kelpie--demo", demo: true, account: "kelpie-demo" } });
   const words = texts(el).join("\n");
   for (const s of ["GitHub account", "KELPIE_GH_ACCOUNT=kelpie-demo", "Check my shell"]) assert.ok(words.includes(s), s);
+  // A login shell's bash reads ~/.bash_profile, not ~/.bashrc, unless the first reads the second.
+  assert.ok(words.includes("~/.bashrc, with your ~/.bash_profile reading it"), "the bash setup an agent's shell reads");
   assert.ok(byId(el, "setup-gh-copy"));
   snap("dialogs/profile-github", el);
+});
+
+// The guides on the Prompts, Messages and Story commands pages say what Kelpie does: a review agent
+// starts outside the checkout, What next? runs in the background with its hand-in added by Kelpie,
+// a pull request's button starts an agent when none is open, and a story's notes and status show in
+// its details (they once said the agent starts in the checkout, a JSON block to keep, the header).
+test("the profile dialog's Prompts, Messages and Story commands pages: their guides match what Kelpie does", () => {
+  const words = (page) => texts(profilePage(page)).join("\n");
+  const prompts = words("prompts");
+  assert.match(prompts, /starts the agent in the profile's folder, pointed at the checkout/);
+  assert.doesNotMatch(prompts, /starts the agent there/);
+  assert.match(prompts, /in the background, reading only/);
+  assert.match(prompts, /Kelpie asks for the picks itself/);
+  assert.doesNotMatch(prompts, /JSON|on the Desk that suggests|sub-task/);
+  const messages = words("messages");
+  assert.match(messages, /or start one with it when none is open/);
+  assert.doesNotMatch(messages, /already working on the pull request/);
+  const commands = words("commands");
+  assert.match(commands, /Its last line shows in the story's details/);
+  assert.match(commands, /its details show the first line this prints/);
+  assert.doesNotMatch(commands, /header/);
 });
 
 // The Board page: Jira or a GitHub Project (tab id `jira`, also opened as `board` or `project`).
@@ -283,6 +306,8 @@ test("the profile dialog's Board page on Jira: the choice of board, then Jira's 
   assert.deepEqual(texts(byId(el, "setup-board-kind-1")), ["GitHub Project"]);
   assert.ok(byId(el, "setup-jira-check"));
   assert.equal(byId(el, "setup-project-check"), null);
+  // The Keychain line is zsh's (read -rs "t?…"); bash would refuse it.
+  assert.ok(texts(el).join("\n").includes("run this in a zsh terminal"), "says which shell the line is for");
   snap("dialogs/profile-board-jira", el);
 });
 

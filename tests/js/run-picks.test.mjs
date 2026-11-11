@@ -106,6 +106,7 @@ describe("Run all", () => {
     assert.ok(space[1].task.includes(`Claude suggested this as what I should do next: ${PICKS[0].action}`), "with Claude's action");
     assert.ok(space[1].task.includes(PICKS[0].why), "and why");
     assert.ok(space[1].task.endsWith(OTHERS), "Claude's words are information");
+    assert.equal(space[1].task.split(OTHERS).length, 2, "the note once, after the ticket prompt and the pick");
     assert.equal(desk[0], "tab.new");
     assert.match(desk[1].name, /^Idea: /);
     assert.deepEqual(mock.sharedValue(SUGGESTED)[DEMO].items.map((x) => x.key), ["pr:web#999"], "the ones started leave the queue");

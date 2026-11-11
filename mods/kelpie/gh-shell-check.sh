@@ -1,6 +1,6 @@
 #!/bin/sh
 # Checks the person's own shell setup for a profile's GitHub account: starts their shell the way Herdr
-# starts an agent's (login and interactive, so it reads their .zshrc or .bashrc) with
+# starts an agent's (login and interactive, so it reads their .zshrc, or bash's .bash_profile) with
 # KELPIE_GH_ACCOUNT set, and asks GitHub whom its gh acts as. The login comes last in what it prints;
 # 15 s at most. Run by setup.js (the GitHub page's "Check my shell").
 #   gh-shell-check.sh <account>
