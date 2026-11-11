@@ -3,7 +3,7 @@
 import { div, image, svg } from "gpui-kit";
 import { Avatar, AvatarFallback, AvatarImage, Popup, h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, run, window } from "herdr";
-import { decor, skinFont, skinText } from "./skins/index.js";
+import { agentState, decor, skinFont, skinText, statusMark } from "./skins/index.js";
 
 export { CLAUDE_TMP, STAT_MTIME, fullName, openExternal, platform, reveal, revealLabel } from "./platform.js";
 
@@ -52,12 +52,18 @@ export function programIcon(p, color) {
   return p.tint ? icon(p.icon).text_color(color) : image(p.icon).flex_none().size(ICON);
 }
 
-// Status says itself quietly: motion only while working or waiting for you.
-export function status(t, state) {
-  if (state === "working") return icon(chrome("spinner"), 12).text_color(t.working).spin(900);
-  if (state === "blocked") return div().flex_none().size(7).rounded_full().bg(t.blocked).loop("opacity", { from: 0.35, to: 1, period: 1200 });
-  if (state === "done") return div().flex_none().size(7).rounded_full().bg(t.done);
-  return null;
+// An agent's state, one mark for it wherever it shows (the tab bar's slot, a pane's header, the
+// sidebar's rows, a subtask's slot): working, needs you, done (finished while you weren't looking),
+// idle, paused (its session kept, no terminal), unknown (a Claude that hasn't said yet: starting).
+// `status` is Herdr's (blocked, working, done, idle; null when none reported) or "paused". A skin may
+// restyle a state (statusMark, `where`), never drop or merge one; else it's mark()'s.
+export const AGENT_WORDS = { "needs-you": "waiting for you", working: "working", done: "done", idle: "idle", paused: "paused", unknown: "starting" };
+export const agentStateOf = (status) => (status === "paused" ? "paused" : agentState(status) ?? "unknown");
+export const agentWords = (status) => AGENT_WORDS[agentStateOf(status)];
+const AGENT_COLOR = { "needs-you": "working", working: "accent", done: "done", idle: "muted", paused: "dim", unknown: "unknown" };
+export function agentMark(t, status, { size = 14, where, agent } = {}) {
+  const state = agentStateOf(status);
+  return statusMark(t, state, { where, size, color: t[AGENT_COLOR[state]] ?? t.dim, agent }) ?? mark(t, state, size);
 }
 
 // One mark per state, in a box of `size` so rows line up whatever they show. Motion says something is
@@ -93,6 +99,8 @@ export function mark(t, state, size = 14) {
     case "idle": return box(div().flex_none().size(dot(size * 0.5)).rounded_full().border_1().border_color(t.muted));
     case "waiting": return box(div().flex_none().size(dot(size * 0.5)).rounded_full().border_1().border_color(t.dim));
     case "not-open": return box(div().flex_none().size(dot(size * 0.35)).rounded_full().bg(t.dim));
+    // An agent that hasn't said what it's doing yet: a faint dot, its own look, not idle's ring.
+    case "unknown": return box(div().flex_none().size(dot(size * 0.35)).rounded_full().bg(t.unknown ?? t.dim).opacity(0.6));
     default: return box(div().flex_none().size(dot(size * 0.35)).rounded_full().bg(t.dim));
   }
 }

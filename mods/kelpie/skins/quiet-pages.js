@@ -92,6 +92,8 @@ function sign(t, state, size = 8) {
     default: return null;
   }
 }
+// Where an agent's own state shows (ui.js agentMark()).
+const AGENT_PLACES = new Set(["tab", "pane", "side-tab", "sub"]);
 // Every mark in a box of one size, so titles line up whatever the state: rows match their title's line.
 const boxed = (el, w, h = w) => div().flex().flex_none().w(w).h(h).items_center().justify_center().child(el);
 
@@ -116,10 +118,10 @@ export default {
   fonts: { ui: "DM Sans", title: "Fraunces", reading: "Fraunces", label: "DM Sans", numbers: "DM Mono", mono: "DM Mono" },
 
   statusMark(t, state, { where, size = 8 } = {}) {
-    // A tab's agent sign, in the tab's 16px slot: gold easing while it works, the safelight when it
-    // needs you.
-    if (where === "tab") return state === "needs-you" ? bulb(12, 8) : state === "done" ? check(INK.sage, 12) : state === "working" ? easing(8) : hollow(t.dim, 8);
-    // In lists only the safelight is the skin's own; the rest are Kelpie's marks.
+    // An agent's mark is the same in every place (ui.js agentMark(): the tab bar, a pane's header, the
+    // sidebar's rows, a subtask's slot), and so is a list's: only the safelight is the skin's own,
+    // every other state is Kelpie's mark, so one state never looks two ways.
+    if (AGENT_PLACES.has(where)) return state === "needs-you" ? boxed(bulb(12, 8), size) : null;
     if (where !== "picker" && state !== "needs-you") return null;
     const el = sign(t, state, size);
     if (!el) return null;

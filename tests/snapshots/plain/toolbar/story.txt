@@ -2,7 +2,9 @@ h_flex
   h_flex #tab-list {hover up:left}
     h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
       div
-        div [bg=blocked] ~loop(opacity)
+        div
+          div [bg=working/40] ~loop(opacity)
+            div [bg=working]
       div
         "Cache trips for offline use"
     h_flex #tab-t0-1 [fg=muted hover(bg=hover fg=foreground)] {hover down:left move up:left click down:right}
