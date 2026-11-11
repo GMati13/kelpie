@@ -170,21 +170,22 @@ describe("the argv agents start with", () => {
     assert.deepEqual(resumeArgv("abc", "/h/.claude-work"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("demo-s2", "/h/.claude-work"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
   });
-  test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only", () => {
+  test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only, with Kelpie's gh's folder", () => {
     const gh = { github: { owner: "acme", account: "work-me" } };
-    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude"]);
-    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", "claude", "-p"]);
-    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude", "--resume", "abc"]);
-    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", "claude", "--resume", "abc"]);
+    const BIN = `KELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin`;
+    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude"]);
+    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "-p"]);
+    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
     // A name that isn't a GitHub login is left out, never passed on.
     for (const bad of ["-u", "a b", "x;y"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["claude"], bad);
   });
   test("shellArgv: the GitHub account reaches the login shell's environment as an argument, never as script", () => {
     const argv = shellArgv({ github: { owner: "acme", account: "work-me" } });
     assert.ok(!argv[2].includes("work-me"));
-    const fakes = fakeBin().add("show-env", 'env | grep -E "^(KELPIE_GH_ACCOUNT|CLAUDE_ACCOUNT_CHOSEN)=" | sort');
+    const fakes = fakeBin().add("show-env", 'env | grep -E "^(KELPIE_GH_ACCOUNT|KELPIE_GH_BIN|CLAUDE_ACCOUNT_CHOSEN)=" | sort');
     const r = sh(argv[0], argv.slice(1), { env: { SHELL: `${fakes.bin}/show-env` } });
-    assert.equal(r.stdout, "CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\n");
+    assert.equal(r.stdout, `CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\nKELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin\n`);
     assert.deepEqual(shellArgv({ github: { owner: "acme" } }), shellArgv(null));
   });
 });

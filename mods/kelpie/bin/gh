@@ -1,0 +1,37 @@
+#!/bin/sh
+# Kelpie's gh: in a profile's agents and terminals, gh acts as the profile's GitHub account, also when
+# a program started there runs it (a script, a Makefile, a team's own CLI). Kelpie starts them with
+# KELPIE_GH_ACCOUNT (a login, never a token) and KELPIE_GH_BIN (this folder); a line at the end of the
+# person's shell setup puts this folder first in PATH (GH_SHELL_LINE in setup.js, README "Several
+# accounts"), and every program started from there inherits it. Each run asks gh for that account's
+# token by name and hands it to the real gh alone, as GH_TOKEN, so gh's active account (one per
+# machine, which any sign-in can switch) doesn't matter. Left as they are: a GH_TOKEN already set
+# (someone chose it), shells without the account, gh's own sign-in commands, help and completion.
+here=$(cd "${0%/*}" 2>/dev/null && pwd -P)
+
+# The real gh: the first on PATH that isn't in this folder (no loop), absolute folders only.
+real=
+old_ifs=$IFS; IFS=:; set -f
+for d in $PATH; do
+  case $d in /*) ;; *) continue ;; esac
+  [ -f "$d/gh" ] && [ -x "$d/gh" ] || continue
+  [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$here" ] && continue
+  real=$d/gh; break
+done
+IFS=$old_ifs; set +f
+[ -n "$real" ] || { echo "gh isn't installed: Kelpie's gh found no other gh on PATH." >&2; exit 127; }
+
+account=${KELPIE_GH_ACCOUNT:-}
+[ -z "${GH_TOKEN:-}" ] && [ -n "$account" ] || exec "$real" "$@"
+case "${1:-} ${2:-}" in
+  " "|"auth login"|"auth logout"|"auth switch"|"auth refresh"|"auth setup-git"|help\ *|version\ *|completion\ *|--help\ *|-h\ *|--version\ *) exec "$real" "$@" ;;
+esac
+# A GitHub login: letters, digits and single hyphens, not at either end (GITHUB_LOGIN in ui.js).
+case $account in -*|*-|*--*|*[!A-Za-z0-9-]*)
+  echo "KELPIE_GH_ACCOUNT isn't a GitHub account name, so gh doesn't run." >&2; exit 2 ;;
+esac
+token=$("$real" auth token --hostname github.com --user "$account") && [ -n "$token" ] \
+  || { echo "gh isn't signed in as $account, this profile's GitHub account in Kelpie: gh auth login" >&2; exit 1; }
+[ "${1:-} ${2:-}" = "auth status" ] && echo "In this terminal, gh acts as $account, the Kelpie profile's GitHub account." >&2
+GH_TOKEN=$token; export GH_TOKEN
+exec "$real" "$@"

@@ -264,7 +264,7 @@ test("the profile dialog's Agents page: the Claude account, and how to add anoth
   snap("dialogs/profile-agents", el);
 });
 
-test("the profile dialog's GitHub page: with an account picked, the shell function to copy and its check", () => {
+test("the profile dialog's GitHub page: with an account picked, the shell setup line to copy and its check", () => {
   const el = profilePage("github", { github: { owner: "kelpie--demo", demo: true, account: "kelpie-demo" } });
   const words = texts(el).join("\n");
   for (const s of ["GitHub account", "KELPIE_GH_ACCOUNT=kelpie-demo", "Check my shell"]) assert.ok(words.includes(s), s);

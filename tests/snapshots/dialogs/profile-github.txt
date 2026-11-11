@@ -110,33 +110,17 @@ div #work-setup-fit [bg=#00000080]
             "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change: keep your main account active (gh auth switch), and pick the others here."
         v_flex
           div [fg=dim]
-            "For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=kelpie-demo. Add this to your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it), and the gh they run acts as that account. Agents started before it, and sessions resumed since, may still run without it: start a new one."
+            "For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=kelpie-demo. Put this at the end of your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it), and gh there acts as that account, also when a program they start runs it. Agents started before it, and sessions resumed since, may still run without it: start a new one."
           h_flex [bg=background border=border]
             v_flex [fg=muted]
               div
-                "gh() {"
+                "# Kelpie: gh acts as the profile's GitHub account, for programs that run it too"
               div
-                "  if [ -n \"$KELPIE_GH_ACCOUNT\" ] && [ \"$1\" != auth ]; then"
-              div
-                "    local t"
-              div
-                "    t=$(command gh auth token --hostname github.com --user \"$KELPIE_GH_ACCOUNT\") \\"
-              div
-                "      || { echo \"gh isn't signed in as $KELPIE_GH_ACCOUNT: gh auth login\" >&2; return 1; }"
-              div
-                "    GH_TOKEN=$t command gh \"$@\""
-              div
-                "  else"
-              div
-                "    command gh \"$@\""
-              div
-                "  fi"
-              div
-                "}"
+                "if [ -n \"$KELPIE_GH_BIN\" ]; then PATH=\"$KELPIE_GH_BIN:$PATH\"; fi"
             h_flex #setup-gh-copy [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
               "Copy"
           h_flex
-            h_flex #setup-gh-shell-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Starts your shell as an agent's starts and asks GitHub who its gh is"
+            h_flex #setup-gh-shell-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Starts your shell as an agent's starts and asks GitHub who gh is there, and in a program started from it"
               "Check my shell"
           div
         h_flex #setup-notify-pulls {click}
