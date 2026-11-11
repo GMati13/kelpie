@@ -470,3 +470,31 @@ test("folded again while Claude worked, the queue stays folded", async () => {
   view.render(cx);
   assert.ok(!view.queueOpen);
 });
+
+// The copy's own start is its first draw, whatever Next showed then (#124 review): a copy showing
+// "All clear" draws no card, and picks that then arrive from its "Conjure what's next" must open it.
+// The clock is fixed (tests/lib/views.mjs), so the first draw is moved back by hand.
+const drawnAt = async (at) => {
+  const now = Date.now;
+  Date.now = () => at;
+  try { return await sharedDraw(); } finally { Date.now = now; }
+};
+test("picks asked for from All clear open the queue once the card first shows", async () => {
+  setupDemoWorld({ stories: quiet(stories), spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  const { view, cx } = await drawnAt(NOW - 120e3);
+  assert.equal(byId(view.render(cx), "story-next"), null, "All clear: no card yet");
+  putShared("kelpie.next.suggested", PICKS);
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW - 30e3 } });
+  view.render(cx);
+  assert.ok(view.queueOpen, "the card's first draw opens on the picks");
+});
+
+test("a run more than a day old opens nothing", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await drawnAt(NOW - 26 * 3600e3);
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 25.5 * 3600e3, done: NOW - 25 * 3600e3 } });
+  view.render(cx);
+  assert.ok(!view.queueOpen);
+});
