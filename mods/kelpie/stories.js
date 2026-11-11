@@ -2062,20 +2062,22 @@ const reviewTab = (p) => spaces().flatMap((s) => s.tabs).find((c) => c.name === 
 // the profile's folder, from the repository's clone at the folder's top or one level down, at the
 // pull request's latest commit (detached: no branch is made, a fork's works too). Started again, the
 // worktree moves to the latest commit, unless it has changes of its own (then it's left as it is).
-// Prints "ok:<folder>", "dirty:<folder>" or "error:<why>".
+// Prints "ok:<folder>", "dirty:<folder>" or "error:<why>", always on one line: git's message can be
+// several, and only the last line is read (a fetch's ended "and the repository exists.", losing why).
 const REVIEW_CHECKOUT = `root=$1 repo=$2 n=$3
+fail() { printf 'error:%s\\n' "$(printf '%s' "$1" | tr '\\n' ' ')"; exit 0; }
 clone=
 for d in "$root/$repo" "$root"/*/"$repo"; do if [ -e "$d/.git" ]; then clone=$d; break; fi; done
-[ -n "$clone" ] || { echo "error:no clone of $repo in $root"; exit 0; }
-out=$(git -C "$clone" fetch --quiet origin "pull/$n/head" 2>&1) || { echo "error:couldn't fetch it: $out"; exit 0; }
+[ -n "$clone" ] || fail "no clone of $repo in $root"
+out=$(git -C "$clone" fetch --quiet origin "pull/$n/head" 2>&1) || fail "couldn't fetch it: $out"
 sha=$(git -C "$clone" rev-parse FETCH_HEAD)
 wt="$root/worktrees/review-$repo-$n"
 if [ -e "$wt/.git" ]; then
   if [ -n "$(git -C "$wt" status --porcelain --untracked-files=no)" ]; then echo "dirty:$wt"; exit 0; fi
-  out=$(git -C "$wt" checkout --quiet --detach "$sha" 2>&1) || { echo "error:$out"; exit 0; }
+  out=$(git -C "$wt" checkout --quiet --detach "$sha" 2>&1) || fail "$out"
 else
   mkdir -p "$root/worktrees"
-  out=$(git -C "$clone" worktree add --quiet --detach "$wt" "$sha" 2>&1) || { echo "error:$out"; exit 0; }
+  out=$(git -C "$clone" worktree add --quiet --detach "$wt" "$sha" 2>&1) || fail "$out"
 fi
 echo "ok:$wt"`;
 async function checkoutReview(profile, p) {
@@ -2085,7 +2087,9 @@ async function checkoutReview(profile, p) {
   const [kind, ...rest] = line.split(":");
   const said = rest.join(":");
   if (kind === "ok") return { folder: said, note: null };
-  if (kind === "dirty") return { folder: said, note: `${prName(p)}'s worktree has changes of its own: left at the commit it was on.` };
+  // Left at an older commit, it isn't the code under review any more: the agent reads it from GitHub,
+  // as the review prompt says the folder holds the latest commit.
+  if (kind === "dirty") return { folder: null, note: `${prName(p)}'s worktree has changes of its own, so it was left as it is: its agent reads the pull request from GitHub.` };
   return { folder: null, note: `Couldn't check ${prName(p)} out (${said || "no answer"}): its agent reads it from GitHub.` };
 }
 

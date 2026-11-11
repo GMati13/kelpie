@@ -4,7 +4,7 @@
 // guide Kelpie gives Claude ...").
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { readRepo, until } from "../lib/helpers.mjs";
+import { git, readRepo, tempDir, until } from "../lib/helpers.mjs";
 import { mock } from "herdr";
 import {
   ASK_PROMPTS, CONFIGURE_PROMPT, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, HAND_IN, OTHERS, SUGGEST_PROMPT,
@@ -185,6 +185,26 @@ describe("Start review", () => {
     const [, args] = await until(() => mock.of("run").find(([n]) => n === "tab.new"), 3000, "tab.new");
     assert.equal(args.folder, "/work/acme");
     assert.equal(args.space, "s1");
+  });
+  const note = () => mock.sharedValue("kelpie.stories.note")?.w?.text ?? "";
+  test("a worktree left at an older commit (changes of its own) isn't offered as the code under review", async () => {
+    mock.on.exec = (cmd, args) => (cmd === "sh" && String(args[1]).includes("worktree add") ? { code: 0, stdout: `dirty:${checkout}\n`, stderr: "" } : undefined);
+    startReview(profile, pr);
+    const [, args] = await until(() => mock.of("run").find(([n]) => n === "space.new"), 3000, "space.new");
+    assert.doesNotMatch(args.task, new RegExp(checkout), "the prompt says the folder holds its latest commit");
+    assert.match(note(), /changes of its own[^]*reads the pull request from GitHub/);
+  });
+  test("a failed fetch says git's reason, however many lines git wrote", async () => {
+    // The checkout script run for real, on a clone whose origin isn't there: git explains over
+    // several lines, and only the last line of the script's answer is read.
+    const root = tempDir();
+    git(root, "init", "-q", "api");
+    git(`${root}/api`, "remote", "add", "origin", `${root}/nowhere`);
+    mock.on.exec = (cmd, args, o) => (cmd === "sh" && String(args[1]).includes("worktree add") ? mock.realExec(cmd, args, { ...o, env: { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" } }) : undefined);
+    startReview({ ...profile, folder: root }, pr);
+    await until(() => mock.of("run").find(([n]) => n === "space.new"), 5000, "space.new");
+    assert.match(note(), /Couldn't check api#7 out \(couldn't fetch it: [^)]*nowhere/);
+    assert.doesNotMatch(note(), /no answer/);
   });
 });
 
