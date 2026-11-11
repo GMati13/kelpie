@@ -162,6 +162,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   requests attached by closing links (a title's key wins), a Project issue's link, and the demo loaded as
   a Project building the same stories as the Jira demo (the parity test), and what a load costs of the
   account's GitHub budget (sub-issues asked flat, kept stories `KEPT_SLOTS` a query, `rateLimit` asked).
+- `budget.test.mjs`: what one full story load may ask of GitHub (#150): a realistic Project profile against a
+  fake gh that counts requests, how many run at once and their points by GitHub's own prices (written in
+  the test, from `rateLimit(dryRun: true)`: measure again when a query changes), and the hour that makes.
 - `ghlimit.test.mjs`: GitHub's API limits (#129, ghlimit.js around pulls.js `gh()`): a refused call stops
   the rest of its kind (GraphQL or REST) as that account until the reset or a secondary limit's wait,
   said in plain words with the time; side-by-side refusals counting once; a description that mentions
