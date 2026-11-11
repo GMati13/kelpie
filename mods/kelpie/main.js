@@ -17,7 +17,7 @@ import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll,
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
-import { goDesk } from "./desk.js";
+import { deskNow, deskShown, goDesk, showDeskView } from "./desk.js";
 import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, syncSkin } from "./skins/index.js";
 
@@ -165,10 +165,12 @@ function sidebar(state) {
 // the shown space's folder.
 function newClaude(work = storyNow(), space = spaces().find((s) => s.active)) {
   if (work?.story) return work.claude();
+  if (isDesk(space)) showDeskView(shownProfile(), "agent"); // the new tab, not the Desk's screenshots
   if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: claudeArgv(shownProfile()) });
 }
 function newTerminal(work = storyNow(), space = spaces().find((s) => s.active)) {
   if (work?.story) return work.terminal();
+  if (isDesk(space)) showDeskView(shownProfile(), "agent");
   if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: shellArgv(shownProfile()) });
 }
 
@@ -246,7 +248,7 @@ function track(role) {
 }
 
 
-function toolbar() {
+function toolbar(cx) {
   syncHub();
   track("toolbar");
   const t = skinTheme();
@@ -258,6 +260,9 @@ function toolbar() {
   // On a story's space the key goes without saying: "ABC-1 terminal" shows as "Terminal", a tab named
   // just the key as "Agent". Only what's drawn changes, never the tab's name.
   const work = storyNow();
+  // The Desk shown (no story over it): its tabs, then Screenshots, as a story space's.
+  const desk = !work?.story && !profileElsewhere() && cx ? deskNow(cx) : null;
+  const views = work ?? desk; // whose view the view buttons switch
   const label = (name) => {
     const key = work?.story?.key;
     if (!key || (name !== key && !name.startsWith(`${key} `))) return name;
@@ -324,10 +329,10 @@ function toolbar() {
   // In a story's space: its tabs, then the story's other views. A story previewed from the list (not
   // open) has no tabs yet: its Overview, and Changes and Screenshots only when they hold something.
   const view = (id, label, n) => {
-    const on = work?.view === id;
+    const on = views?.view === id;
     return decor("controlDecor", t, h_flex().id(`view-${id}`).h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected).text_color(t.foreground)).when(!on, (el) => el.text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)))
-      .on_mouse_down("left", stop).on_click(() => work.show(id))
+      .on_mouse_down("left", stop).on_click(() => views.show(id))
       .child(skinFont(div(), "tab").child(skinText(label, "tab"))).when(typeof n === "number" && n > 0, (el) => el.child(skinFont(div().text_color(t.dim), "count", SMALL).child(skinText(String(n), "count")))),
     { kind: "view", id: `view-${id}`, label, on });
   };
@@ -341,7 +346,7 @@ function toolbar() {
   const has = (n) => typeof n === "number" && n > 0;
   const changes = !work?.preview || has(work?.prs) || has(work?.files);
   const shots = !work?.preview || has(work?.shots);
-  const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!work || work.view === "agent") }));
+  const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!views || views.view === "agent") }));
   // The sidebar hidden (cmd-b): a button to bring it back, after room for the window buttons when the
   // tab bar is the top block (no story header above it).
   const sideOff = sideHidden(root);
@@ -353,10 +358,12 @@ function toolbar() {
       // A drag that leaves the bar, or is let go between tabs, ends without moving anything.
       .on_hover((on, cx) => { if (!on && tabDrag.id) { tabDragEnd(); cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => { if (tabDrag.id) { tabDragEnd(); cx.notify(); } })
-      .children(shownTabs.map((c) => (work ? tab(c).on_click(() => { run("tab.select", { id: c.id }); work.show("agent"); }) : tab(c))))
+      .children(shownTabs.map((c) => (views ? tab(c).on_click(() => { run("tab.select", { id: c.id }); views.show("agent"); }) : tab(c))))
       // Outside a story: a Claude agent with no task, or a shell, as a new tab in the shown space's folder.
       .when(!work?.story && Boolean(space) && !profileElsewhere(), (el) => el
-        .child(create("A Claude agent with no task, in this space's folder", "A shell in this space's folder")))
+        .child(create("A Claude agent with no task, in this space's folder", "A shell in this space's folder"))
+        .when(Boolean(desk), (x) => x.child(div().w(1).h(16).mx(4).flex_none().bg(t.border))
+          .child(view("shots", "Screenshots", desk.shots))))
       .when(Boolean(work?.story), (el) => el
         // A pull request shown on its own (a review, one of yours with no ticket) has no Overview.
         .when(work.preview && !work.review, (x) => x.child(view("start", "Overview")))
@@ -640,6 +647,8 @@ async function command(c) {
   if (c === "demo-remove") return removeDemo().catch((e) => notify({ title: "The demo wasn't removed", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo") return setupDemo().catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   const work = storyNow();
+  // On the Desk, the view keys switch between its terminals and its screenshots.
+  if (!work?.story && c.startsWith("view-") && deskShown()) return showDeskView(shownProfile(), c.slice("view-".length));
   if (!work?.story) return;
   if (c === "start") return work.start();
   if (c === "pause") return work.pause();
@@ -759,7 +768,7 @@ export default class Quiet extends View {
   render(cx) {
     if (this.work) return this.work.render(cx);
     const role = props()?.role ?? "sidebar";
-    if (!STATS_ROLES.includes(role)) return (ROLES[role] ?? sidebar)();
+    if (!STATS_ROLES.includes(role)) return role === "toolbar" ? toolbar(cx) : (ROLES[role] ?? sidebar)();
     // The footer is always shown, so it keeps the Kelpie layout in step with the shown space too (the
     // tab bar does as well, but it can be hidden: then nothing else would bring it back).
     // It also follows the shown space for the rest (syncTracking): a hidden copy would miss a close.

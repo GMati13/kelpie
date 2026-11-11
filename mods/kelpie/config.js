@@ -237,7 +237,12 @@ export async function openDesk(profile = shownProfile(), tab = null) {
   if (previews[profile.id]) setShared(PREVIEWS, { ...previews, [profile.id]: null });
   const desk = deskOf(profile);
   if (desk) {
-    if (tab) newTab({ space: desk.id, ...tab, folder: tab.folder ?? profile.folder });
+    if (tab) {
+      // A new tab shows on the Desk's terminals, not its screenshots (desk.js showDeskView).
+      const views = shared("kelpie.view") ?? {};
+      if (views[desk.id] === "shots") setShared("kelpie.view", { ...views, [desk.id]: "agent" });
+      newTab({ space: desk.id, ...tab, folder: tab.folder ?? profile.folder });
+    }
     if (!desk.active) run("space.select", { id: desk.id });
     return desk.id;
   }
@@ -308,6 +313,8 @@ export function saveProfile(id, profile) {
   setShared(PROFILES, all);
   if (!profile && shared(CHOSEN)?.id === id) setShared(CHOSEN, null);
   if (!profile && (shared(DESK) ?? {})[id]) { const desks = { ...shared(DESK) }; delete desks[id]; setShared(DESK, desks); }
+  // The sessions seen on its Desk (desk.js DESK_SESSIONS), for the Desk's Screenshots.
+  if (!profile && (shared("kelpie.desk.sessions") ?? {})[id]) { const seen = { ...shared("kelpie.desk.sessions") }; delete seen[id]; setShared("kelpie.desk.sessions", seen); }
 }
 
 export const newProfileId = (name) => {
