@@ -422,3 +422,114 @@ test("a long open queue scrolls with the story list", async () => {
   assert.equal(view.queueOpen, true);
   assert.deepEqual(handle.calls.filter(([m]) => m === "scroll_to_item").map(([, a]) => a[0]), [0], "scrolled to the top");
 });
+
+// Picks the person asked for open Next's queue (#124): brew() notes the run in shared
+// kelpie.next.picked as it ends with picks, and every copy showing that profile opens once.
+test("picks from a run the person started open the queue in every copy, once", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const one = await sharedDraw(), two = await sharedDraw();
+  assert.ok(!one.view.queueOpen && !two.view.queueOpen, "folded before the run ends");
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW } });
+  for (const { view, cx } of [one, two]) {
+    const card = byId(view.render(cx), "story-next");
+    assert.ok(byId(byId(card, "queue-suggested"), "queue-suggest:ACME-180"), "open, Claude's picks in view");
+  }
+  // The person folds it: it stays folded.
+  handlers(one.view.render(one.cx)).find((h) => h.id === "story-queue").fn({}, one.cx);
+  assert.equal(one.view.queueOpen, false);
+  one.view.render(one.cx);
+  assert.equal(one.view.queueOpen, false, "their fold wins");
+});
+
+test("picks that came any other way don't open the queue", async () => {
+  setupDemoWorld({ stories });
+  // An agent's suggest_next, another copy's reload: picks, but no run of the person's.
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await sharedDraw();
+  view.render(cx);
+  assert.ok(!view.queueOpen, "picks alone");
+  // A run that ended before this copy was drawn (a reload since).
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 120e3, done: NOW - 60e3 } });
+  view.render(cx);
+  assert.ok(!view.queueOpen, "a run from before this copy");
+  // Another profile's run.
+  putShared("kelpie.next.picked", { other: { at: NOW - 60e3, done: NOW } });
+  view.render(cx);
+  assert.ok(!view.queueOpen, "another profile's run");
+});
+
+test("folded again while Claude worked, the queue stays folded", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await sharedDraw();
+  const chevron = () => handlers(view.render(cx)).find((h) => h.id === "story-queue").fn({}, cx);
+  chevron();
+  chevron(); // opened and folded again, after the run began
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW } });
+  view.render(cx);
+  assert.ok(!view.queueOpen);
+});
+
+// The copy's own start is its first draw, whatever Next showed then (#124 review): a copy showing
+// "All clear" draws no card, and picks that then arrive from its "Conjure what's next" must open it.
+// The clock is fixed (tests/lib/views.mjs), so the first draw is moved back by hand.
+const drawnAt = async (at) => {
+  const now = Date.now;
+  Date.now = () => at;
+  try { return await sharedDraw(); } finally { Date.now = now; }
+};
+test("picks asked for from All clear open the queue once the card first shows", async () => {
+  setupDemoWorld({ stories: quiet(stories), spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  const { view, cx } = await drawnAt(NOW - 120e3);
+  assert.equal(byId(view.render(cx), "story-next"), null, "All clear: no card yet");
+  putShared("kelpie.next.suggested", PICKS);
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW - 30e3 } });
+  view.render(cx);
+  assert.ok(view.queueOpen, "the card's first draw opens on the picks");
+});
+
+test("a run more than a day old opens nothing", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await drawnAt(NOW - 26 * 3600e3);
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 25.5 * 3600e3, done: NOW - 25 * 3600e3 } });
+  view.render(cx);
+  assert.ok(!view.queueOpen);
+});
+
+test("a run whose picks are all gone since opens nothing; another profile's fold doesn't count", async () => {
+  setupDemoWorld({ stories });
+  // Every pick dropped since the run: the queue still holds what needs you, but no picks.
+  putShared("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [] } });
+  let { view, cx } = await drawnAt(NOW - 120e3);
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW - 30e3 } });
+  view.render(cx);
+  assert.ok(!view.queueOpen, "no picks left to show");
+  // A fold of another profile's queue after the run began.
+  putShared("kelpie.next.suggested", PICKS);
+  ({ view, cx } = await drawnAt(NOW - 120e3));
+  view.queueFolded = { other: NOW - 10e3 };
+  view.render(cx);
+  assert.ok(view.queueOpen, "opens: the fold was another profile's");
+});
+
+// Opened on one profile's picks, the queue is that profile's alone; a deleted profile's run note goes
+// with the next load, as its other entries do (#124 review).
+test("a queue opened on a profile's picks shows folded on another profile", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await sharedDraw();
+  view.queueOpen = true;
+  view.queueOpenFor = "other";
+  view.render(cx);
+  assert.ok(!view.queueOpen, "folded here");
+});
+
+test("a deleted profile's run note is pruned with the next load", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW }, gone: { at: NOW - 60e3, done: NOW } });
+  await draw(new StoryList());
+  assert.deepEqual(Object.keys(mock.sharedValue("kelpie.next.picked")), [DEMO]);
+});

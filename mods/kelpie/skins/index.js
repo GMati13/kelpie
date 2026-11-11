@@ -40,10 +40,12 @@
 //   statusMark(t, state, { where, size, color, agent }) -> element | null
 //       The mark for a state, where the view shows one. `state`: a story's "needs-you", "changes" (changes requested), "failing",
 //       "done" (ready to merge), "review", "working", "paused", "waiting" (handed over), "idle"
-//       (open, quiet), "not-open"; an agent's "needs-you", "working", "done", "idle". `where`: "row"
+//       (open, quiet), "not-open"; an agent's, below. `where`: "row"
 //       (sidebar story row, 8px dot), "plain" (state "review" or "space": a review or other-space
 //       row), "picker" (story picker), "sub" (subtask row's agent chip), "tab" (tab bar, agent
-//       status), "side-tab" (the plain sidebar's tabs; "shell" for a tab with no agent). `color`:
+//       status), "pane" (a split pane's header), "side-tab" (the sidebar's agent rows). Those four are an
+//       agent's (ui.js agentMark(), `size` its box): "needs-you", "working", "done", "idle", "paused",
+//       "unknown" (a Claude that hasn't reported yet); restyle a state, never drop or merge one. `color`:
 //       the theme colour the view would use. `agent`: Herdr's agent, where there is one.
 //   blockDecor(t, el, { role, now, story, state, working }) -> el
 //       Each Kelpie block's root: role "space-picker" (profile row), "work-side" (sidebar list),

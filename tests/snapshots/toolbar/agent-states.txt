@@ -1,0 +1,38 @@
+== needs you
+h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      div
+        div [bg=#e8603f52] ~loop(opacity)
+        div [bg=#e8603f]
+        div [bg=#ffb39a opacity=0.75]
+  div
+    "Cache trips for offline use"
+== working
+h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      svg chrome:spinner [fg=accent] ~spin
+  div
+    "Cache trips for offline use"
+== done
+h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      svg chrome:check [fg=done]
+  div
+    "Cache trips for offline use"
+== idle
+h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      div [border=muted]
+  div
+    "Cache trips for offline use"
+== unknown
+h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      div [bg=unknown opacity=0.6]
+  div
+    "Cache trips for offline use"
