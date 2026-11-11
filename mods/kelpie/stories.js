@@ -4431,9 +4431,16 @@ const cleanCommand = (profile) => (profile?.commands?.cleanUp ?? profile?.comman
 // what a line says is the profile's command's to choose. Looked at only while the profile has a clean-up command, as that's what clears them.
 // Shared, so every copy's broom agrees; the list looks again every 2 minutes, when its finished
 // stories change, and after a clean-up.
-const LEFTOVERS = "kelpie.clean.leftovers"; // { [profile id]: { found: { [story key]: { [key]: [lines] } }, ask, at } }
+const LEFTOVERS = "kelpie.clean.leftovers"; // { [profile id]: { found: { [story key]: { [key]: [lines] } }, ask, at, checked: { [story key]: when } } }
 const FOLDER_SCRIPT = 'root="$1"; shift; for k; do for d in "$root/$k" "$root"/*/"$k"; do [ -d "$d" ] && { printf "%s\\n" "$k"; break; }; done; done; true';
-const LEFTOVERS_BUSY = new Set();
+// A check running, by profile: { at, until, again }. Shared, as every copy runs in one context and a
+// run lost with one (a reload mid-check) mustn't block the others; past `until` (each finished story's
+// run, LEFTOVERS_EACH s, plus a margin) it no longer counts, so a run that never ends can't stop the
+// checks for good. `again`: a recheck asked for while it ran, made as soon as it ends.
+const LEFTOVERS_RUN = "kelpie.clean.checking";
+const LEFTOVERS_EACH = 10; // seconds the leftovers check gets per key (they run a story at a time)
+const checkingOf = (id) => { const r = (shared(LEFTOVERS_RUN) ?? {})[id]; return r && Date.now() < r.until ? r : null; };
+const setChecking = (id, r) => { const all = { ...(shared(LEFTOVERS_RUN) ?? {}) }; if (r) all[id] = r; else delete all[id]; setShared(LEFTOVERS_RUN, all); };
 // How leftovers are looked for: bump it when that changes, so every profile looks again at once.
 const LEFTOVERS_WAY = 3; // 2: under each of a story's keys; 3: kept by key, lines shortened
 const leftoversCommand = (profile) => profile?.commands?.leftovers?.trim() || null;
@@ -4473,7 +4480,7 @@ async function findLeftovers(profile, done) {
   for (const it of done) {
     // A story's keys at once; stories one after another, so a slow check doesn't pile up.
     const runs = await Promise.all(storyKeys(it).map(async (k) => {
-      const r = await runCommand(profile, check, k, 10).catch(() => null);
+      const r = await runCommand(profile, check, k, LEFTOVERS_EACH).catch(() => null);
       return [k, r && r.code === 0 ? r.out.split("\n").map((l) => readable(profile, l)).filter(Boolean) : []];
     }));
     const hit = runs.filter(([, lines]) => lines.length);
@@ -4481,18 +4488,56 @@ async function findLeftovers(profile, done) {
   }
   return found;
 }
-function checkLeftovers(profile, items, force = false) {
-  if (!cleanCommand(profile) || LEFTOVERS_BUSY.has(profile.id)) return;
+// Exported for the tests.
+export function checkLeftovers(profile, items, force = false) {
+  if (!cleanCommand(profile)) return;
+  const running = checkingOf(profile.id);
+  // Asked for while one runs: that one may have looked before what changed (a clean-up), so it's kept.
+  if (running) { if (force && !running.again) setChecking(profile.id, { ...running, again: true }); return; }
   const done = items.filter(letGo);
   // What was asked: a change to it (either command, the finished stories, how they're looked for)
   // looks again at once, not after the 2 minutes, so a changed setting shows right away.
   const ask = `${LEFTOVERS_WAY}|${leftoversCommand(profile) ?? ""}|${cleanCommand(profile)}|${done.map((it) => it.key).sort().join(" ")}`;
   const had = (shared(LEFTOVERS) ?? {})[profile.id];
   if (!force && had && had.ask === ask && Date.now() - had.at < 2 * 60 * 1000) return;
-  LEFTOVERS_BUSY.add(profile.id);
+  const at = Date.now();
+  setChecking(profile.id, { at, until: at + done.length * LEFTOVERS_EACH * 1000 + BUSY_MARGIN, again: false });
   findLeftovers(profile, done).then((found) => {
-    setShared(LEFTOVERS, { ...(shared(LEFTOVERS) ?? {}), [profile.id]: { found, ask, at: Date.now() } });
-  }).catch(() => {}).finally(() => LEFTOVERS_BUSY.delete(profile.id));
+    // A run taken over (it outlived its limit and another began) writes nothing: the newer one's answer stands.
+    if ((shared(LEFTOVERS_RUN) ?? {})[profile.id]?.at !== at) return;
+    putLeftovers(profile, at, found, null, ask);
+  }).catch(() => {}).finally(() => {
+    const mine = (shared(LEFTOVERS_RUN) ?? {})[profile.id];
+    if (mine?.at !== at) return;
+    setChecking(profile.id, null);
+    // The recheck asked for meanwhile: the next draw looks again (the record counts as old).
+    if (mine.again) { const all = shared(LEFTOVERS) ?? {}; if (all[profile.id]) setShared(LEFTOVERS, { ...all, [profile.id]: { ...all[profile.id], at: 0 } }); }
+  });
+}
+// A check's answer, the check having begun at `began`: the whole profile's (`only` null), or only the
+// given stories' (after a clean-up or before Move to Done's), whose entries it replaces, a story with
+// nothing found losing its entry. A story looked at alone after `began` keeps that answer (`checked`,
+// by story key), so a check that began before its clean-up never brings its old lines back.
+function putLeftovers(profile, began, found, only = null, ask = null) {
+  const all = shared(LEFTOVERS) ?? {}, had = all[profile.id] ?? {};
+  const newer = Object.keys(had.checked ?? {}).filter((k) => had.checked[k] > began);
+  const keys = only ?? [...new Set([...Object.keys(had.found ?? {}), ...Object.keys(found)])];
+  const next = { ...(only ? had.found ?? {} : {}) }, checked = {};
+  for (const k of newer) checked[k] = had.checked[k];
+  if (only) for (const [k, at] of Object.entries(had.checked ?? {})) checked[k] = at;
+  for (const k of keys) {
+    if (newer.includes(k)) { if (had.found?.[k]) next[k] = had.found[k]; else delete next[k]; continue; }
+    if (found[k]) next[k] = found[k]; else delete next[k];
+    if (only) checked[k] = began;
+  }
+  const entry = only ? { ...had, found: next, checked } : { found: next, ask, at: Date.now(), ...(Object.keys(checked).length ? { checked } : {}) };
+  setShared(LEFTOVERS, { ...all, [profile.id]: entry });
+}
+// A story's own leftovers, looked for now: what's found replaces its entry.
+async function recheckLeftovers(profile, it) {
+  const began = Date.now();
+  const found = await findLeftovers(profile, [it]).catch(() => null);
+  if (found) putLeftovers(profile, began, found, [it.key]);
 }
 
 // What a finished story leaves to clean up, in words for the button's tip and the dialog: its open
@@ -4603,6 +4648,9 @@ async function cleaning(profile, it, at) {
     say(`Cleaned up ${it.key}, but the clean-up command ${why}${runs.length > 1 ? ` for ${failed.key}` : ""}${lastLine(failed) ? `: ${lastLine(failed)}` : ""}`, failed.out || null);
     if (failed.code !== null) notify({ title: `Clean-up command failed for ${failed.key}`, body: failed.out.split("\n").slice(-6).join("\n"), level: "warning" });
   }
+  // What it left now, so the broom goes at once when nothing's left (or stays for what is), whatever
+  // a check running meanwhile found before; then the whole profile's again.
+  await recheckLeftovers(profile, it);
   const s = storyItems();
   if (s?.st.profile.id === profile.id) checkLeftovers(profile, build(s.st.data, new Map(), {}, storySpaces(profile), null, { all: true }), true);
 }
@@ -4739,11 +4787,7 @@ async function movingToDone(s, it, plan, clean, at) {
   }
   // What it left behind: the leftovers check only ever looked at it as a finished story, which it
   // wasn't until a moment ago, so nothing is known yet and the clean-up command wouldn't run. Look now.
-  if (cleanCommand(s.st.profile)) {
-    const found = await findLeftovers(s.st.profile, [now]).catch(() => ({}));
-    const all = shared(LEFTOVERS) ?? {}, had = all[profile] ?? {};
-    setShared(LEFTOVERS, { ...all, [profile]: { ...had, found: { ...(had.found ?? {}), ...found } } });
-  }
+  if (cleanCommand(s.st.profile)) await recheckLeftovers(s.st.profile, now);
   await cleanUp(s.st.profile, now, { held: at });
   // cleanUp() leaves its own note ("Cleaned up …"); the moves go before it.
   const after = shared(NOTE);
