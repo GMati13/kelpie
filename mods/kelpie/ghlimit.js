@@ -65,21 +65,51 @@ export function limitOf(account, now = Date.now()) {
   return low ? { reset: low.reset } : null;
 }
 
-// What a GraphQL answer says is left, kept for lowFor().
-function note(account, r) {
+// What a GraphQL answer says is left, kept for lowFor(). The lowest seen until its reset: answers of
+// one load were seen to alternate between two counts (about 2,580 and 4,100 left, #131), and taking
+// the last one would switch "running low" on and off within a load.
+function note(account, r, now) {
   let left = null;
   try { left = JSON.parse(r.stdout || "null")?.data?.rateLimit; } catch { return; }
   const reset = Date.parse(left?.resetAt ?? "");
-  if (Number.isFinite(left?.remaining) && Number.isFinite(left?.limit) && Number.isFinite(reset)) LEFT[`${who(account)}:graphql`] = { remaining: left.remaining, limit: left.limit, reset };
+  if (!Number.isFinite(left?.remaining) || !Number.isFinite(left?.limit) || !Number.isFinite(reset)) return;
+  const key = `${who(account)}:graphql`;
+  const had = LEFT[key];
+  if (had && now < had.reset && had.remaining <= left.remaining) return;
+  LEFT[key] = { remaining: left.remaining, limit: left.limit, reset };
 }
 
-// Until when to stop asking, once refused: the budget's reset when it's used up (GitHub's rate_limit,
-// which costs nothing), else a secondary limit's wait.
-async function untilOf(account, resource, run, now) {
+// gh's answer with `--include` (gh.sh asks for it): the response's headers come first, then a blank
+// line, then the body. Only the block at the very start is read as headers, which gh always prints
+// first: what follows is the body, which may be anyone's text. { r: the answer with its body alone,
+// headers: { lower-cased name: value } }.
+const HEAD = /^HTTP\/[\d.]+ \d{3}[^\n]*\r?\n/;
+export function splitHeaders(r) {
+  const out = String(r?.stdout ?? "");
+  if (!HEAD.test(out)) return { r, headers: {} };
+  const end = out.search(/\r?\n\r?\n/);
+  if (end < 0) return { r, headers: {} };
+  const headers = {};
+  for (const line of out.slice(0, end).split(/\r?\n/).slice(1)) {
+    const at = line.indexOf(":");
+    if (at > 0) headers[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
+  }
+  return { r: { ...r, stdout: out.slice(end).replace(/^\r?\n\r?\n/, "") }, headers };
+}
+// Seconds GitHub's Retry-After asks to wait, or null: a whole number only (it can also be a date, which
+// GitHub doesn't send for its limits).
+const retryAfter = (headers) => (/^\d{1,6}$/.test(headers["retry-after"] ?? "") ? Number(headers["retry-after"]) : null);
+
+// Until when to stop asking, once refused: as long as GitHub's Retry-After says when it gives one,
+// else the budget's reset when it's used up (GitHub's rate_limit, which costs nothing), else a secondary
+// limit's wait, doubling each time in a row.
+async function untilOf(account, resource, run, now, headers = {}) {
   const had = shared(LIMIT)?.[who(account)]?.[resource];
   const hits = had && now - had.until < MAX_WAIT ? (had.hits ?? 0) + 1 : 1;
+  const after = retryAfter(headers);
+  if (after !== null) return { until: now + Math.min(Math.max(after, 1) * 1000, MAX_WAIT), hits };
   let reset = NaN;
-  const r = await run(["api", "rate_limit"]).catch(() => null);
+  const r = await run(["api", "rate_limit"]).then((x) => splitHeaders(x).r, () => null);
   try {
     const b = JSON.parse(r?.code === 0 ? r.stdout : "null")?.resources?.[resource];
     if (b && b.remaining === 0) reset = Number(b.reset) * 1000;
@@ -96,14 +126,19 @@ export async function guarded(account, args, run, now = () => Date.now()) {
   if (!resource) return run(args);
   const b = blockedFor(account, resource, now());
   if (b) return { code: 1, stdout: "", stderr: limitMessage(b), limited: true };
-  const r = await run(args);
-  if (resource === "graphql" && r.code === 0) note(account, r);
+  // gh.sh asks for the response's headers (`--include`) and they're taken off here again, for a
+  // refusal's Retry-After: not where the caller asks for them itself (it reads them), nor with
+  // --paginate, which gh.sh leaves as it is.
+  const own = !args.some((a) => a === "-i" || a === "--include" || a === "--paginate");
+  const answered = await run(args);
+  const { r, headers } = own ? splitHeaders(answered) : { r: answered, headers: {} };
+  if (resource === "graphql" && r.code === 0) note(account, r, now());
   if (!refused(r, resource)) return r;
   const at = now();
   // Calls run side by side (a load's searches) are refused together: the first one's wait stands.
   const already = blockedFor(account, resource, at);
   if (already) return { code: 1, stdout: "", stderr: limitMessage(already), limited: true };
-  const block = await untilOf(account, resource, run, at);
+  const block = await untilOf(account, resource, run, at, headers);
   const all = shared(LIMIT) ?? {};
   // Refusals long over are dropped as this one is written.
   const kept = Object.fromEntries(Object.entries(all).map(([a, v]) => [a, Object.fromEntries(Object.entries(v ?? {}).filter(([, x]) => at - (x?.until ?? 0) < MAX_WAIT))]));
