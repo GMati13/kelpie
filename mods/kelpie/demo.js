@@ -50,6 +50,7 @@ function fields(f, i, { withParent = true } = {}) {
     summary: i.summary,
     issuetype: { name: i.type ?? (subtask ? "Sub-task" : "Story"), subtask },
     status: jiraStatus(statusNamed(f, MOVED[i.key] ?? i.status)),
+    labels: i.labels ?? [],
   };
   // Yours are assigned to the fixture's own name; others name someone, or no one. A parent embedded in
   // a subtask names no one, as in Jira.
@@ -167,6 +168,8 @@ function ghIssue(f, i) {
     id: nodeId(i.key), number: numberOf(i.key), title: i.summary, url: `https://github.com/${repo}/issues/${numberOf(i.key)}`,
     state: closed ? "CLOSED" : "OPEN", closedAt: closed ? new Date(when("-2d")).toISOString() : null, repository: { nameWithOwner: repo },
     assignees: { nodes: who ? [{ login: i.mine ? f.profile.me : login(who), name: who, avatarUrl: null }] : [] },
+    // A label's colour is the fixture's project.labels', as a repo gives each of its labels one.
+    labels: { nodes: (i.labels ?? []).map((name) => ({ name, color: f.project.labels?.[name] ?? "ededed" })) },
     parent: parent ? { id: nodeId(parent.key), number: numberOf(parent.key), repository: { nameWithOwner: repo } } : null,
     closedByPullRequestsReferences: { nodes: f.pulls.filter((p) => p.closes === i.key).map((p) => ({ url: prUrl(f, p) })) },
     projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name } }] },

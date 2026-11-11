@@ -1,8 +1,8 @@
 // Stub of Herdr's "gpui-kit" (and "gpui") host module, for the tests: elements are recorders.
 // Every method of an element is recorded (name and arguments) and returns the same element, so any
 // chain a view builds works and can be inspected or snapshotted afterwards (tree(), snapshot()).
-// `.when(cond, fn)`, `.when_some(value, fn)`, `.when_else(cond, yes, no)` and `.map(fn)` run their branch
-// as gpui does, so a snapshot holds what the condition put there. Handlers (on_click and the like) are kept as
+// `.when(cond, fn)` and `.map(fn)` run their branch as gpui does; `.when_some` and `.when_else`, which
+// Herdr's elements don't have (a view calling one couldn't be drawn), throw as Herdr does, so a snapshot holds what the condition put there. Handlers (on_click and the like) are kept as
 // functions in the record: a test can call them (handlers()).
 
 const NODE = Symbol("kelpie.test.node");
@@ -16,8 +16,7 @@ export function element(kind, args = []) {
       if (typeof prop === "symbol" || prop === "then" || prop === "toJSON") return undefined;
       return (...a) => {
         if (prop === "when") return a[0] ? (a[1](el) ?? el) : el;
-        if (prop === "when_some") return a[0] !== null && a[0] !== undefined ? (a[1](el, a[0]) ?? el) : el;
-        if (prop === "when_else") return (a[0] ? a[1](el) : a[2](el)) ?? el;
+        if (prop === "when_some" || prop === "when_else") throw new Error(`unknown element method \`${prop}\`: Herdr's elements have when() and map(), not ${prop}()`);
         if (prop === "map" && typeof a[0] === "function") return a[0](el) ?? el;
         node.calls.push([prop, a]);
         return el;

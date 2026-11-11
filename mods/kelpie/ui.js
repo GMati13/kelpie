@@ -22,6 +22,9 @@ export const INSET = 16;
 export const ICON = 14;
 export const ROW = 30;
 export const CONTROL = 28;
+// The one smaller control: icon buttons on a dense two-line list row (the story list's actions), where
+// CONTROL's square would crowd the row's lines and corner (#53). Nowhere else.
+export const ROW_CONTROL = 22;
 
 export const chrome = (name) => `mods/workspace-chrome/${name}.svg`;
 // Lucide icons Herdr's chrome lacks (globe, external-link, refresh-cw, ellipsis, copy, send,
@@ -128,11 +131,12 @@ export function progressBar(t, id, parts, tip, width = 32) {
 
 // The one icon button, for routine actions (panels, create, refresh, open elsewhere, copy): dim until
 // hovered, `on` for the open one of a group, a tooltip always (its name, and its key when it has one).
-export function iconButton(t, id, path, action, tip, { on = false, content = null } = {}) {
-  return decor("controlDecor", t, iconButtonEl(t, id, path, action, tip, on, content), { kind: "icon", id, label: tip, on });
+export function iconButton(t, id, path, action, tip, { on = false, content = null, box = CONTROL } = {}) {
+  return decor("controlDecor", t, iconButtonEl(t, id, path, action, tip, on, content, box), { kind: "icon", id, label: tip, on });
 }
-function iconButtonEl(t, id, path, action, tip, on, content) {
-  return div().id(id).flex().flex_none().size(CONTROL).items_center().justify_center().rounded(7).cursor_pointer()
+// `box`: CONTROL, or ROW_CONTROL on a story list row.
+function iconButtonEl(t, id, path, action, tip, on, content, box) {
+  return div().id(id).flex().flex_none().size(box).items_center().justify_center().rounded(box < CONTROL ? 6 : 7).cursor_pointer()
     .when(on, (el) => el.bg(t.selected)).text_color(on ? t.foreground : t.dim)
     .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip)
     .on_mouse_down("left", stop).on_click(action).child(content ?? icon(path));
@@ -180,14 +184,14 @@ export function primaryButton(t, id, label, action, { tip } = {}) {
 // function role. The list is a Popup, painted over the window, so a short block doesn't clip it.
 // With `iconPath` the trigger is an icon button (label unused), shown selected while open.
 // `trigger(toggle, open)` draws a trigger of the caller's own instead (give it the id `<id>-more`).
-export function menuButton(host, t, id, label, rows, { tip, anchor = "top_right", dim = false, width = 380, size, iconPath, trigger: own } = {}) {
+export function menuButton(host, t, id, label, rows, { tip, anchor = "top_right", dim = false, width = 380, size, iconPath, trigger: own, box } = {}) {
   const open = host.menu === id;
   const toggle = (_e, cx) => {
     // The click that closed it from outside lands on this button too: it stays closed.
     host.menu = open || (host.menuShut?.id === id && Date.now() - host.menuShut.at < 400) ? null : id;
     cx.notify();
   };
-  const trigger = own ? own(toggle, open) : iconPath ? iconButton(t, `${id}-more`, iconPath, toggle, tip, { on: open })
+  const trigger = own ? own(toggle, open) : iconPath ? iconButton(t, `${id}-more`, iconPath, toggle, tip, { on: open, ...(box ? { box } : {}) })
     : textButton(t, `${id}-more`, label, toggle, { tip, dim }).when(label === "▾", (el) => el.px(6)).when(Boolean(size), (el) => el.text_size(size));
   const row = (x, i) => {
     if (x.header) return div().flex_none().px(8).pt(8).pb(2).text_size(SMALL).text_color(t.dim).child(x.header);

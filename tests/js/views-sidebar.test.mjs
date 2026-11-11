@@ -207,6 +207,30 @@ test("unfolded, the queue is inside Next's card", async () => {
   assert.equal(byId(folded, "queue-ACME-160"), null);
 });
 
+// Folded, Next leads with the most urgent item, never a pick of Claude's in front of it (#87): with
+// that story shown, it says you're on it and names what ⌘⇧J goes to in a smaller line under it.
+test("folded, Next leads with what needs you, even while it's shown", async () => {
+  // One story that needs you (its checks fail), then Claude's picks: no reviews, spaces or asks.
+  const failing = stories.data.prs.filter((p) => /ACME-152/.test(p.title) && !p.merged);
+  assert.ok(failing.length, "the demo has ACME-151's failing pull request (its subtask ACME-152's)");
+  setupDemoWorld({ stories: { ...stories, data: { ...stories.data, prs: failing, reviews: [] } }, spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  putShared("kelpie.next.suggested", PICKS);
+  const card = async () => byId((await sharedDraw()).el, "story-next");
+  let el = await card();
+  assert.match(render(byId(el, "queue-next"), skinTheme()), /ACME-151/, "nothing shown: the urgent story");
+  putShared("kelpie.stories.preview", { [DEMO]: "ACME-151" });
+  el = await card();
+  const lead = render(byId(el, "queue-next"), skinTheme());
+  assert.match(lead, /ACME-151/, "shown: still the urgent story, not the pick after it");
+  assert.match(lead, /You're on it/, "saying it's the one on screen");
+  const then = byId(el, "queue-then");
+  assert.ok(then, "what ⌘⇧J goes to, in a line of its own");
+  assert.match(render(then, skinTheme()), /ACME-180|itinerary/, "Claude's first pick");
+  assert.doesNotMatch(render(el, skinTheme()).split("\n")[0], /accent/, "the card isn't tinted as a pick");
+  snap("sidebar/next-on-it", el);
+});
+
 // The header counts the queue, as every group counts: a position there ("3 of 3") disagreed with the
 // lit row (where you are). With one group, it has no label of its own.
 test("Next's header counts the queue; a lone group has no label", async () => {
@@ -323,4 +347,39 @@ test("a profile with no board asks for one, whichever kind", async () => {
   assert.match(words, /Jira or a GitHub Project/);
   handlers(el).find((h) => h.id === "setup-jira").fn({}, cx);
   assert.equal(mock.of("openOverlay").at(-1)[0].props.focus, "jira", "the Board tab");
+});
+
+// A queue of one (#64): unfolding it would only show that item again, so there's no chevron, and an
+// open queue that drops to one item folds. A second item, a pick of Claude's too, brings it back.
+test("Next has no chevron while its queue holds one item", async () => {
+  const deskOnly = () => setupDemoWorld({ stories: quiet(stories), spaces: FIXTURE.spaces.filter((s) => s.name === "Desk"), paused: {},
+    agentOf: (_s, _t, a) => ({ ...a, status: "blocked" }) });
+  deskOnly();
+  mock.state.shared.set("kelpie.next.asks", {});
+  const { view, cx } = await sharedDraw();
+  let card = byId(view.render(cx), "story-next");
+  assert.ok(byId(card, "queue-next"), "the one item shows");
+  assert.equal(byId(card, "story-queue"), null, "no chevron for a queue of one");
+  view.queueOpen = true;
+  card = byId(view.render(cx), "story-next");
+  assert.ok(byId(card, "queue-next"), "an open queue of one is drawn folded");
+  assert.equal(view.queueOpen, false, "and stays folded");
+  putShared("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [PICKS[DEMO].items[2]] } });
+  card = byId(view.render(cx), "story-next");
+  assert.ok(byId(card, "story-queue"), "a second item, a pick, brings the chevron back");
+});
+
+// A pick (or an agent's ask) alone in the queue can still be dropped: folded, its row has the ✕ the
+// open queue's rows have, as there's no open list to drop it from (#64).
+test("a lone pick in Next can be dropped from the folded card", async () => {
+  setupDemoWorld({ stories: quiet(stories), spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  putShared("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [PICKS[DEMO].items[2]] } });
+  const { view, cx } = await sharedDraw();
+  const card = byId(view.render(cx), "story-next");
+  assert.equal(byId(card, "story-queue"), null, "a queue of one");
+  const drop = handlers(card).find((h) => h.id?.startsWith("queue-drop-"));
+  assert.ok(drop, "the folded pick has its ✕");
+  drop.fn({}, { stop_propagation() {}, notify() {} });
+  assert.equal(mock.state.shared.get("kelpie.next.suggested")[DEMO].items.length, 0, "and the ✕ drops it");
 });

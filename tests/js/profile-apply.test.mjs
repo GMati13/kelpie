@@ -124,8 +124,10 @@ describe("apply-profile: changes that wait for the person's yes", () => {
       const dialogs = confirms();
       assert.equal(dialogs.length, 1);
       assert.equal(dialogs[0][0].props.pendingProfile, true);
-      // The dialog names the setting itself, not just something beside it.
-      assert.ok(dialogs[0][0].props.items.some((x) => what.split(/[ ,]/)[0] === x.key), JSON.stringify(dialogs[0][0].props.items));
+      // The dialog names the setting itself, not just something beside it; a section removed whole,
+      // each of its settings.
+      const name = what.split(/[ ,]/)[0];
+      assert.ok(dialogs[0][0].props.changes.some((x) => x.key === name || (what.includes("(removed)") && x.key.startsWith(`${name}.`))), JSON.stringify(dialogs[0][0].props.changes));
       assert.equal(result().pending, true);
       assert.equal(result().ok, false);
       assert.equal(existsSync(`${home}/kelpie/profile-apply.json`), false, "request consumed");

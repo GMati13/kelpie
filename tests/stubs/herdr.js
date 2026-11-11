@@ -32,6 +32,7 @@ const json = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v))
 export const mock = {
   state: fresh(),
   calls: [], // { fn, args } in the order they were made
+  reads: {}, // host reads of live data and shared state, by name ("spaces", "shared:<key>"): how many
   on: {},    // fn name -> (...args) => result (a value or a promise; undefined: the default)
   overlays: 0,
 
@@ -39,6 +40,7 @@ export const mock = {
   reset() {
     this.state = fresh();
     this.calls = [];
+    this.reads = {};
     this.on = {};
     this.overlays = 0;
   },
@@ -106,7 +108,8 @@ export const notify = (n) => { answerNow("notify", [n], null); return null; };
 export const presentUpdateNotes = (versions) => { answerNow("presentUpdateNotes", [versions], null); return null; };
 
 // --- Shared state: kept in memory, copied in and out as Herdr's JSON store does ---------------
-export const shared = (key) => json(mock.state.shared.get(key)) ?? null;
+const read = (name) => { mock.reads[name] = (mock.reads[name] ?? 0) + 1; };
+export const shared = (key) => (read(`shared:${key}`), json(mock.state.shared.get(key)) ?? null);
 export function setShared(key, value) {
   record("setShared", [key, json(value)]);
   if (value === null || value === undefined) mock.state.shared.delete(key);
@@ -115,12 +118,12 @@ export function setShared(key, value) {
 }
 
 // --- What Herdr shows: whatever the test put in mock.state ----------------------------------
-export const spaces = () => json(mock.state.spaces);
-export const agents = () => json(mock.state.agents);
-export const panes = () => json(mock.state.panes);
-export const terminals = () => json(mock.state.terminals);
+export const spaces = () => (read("spaces"), json(mock.state.spaces));
+export const agents = () => (read("agents"), json(mock.state.agents));
+export const panes = () => (read("panes"), json(mock.state.panes));
+export const terminals = () => (read("terminals"), json(mock.state.terminals));
 export const machines = () => json(mock.state.machines);
-export const focused = () => json(mock.state.focused);
+export const focused = () => (read("focused"), json(mock.state.focused));
 export const layout = () => json(mock.state.layout);
 export const layouts = () => json(mock.state.layouts);
 export const props = () => mock.state.props;
