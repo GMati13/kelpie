@@ -1,5 +1,5 @@
 {
-  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list; one with `opens` ({after, found}) is opened by an agent `after` seconds in and found by GitHub's search only `found` seconds in. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
+  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list; one with `opens` ({after, found}) is opened by an agent `after` seconds in and found by GitHub's search only `found` seconds in. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name). Its Claude Artifacts (`artifacts`, by the session that published them, as artifacts.py gives them; `account`: the Claude config folder it was made on, when not the profile's) are claude.ai links whose ids name no Artifact (demo-…).",
   "profile": {
     "name": "Acme",
     "folder": "~/.local/share/kelpie/demo/acme",
@@ -613,6 +613,11 @@
       "first": ["ACME-190"],
       "updated": "-1d"
     }
+  ],
+  "artifacts": [
+    {"session": "demo-s7", "url": "https://claude.ai/artifact/demo-filters-flow", "title": "Saved filters: what a new search reads back", "description": "A diagram of the filters a new search takes from the last one, and from where.", "published": 3, "first": "-1d", "updated": "-20h"},
+    {"session": "demo-s7", "url": "https://claude.ai/artifact/demo-filters-cases", "title": "Filter edge cases", "description": "Every combination tried, with what each search showed.", "published": 1, "updated": "-1d", "account": ".claude-personal"},
+    {"session": "demo-s2", "url": "https://claude.ai/artifact/demo-rate-limits", "title": "Rate limits per API key", "description": "A small dashboard of the token bucket's numbers under load.", "published": 5, "first": "-6h", "updated": "-3h"}
   ],
   "spaces": [
     {

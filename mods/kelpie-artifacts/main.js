@@ -1,4 +1,6 @@
-// The shown tab's Claude session's artifacts, in the side panel beside Files and Changes.
+// The Screenshots panel: the images the shown tab's Claude session saved, in the side panel beside
+// Files and Changes. (Its folder and ids still say "artifacts", from before it was named for what it
+// shows; Claude Artifacts, pages on claude.ai, are the story's Artifacts view in the kelpie mod.)
 // Images for now; other kinds can join them later. It only ever shows that session's own.
 // With props { scope: "story" } (the Kelpie layout's Screenshots view), it shows the sessions the Kelpie
 // layout lists in shared state instead: every Claude session of the story shown.
@@ -442,7 +444,7 @@ export default class Artifacts extends View {
     const keys = this.story ? this.keys() : [];
     return h_flex().h(ROW + 8).flex_none().px(MARGIN).gap(8).items_center()
       .child(v_flex().flex_1().min_w(0)
-        .child(div().truncate().font_semibold().text_size(TITLE).child(this.story ? "Screenshots" : "Artifacts"))
+        .child(div().truncate().font_semibold().text_size(TITLE).child("Screenshots"))
         .child(div().truncate().text_size(SMALL).text_color(t.dim).child(`${count} item${count === 1 ? "" : "s"}${keys.length > 1 ? ` · ${keys.join(", ")}` : ""}`)))
       .child(h_flex().flex_none().items_center()
         .child(this.button(t, "artifact-smaller", icon("minus"), () => this.resize(-1), false, "Smaller"))
@@ -533,7 +535,7 @@ export default class Artifacts extends View {
       .on_hover((over, cx) => { this.controls = over; cx.notify(); })
       .child(this.viewer(t, item, size, zoomed))
       .child(fading(h_flex().id("artifact-top").absolute().left(MARGIN).right(MARGIN).top(MARGIN).gap(8).items_center())
-        .child(this.capsule(t).child(this.button(t, "artifact-back", icon("chevron-left"), () => { this.open = null; this.resetView(); }, false, "All artifacts")))
+        .child(this.capsule(t).child(this.button(t, "artifact-back", icon("chevron-left"), () => { this.open = null; this.resetView(); }, false, "All screenshots")))
         .child(div().flex_1().min_w(0).flex().justify_center()
           .child(v_flex().min_w(0).max_w("100%").px(14).py(4).rounded(12).items_center().bg(t.popover).border(1).border_color(t.border).shadow_lg()
             .child(div().max_w("100%").truncate().text_size(TEXT).font_medium().child(item.name))
@@ -649,7 +651,7 @@ export default class Artifacts extends View {
         : "Screenshots Claude saves in this session appear here.";
     return v_flex().flex_1().min_h(0).gap(8).items_center().justify_center().text_color(t.dim)
       .child(icon("layers", 28))
-      .child(div().font_semibold().text_size(TITLE).text_color(t.muted).child(this.story ? (this.state === "ready" ? "No screenshots yet" : "Screenshots") : this.state === "ready" ? "No artifacts yet" : "Artifacts"))
+      .child(div().font_semibold().text_size(TITLE).text_color(t.muted).child(this.state === "ready" ? "No screenshots yet" : "Screenshots"))
       .child(div().text_size(SMALL).child(text));
   }
 
