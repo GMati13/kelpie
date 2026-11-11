@@ -769,6 +769,16 @@ function queueRow(t, x, on, go, { card = false } = {}) {
         .when(queueAway(x), (el) => el.child(icon(own("external-link"), 12).text_color(t.dim))))
       .when(Boolean(queueDetail(x)), (el) => el.child(div().truncate().text_size(SMALL).text_color(t.muted).child(queueDetail(x)))));
 }
+// An agent's ask or a pick of Claude's gets an ✕ to drop it, folded or not: a queue of one has no
+// open list to drop it from (#64).
+function withDrop(t, profile, x, row) {
+  if (!x.suggest && !x.ask) return row;
+  const drop = () => (x.ask ? dismissAsk(profile, x.ask.id) : dismissSuggestion(profile, x.suggest.key));
+  return row.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
+    .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+    .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(); })
+    .child(icon(chrome("x"), 12)));
+}
 // The one after the item shown, wrapping around; the first when the one shown isn't in it.
 const nextIn = (queue, shownKey) => queue[(queue.findIndex((x) => x.key === shownKey) + 1) % queue.length] ?? null;
 
@@ -3562,7 +3572,7 @@ export class StoryList extends Stories {
           .when(many, (el) => el.child(iconButton(t, "story-queue", chrome(open ? "chevron-down" : "chevron-right"), toggle,
             open ? "Hide the queue" : "Show the whole queue", { on: open })))))
       .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
-      .when(!open, (el) => el.child(queueRow(t, top, false, () => goNext(st.profile, top), { card: true })
+      .when(!open, (el) => el.child(withDrop(t, st.profile, top, queueRow(t, top, false, () => goNext(st.profile, top), { card: true }))
         .tooltip(`${queueAway(top) ? "Opens on the web" : top.suggest?.idea ? "Starts a Claude on the Desk with this idea" : "Go there"} ⌘⇧J`)))
       .when(!picks, (el) => el.child(div().pt(2).child(this.magic(t, st, items, reviews, { slim: true }))));
     return card;
@@ -3583,12 +3593,7 @@ export class StoryList extends Stories {
   // Its rows, for inside Next's card.
   queueList(t, st, items, reviews, queue, shownKey) {
     const lit = (x) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask) && x.it?.key === shownKey));
-    const drop = (x) => (x.ask ? () => dismissAsk(st.profile, x.ask.id) : () => dismissSuggestion(st.profile, x.suggest.key));
-    const row = (x) => queueRow(t, x, lit(x), () => goNext(st.profile, x))
-      .when(Boolean(x.suggest || x.ask), (el) => el.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
-        .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(x)(); })
-        .child(icon(chrome("x"), 12))));
+    const row = (x) => withDrop(t, st.profile, x, queueRow(t, x, lit(x), () => goNext(st.profile, x)));
     // A group's label only when there's more than one group: alone it repeats the card's header.
     const groups = [queue.some((x) => !x.clean && !x.suggest && !x.review && !x.ask), queue.some((x) => x.ask), queue.some((x) => x.review && !x.suggest), queue.some((x) => x.clean)].filter(Boolean).length;
     const part = (label, list) => (!list.length ? [] : groups < 2 ? list.map(row) : [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(t.dim)

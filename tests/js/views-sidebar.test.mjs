@@ -344,3 +344,18 @@ test("Next has no chevron while its queue holds one item", async () => {
   card = byId(view.render(cx), "story-next");
   assert.ok(byId(card, "story-queue"), "a second item, a pick, brings the chevron back");
 });
+
+// A pick (or an agent's ask) alone in the queue can still be dropped: folded, its row has the ✕ the
+// open queue's rows have, as there's no open list to drop it from (#64).
+test("a lone pick in Next can be dropped from the folded card", async () => {
+  setupDemoWorld({ stories: quiet(stories), spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  putShared("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [PICKS[DEMO].items[2]] } });
+  const { view, cx } = await sharedDraw();
+  const card = byId(view.render(cx), "story-next");
+  assert.equal(byId(card, "story-queue"), null, "a queue of one");
+  const drop = handlers(card).find((h) => h.id?.startsWith("queue-drop-"));
+  assert.ok(drop, "the folded pick has its ✕");
+  drop.fn({}, { stop_propagation() {}, notify() {} });
+  assert.equal(mock.state.shared.get("kelpie.next.suggested")[DEMO].items.length, 0, "and the ✕ drops it");
+});
