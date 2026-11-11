@@ -11,7 +11,7 @@ import { div } from "gpui-kit";
 import { Popup, h_flex, v_flex } from "gpui-base";
 import { agents, run, setShared, shared, spaces, window, layout, openOverlay } from "herdr";
 import { SMALL, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, mark, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
-import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profileOf, profiles, shownProfile, shownSpace, spacesOf, switchProfile } from "./config.js";
+import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profiles, shownProfile, shownSpace, spaceProfiles, spacesOf, switchProfile } from "./config.js";
 import { startAgent } from "./source.js";
 import { StoryList } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
@@ -87,7 +87,8 @@ export class SpacePicker {
   menu(t, cx, width, close) {
     const shown = shownProfile();
     const list = agents();
-    const loose = spaces().filter((s) => !profileOf(s));
+    const all = spaces(), of = spaceProfiles(all);
+    const loose = all.filter((s) => !of.get(s.id));
     const items = [];
     const header = (text) => items.push({ header: text });
     const rule = () => items.push({ rule: true });
