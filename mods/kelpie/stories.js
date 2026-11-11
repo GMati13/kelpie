@@ -18,7 +18,7 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { boardSite, closeTicket, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
@@ -81,7 +81,7 @@ async function once(key, fn) {
 // are the tickets whose status chips it locks, `step` what it's doing now, in words. Each entry ends
 // by `until`, the whole run's own time limit, so a reload mid-run or a command that never returns
 // can't keep a story locked.
-const RUNS = "kelpie.busy"; // { [name]: { kind: "clean" | "done" | "move", keys, step, at, until } }
+const RUNS = "kelpie.busy"; // { [name]: { kind: "clean" | "done" | "move" | "close", keys, step, at, until } }
 const CLEAN_EACH = 25; // seconds the clean-up command gets per key (cleanUp)
 const BUSY_MARGIN = 60e3; // on top of a run's own limits: the checks before it, a slow board
 const MOVE_FOR = 30e3; // one ticket's move, at most (a single chip's, each of Move to Done's)
@@ -121,7 +121,8 @@ const busyText = (e) => {
 // Why a story can't be cleaned up or moved to done right now (busyOf its key), in words; null if it can.
 const busyWhy = (key) => {
   const e = busyOf(key);
-  return !e ? null : e.kind === "clean" ? `${key} is already being cleaned up.` : `${key} is moving to Done: wait for that to finish.`;
+  return !e ? null : e.kind === "clean" ? `${key} is already being cleaned up.` : e.kind === "close" ? `${key}'s issues are being closed on GitHub: wait for that to finish.`
+    : `${key} is moving to Done: wait for that to finish.`;
 };
 // A busy run's mark, in a button's place: the working spinner, what it's doing as its tip, and with
 // `words` (the header) in words beside it too. Nothing to click.
@@ -422,13 +423,15 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
   // The board's usual type at each level (every story a Story, every subtask a Sub-task) says
   // nothing, so only other types are tags (tagsOf()).
   const usualStory = usualType(data.parents), usualSub = usualType(data.children);
-  const item = (key, f) => {
+  const item = (key, f, raw = { key, fields: f }) => {
     const children = kids.get(key) ?? [];
     const sub = (c) => ({
       key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, tags: tagsOf(c.fields, usualSub), status: c.fields?.status?.name,
       category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
+      // Closed on GitHub, for a Project's issue (null: a Jira ticket, whose done status is closed).
+      closed: typeof c.closed === "boolean" ? c.closed : null,
     });
     const own = children.filter((c) => mine.has(c.key));
     // Kept only as something of it is here (data.kept, hereKeys()), with nothing of it yours any more:
@@ -436,17 +439,18 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
     const gone = kept.has(key) && !mine.has(key) && !own.length;
     return {
-      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key,
+      closed: typeof raw.closed === "boolean" ? raw.closed : null, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
-      story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
+      story: children.length > 0, subs: children.length ? children.map(sub) : [sub(raw)],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
       paused: children.length && !byAgent.has(key) ? paused[key] ?? null : null, last: children.length ? lastOf(key) : null,
     };
   };
-  const items = data.parents.map((p) => item(p.key, p.fields));
+  const items = data.parents.map((p) => item(p.key, p.fields, p));
   // Pull requests of yours for tickets that aren't among them (another sprint, someone else's ticket):
   // after the board's tickets, never sunk (no status of the board's to go by), no description.
   for (const [k, list] of prs) {
@@ -1133,7 +1137,8 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
-const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}),
+  ...(typeof i.id === "string" ? { id: i.id } : {}), ...(typeof i.closed === "boolean" ? { closed: i.closed } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
@@ -4222,19 +4227,45 @@ export class StoryList extends Stories {
   }
 
   // A finished story in the Done group: muted, the done mark, its key and badges (its merged pull
-  // requests among them); a click previews it, as a story not open. No actions of its own.
+  // requests among them); a click previews it, as a story not open. On a GitHub Project, while an
+  // issue of it is still open there, the row hovered (`this.hoverRow`, this copy's) has Close, laid
+  // over the end of the row on its own colour made solid, so it keeps no room at rest; while its
+  // issues close, the working mark in its place.
   doneRow(t, it, on, st) {
     const sign = statusMark(t, "done", { where: "row", size: 8, color: t.done });
-    return decor("rowDecor", t, h_flex().id(`done-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
+    const busy = busyOf(it.key)?.kind === "close" ? busyOf(it.key) : null;
+    const offer = closesTickets(boardOf(st.setup)) && (busy || (this.hoverRow === it.key && closable(it)));
+    const bg = on ? solidOver(t.background, t.selected) : this.hoverRow === it.key ? solidOver(t.background, t.hover) : t.background;
+    const close = offer && h_flex().id(`done-actions-${it.key}`).absolute().top(0).bottom(0).right(0).items_center()
+      .child(bands(Array.from({ length: 6 }, (_, i) => alpha(bg, (i + 1) / 7)), {}).flex_none().w(24).h_full())
+      .child(div().id(`close-${it.key}`).flex_none().h_full().flex().items_center().pl(4).pr(8).bg(bg).rounded_r(8).on_mouse_down("left", stop).on_click(stop)
+        .child(busy ? busyMark(t, `close-${it.key}-busy`, busy, { box: ROW_CONTROL })
+          : this.closeButton(t, `close-${it.key}-button`, "Close", () => askClose(st, [it]), closeTip([it]))));
+    return decor("rowDecor", t, h_flex().id(`done-${it.key}`).relative().flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .on_hover((over, cx) => {
+        const was = this.hoverRow;
+        // The row left may report after the row entered: only its own leaving clears it.
+        this.hoverRow = over ? it.key : was === it.key ? null : was;
+        if (this.hoverRow !== was) cx.notify();
+      })
       .on_click(() => selectStory(st.profile, it)).tooltip(`Done on the board · ${progress(it)}. Show its details, pull requests and earlier sessions`)
       .child(div().flex_none().mt(1).child(sign ?? mark(t, "done", 16)))
       .child(v_flex().flex_1().min_w(0).gap(2)
         .child(skinFont(div(), "ui").truncate().font_medium().text_color(t.muted).child(it.title))
         .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).opacity(0.6)
           .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
-          .children(storyBadges(t, it)))),
+          .children(storyBadges(t, it))))
+      .when(Boolean(close), (el) => el.child(close)),
       { selected: on, state: "done", story: it, now: new Date() });
+  }
+
+  // Close's small word button (a row's Close, the heading's Close all): quiet, the closed-issue mark
+  // before the words, as compact as the list's row actions.
+  closeButton(t, id, label, action, tip) {
+    return h_flex().id(id).flex_none().h(ROW_CONTROL).px(6).gap(4).items_center().rounded(6).cursor_pointer().text_size(SMALL).text_color(t.muted)
+      .hover((x) => x.bg(t.hover).text_color(t.foreground)).tooltip(tip).on_mouse_down("left", stop).on_click(action)
+      .child(icon(own("circle-check"), 12)).child(label);
   }
 
   // The Done group, last in the sidebar and folded unless unfolded by hand (per profile): the finished
@@ -4246,9 +4277,17 @@ export class StoryList extends Stories {
     const open = Boolean(all[st.profile.id]);
     const flip = () => { const next = { ...all }; if (open) delete next[st.profile.id]; else next[st.profile.id] = true; setShared(DONE_OPEN, next); };
     const when = st.data.sprints?.[0]?.kanban ? "in the last 14 days" : "this sprint";
+    // Close all, on a GitHub Project while any of them has an issue still open there; its clicks stay
+    // off the heading's fold. While it runs, the working mark in its place.
+    const open_ = closesTickets(boardOf(st.setup)) ? done.map(({ it }) => it).filter(closable) : [];
+    const running = busyOf(`close:${st.profile.id}`);
+    const closeAll = (open_.length || running) && div().id("stories-close-all").flex_none().mr(4).on_mouse_down("left", stop).on_click(stop)
+      .child(running ? busyMark(t, "stories-close-all-busy", running, { box: ROW_CONTROL })
+        : this.closeButton(t, "stories-close-all-button", `Close all · ${open_.length}`, () => askClose(st, open_), closeTip(open_)));
+    const chevron = icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim);
     return [div().id("stories-done").flex_none().cursor_pointer().on_click(flip)
       .tooltip(`${open ? "Fold" : "Show"} the stories finished ${when}`)
-      .child(groupHeader(t, "Done", done.length, icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim))),
+      .child(groupHeader(t, "Done", done.length, closeAll ? h_flex().items_center().child(closeAll).child(chevron) : chevron)),
     ...done.filter(({ it }) => open || it.key === shown?.key).map(({ it }) => this.doneRow(t, it, it.key === shown?.key, st))];
   }
 
@@ -5018,6 +5057,111 @@ async function movingToDone(s, it, plan, clean, at) {
   const after = noteOf(profile);
   if (after?.text) say({ profile, keys: key }, `${text} ${after.text}`, after.full ?? null);
   return { moved, failed, cleaned: true };
+}
+
+// --- Closing the Done group's issues ------------------------------------------------------------
+// On a GitHub Project a story moved to the done column (by Move to Done or on the board) is still open
+// on GitHub. The Done group closes them: Close on a row, Close all in its heading, each after a dialog.
+
+// What Close would close of a finished story: { close, left }, each a list of { key, title, mine,
+// assignee, status }. `close`: the story's own issue and its sub-issues still open, others' too, as
+// the story is done on the board; `left`: a sub-issue still open that isn't done on the board (someone's
+// work under way), kept open. Null for what isn't a board's ticket. Only a Project's issues know their
+// state (`closed`), so a Jira story has nothing to close. Exported for the tests.
+export function closePlan(it) {
+  if (!it || it.pr || it.review || it.pull || !it.subs) return null;
+  const subs = it.story ? it.subs : [];
+  const own = it.story ? it : it.subs[0] ?? it;
+  const open = (x) => x?.closed === false;
+  return {
+    close: [...(open(own) ? [own] : []), ...subs.filter((x) => open(x) && x.category === "done")],
+    left: subs.filter((x) => open(x) && x.category !== "done"),
+  };
+}
+const closable = (it) => (closePlan(it)?.close.length ?? 0) > 0;
+// Close's tip: what it closes, in a few words.
+const closeTip = (list) => {
+  const n = list.reduce((m, it) => m + (closePlan(it)?.close.length ?? 0), 0);
+  return list.length === 1 ? `Close ${list[0].key} on GitHub: done on the board, ${n === 1 ? "its issue is" : `${n} of its issues are`} still open there`
+    : `Close the issues still open on GitHub of ${list.length} stories done on the board (${n} issues)`;
+};
+const CLOSE_EACH = 30e3; // one issue's close, at most
+
+// Close's dialog, for one story of the Done group or all of them with something open (Close all):
+// each issue it closes, and any left open with why. Its button closes them itself (dialogs.js Confirm,
+// `closeStories`): no command runs it, as any agent can run a command and this writes to GitHub.
+function askClose(st, list) {
+  if (busyOf(`close:${st.profile.id}`)) return say({ profile: st.profile }, "Close all is already running.");
+  list = list.filter((it) => closable(it));
+  if (list.length === 1 && busyOf(list[0].key)) return say({ profile: st.profile, keys: list[0].key }, busyWhy(list[0].key));
+  list = list.filter((it) => !busyOf(it.key));
+  if (!list.length) return say({ profile: st.profile }, "Those stories' issues are already being closed.");
+  const whose = (x) => (x.mine || !x.assignee ? "" : `, ${x.assignee}'s`);
+  const items = list.flatMap((it) => {
+    const plan = closePlan(it);
+    return [...plan.close.map((x) => ({ key: x.key, text: `${x.title || x.key}${x.key === it.key ? "" : whose(x)}` })),
+      ...plan.left.map((x) => ({ key: x.key, text: `${x.title || x.key}: still ${x.status ?? "open"} on the board, left open` }))];
+  });
+  const n = list.reduce((m, it) => m + closePlan(it).close.length, 0);
+  const others = list.some((it) => closePlan(it).close.some((x) => x.key !== it.key && !x.mine));
+  const detail = `This closes ${n === 1 ? "this issue" : `these ${n} issues`} on GitHub as completed${others ? ", others' sub-issues too, as the story is done on the board" : ""}:`;
+  const title = list.length > 1 ? `Close ${list.length} stories' issues?` : `Close ${list[0].key} on GitHub?`;
+  openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(520, 200 + Math.min(items.length, 10) * 24), props: {
+    role: "confirm", title, yes: n === 1 ? "Close it" : `Close ${n} issues`, working: "Closing…",
+    closeStories: { profile: st.profile.id, keys: list.map((it) => it.key) }, detail, items } });
+}
+
+// Close's dialog button: closes what closePlan() says of each story, as it stands now, one issue after
+// another, each story under its busy mark (and Close all under `close:<profile>`). One that fails (no
+// permission on its repo, an issue gone) doesn't stop the rest; the note names each with why, to close
+// by hand. The closed issues show at once, then the stories load once. Returns { closed, failed:
+// [{ key, why }] }, null when nothing could run.
+export async function closeStories({ profile, keys = [] }) {
+  const s = storyItems();
+  if (s?.st.profile.id !== profile) { say({ profile }, "Nothing was closed: that profile isn't shown any more."); return null; }
+  const board = boardOf(s.st.setup);
+  if (!closesTickets(board)) { say({ profile }, "Nothing was closed: this profile's board closes a ticket by moving it to done."); return null; }
+  const list = keys.map((k) => s.done.map((x) => x.it).find((x) => x.key === k)).filter((it) => closable(it));
+  if (!list.length) { say({ profile, keys }, "Nothing was closed: those stories have no issue still open."); return null; }
+  const group = list.length > 1 ? `close:${profile}` : null;
+  const total = list.reduce((n, it) => n + closePlan(it).close.length, 0);
+  const atAll = group ? takeBusy(group, { kind: "close", keys: [], step: "Closing on GitHub…" }, total * CLOSE_EACH + BUSY_MARGIN) : null;
+  if (group && !atAll) { say({ profile }, "Close all is already running."); return null; }
+  const closed = [], failed = [], skipped = [];
+  try {
+    for (const it of list) {
+      const plan = closePlan(it);
+      const at = takeBusy(it.key, { kind: "close", keys: plan.close.map((x) => x.key), step: `Closing on GitHub… 1 of ${plan.close.length}` },
+        plan.close.length * CLOSE_EACH + BUSY_MARGIN);
+      if (!at) { skipped.push(it.key); continue; }
+      try {
+        for (const [i, x] of plan.close.entries()) {
+          stepBusy(it.key, at, { step: `Closing on GitHub… ${i + 1} of ${plan.close.length}` });
+          if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length + 1} of ${total}` });
+          try {
+            await closeTicket(board, x.key, s.st.data);
+            closed.push(x.key);
+          } catch (e) {
+            failed.push({ key: x.key, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
+          }
+        }
+      } finally { endBusy(it.key, at); }
+    }
+  } finally { if (group) endBusy(group, atAll); }
+  // Closed shows at once (the row loses its Close), then the stories load once.
+  if (closed.length) {
+    const gone = new Set(closed);
+    const mark = (list) => (list ?? []).map((i) => (gone.has(i.key) ? { ...i, closed: true } : i));
+    patchLoaded(s.st.profile, (d) => ({ ...d, parents: mark(d.parents), children: mark(d.children) }));
+    setShared(REFRESH, Date.now());
+  }
+  const text = `${closed.length ? `Closed ${keyList(closed)} on GitHub.` : "Nothing was closed."}${failed.length
+    ? ` Couldn't close ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: close ${failed.length === 1 ? "it" : "them"} by hand on GitHub.` : ""}${skipped.length
+    ? ` ${keyList(skipped)} ${skipped.length === 1 ? "was" : "were"} busy, so left as ${skipped.length === 1 ? "it was" : "they were"}.` : ""}`;
+  const full = failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null;
+  say({ profile, keys: list.length === 1 ? list[0].key : [] }, text, full);
+  if (failed.length) notify({ title: "Some issues didn't close", body: full, level: "warning" });
+  return { closed, failed };
 }
 
 // Clean up all's dialog (the list's broom beside its freshness line, and Next): every finished story

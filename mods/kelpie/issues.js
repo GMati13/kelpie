@@ -8,7 +8,7 @@
 import { gh } from "./pulls.js";
 import { adfText, markdownBlocks } from "./adf.js";
 import { prefixFor } from "./config.js";
-import { demoFixture, demoMoveTo } from "./demo.js";
+import { demoFixture, demoMoveTo, demoProject } from "./demo.js";
 
 // A Project ticket key: a repo's prefix and the issue's number (config.js PREFIX).
 const TICKET = /^([A-Z][A-Z0-9]+)-(\d+)$/;
@@ -23,6 +23,9 @@ const ISSUE = `query KelpieIssue($owner: String!, $repo: String!, $number: Int!)
   number title body parent { number title repository { nameWithOwner } } } } }`;
 // A Project item's Status set to one of its options.
 const MOVE = `mutation KelpieMove($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`;
+
+// An issue closed as completed (Close in the Done group, stories.js closeStories()).
+export const CLOSE = `mutation KelpieClose($issue: ID!) { closeIssue(input: {issueId: $issue, stateReason: COMPLETED}) { issue { id state } } }`;
 
 const firstLine = (r, fallback) => (r.stderr || r.stdout || "").trim().split("\n")[0].replace(/^gh: /, "") || fallback;
 
@@ -119,4 +122,18 @@ export async function setStatus(board, data, key, option) {
   if (board.cfg?.demo) return demoMoveTo(key, option.to ?? option.name);
   const r = await gh(board.account, ["api", "graphql", ...Object.entries(ids).flatMap(([k, v]) => ["-f", `${k}=${v}`]), "-f", `query=${MOVE}`]);
   if (r.code !== 0) throw new Error(firstLine(r, "GitHub didn't take the move."));
+}
+
+// Closes an issue on GitHub as completed, on the person's own click in Close's dialog (stories.js
+// closeStories()), never on an agent's word. Its node id is the one the load gave, checked before gh
+// runs; the demo's fixture answers the same mutation (demo.js demoProject()).
+export async function closeIssue(board, data, key) {
+  const id = loadedIssue(data, key)?.id;
+  if (typeof id !== "string" || !ID.test(id)) throw new Error("Kelpie doesn't know which issue it is on GitHub, so nothing was closed");
+  const args = ["api", "graphql", "-f", `issue=${id}`, "-f", `query=${CLOSE}`];
+  if (board.cfg?.demo) return void await demoProject(args);
+  const r = await gh(board.account, args);
+  let said = null;
+  try { said = JSON.parse(r.stdout || "null")?.errors?.[0]?.message ?? null; } catch {}
+  if (r.code !== 0 || said) throw new Error(said || firstLine(r, "GitHub didn't close it"));
 }
