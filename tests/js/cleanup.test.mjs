@@ -102,6 +102,26 @@ describe("cleanUp", () => {
     assert.deepEqual(mock.of("exec").filter(([c]) => c === "python3"), []);
     assert.deepEqual(cleanRuns(), []);
   });
+  // A reassigned story isn't done: its work may never have been pushed, and a clean-up command
+  // deleting its folder would lose those commits for good.
+  const reassigned = (over = {}) => story({ category: "indeterminate", reassigned: { to: ["Sam"] }, ...over });
+  test("a reassigned story with commits no remote has isn't cleaned up", async () => {
+    repoIn("ABC-1");
+    await cleanUp(profile, reassigned());
+    assert.match(note(), /ABC-1 wasn't cleaned up: a commit not pushed in ABC-1 api/);
+    assert.deepEqual(cleanRuns(), []);
+    assert.equal(mock.of("run").filter(([n]) => n === "space.close").length, 0);
+  });
+  test("a reassigned story whose commits are all pushed is cleaned up", async () => {
+    const dir = repoIn("ABC-1");
+    const remote = join(root, "remote.git");
+    git(root, "init", "-q", "--bare", remote);
+    git(dir, "remote", "add", "origin", remote);
+    git(dir, "push", "-q", "origin", "HEAD:refs/heads/work");
+    await cleanUp(profile, reassigned());
+    assert.doesNotMatch(note(), /wasn't cleaned up/);
+    assert.ok(cleanRuns().length >= 1, "the clean-up command ran");
+  });
   test("changes.py failing stops it too", async () => {
     mock.on.exec = (cmd) => (cmd === "python3" ? { code: 1, stdout: "", stderr: "Traceback\nboom" } : undefined);
     await cleanUp(profile, story());
