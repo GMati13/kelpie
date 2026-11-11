@@ -182,3 +182,32 @@ test("Changes, One file: each file opens at its top, but coming back to a story 
     handlers(view.render(cx)).find((h) => h.id === "diff-all").fn({}, cx); // put back: DIFF is the module's
   }
 });
+
+// Back to the top reveals the box's first child with the least scroll: a box whose one child is all
+// of its content, already at the top, would scroll to that child's bottom. So the first child is an
+// empty line.
+test("the details' first child is an empty line, what going back to the top reveals", async () => {
+  setupDemoWorld({ stories, shown: "ACME-171" });
+  mock.state.shared.set("kelpie.point", { [DEMO]: { key: "ACME-171", kind: "merge", at: Date.now() } });
+  const { el } = await draw(new StoryBody());
+  const box = byId(el, `story-overview-ACME-171-${mock.sharedValue("kelpie.point")[DEMO].at}`);
+  const first = nodeOf(box).calls.find(([m]) => m === "child")?.[1][0];
+  assert.ok(first, "a first child");
+  assert.ok(nodeOf(first).calls.some(([m, a]) => m === "h" && a[0] === 0), "an empty line");
+});
+
+// A passage shown takes the details' place: a pointing then isn't spent on the overview not drawn,
+// so back to the story the details still open at their top.
+test("pointed at while a passage is shown, the details open at their top once it's closed", async () => {
+  setupDemoWorld({ stories, shown: "ACME-171" });
+  const at = Date.now();
+  mock.state.shared.set("kelpie.point", { [DEMO]: { key: "ACME-171", kind: "merge", at } });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-171", quote: "dark", note: "", at });
+  const { view, cx } = await draw(new StoryBody());
+  const handle = view.detailScrolls.get(`${DEMO}:ACME-171`).box;
+  assert.deepEqual(calls(handle), [], "nothing asked of it while the reader is drawn instead");
+  mock.state.shared.set("kelpie.passage", null);
+  const box = scrollBox(view.render(cx), "story-overview-ACME");
+  assert.equal(box.id, `story-overview-ACME-171-${at}`);
+  assert.deepEqual(calls(box.handle), ["scroll_to_item(0)"], "asked for once the box is drawn");
+});
