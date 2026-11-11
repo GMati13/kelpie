@@ -2858,7 +2858,7 @@ export class Stories extends Source {
     const key = ticket.key;
     const paused = allPaused(it);
     const work = live.length ? (viewOf(st.profile, it) === "agent" ? null : { label: "Show agent", tip: "Show its agent" })
-      : paused.length ? { label: "Resume", tip: `Bring back ${paused.length === 1 ? "its paused session" : `its ${paused.length} paused sessions`} where they left off` }
+      : paused.length ? { label: "Resume", tip: `Bring back ${paused.length === 1 ? "its paused session where it" : `its ${paused.length} paused sessions where they`} left off` }
       : ticket.last ? { label: "Resume", tip: `Continue "${ticket.last.title}" (${ago(ticket.last.updated)} ago)`, last: true }
       : { label: it.space ? "Start agent" : "Start work", tip: `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`, fresh: true };
     // A finished story the list left out (its Done group's) is nothing to start: no filled Start work,
