@@ -2371,8 +2371,8 @@ export class Stories extends Source {
     // though More still starts one afresh, and Resume stays for a session of its own.
     const over = settled(it) && !live.length && !paused.length;
     const go = work && !(over && work.fresh) && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
-    // Its open pull requests, for Merge and Request approval (the menus of its heading under Your
-    // pull requests). With more than one ready to merge, the main action is Merge all: the Merge
+    // Its open pull requests, for Merge and Request approval (the same menus as on its row in the
+    // list, rowTasks). With more than one ready to merge, the main action is Merge all: the Merge
     // menu, filled (an agent checks them and plans merging them together).
     const { openPrs, unapproved } = taskPrs(it);
     const taskMenu = (kind, list, filled = false) => this.taskMenu(t, st, it, kind, list, `story-${kind}`, filled);
@@ -3718,8 +3718,8 @@ export class StoryList extends Stories {
     const noPulls = st.data.prError ? "Pull requests didn't load, Refresh to try again" : null;
     const alone = worksAlone(st.setup);
     const always = Boolean(owner) && (!alone || Boolean(noPulls));
-    // Every open pull request of yours, whatever its title: one naming a ticket of the list shows that
-    // story on its Changes (the pull request's files); any other opens on GitHub.
+    // Every open pull request of yours on no story of the list, whatever its title (a story's own are on
+    // the story): one naming no ticket shows on its own, one naming another board's ticket opens on GitHub.
     const known = projectsOf(st.data);
     const storyOf = (p) => {
       const k = prKey(p, st.data, known);
@@ -3728,14 +3728,12 @@ export class StoryList extends Stories {
     const minePrs = (st.data.prs ?? []).filter((p) => !p.merged && !storyOf(p)).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
     // A pull request of yours: its state as the mark before it (the words in its tooltip).
     const myPull = (p) => {
-      const story = storyOf(p);
       const [state, words, color] = prLook(t, p, checksOf(p));
       // One naming no ticket of the board is shown on its own (pullItem), on its Changes too.
-      const lone = story || prKey(p, st.data, known) ? null : pullItem(p);
-      const target = story ?? lone;
+      const lone = prKey(p, st.data, known) ? null : pullItem(p);
       return plain(`mine-${prName(p)}`, Boolean(lone) && lone.key === shown?.key, color, p.title.replace(/^\s*\[[^\]]*\]\s*/, ""), `${prName(p)}${p.updatedAt ? ` · ${ago(Date.parse(p.updatedAt))}` : ""}`,
-        () => { if (target) { selectStory(st.profile, target); setView(st.profile, target, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
-        .tooltip(`${words}. ${story ? `Show ${story.key} on its Changes` : lone ? "Show its files and what it needs" : "Open on GitHub"}`);
+        () => { if (lone) { selectStory(st.profile, lone); setView(st.profile, lone, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
+        .tooltip(`${words}. ${lone ? "Show its files and what it needs" : "Open on GitHub"}`);
     };
     // Pull requests grouped by the story they belong to (a subtask's key counts for its story), in the
     // order their newest one comes; a ticket not in the list (another board's) is a group of its key,
@@ -3754,8 +3752,8 @@ export class StoryList extends Stories {
     // all). Each starts a new agent on the Desk with its task, or sends it to one of the Desk's Claudes.
     const taskMenu = (g, kind, list) => {
       const { label, glyph } = TASK_LOOK[kind];
-      const what = g.story ? g.key : "pull requests without a ticket";
-      const rows = storyTaskRows(t, st.profile, g.story, kind, list);
+      const what = "pull requests without a ticket";
+      const rows = storyTaskRows(t, st.profile, null, kind, list);
       const id = g.key || "none";
       return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340 }));
     };
