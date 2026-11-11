@@ -24,7 +24,7 @@ const PICKS = [
 ];
 const putPicks = (items = PICKS) => mock.state.shared.set(SUGGESTED, { [DEMO]: { at: NOW - 60e3, items } });
 const said = () => { const s = storyItems(); return needQueueOf(s.st.profile, s.items, s.reviews).filter((x) => x.suggest); };
-const note = () => mock.sharedValue("kelpie.stories.note")?.text ?? "";
+const note = () => mock.sharedValue("kelpie.stories.note")?.[DEMO]?.text ?? "";
 // A space for each space.new, as Herdr makes it, so the launch finds it.
 const makeSpaces = () => {
   mock.on.run = (name, args) => {

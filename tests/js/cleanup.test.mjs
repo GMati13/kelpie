@@ -44,7 +44,7 @@ describe("cleanBlockers", () => {
 
 describe("cleanUp", () => {
   let root, profile;
-  const note = () => mock.sharedValue("kelpie.stories.note")?.text ?? "";
+  const note = () => mock.sharedValue("kelpie.stories.note")?.w?.text ?? "";
   // A ticket folder holding a real repo (changes.py reads it), with one commit.
   function repoIn(key, sub = "") {
     const dir = join(root, sub, key, "api");
@@ -134,7 +134,7 @@ describe("cleanUp", () => {
 // command twice at once. The clean-up command is a stand-in that answers only when the test lets it.
 describe("cleanUp: one at a time", () => {
   let profile, runs, waiting;
-  const note = () => mock.sharedValue("kelpie.stories.note")?.text ?? "";
+  const note = () => mock.sharedValue("kelpie.stories.note")?.w?.text ?? "";
   const release = () => waiting.shift()({ code: 0, stdout: "removed", stderr: "" });
   beforeEach(() => {
     profile = { id: "w", name: "W", folder: tempDir(), commands: { cleanUp: "slow-clean {key}" } };
