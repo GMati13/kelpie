@@ -10,7 +10,7 @@ Layouts and mods for [Herdr](https://herdr.dev) built around profiles and storie
 - `mods/kelpie`: every Kelpie view (sidebar, story header, Changes, tab bar, footer, dialogs, skins)
 - `mods/kelpie-artifacts`: the Artifacts panel and the Screenshots view
 
-![A story whose agent is waiting on a permission prompt: the story's description above, the sidebar's stories each marked with what they need](docs/screenshots/story.png)
+![A story whose agent is at work: the story's description above its agent's terminal, the sidebar's stories each marked with what they need](docs/screenshots/story.png)
 
 ## A look around
 
@@ -20,7 +20,7 @@ Each story's pull requests and uncommitted work, file by file, with a review's p
 
 Next takes you to whatever needs you, most urgent first. Claude can add its own picks from the sprint, the reviews waiting on you and the repos you work in:
 
-![The Next queue opened: what needs you, a finished story to clean up, and three picks from Claude](docs/screenshots/next.png)
+![The Next queue opened: what needs you, the reviews waiting on you, finished stories to clean up, and Claude's picks](docs/screenshots/next.png)
 
 A review waiting for you, before any agent starts on it:
 
@@ -28,7 +28,7 @@ A review waiting for you, before any agent starts on it:
 
 A story nobody has started yet:
 
-![A story not started: its description, and its subtasks each with what can be done next (Start work, or Resume an earlier session)](docs/screenshots/overview.png)
+![A story not started: its description and its subtasks, yours first, with Start work in its header](docs/screenshots/overview.png)
 
 `Kelpie-Plain` is the same layout without the skin:
 
