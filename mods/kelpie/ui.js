@@ -209,9 +209,13 @@ export function menuButton(host, t, id, label, rows, { tip, anchor = "top_right"
       .child(div().flex_1().min_w(0).truncate().child(armed ? `Confirm ${x.label.toLowerCase()}` : x.label))
       .when(Boolean(x.hint), (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(x.hint)));
   };
+  // A press anywhere on the open menu stays there: the popup is drawn over whatever lies under it,
+  // which gets the press next, so picking a row over a story's row in the list also opened that
+  // story, hiding the Claude the row had just shown (KELPIE-120).
   return Popup.new(`${id}-menu`, trigger).anchor(anchor).when(open, (el) => el.content(
     v_flex().id(`${id}-menu-list`).w(width).max_h(360).p(4).gap(1).overflow_y_scrollbar().rounded(8).bg(t.popover).border_1().border_color(t.border)
       .text_size(SMALL).text_color(t.foreground)
+      .on_mouse_down("left", stop).on_click(stop)
       .on_mouse_down_out((_e, cx) => { if (host.menu === id) { host.menu = null; host.menuShut = { id, at: Date.now() }; cx.notify(); } })
       .children(rows.map(row))));
 }
