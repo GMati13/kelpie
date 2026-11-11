@@ -28,7 +28,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Files.** Never delete, overwrite or write through a symlink to a file the person owns; installs and copies skip and report what's in the way. Deletions are guarded by an exact, tested path check (`removeDemo()`, `resetBrowser()`). Temp files and folders: `mktemp` / `mktemp -d` (private), never fixed names in `/tmp`. Caches holding prompts or titles are private.
 
-**Destructive actions.** Closing a space, pausing, cleaning up or killing a process asks first when something is working, and refuses what isn't settled (`cleanBlockers()`: not Done, an open pull request, a busy agent; `cleanUp()` checks those again when it runs, and uncommitted work). Match processes by an exact, tested pattern; never kill what Kelpie didn't start.
+**Destructive actions.** Closing a space, pausing, cleaning up or killing a process asks first when something is working, and refuses what isn't settled (`cleanBlockers()`: not Done, an open pull request, a busy agent; `cleanUp()` checks those again when it runs, and uncommitted work, and for a reassigned story commits not pushed). Match processes by an exact, tested pattern; never kill what Kelpie didn't start.
 
 ## When you change something here
 

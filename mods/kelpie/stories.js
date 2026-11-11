@@ -4112,15 +4112,22 @@ function cleanable(profile, it) {
     left.length && `runs the clean-up command on what it left${left.length > 1 ? ` (${left.length} things)` : ""}`].filter(Boolean);
 }
 
-// The repos of a story's ticket folders with uncommitted work (changes.py): a clean-up command may
-// delete them, so a story with any isn't cleaned up. A demo profile has none on disk.
-async function uncommitted(profile, it) {
+// What a clean-up would lose in a story's repos (changes.py), as phrases for its note: uncommitted
+// work, and for a story someone else has now (reassigned, not finished) commits no remote has, as its
+// work was never merged (a finished one's branch may well be gone from the remote once merged). A
+// clean-up command may delete those folders, so a story with any isn't cleaned up. A demo profile has
+// none on disk.
+async function unsaved(profile, it) {
   if (isDemo(profile)) return [];
   const on = it.space ? spaces().find((s) => s.id === it.space.id)?.machine : null;
+  const ahead = !finished(it) && Boolean(it.reassigned);
   const code = await readTextFile(modFile("changes.py"));
-  const r = await exec("python3", ["-I", "-c", code, profile.folder, ...storyKeys(it)], on ? { on } : {});
-  if (r.code !== 0) return [`its folders (couldn't check them: ${(r.stderr || "").trim().split("\n").pop() || "changes.py failed"})`];
-  return JSON.parse(r.stdout || "[]").filter((x) => x.files?.length).map((x) => `${x.key} ${x.repo}`);
+  const r = await exec("python3", ["-I", "-c", code, profile.folder, ...(ahead ? ["--unpushed"] : []), ...storyKeys(it)], on ? { on } : {});
+  if (r.code !== 0) return [`uncommitted work in its folders (couldn't check them: ${(r.stderr || "").trim().split("\n").pop() || "changes.py failed"})`];
+  const repos = JSON.parse(r.stdout || "[]");
+  const dirty = repos.filter((x) => x.files?.length).map((x) => `${x.key} ${x.repo}`);
+  const unpushed = repos.filter((x) => x.unpushed > 0).map((x) => `${x.unpushed === 1 ? "a commit" : `${x.unpushed} commits`} not pushed in ${x.key} ${x.repo}`);
+  return [...(dirty.length ? [`uncommitted work in ${dirty.join(", ")}`] : []), ...unpushed];
 }
 
 // Cleans up a finished story (the confirm dialog's Clean up): closes its space, forgets what shared
@@ -4142,8 +4149,8 @@ async function cleaning(profile, it, at) {
   // Checked again now: an agent may have started, or a pull request opened, since the dialog showed.
   const why = cleanBlockers(it);
   if (why.length) return say(`${it.key} wasn't cleaned up: ${why.join(", ")}.`);
-  const dirty = await uncommitted(profile, it);
-  if (dirty.length) return say(`${it.key} wasn't cleaned up: uncommitted work in ${dirty.join(", ")}.`);
+  const lose = await unsaved(profile, it);
+  if (lose.length) return say(`${it.key} wasn't cleaned up: ${lose.join(", ")}.`);
   const command = cleanCommand(profile);
   const folder = command && leftoversOf(profile, it).length > 0;
   const on = it.space ? spaces().find((s) => s.id === it.space.id)?.machine : null;
@@ -4306,7 +4313,7 @@ async function movingToDone(s, it, plan, clean, at) {
   // The story as it is now: done when it moved (the loaded copy still has its old status).
   const now = shownDone(it) ? { ...it, category: "done" } : it;
   const why = cleanBlockers(now);
-  if (!why.length) why.push(...(await uncommitted(s.st.profile, now)).map((r) => `uncommitted work in ${r}`));
+  if (!why.length) why.push(...await unsaved(s.st.profile, now));
   if (why.length) {
     say(`${text} ${key} wasn't cleaned up: ${why.join(", ")}.`, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
     notify({ title: `${key} wasn't cleaned up`, body: `${capitalize(why.join(", "))}.`, level: "warning" });
