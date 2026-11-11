@@ -265,6 +265,21 @@
       "status": "In Progress"
     },
     {
+      "key": "ACME-126",
+      "assignee": "Lena Vogel",
+      "summary": "Sign out after a while idle",
+      "type": "Story",
+      "status": "In QA",
+      "description": "A session stays signed in for good. Sign out after 30 idle minutes, with a banner a minute before."
+    },
+    {
+      "key": "ACME-127",
+      "summary": "Idle timer and the sign-out banner",
+      "parent": "ACME-126",
+      "status": "In QA",
+      "mine": true
+    },
+    {
       "key": "ACME-190",
       "assignee": "Priya Nair",
       "summary": "Remember the last search filters",
@@ -804,6 +819,25 @@
             "\\033[2m>\\033[0m Why is the web bundle 2 MB?",
             "",
             "\\033[0m● Most of it is the map library (1.1 MB) loaded on every page. Loading it only on the trip map would take the first load down to about 700 KB.",
+            ""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ACME-126",
+      "tabs": [
+        {
+          "name": "ACME-127",
+          "agent": "done",
+          "title": "Idle sign-out",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Trying it: the banner shows twice after the laptop wakes. Why?",
+            "",
+            "\\033[0m● Both the wake listener and the timer fire on wake. I'll let the timer alone show it.",
             ""
           ]
         }

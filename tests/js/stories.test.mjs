@@ -3,7 +3,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, settleTalking, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
 import { sunkWords } from "../../mods/kelpie/config.js";
 import { prState } from "../../mods/kelpie/ui.js";
 import { COLUMNS, DEMO_PROFILE, DEMO_PROJECT_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
@@ -212,6 +212,90 @@ describe("what the sunk group says", () => {
   });
 });
 
+// KELPIE-123: a story handed over (or done) whose agent the person is still talking to stays at hand,
+// in In progress, until its agent has been quiet a while; its board status doesn't change.
+describe("a handed-over story still being talked to", () => {
+  const profile = { id: "w", name: "W", folder: "/w" };
+  beforeEach(() => {
+    mock.state.shared.set("kelpie.profiles", { w: profile });
+    mock.state.spaces = [{ id: "s1", name: "ABC-1", folder: "/w", tabs: [] }, { id: "s9", name: "ABC-9", folder: "/w", tabs: [] }];
+  });
+  const agent = (status, tab = "ABC-2", space = "s1") => ({ address: `t-${tab}`, space, tab_name: tab, status });
+  // ABC-1's subtask of yours is in QA (handed over); ABC-9 is a story in progress.
+  const items = (status = "qa") => build(data({ mine: ["ABC-2", "ABC-9"], parents: [issue("ABC-1", "doing"), issue("ABC-9", "doing")], children: [issue("ABC-2", status, "ABC-1")] }), agentsByKey(profile));
+  const it = (status) => items(status)[0];
+  for (const status of ["working", "blocked", "done"]) {
+    test(`its agent ${status}: not sunk, in progress, its board status unchanged`, () => {
+      mock.state.agents = [agent(status)];
+      const story = it();
+      assert.equal(story.sunk, true, "handed over on the board");
+      assert.equal(sunk(story), false);
+      assert.equal(underWay(story), true);
+      assert.equal(story.subs[0].status, "In QA");
+      assert.deepEqual(keys(ordered(items())).at(-1), "ABC-9", "not after the stories in progress");
+    });
+  }
+  test("the row says why it's here", () => {
+    mock.state.agents = [agent("done")];
+    const [rank, line, color] = need(it());
+    assert.equal(rank, 6, "it needs nothing of you");
+    assert.match(line, /^Its agent finished a turn · /);
+    assert.equal(color, "accent");
+    mock.state.agents = [agent("idle")];
+    mock.state.shared.set("kelpie.talking", { "t-ABC-2": Date.now() - 60_000 });
+    assert.match(need(it())[1], /^Still talking to its agent · /);
+  });
+  test("an agent only ever seen idle isn't talked to: the story sinks", () => {
+    mock.state.agents = [agent("idle")];
+    settleTalking();
+    assert.equal(sunk(it()), true);
+    assert.equal(mock.sharedValue("kelpie.talking"), null, "nothing noted");
+  });
+  test("once quiet it stays at hand a while, then sinks again", () => {
+    const t0 = Date.now();
+    mock.state.agents = [agent("working")];
+    settleTalking(t0);
+    assert.deepEqual(mock.sharedValue("kelpie.talking"), { "t-ABC-2": 0 });
+    mock.state.agents = [agent("idle")];
+    settleTalking(t0);
+    assert.deepEqual(mock.sharedValue("kelpie.talking"), { "t-ABC-2": t0 }, "noted when it went quiet");
+    assert.equal(sunk(it()), false, "just went quiet: still at hand");
+    settleTalking(t0 + 14 * 60_000);
+    assert.deepEqual(mock.sharedValue("kelpie.talking"), { "t-ABC-2": t0 }, "kept, not rewritten");
+    settleTalking(t0 + 16 * 60_000);
+    assert.deepEqual(mock.sharedValue("kelpie.talking"), {}, "dropped once quiet for long");
+    assert.equal(sunk(it()), true, "back with the handed-over stories");
+  });
+  test("talking again starts it over; a terminal gone is forgotten", () => {
+    mock.state.shared.set("kelpie.talking", { "t-ABC-2": Date.now() - 60_000, "t-gone": 0 });
+    mock.state.agents = [agent("working")];
+    settleTalking();
+    assert.deepEqual(mock.sharedValue("kelpie.talking"), { "t-ABC-2": 0 });
+  });
+  test("any agent on the story counts, not only the one its row shows", () => {
+    mock.state.agents = [agent("idle", "ABC-2"), { ...agent("working", "Notes"), address: "t-notes" }];
+    assert.equal(sunk(it()), false);
+  });
+  test("a done story whose agent is still talked to stays out of the Done group", () => {
+    // Its agent's tab named after it in another space of the profile; the story has no space here.
+    mock.state.spaces = [{ id: "s2", name: "Desk", folder: "/w", tabs: [] }];
+    const d = data({ mine: ["ABC-5"], parents: [issue("ABC-5", "done")] });
+    const listed = () => build(d, agentsByKey(profile)).map((x) => x.key);
+    const doneGroup = () => build(d, agentsByKey(profile), {}, new Map(), null, { done: true }).map((x) => x.key);
+    mock.state.agents = [agent("idle", "ABC-5", "s2")];
+    assert.deepEqual([listed(), doneGroup()], [[], ["ABC-5"]]);
+    mock.state.agents = [agent("done", "ABC-5", "s2")];
+    assert.deepEqual([listed(), doneGroup()], [["ABC-5"], []]);
+  });
+  test("renaming its agent's tab after another key moves the conversation to that story", () => {
+    mock.state.agents = [agent("working", "ABC-9")];
+    const [one, nine] = items();
+    assert.equal(one.subs[0].agent, null);
+    assert.equal(sunk(one), true, "the first story sinks back");
+    assert.equal(nine.subs[0].agent.status, "working");
+  });
+});
+
 describe("sinking at the handover column", () => {
   const story = (statuses, { handover = null, mine = statuses.map((_, i) => `ABC-${i + 2}`) } = {}) => build(data({
     mine, parents: [issue("ABC-1", "doing")], children: statuses.map((s, i) => issue(`ABC-${i + 2}`, s, "ABC-1")),
@@ -307,8 +391,17 @@ describe("the demo's stories, as the list builds them", () => {
     assert.deepEqual(list.map((x) => [x.it.key, x.n[0], sunk(x.it, x.n)]), [
       ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
       ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false],
-      ["ACME-129", 6, true],
+      ["ACME-129", 6, true], ["ACME-126", 6, true],
     ]);
+  });
+  // ACME-126 is handed over (its subtask in QA, its pull request merged), but its agent finished a
+  // turn the person hasn't seen yet: it stays among the stories in progress.
+  test("a handed-over story whose agent finished a turn stays in progress", async () => {
+    const d = await demoData();
+    const it = build(d, new Map([["ACME-127", { status: "done", talking: true }]])).find((x) => x.key === "ACME-126");
+    assert.equal(it.sunk, true);
+    assert.equal(sunk(it), false);
+    assert.match(need(it)[1], /^Its agent finished a turn · /);
   });
   // What next?'s snapshot: a story past the handover column (ACME-129) is the person's own to check
   // when they work alone, not "my part is done".

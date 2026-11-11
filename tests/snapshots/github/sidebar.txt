@@ -97,7 +97,7 @@ v_flex [fg=foreground]
       div [font="DM Sans" fg=muted]
         "IN PROGRESS"
       div [font="DM Mono" fg=dim]
-        "8"
+        "9"
       div
         div
           div [bg=#d9b45ff2] ×32 … [bg=#d9b45f1a]
@@ -295,6 +295,18 @@ v_flex [fg=foreground]
             "ACME-184"
         h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 2 subtasks · 2 in progress"
           div [bg=working/73]
+    h_flex #story-ACME-126 [hover(bg=hover)] {click hover} tip="Its agent finished a turn · 1 subtask · 1 in progress"
+      div
+        div
+          div [border=muted]
+      v_flex
+        div [font="DM Sans"]
+          "Sign out after a while idle"
+        h_flex
+          div #here-ACME-126 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
+            "ACME-126"
+        h_flex #b-subs-ACME-126 tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 1 subtask · 1 in progress"
+          div [bg=ansi4/73]
     h_flex #story-ACME-190 [hover(bg=hover)] {click hover} tip="Reassigned to Jordan Blake · clean up once you're done with it"
       div
         div
