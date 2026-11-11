@@ -2,6 +2,8 @@
 
 A kelpie is the sheepdog that works the flock on its own and comes back only when it's needed. This one does the same for your Claude agents in Herdr.
 
+Kelpie is early and not stable yet: things change, sometimes a lot, between updates. Pull often, and run `./install.sh` again after you do.
+
 Layouts and mods for [Herdr](https://herdr.dev) built around profiles and stories: a profile's sprint in the sidebar (from a Jira board or a GitHub Project), each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
 
 - `layouts/Kelpie.json` (the Quiet Pages look) and `layouts/Kelpie-Plain.json` (no skin), with their themes and previews
