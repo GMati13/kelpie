@@ -1036,7 +1036,7 @@ function ordered(items) {
 }
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
-const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Review waiting", "muted"] };
+const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Waiting for review", "muted"] };
 
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
 // each copy runs in its own JavaScript context. So the list alone loads, and puts a trimmed copy of

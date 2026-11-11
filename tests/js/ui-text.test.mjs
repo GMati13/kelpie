@@ -4,7 +4,7 @@ import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../lib/snapshot.mjs";
-import { Stories, StoryList } from "../../mods/kelpie/stories.js";
+import { Stories, StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
@@ -41,4 +41,14 @@ test("the story list's counts agree with their number", async () => {
 test("Resume's tooltip agrees with how many sessions are paused", async () => {
   const out = await header("ACME-138");
   assert.match(out, /Bring back its paused session where it left off/);
+});
+
+// A pull request waiting on reviewers says so in the words the list uses ("Waiting for review").
+test("a lone pull request waiting on reviewers says Waiting for review", async () => {
+  const waiting = { ...stories, data: { ...stories.data, prs: stories.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } };
+  setupDemoWorld({ stories: waiting });
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "pull:docs#58" });
+  const out = render((await draw(new StoryBody())).el, skinTheme());
+  assert.match(out, /"Waiting for review"/);
+  assert.doesNotMatch(out, /Review waiting/);
 });
