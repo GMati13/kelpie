@@ -667,7 +667,12 @@ const PLUGIN_USES = {
 };
 export async function askPlugin(profile, use = "configure", scope = "all") {
   const source = await pluginSource();
-  const account = claudeKey(claudeConfigOf(profile)) || "~/.claude";
+  const dir = claudeKey(claudeConfigOf(profile));
+  const account = dir || "~/.claude";
+  // The commands to copy run on the profile's account too: a plain `claude` installs on ~/.claude,
+  // and this account would still be without it. Folders quoted only when they need it.
+  const q = (v) => (/^[\w./~-]+$/.test(v) ? v : `'${v.replace(/'/g, "'\\''")}'`);
+  const claude = dir ? `CLAUDE_CONFIG_DIR=${q(dir)} claude` : "claude";
   const [why, again] = PLUGIN_USES[use] ?? PLUGIN_USES.configure;
   const configure = use === "configure" && source;
   const then = configure ? " Install it, and a Claude on the Desk then starts setting it up with you." : ` Install it, then press ${again} again.`;
@@ -675,7 +680,7 @@ export async function askPlugin(profile, use = "configure", scope = "all") {
     role: "confirm", installPlugin: source ? profile.id : null, ...(configure ? { installThen: Object.hasOwn(CONFIGURE_SCOPES, scope) ? scope : "all" } : {}),
     title: "Claude needs Kelpie's plugin for this",
     detail: `${why} It isn't installed on this profile's Claude account (${account}) yet.${source ? then : " Install it from your Kelpie folder with:"}`,
-    items: [{ text: `claude plugin marketplace add ${source ?? "<your Kelpie folder>"}` }, { text: `claude plugin install ${PLUGIN}` }],
+    items: [{ text: `${claude} plugin marketplace add ${source ? q(source) : "<your Kelpie folder>"}` }, { text: `${claude} plugin install ${PLUGIN}` }],
     yes: source ? "Install it" : "OK" } });
 }
 // The dialog's Install it: both commands in a terminal on the profile's Desk, on its account, so the
