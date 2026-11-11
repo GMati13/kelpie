@@ -20,6 +20,7 @@ import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArg
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
+import { LOW_EVERY, blockedFor, limitNote, lowFor } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
@@ -1027,6 +1028,8 @@ const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
 const ARTIFACTS = "kelpie.artifacts.sessions";
+// The profile's GitHub account's limit, for the freshness line: used up or running low (ghlimit.js).
+const githubNote = (setup) => (setup?.github?.owner || setup?.project) && !setup?.github?.demo && !setup?.project?.demo ? limitNote(setup.github?.account ?? null) : null;
 const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
 const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
 // Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
@@ -2214,11 +2217,14 @@ export class Stories extends Source {
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
+    // GitHub's limit refusing the pull requests isn't them gone: the last ones stay, and the
+    // freshness line says why (limitNote()).
+    const limited = owner && !demo && blockedFor(account) && prior;
     return settleMoved(settlePulls({
-      site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
+      site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
-      sessions, reviews: reviews.map(pull),
-      prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
+      sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
+      prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began));
   }
 
@@ -2228,6 +2234,8 @@ export class Stories extends Source {
   quickPulls(cx) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
+    // Worth a read only while GitHub's limit has room: low or used up, the loads bring it.
+    if (blockedFor(ctx.setup.github.account) || lowFor(ctx.setup.github.account)) return;
     if (this.quickBusy) { this.quickAgain = true; return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;
@@ -2286,15 +2294,29 @@ export class Stories extends Source {
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
       if (this.quickAgain && !this.quickBusy) this.quickPulls(cx);
       if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
-      return super.state(cx);
+      const st = super.state(cx);
+      // A failed load (GitHub's limit, say, which lasts) shows how old the stories shown are, not
+      // when it failed: the shared copy keeps their age.
+      return { ...st, at: st.error ? sharedData(ctx)?.at ?? st.at : st.at, error: st.error ?? githubNote(ctx.setup) };
     }
     const ctx = this.context();
     const e = sharedData(ctx);
-    return { ...ctx, data: e?.data ?? null, error: e?.error ?? null, at: e?.at ?? 0, loading: !e };
+    return { ...ctx, data: e?.data ?? null, error: e?.error ?? githubNote(ctx.setup), at: e?.at ?? 0, loading: !e };
   }
 
+  // GitHub's limit decides too, for a GitHub Project's board. Used up, gh() asks GitHub nothing until it
+  // comes back (ghlimit.js), so the load fails at once and the last stories stay, the note saying when.
+  // Running low, a load at most every LOW_EVERY, whoever asks (the timer, an agent's turn ending,
+  // Refresh), so the budget lasts until its reset. A Jira board loads whatever GitHub says.
   load(cx, opts) {
     if (!this.loader) return;
+    const ctx = this.context();
+    // The first load after a start runs before any draw took the shared copy: it starts from it too,
+    // so a load that fails (or isn't asked, below) keeps those stories rather than none.
+    const e = sharedData(ctx);
+    if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
+    const board = this.ready(ctx) ? boardOf(ctx.setup) : null;
+    if (board?.kind === "project" && !board.cfg.demo && lowFor(board.account) && this.cache[ctx.key] && Date.now() - (this.fullAt ?? 0) < LOW_EVERY) return;
     this.fullAt = Date.now();
     super.load(cx, opts);
   }

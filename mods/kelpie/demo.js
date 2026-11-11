@@ -196,9 +196,18 @@ export async function demoProject(args) {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
     return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };
   }
+  if (op === "KelpieSubIssues") {
+    const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
+    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ghIssue(f, i)) } };
+  }
+  // Its slots k0, k1… (`u<n>` set), each a repo and an issue number.
   if (op === "KelpieKept") {
-    const i = `${v.owner}/${v.repo}` === f.project.repo ? f.issues.find((x) => numberOf(x.key) === Number(v.number)) : null;
-    return { data: { viewer: { login: f.profile.me }, repository: { issue: i ? { id: nodeId(i.key), parent: i.parent ? { id: nodeId(i.parent) } : null } : null } } };
+    const data = { viewer: { login: f.profile.me } };
+    for (let n = 0; v[`u${n}`] === "true"; n++) {
+      const i = `${v[`o${n}`]}/${v[`r${n}`]}` === f.project.repo ? f.issues.find((x) => numberOf(x.key) === Number(v[`n${n}`])) : null;
+      data[`k${n}`] = { issue: i ? { id: nodeId(i.key), parent: i.parent ? { id: nodeId(i.parent) } : null } : null };
+    }
+    return { data };
   }
   if (op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
   const sprint = f.sprints?.[0];

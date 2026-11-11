@@ -160,7 +160,14 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   paging, user and organisation queries, every call a constant query with its values as variables (and
   bad owners, numbers and node ids refused), keys and prefixes (collisions, repos with none), pull
   requests attached by closing links (a title's key wins), a Project issue's link, and the demo loaded as
-  a Project building the same stories as the Jira demo (the parity test).
+  a Project building the same stories as the Jira demo (the parity test), and what a load costs of the
+  account's GitHub budget (sub-issues asked flat, kept stories `KEPT_SLOTS` a query, `rateLimit` asked).
+- `ghlimit.test.mjs`: GitHub's API limits (#129, ghlimit.js around pulls.js `gh()`): a refused call stops
+  the rest of its kind (GraphQL or REST) as that account until the reset or a secondary limit's wait,
+  said in plain words with the time; side-by-side refusals counting once; a description that mentions
+  rate limits isn't one; the story list loading at most every 10 minutes while the budget runs low, its
+  quick reads stopped, a refused load keeping the last stories and their age, a Jira board keeping its
+  pull requests.
 - `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
   details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
   links.
