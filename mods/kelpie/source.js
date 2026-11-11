@@ -20,6 +20,7 @@ export class Source {
     this.cache = {}; // context key -> { data, error, at }
     this.busy = new Set();
     this.started = {}; // context key -> when its load started
+    this.again = new Set(); // context keys asked to load again while their load was running
   }
 
   init(cx) {
@@ -43,11 +44,20 @@ export class Source {
     return Boolean(ctx.space) && (!this.needs || Boolean(ctx.setup[this.needs]));
   }
 
-  load(cx) {
+  // `again`: asked for because something may have changed (Refresh, Kelpie's own action, an agent's
+  // turn ending). A load already running began before that change, so its answer may not have it:
+  // the request isn't dropped but waits, and the next draw once that load ends loads again. A timer's
+  // or a stale copy's request isn't kept, as the load running answers it.
+  load(cx, { again = false } = {}) {
     const ctx = this.context();
+    if (!this.ready(ctx)) return;
     // A load still marked busy after STUCK was dropped (a reload or restart mid-load ends its task
     // without its finally): it no longer blocks the next one, or "Updating…" would stay for good.
-    if (!this.ready(ctx) || (this.busy.has(ctx.key) && Date.now() - (this.started[ctx.key] ?? 0) < STUCK)) return;
+    if (this.busy.has(ctx.key) && Date.now() - (this.started[ctx.key] ?? 0) < STUCK) {
+      if (again) this.again.add(ctx.key);
+      return;
+    }
+    this.again.delete(ctx.key);
     this.busy.add(ctx.key);
     this.started[ctx.key] = Date.now();
     cx.spawn(async (cx) => {
@@ -69,12 +79,13 @@ export class Source {
     });
   }
 
-  // First in render: what to show now. A Refresh press, or a space or setup not loaded yet, loads.
+  // First in render: what to show now. A Refresh press, a space or setup not loaded yet, or a load
+  // asked for while the last one ran (`again`), loads.
   state(cx) {
     const ctx = this.context();
     const r = shared(REFRESH);
-    if (r !== this.seen) { this.seen = r; this.load(cx); }
-    else if (!this.cache[ctx.key]) this.load(cx);
+    if (r !== this.seen) { this.seen = r; this.load(cx, { again: true }); }
+    else if (!this.cache[ctx.key] || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) this.load(cx);
     return { ...ctx, ...(this.cache[ctx.key] ?? { data: null, error: null, at: 0 }), loading: this.busy.has(ctx.key) };
   }
 }

@@ -811,6 +811,7 @@ const AGENT = { blocked: ["Needs you", "working"], working: ["Working", "accent"
 const CACHE = {};
 const BUSY = new Set();
 const STARTED = {};
+const AGAIN = new Set(); // profile keys asked to load again while their load ran (Source.load)
 const DATA = STORIES; // { [profile id]: { key, data, at, error } }
 const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, repo } }
 const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } }); };
@@ -1816,6 +1817,7 @@ export class Stories extends Source {
     this.cache = CACHE;
     this.busy = BUSY;
     this.started = STARTED;
+    this.again = AGAIN;
     this.extra = EXTRA; // story key -> { groups, local, at, loading, error }
     this.shots = SHOTS;
     this.file = PICKED.file; // story key -> chosen file id
@@ -1940,10 +1942,10 @@ export class Stories extends Source {
     return { ...ctx, data: e?.data ?? null, error: e?.error ?? null, at: e?.at ?? 0, loading: !e };
   }
 
-  load(cx) {
+  load(cx, opts) {
     if (!this.loader) return;
     this.fullAt = Date.now();
-    super.load(cx);
+    super.load(cx, opts);
   }
 
   // An agent finishing its turn may have pushed or opened a pull request, so Jira and GitHub load
@@ -1952,10 +1954,10 @@ export class Stories extends Source {
   loadAfterAgent(cx) {
     if (!this.loader) return;
     const wait = FULL_EVERY - (Date.now() - (this.fullAt ?? 0));
-    if (wait <= 0) return this.load(cx);
+    if (wait <= 0) return this.load(cx, { again: true });
     if (this.trailing) return;
     this.trailing = true;
-    cx.timer.after(wait, (cx) => { this.trailing = false; this.load(cx); });
+    cx.timer.after(wait, (cx) => { this.trailing = false; this.load(cx, { again: true }); });
   }
 
   // Pauses agents (by key) off the render: their sessions are read first, which takes a moment.
