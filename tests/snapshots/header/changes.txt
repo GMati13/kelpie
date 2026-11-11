@@ -11,7 +11,17 @@ div
           "Typo-tolerant search"
         div #story-need [fg=working font="DM Sans"] tip="Changes requested on ACME-161 (search#233)"
           "Changes requested on ACME-161 (search#233)"
-        div
+        h_flex #story-tags-zone {size_change}
+          div
+            div #story-tags-zoom {size_change}
+            h_flex
+              div #story-tags-m0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] {size_change} tip="Label: search"
+                "search"
+              div #story-tags-mmore [fg=dim] {size_change} tip="Label: search\nLabel: search"
+                "+2"
+          h_flex #story-tags
+            div #story-tags-0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: search"
+              "search"
         div #story-assignee
           div [bg=ansi1/33 fg=ansi1] tip="Assigned to Lena Vogel"
             "LV"
