@@ -455,6 +455,9 @@ def handle(msg):
             text, failed = str(e), True
         except OSError as e:
             text, failed = f"Kelpie can't be reached: {e.strerror or e}.", True
+        except Exception as e:  # an answer of another shape: one failed call, never the whole server
+            text, failed = (f"Kelpie's plugin couldn't make sense of Kelpie's answer ({type(e).__name__}): only this call "
+                            "failed. Try again; if it keeps happening, Kelpie and its plugin may be out of step: update both."), True
         reply(id_, {"content": [{"type": "text", "text": text}], "isError": failed})
     else:
         reply(id_, error={"code": -32601, "message": f"No method {method!r}."})

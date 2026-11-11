@@ -40,6 +40,7 @@ case "$FAKE_ANSWER" in
       next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
       next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
     esac ;;
+  odd) answer '["not", "an", "answer"]' ;;
   fail) echo "no Herdr window" >&2; exit 1 ;;
   silent) ;;
 esac
@@ -112,6 +113,19 @@ class Server(unittest.TestCase):
         self.assertEqual(tool["error"]["code"], -32602)
         self.assertEqual(ping["result"], {})
         self.assertEqual(self.calls(), [])
+
+    def test_an_answer_it_cant_read_is_an_error_and_the_server_goes_on(self):
+        # Valid JSON that isn't an answer, or profiles that aren't a list of them, once ended the
+        # server: Claude then lost every Kelpie tool until it restarted.
+        write(os.path.join(self.home, "shared.json"), '{"kelpie.profiles": ["work"]}')
+        passage, profile, ping = self.talk(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "show_passage", "arguments": {"key": "ABC-12", "quote": "Done when it works"}}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "get_profile", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 3, "method": "ping"}, answer="odd")
+        for reply in (passage, profile):
+            self.assertTrue(reply["result"]["isError"])
+            self.assertIn("Kelpie's plugin", reply["result"]["content"][0]["text"])
+        self.assertEqual(ping["result"], {})
 
     def test_a_passage_is_written_for_kelpie_and_its_answer_returned(self):
         text, failed = self.call({"key": "abc-12", "quote": "Done  when\nit works", "note": "The criteria"})
