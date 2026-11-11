@@ -12,6 +12,9 @@ something in Kelpie and set up their Kelpie profiles.
 - get_next / add_to_next / suggest_next: Next, the person's queue of what to do: read
   (`kelpie.get-next`), an agent's ask added to it (`kelpie.add-next`), Claude's picks for it handed
   in (`kelpie.suggest-next`, how What next? answers), mods/kelpie/stories.js.
+- find_agents / show_agent: the agents Kelpie knows (their tab, space, profile, story, state, folder,
+  what they started on and the files their sessions changed), filtered (`kelpie.find-agents`), and
+  one of them shown to the person (`kelpie.show-agent`, by an id find_agents gave), stories.js.
 
 Which profile a Next request is about comes from where the server runs: KELPIE_PROFILE (set by What
 next?, whose Claude runs in no terminal) or HC_TERMINAL_ID (the agent's terminal in Herdr, so Kelpie
@@ -51,7 +54,10 @@ INSTRUCTIONS = (
     "person (a choice only they can make, a plan to read before you build, a pull request of yours to look at), call "
     "add_to_next before you finish, as well as asking in your reply: they run many agents, Kelpie flags an agent only "
     "while a permission prompt waits, so a question at the end of a turn is easily missed. Not when you're only "
-    "reporting what you did."
+    "reporting what you did. When they ask who is working on something (a file, a folder, a ticket) or to be taken to an "
+    "agent, use find_agents and show_agent rather than reading Claude's or Herdr's own files; and when another agent's "
+    "work is in your way (its uncommitted changes, say), find it and point the person to it: never stash, revert or "
+    "overwrite another agent's work."
 )
 
 TOOLS = [
@@ -231,6 +237,54 @@ TOOLS = [
         # Read only as far as the person's work goes (it only changes what Kelpie suggests), so What
         # next?'s Claude, run in plan mode, may hand its picks in: plan mode refuses other tools.
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "find_agents",
+        "title": "Find the agents working on something",
+        "description": (
+            "Lists the Claude agents running in the person's Kelpie (their Herdr spaces and tabs), and for each: `id` (for "
+            "show_agent), its tab and space, its Kelpie profile, the ticket key it works on (`key`, and `story` when that's "
+            "a subtask's), the ticket's title, its state (working, waiting for you, done, idle, starting), its folder, its "
+            "session's name (`title`), the message that started it (`first`), the files its session changed lately "
+            "(`changed`, newest first) and `you` on your own entry. Use it whenever the person asks who or which agent is "
+            "working on, editing or touching something, or to find an agent before show_agent; and when another agent's "
+            "work gets in your way (uncommitted changes blocking a pull or a checkout, edits to a file you're about to "
+            "change), to find whose it is before you touch anything. Filters, all optional and combined: `file` (a full path, "
+            "or one relative to the repo: the agents whose sessions changed it), `folder` (a full path: agents working in it, "
+            "under it, or with it inside theirs), `key` (a ticket key: its agents, a story's subtasks' too), `words` (all found "
+            "in its names, title, ticket or first message), `here` (only your own profile's agents; else every profile's). "
+            "Read-only: it changes nothing."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file": {"type": "string", "description": "A file: a full path, or relative to the repo, like web/src/app.ts."},
+                "folder": {"type": "string", "description": "A folder, as a full path."},
+                "key": {"type": "string", "description": "A ticket key, like ABC-123."},
+                "words": {"type": "string", "description": "Words to find in an agent's names, title, ticket or first message."},
+                "here": {"type": "boolean", "description": "Only your own profile's agents (the one of the space you run in)."},
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "show_agent",
+        "title": "Take the person to an agent",
+        "description": (
+            "Shows the person an agent's terminal in Kelpie: its space selected (and so its profile), its pane focused. Use "
+            "it when they ask to be taken to, switched to or shown an agent (\"take me there\", \"show me that agent\"), "
+            "after find_agents found it. `id` is an agent's id exactly as find_agents gave it; Kelpie shows only an agent it "
+            "lists. It only changes what's on their screen, nothing in the agent: it never sends the agent anything. Say "
+            "which agent you showed them."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "The agent's id, from find_agents."}},
+            "required": ["id"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
     },
 ]
 
@@ -422,9 +476,48 @@ def suggest_next(args):
     return text, False
 
 
+AGENT_ID = re.compile(r"^[\w./:-]{1,100}$")
+
+
+def find_agents(args):
+    request = origin()
+    for name, limit in (("file", 1000), ("folder", 1000), ("key", 40), ("words", 200)):
+        if args.get(name):
+            request[name] = clean(args.get(name), limit)
+    if "key" in request and not KEY.match(request["key"].upper()):
+        return "key: a ticket key, like ABC-123.", True
+    if "folder" in request and not request["folder"].startswith("/"):
+        return "folder: a full path, starting with /.", True
+    if args.get("here") is True:
+        request["here"] = True
+    answer = ask("agents-find", request, "find-agents")
+    if not answer.get("ok"):
+        return refused(answer, "say")
+    found = answer.get("agents") or []
+    where = f" in Kelpie's profile {answer.get('profile')}" if answer.get("profile") else ""
+    head = f"{len(found)} agent(s){where}" + (" match." if found else ": none match.")
+    if answer.get("more"):
+        head += f" {answer['more']} more weren't looked at: narrow it down with key or folder."
+    return head + ("\n" + json.dumps(found, indent=2, ensure_ascii=False) if found else ""), False
+
+
+def show_agent(args):
+    agent = args.get("id")
+    if not isinstance(agent, str) or not AGENT_ID.match(agent):
+        return "id: an agent's id, as find_agents gave it.", True
+    answer = ask("agent-show", {**origin(), "id": agent}, "show-agent")
+    if not answer.get("ok"):
+        return refused(answer, "show it")
+    shown = answer.get("shown") or {}
+    profile = f", in the profile {clean(shown.get('profile'), 80)}" if shown.get("profile") else ""
+    return (f"Shown in Kelpie: the agent in tab {clean(shown.get('tab'), 80) or agent} of the space "
+            f"{clean(shown.get('space'), 80) or '?'}{profile} ({clean(shown.get('state'), 40) or 'state unknown'})."), False
+
+
 CALLS = {"show_passage": show_passage, "get_profile": get_profile, "save_profile": save_profile,
          "save_status": save_status, "open_profile_page": open_profile_page,
-         "get_next": get_next, "add_to_next": add_to_next, "suggest_next": suggest_next}
+         "get_next": get_next, "add_to_next": add_to_next, "suggest_next": suggest_next,
+         "find_agents": find_agents, "show_agent": show_agent}
 
 
 def reply(id_, result=None, error=None):
@@ -440,7 +533,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.4.6"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.5.0"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":

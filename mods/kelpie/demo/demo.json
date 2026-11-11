@@ -1,5 +1,5 @@
 {
-  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list; one with `opens` ({after, found}) is opened by an agent `after` seconds in and found by GitHub's search only `found` seconds in. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
+  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A tab's `work` ({prompt, edits: [{path, at}]}, paths under the profile's folder) is what its agent started on and the files it changed, as the plugin's find_agents reads them from a session; two agents here changed web/src/theme/tokens.ts in the same folder. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list; one with `opens` ({after, found}) is opened by an agent `after` seconds in and found by GitHub's search only `found` seconds in. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
   "profile": {
     "name": "Acme",
     "folder": "~/.local/share/kelpie/demo/acme",
@@ -620,6 +620,7 @@
           "name": "ACME-143",
           "agent": "blocked",
           "title": "Cache trips for offline use",
+          "work": {"prompt": "Work on Jira ACME-143: Cache trips in IndexedDB", "edits": [{"path": "ACME-142/web/src/trips/store.ts", "at": "-4m"}, {"path": "ACME-142/web/src/trips/cache.ts", "at": "-6m"}]},
           "screen": [
             "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
             "\\033[2m  ~/acme/ACME-142/web\\033[0m",
@@ -721,6 +722,7 @@
           "name": "ACME-172",
           "agent": "idle",
           "title": "Dark mode tokens",
+          "work": {"prompt": "Work on Jira ACME-172: Dark mode colour tokens", "edits": [{"path": "web/src/theme/tokens.ts", "at": "-12m"}, {"path": "web/src/theme/dark.css", "at": "-14m"}]},
           "screen": [
             "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
             "\\033[2m  ~/acme\\033[0m",
@@ -797,6 +799,7 @@
           "name": "Claude",
           "agent": "idle",
           "title": "Why is the web bundle 2 MB?",
+          "work": {"prompt": "Why is the web bundle 2 MB? Find what makes it big and trim it.", "edits": [{"path": "web/vite.config.ts", "at": "-3m"}, {"path": "web/src/theme/tokens.ts", "at": "-8m"}]},
           "screen": [
             "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
             "\\033[2m  ~/acme\\033[0m",

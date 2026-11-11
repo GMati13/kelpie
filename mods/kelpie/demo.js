@@ -331,6 +331,17 @@ export async function demoSessions(folder) {
   return (f.sessions ?? []).map((s) => ({ id: s.id, title: s.title, cwd: folder, updated: when(s.updated, now), running: false, first: s.first ?? [], keys: s.first ?? [] }))
     .sort((a, b) => b.updated - a.updated);
 }
+// agent-work.py for a demo profile's agent, by its tab's name: the fixture tab's `work` (what it
+// started on, the files it changed, under the profile's folder), as the script reads a session's.
+// Null for a tab with none.
+export async function demoAgentWork(folder, tab) {
+  const f = await demoFixture();
+  const t = (f.spaces ?? []).flatMap((s) => s.tabs).find((x) => x.agent && x.name === tab);
+  if (!t?.work) return null;
+  const now = Date.now();
+  return { title: t.title ?? null, first: t.work.prompt ?? null,
+    files: (t.work.edits ?? []).map((e) => ({ path: `${folder}/${e.path}`, at: new Date(when(e.at, now)).toISOString() })) };
+}
 // Whether the demo's browser plays sound (its globe turns into moving bars): the fixture's web.playing.
 export const demoPlaying = () => Boolean(FIXTURE?.web?.playing);
 // GitHub's limit as the demo plays it (ghlimit.js): the fixture's github.limit, "used" (refused until

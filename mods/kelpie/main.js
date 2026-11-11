@@ -13,7 +13,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
 import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, findAgentsRequest, getNextRequest, showAgentRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -629,6 +629,10 @@ async function command(c) {
   if (c === "get-next") return getNextRequest();
   if (c === "add-next") return addNextRequest();
   if (c === "suggest-next") return suggestNextRequest();
+  // find-agents, show-agent: the agents Kelpie knows, filtered, and one of them shown (the plugin's
+  // find_agents and show_agent; stories.js).
+  if (c === "find-agents") return findAgentsRequest();
+  if (c === "show-agent") return showAgentRequest();
   if (c.startsWith("pause-story-")) return pauseStoryByKey(c.slice("pause-story-".length));
   if (c.startsWith("clean-story-")) return cleanStoryByKey(c.slice("clean-story-".length));
   if (c === "clean-all") return cleanAll();

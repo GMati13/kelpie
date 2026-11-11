@@ -132,7 +132,7 @@ describe("no prompt steers Claude to Kelpie's plumbing", () => {
 
   // The plugin's skills are what Kelpie gives Claude too.
   test("the plugin's skills name no way to reach Jira or GitHub, nor Kelpie's own plumbing", () => {
-    for (const skill of ["configure-profile", "show-in-kelpie", "ask-through-next"]) {
+    for (const skill of ["configure-profile", "show-in-kelpie", "ask-through-next", "find-the-agent"]) {
       const text = readRepo(`plugin/skills/${skill}/SKILL.md`);
       for (const p of [/using gh\b/i, /\bgh (api|pr|issue|search|repo|run)\b/, /\bcurl\b/, /jira\.sh/, /--token-command/, /kelpie\.apply-profile/, /herdr-app do/, /shared\.json/]) {
         assert.doesNotMatch(text, p, `${skill} names ${p}`);
