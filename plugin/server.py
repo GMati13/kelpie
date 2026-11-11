@@ -275,7 +275,8 @@ def kelpie(command):
     except subprocess.TimeoutExpired:
         raise Unreachable("Kelpie can't be reached: Herdr didn't answer.")
     if run.returncode != 0:
-        raise Unreachable(f"Kelpie can't be reached: {(run.stderr or run.stdout).strip()[:300] or 'Herdr refused the command'}.")
+        said = (run.stderr or run.stdout).strip()[:300].rstrip(". ")
+        raise Unreachable(f"Kelpie can't be reached: {said or 'Herdr refused the command'}.")
 
 
 def ask(name, request, command, wait=None):

@@ -41,7 +41,7 @@ case "$FAKE_ANSWER" in
       next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
     esac ;;
   odd) answer '["not", "an", "answer"]' ;;
-  fail) echo "no Herdr window" >&2; exit 1 ;;
+  fail) echo "no Herdr window." >&2; exit 1 ;;
   silent) ;;
 esac
 """
@@ -160,6 +160,7 @@ class Server(unittest.TestCase):
         text, failed = self.call({"key": "ABC-12", "quote": "Done when it works"}, answer="fail")
         self.assertTrue(failed)
         self.assertIn("no Herdr window", text)
+        self.assertTrue(text.endswith("no Herdr window."), "Herdr's own words, one full stop: " + text)
         self.assertFalse(os.path.exists(self.kelpie("passage.json")))
         text, failed = self.call({"key": "ABC-12", "quote": "Done when it works"}, path="/usr/bin:/bin")
         self.assertTrue(failed)
