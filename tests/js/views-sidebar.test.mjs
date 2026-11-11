@@ -324,3 +324,23 @@ test("a profile with no board asks for one, whichever kind", async () => {
   handlers(el).find((h) => h.id === "setup-jira").fn({}, cx);
   assert.equal(mock.of("openOverlay").at(-1)[0].props.focus, "jira", "the Board tab");
 });
+
+// A queue of one (#64): unfolding it would only show that item again, so there's no chevron, and an
+// open queue that drops to one item folds. A second item, a pick of Claude's too, brings it back.
+test("Next has no chevron while its queue holds one item", async () => {
+  const deskOnly = () => setupDemoWorld({ stories: quiet(stories), spaces: FIXTURE.spaces.filter((s) => s.name === "Desk"), paused: {},
+    agentOf: (_s, _t, a) => ({ ...a, status: "blocked" }) });
+  deskOnly();
+  mock.state.shared.set("kelpie.next.asks", {});
+  const { view, cx } = await sharedDraw();
+  let card = byId(view.render(cx), "story-next");
+  assert.ok(byId(card, "queue-next"), "the one item shows");
+  assert.equal(byId(card, "story-queue"), null, "no chevron for a queue of one");
+  view.queueOpen = true;
+  card = byId(view.render(cx), "story-next");
+  assert.ok(byId(card, "queue-next"), "an open queue of one is drawn folded");
+  assert.equal(view.queueOpen, false, "and stays folded");
+  putShared("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [PICKS[DEMO].items[2]] } });
+  card = byId(view.render(cx), "story-next");
+  assert.ok(byId(card, "story-queue"), "a second item, a pick, brings the chevron back");
+});

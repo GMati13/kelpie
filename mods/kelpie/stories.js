@@ -3538,6 +3538,10 @@ export class StoryList extends Stories {
     const glow = (a) => alpha(t.accent, a);
     const picks = queue.filter((x) => x.suggest).length;
     const brewing = Boolean(brewingIn(st.profile));
+    // A queue of one has nothing more to show unfolded: no chevron, and an open queue that drops to
+    // one item folds rather than stay a list of one (#64).
+    const many = queue.length > 1;
+    if (!many) this.queueOpen = false;
     const toggle = (_e, cx) => { this.queueOpen = !this.queueOpen; cx.notify(); };
     const open = Boolean(this.queueOpen);
     const tint = !open && Boolean(top.suggest);
@@ -3550,13 +3554,13 @@ export class StoryList extends Stories {
         .child(div().flex_none().text_color(t.muted).child(String(queue.length)))
         .child(div().flex_1())
         .child(h_flex().id("story-next-tools").flex_none().gap(2).items_center().on_mouse_down("left", stop).on_click(stop)
-          // Claude's picks: how many are in the queue (turning while Claude brews); opens the queue.
-          .when(picks > 0 || brewing, (el) => el.child(h_flex().id("story-next-picks").flex_none().h(20).px(6).gap(4).items_center().rounded(6).cursor_pointer()
-            .text_color(t.accent).hover((x) => x.bg(glow(0.14))).on_click(toggle)
-            .tooltip(brewing ? "Claude is looking for what to do next" : `${picks} suggested by Claude: open the queue to see them`)
+          // Claude's picks: how many are in the queue (turning while Claude brews); opens the queue, when it holds more than one.
+          .when(picks > 0 || brewing, (el) => el.child(h_flex().id("story-next-picks").flex_none().h(20).px(6).gap(4).items_center().rounded(6)
+            .text_color(t.accent).when(many, (x) => x.cursor_pointer().hover((h) => h.bg(glow(0.14))).on_click(toggle))
+            .tooltip(brewing ? "Claude is looking for what to do next" : many ? `${picks} suggested by Claude: open the queue to see them` : `${picks} suggested by Claude`)
             .child(brewing ? brewMark(t, 12) : icon(own("sparkles"), 12)).when(picks > 0, (x) => x.child(String(picks)))))
-          .child(iconButton(t, "story-queue", chrome(this.queueOpen ? "chevron-down" : "chevron-right"), toggle,
-            this.queueOpen ? "Hide the queue" : "Show the whole queue", { on: Boolean(this.queueOpen) }))))
+          .when(many, (el) => el.child(iconButton(t, "story-queue", chrome(open ? "chevron-down" : "chevron-right"), toggle,
+            open ? "Hide the queue" : "Show the whole queue", { on: open })))))
       .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
       .when(!open, (el) => el.child(queueRow(t, top, false, () => goNext(st.profile, top), { card: true })
         .tooltip(`${queueAway(top) ? "Opens on the web" : top.suggest?.idea ? "Starts a Claude on the Desk with this idea" : "Go there"} ⌘⇧J`)))
