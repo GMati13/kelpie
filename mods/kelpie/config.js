@@ -443,7 +443,7 @@ export function reviewTask(github, fields) {
   return `${filled}\n\n${OTHERS}`;
 }
 
-// The task a merge agent starts with (a story's heading under Your pull requests): the profile's
+// The task a merge agent starts with (a story's Merge, in its header and on its row): the profile's
 // own template (github.mergePrompt), else this. Placeholders: {ticket} {summary} (the story) and
 // {prs}, its open pull requests of yours, a line each: "repo#n: title (state) url". Lines whose
 // placeholders all came out empty are left out, as for reviews.
@@ -461,7 +461,7 @@ export function mergeTask(github, fields) {
   return fillLines(github?.mergePrompt?.trim() ? github.mergePrompt : DEFAULT_MERGE_PROMPT, MERGE_FIELDS, fields);
 }
 
-// The task Request approval starts with (shown on a story's heading under Your pull requests while one
+// The task Request approval starts with (shown on a story's header and row while one
 // of its open pull requests isn't approved): the profile's own template (github.approvalPrompt), else
 // this. The same placeholders as merge, {prs} only the pull requests not approved yet.
 export const DEFAULT_APPROVAL_PROMPT = [

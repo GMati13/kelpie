@@ -1567,11 +1567,17 @@ function openClaude(profile, it) {
 // Merge: the task (config.js mergeTask) asking an agent to check a story's open pull requests of
 // yours are ready to merge and plan merging and deploying them.
 // Request approval (approvalTask) the same, for the pull requests not approved yet. Each is a menu on
-// the story's heading under Your pull requests (StoryList's taskMenu): a new agent, or the task sent
-// to a Claude already open.
+// the story itself, its header and its row in the list (Stories.taskMenu), and on the "No ticket"
+// heading under Your pull requests for the Desk: a new agent, or the task sent to a Claude already open.
 const STORY_TASKS = {
   merge: { task: mergeTask, tab: "merge", what: "merge" },
   approval: { task: approvalTask, tab: "approval", what: "approval request" },
+};
+// A story's open pull requests, for Merge, and those of them waiting on reviewers (not drafts, not
+// approved), for Request approval.
+const taskPrs = (it) => {
+  const openPrs = allPrs(it).filter((p) => !p.merged);
+  return { openPrs, unapproved: openPrs.filter((p) => !p.isDraft && p.reviewDecision !== "APPROVED") };
 };
 const storyTaskText = (kind, profile, it, prs) => STORY_TASKS[kind].task(profile.github, { ticket: it.key, summary: it.title, prs: prs.map((x) => `- ${x.name}: ${x.title} (${x.state}) ${x.url}`).join("\n") });
 
@@ -1607,8 +1613,8 @@ function sendStoryTask(kind, profile, it, prs, agent) {
 // A pull request as the Merge and Request approval tasks list it.
 const prLine = (t, p) => ({ name: prName(p), title: p.title, url: p.url, state: prLook(t, p, checksOf(p))[1] });
 
-// The Merge and Request approval menus' rows, the same on a story's heading under Your pull requests
-// and in the story's header: a new agent with the task, or the task sent to one of the story's
+// The Merge and Request approval menus' rows, the same on a story's row in the list and in its header,
+// and on the "No ticket" heading under Your pull requests: a new agent with the task, or the task sent to one of the story's
 // Claudes already open (in its space, or on one of its keys elsewhere; not another story's or
 // profile's). `story` null: pull requests with no ticket, the Desk's, so its agents. Either way
 // taking it ends what Next pointed at on the story.
@@ -2218,9 +2224,16 @@ export class Stories extends Source {
     const sign = statusMark(t, state, { where: "row", size: 8, color: t[color] });
     // The second line is the key and its badges; the sentence of what it needs is the row's tooltip.
     const badges = storyBadges(t, it);
+    const tasks = st && busy?.kind !== "clean" ? this.rowTasks(t, st, it) : [];
     return decor("rowDecor", t, h_flex().id(`story-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .on_click(() => selectStory(this.profile, it)).tooltip(line)
+      .when(Boolean(st), (el) => el.on_hover((over, cx) => {
+        const was = this.hoverRow;
+        // The row left may report after the row entered: only its own leaving clears it.
+        this.hoverRow = over ? it.key : was === it.key ? null : was;
+        if (this.hoverRow !== was) cx.notify();
+      }))
       .child(sign ? div().flex_none().mt(1).child(sign) : div().flex_none().mt(1).child(mark(t, state === "done" ? "ready" : state, 16)))
       .child(v_flex().flex_1().min_w(0).gap(2)
         .child(skinFont(div(), "ui").truncate().font_medium().when(quiet, (el) => el.text_color(t.muted)).child(it.title))
@@ -2233,6 +2246,10 @@ export class Stories extends Source {
           .when(Boolean(it.reassigned), (el) => el.child(div().id(`gone-${it.key}`).flex_none()
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
           .children(badges)))
+      // Merge and Request approval for its pull requests, at hand without opening it (rowTasks); their
+      // clicks stay off the row, as the broom's do.
+      .when(tasks.length > 0, (el) => el.child(h_flex().id(`tasks-${it.key}`).flex_none().mt(2).gap(2)
+        .on_mouse_down("left", stop).on_click(stop).children(tasks)))
       // A built story's Move to Done (sunk: under Built / Waiting on others), at hand without opening
       // it; its clicks stay off the row, as the broom's do.
       // While it moves, the working mark in its place.
@@ -2243,6 +2260,22 @@ export class Stories extends Source {
       .when(Boolean(st) && (cleanable(st?.profile, it).length > 0 || busy?.kind === "clean"), (el) => el.child(div().id(`clean-${it.key}`).flex_none().mt(2)
         .on_mouse_down("left", stop).on_click(stop).child(this.cleanButton(t, st, it, `clean-${it.key}`)))),
       { selected: on, state, story: it, now: new Date() });
+  }
+
+  // A story row's Merge and Request approval (the header's menus): Merge shows at rest while one of its
+  // pull requests is ready to merge, so landing a story's work is one click from the list; on the row
+  // hovered (`this.hoverRow`, this copy's) Merge shows for any open one, and Request approval while one
+  // waits on reviewers, unless the person works alone (nobody to approve). A menu stays while it's
+  // open, so it doesn't vanish on the pointer's way to it.
+  rowTasks(t, st, it) {
+    if (lonePr(it)) return [];
+    const { openPrs, unapproved } = taskPrs(it);
+    const id = (kind) => `${kind}-${it.key}`;
+    const awake = (kind) => this.hoverRow === it.key || this.menu === id(kind);
+    return [
+      unapproved.length && !worksAlone(st.setup) && awake("approval") ? this.taskMenu(t, st, it, "approval", unapproved, id("approval")) : null,
+      openPrs.length && (openPrs.some(ready) || awake("merge")) ? this.taskMenu(t, st, it, "merge", openPrs, id("merge")) : null,
+    ].filter(Boolean);
   }
 
   // The header's title row, all of it when folded: the fold chevron, key, title, what it needs (coloured
@@ -2293,6 +2326,16 @@ export class Stories extends Source {
           `${shut ? "Show the story's details" : "Fold the header to this row"} ⌘⇧H`))));
   }
 
+  // A story's Merge or Request approval menu (storyTaskRows), the same in its header and on its row in
+  // the list: an icon, or with `filled` the header's main action "<label> all ▾".
+  taskMenu(t, st, it, kind, list, id, filled = false) {
+    const { label, glyph } = TASK_LOOK[kind];
+    const tip = `${label} ${kind === "merge" ? "its pull requests" : "for its pull requests waiting on reviewers"}, with a new agent or an open Claude`;
+    return this.menuButton(t, id, "", storyTaskRows(t, st.profile, it, kind, list), tip, filled
+      ? { width: 340, trigger: (toggle) => primaryButton(t, `${id}-all`, `${label} all ▾`, toggle, { tip }) }
+      : { width: 340, iconPath: own(glyph) });
+  }
+
   // The header's actions, few: one filled main action (the most urgent: answer the agent asking, the
   // pull request action, else show, resume or start its agent), Pause while it has a space, and More
   // (⋯, `more`, drawn with headRow's icons) for the rest. Per-agent Show and Pause stay on the subtask
@@ -2328,18 +2371,11 @@ export class Stories extends Source {
     // though More still starts one afresh, and Resume stays for a session of its own.
     const over = settled(it) && !live.length && !paused.length;
     const go = work && !(over && work.fresh) && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
-    // Its open pull requests, for Merge and Request approval (the menus of its heading under Your
-    // pull requests). With more than one ready to merge, the main action is Merge all: the Merge
+    // Its open pull requests, for Merge and Request approval (the same menus as on its row in the
+    // list, rowTasks). With more than one ready to merge, the main action is Merge all: the Merge
     // menu, filled (an agent checks them and plans merging them together).
-    const openPrs = allPrs(it).filter((p) => !p.merged);
-    const unapproved = openPrs.filter((p) => !p.isDraft && p.reviewDecision !== "APPROVED");
-    const taskMenu = (kind, list, filled = false) => {
-      const { label, glyph } = TASK_LOOK[kind];
-      const tip = `${label} ${kind === "merge" ? "its pull requests" : "for its pull requests waiting on reviewers"}, with a new agent or an open Claude`;
-      return this.menuButton(t, `story-${kind}`, "", storyTaskRows(t, st.profile, it, kind, list), tip, filled
-        ? { width: 340, trigger: (toggle) => primaryButton(t, `story-${kind}-all`, `${label} all ▾`, toggle, { tip }) }
-        : { width: 340, iconPath: own(glyph) });
-    };
+    const { openPrs, unapproved } = taskPrs(it);
+    const taskMenu = (kind, list, filled = false) => this.taskMenu(t, st, it, kind, list, `story-${kind}`, filled);
     const mergeAll = headKind === "merge" && headPrs.length > 1 ? taskMenu("merge", openPrs, true) : null;
     const peek = waiting && primaryButton(t, "story-peek", "Peek", () => { clearPoint(st.profile, it.key); run("terminal.peek", { terminal: waiting.address }); },
       { tip: `Answer ${waiting.tab_name} here, without switching spaces` });
@@ -3673,32 +3709,31 @@ export class StoryList extends Stories {
           .when(Boolean(badge), (el) => el.child(div().flex_none().child(badge))))
         .child(div().truncate().text_size(SMALL).text_color(t.muted).child(line)));
     const approvedChip = (p) => (!p.merged && p.reviewDecision === "APPROVED" ? div().id(`approved-${prName(p)}`).tooltip("Approved").child(mark(t, "pr-approved", 14)) : null);
-    // With a GitHub owner set, Reviews for you and Your pull requests always show (empty ones say so),
-    // unless the person works alone: then nobody on their team asks for reviews, and a story's own pull
-    // requests are on the story, so each shows only with something in it (or to say pull requests
-    // didn't load), and Your pull requests holds only the ones on no story here.
+    // With a GitHub owner set, Reviews for you always shows (empty, it says so), unless the person
+    // works alone: nobody on their team asks for reviews, so it shows only with something in it (or to
+    // say pull requests didn't load). Your pull requests holds only the ones on no story here, as a
+    // story's own are on the story (its row's and header's Merge): it shows with something in it, or
+    // to say pull requests didn't load.
     const owner = st.setup.github?.owner;
     const noPulls = st.data.prError ? "Pull requests didn't load, Refresh to try again" : null;
     const alone = worksAlone(st.setup);
     const always = Boolean(owner) && (!alone || Boolean(noPulls));
-    // Every open pull request of yours, whatever its title: one naming a ticket of the list shows that
-    // story on its Changes (the pull request's files); any other opens on GitHub.
+    // Every open pull request of yours on no story of the list, whatever its title (a story's own are on
+    // the story): one naming no ticket shows on its own, one naming another board's ticket opens on GitHub.
     const known = projectsOf(st.data);
     const storyOf = (p) => {
       const k = prKey(p, st.data, known);
       return k ? items.find(({ it }) => it.key === k || it.subs.some((s) => s.key === k))?.it ?? null : null;
     };
-    const minePrs = (st.data.prs ?? []).filter((p) => !p.merged && !(alone && storyOf(p))).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
+    const minePrs = (st.data.prs ?? []).filter((p) => !p.merged && !storyOf(p)).sort((a, b) => Date.parse(b.updatedAt ?? 0) - Date.parse(a.updatedAt ?? 0));
     // A pull request of yours: its state as the mark before it (the words in its tooltip).
     const myPull = (p) => {
-      const story = storyOf(p);
       const [state, words, color] = prLook(t, p, checksOf(p));
       // One naming no ticket of the board is shown on its own (pullItem), on its Changes too.
-      const lone = story || prKey(p, st.data, known) ? null : pullItem(p);
-      const target = story ?? lone;
+      const lone = prKey(p, st.data, known) ? null : pullItem(p);
       return plain(`mine-${prName(p)}`, Boolean(lone) && lone.key === shown?.key, color, p.title.replace(/^\s*\[[^\]]*\]\s*/, ""), `${prName(p)}${p.updatedAt ? ` · ${ago(Date.parse(p.updatedAt))}` : ""}`,
-        () => { if (target) { selectStory(st.profile, target); setView(st.profile, target, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
-        .tooltip(`${words}. ${story ? `Show ${story.key} on its Changes` : lone ? "Show its files and what it needs" : "Open on GitHub"}`);
+        () => { if (lone) { selectStory(st.profile, lone); setView(st.profile, lone, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
+        .tooltip(`${words}. ${lone ? "Show its files and what it needs" : "Open on GitHub"}`);
     };
     // Pull requests grouped by the story they belong to (a subtask's key counts for its story), in the
     // order their newest one comes; a ticket not in the list (another board's) is a group of its key,
@@ -3712,14 +3747,13 @@ export class StoryList extends Stories {
       }
       return [...groups.values()].sort((a, b) => (a.key === "") - (b.key === ""));
     };
-    // Your pull requests' story headings end in icon menus: Request approval (while one of its open
-    // pull requests, not a draft, isn't approved; for those) and Merge (for all). Each starts a new agent
-    // with its task, or sends it to one of the story's Claudes already open (by its session's name and
-    // its space); other stories' and profiles' agents aren't offered.
+    // Your pull requests' "No ticket" heading ends in icon menus, the Desk's: Request approval (while one
+    // of them, not a draft, isn't approved; for those, unless the person works alone) and Merge (for
+    // all). Each starts a new agent on the Desk with its task, or sends it to one of the Desk's Claudes.
     const taskMenu = (g, kind, list) => {
       const { label, glyph } = TASK_LOOK[kind];
-      const what = g.story ? g.key : "pull requests without a ticket";
-      const rows = storyTaskRows(t, st.profile, g.story, kind, list);
+      const what = "pull requests without a ticket";
+      const rows = storyTaskRows(t, st.profile, null, kind, list);
       const id = g.key || "none";
       return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340 }));
     };
@@ -3752,9 +3786,8 @@ export class StoryList extends Stories {
         .child(skinFont(div().flex_none(), "key").child(g.key || "No ticket"))
         .child(div().flex_1().min_w(0).truncate().child(g.story?.title ?? ""))
         .when(shut && Boolean(worst), (el) => el.child(div().flex_none().child(countBadge(t, `${id}-sum-${g.key || "none"}`, worst[0], open.length, tip, worst[2]).when(open.length === 1, (x) => x.child("1")))))
-        // Its menus for a story's pull requests, and for those naming no ticket (the Desk's); not for a
-        // ticket of another board.
-        .when(id === "mine-story" && (Boolean(g.story) || !g.key), (el) => el.child(div().flex_none().child(plan(g))));
+        // Its menus for the pull requests naming no ticket (the Desk's); not for a ticket of another board.
+        .when(id === "mine-story" && !g.key, (el) => el.child(div().flex_none().child(plan(g))));
     };
     const grouped = (list, prOf, row, id) => byStory(list, prOf).flatMap((g) => [storyHead(g, id, prOf), ...(folds[foldId(g, id)] ? [] : g.list.map(row))]);
     // The profile's spaces that aren't a story's, nor its Desk.
@@ -3798,7 +3831,7 @@ export class StoryList extends Stories {
           .when(reviews.length === 0, (x) => x.child(empty(t, noPulls ?? "Nothing waiting for your review.")))
           .children(grouped(reviews, (r) => r.review, (r) => plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
             () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`), "review-story")))
-        .when(always || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
+        .when(Boolean(owner && noPulls) || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
           .when(minePrs.length === 0, (x) => x.child(empty(t, noPulls ?? "No open pull requests of yours.")))
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
         .child(group("To do", toDo.length))
