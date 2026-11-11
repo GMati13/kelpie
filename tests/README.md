@@ -260,6 +260,8 @@ snapshot shows is a `todo` test that asserts the right thing (and records its sn
 
 ## The end-to-end demo check (macOS, not in CI)
 
+`scripts/gh-meter.mjs <shared.json> <profile id>` measures one real story load of a profile against GitHub: each call, its cost in points and how many ran at once. It spends real points, so only the person runs it, never CI; `tests/shell/gh-meter.test.mjs` checks it against a fake gh.
+
 `scripts/e2e-demo.sh <throwaway Herdr home>` checks Kelpie in a real Herdr: it installs Kelpie into that
 home (`install.sh` with `HERDR_APP_HOME`), starts a second Herdr window on it (`HERDR_BIN`, else the
 binary in `/Applications/Herdr.app`), runs `herdr-app check` on both mods, switches the window to the
