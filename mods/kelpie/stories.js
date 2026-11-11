@@ -12,7 +12,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
-import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
+import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder } from "herdr";
+import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
@@ -486,7 +487,13 @@ function reassignedWords(it) {
 // what the sidebar's Done group shows, previewed like a story not open (its details, its merged pull
 // requests, its earlier sessions to resume). Only the sprint's (or, on a board without sprints, the
 // last 14 days'), as that's all the load holds.
-const doneIn = (data, profile, handover) => build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), handover, { left: leftStories(profile), done: true }).map((it) => ({ it, n: need(it) }));
+// One build gives both (#37: the list and its Done group each built every story again, every render):
+// `items` the list's, in its order, `done` the Done group's, `all` every story (the leftovers check's).
+function storyLists(data, profile, handover, byAgent = agentsByKey(profile)) {
+  const left = leftStories(profile);
+  const all = build(data, byAgent, pausedIn(profile), storySpaces(profile), handover, { left, all: true });
+  return { all, items: ordered(all.filter((it) => !settled(it, left))), done: all.filter((it) => settled(it, left)).map((it) => ({ it, n: need(it) })) };
+}
 
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
 // "on <its name>".
@@ -2362,8 +2369,10 @@ export class Stories extends Source {
   state(cx) {
     if (this.loader) {
       const ctx = this.context();
-      const e = sharedData(ctx);
-      if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
+      // The shared copy only until the list has its own: reading it converts every profile's stories
+      // (#37), on every draw.
+      const e = this.cache[ctx.key] ? null : sharedData(ctx);
+      if (e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
       if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct" });
       if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
@@ -3976,15 +3985,14 @@ export class Stories extends Source {
       if ([...sig].some(([pane, now]) => was.get(pane) === "working" && (now === "done" || now === "idle"))) this.loadAfterAgent(cx);
       else if (sig.size !== was.size || [...sig.keys()].some((pane) => !was.has(pane))) this.loadSessions(cx);
     }
-    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover, { left: leftStories(st.profile) }));
+    const { all, items, done } = storyLists(st.data, st.profile, boardOf(st.setup)?.handover, live);
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
-    const done = doneIn(st.data, st.profile, boardOf(st.setup)?.handover);
     const shown = findItem([...items, ...done], loneOf(st.data), previewIn(st.profile)) ?? inStory;
     // What's shown, for carefulButton: a button armed on one story isn't armed on the next.
     this.shownKey = `${st.profile.id}:${shown?.key ?? ""}`;
-    return { st, t, items, reviews, shown, done };
+    return { st, t, items, reviews, shown, done, all };
   }
 
   // A story previewed that has begun (sessions, pull requests) has its screenshots counted once per
@@ -4295,12 +4303,13 @@ export class StoryList extends Stories {
     // When this copy was first drawn, whatever it showed (picksArrived()): an "All clear" Next
     // whose run brings picks still opens on them.
     this.queueBorn ??= Date.now();
-    const { st, t, early, items, reviews, shown, done } = this.prepare(cx);
+    const { st, t, early, items, reviews, shown, done, all } = this.prepare(cx);
     if (early) return early;
     orderAgents(st.profile, items);
     // Every finished story the board has, not just the ones listed: one that's left only leftovers
-    // behind is listed once they're found.
-    checkLeftovers(st.profile, build(st.data, new Map(), {}, storySpaces(st.profile), null, { all: true }));
+    // behind is listed once they're found (the stories' own build: what's finished doesn't depend on
+    // the agents or the handover column).
+    checkLeftovers(st.profile, all);
     const started = items.filter(({ it }) => it.space);
     // Story spaces named before names were just the key get renamed once.
     for (const { it } of started) if (it.space.name !== it.key && !RENAMED.has(it.space.id)) { RENAMED.add(it.space.id); run("space.rename", { id: it.space.id, name: it.key }); }
@@ -4627,12 +4636,15 @@ export function storyNow() {
 // for you, from what the list loaded; null where the profile shows no stories. For the keys and the
 // story picker. `done`: the finished stories the list leaves out (its Done group), which can be shown
 // but need nothing.
-export function storyItems() {
+// Asked several times in one render (the tab bar, the layout's sync, the keys), it's worked out once
+// per render (host.js memo()).
+export const storyItems = () => memo("storyItems", readStoryItems);
+function readStoryItems() {
   const ctx = READER.context();
   const data = sharedData(ctx)?.data;
   if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
-  const handover = boardOf(ctx.setup)?.handover;
-  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), handover, { left: leftStories(ctx.profile) })), done: doneIn(data, ctx.profile, handover), reviews: reviewsOf(data), lone: loneOf(data) };
+  const { items, done } = storyLists(data, ctx.profile, boardOf(ctx.setup)?.handover);
+  return { st: { ...ctx, data }, items, done, reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).

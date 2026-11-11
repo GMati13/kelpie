@@ -33,7 +33,8 @@
 // In a profile with Jira, a story becomes a space of its own when work on it starts (stories.js).
 // The older per-space setups ("kelpie.spaces") become profiles the first time they're read.
 
-import { appHome, exec, hc, notify, openOverlay, panes, setShared, shared, spaces, run } from "herdr";
+import { appHome, exec, notify, openOverlay } from "herdr";
+import { hc, panes, run, setShared, shared, spaces } from "./host.js";
 import { GITHUB_LOGIN, MOD, githubEnv, modFile } from "./ui.js";
 
 const PROFILES = "kelpie.profiles";

@@ -9,7 +9,8 @@
 
 import { div } from "gpui-kit";
 import { Popup, ScrollHandle, h_flex, v_flex } from "gpui-base";
-import { agents, run, setShared, shared, spaces, window, layout, openOverlay } from "herdr";
+import { window, openOverlay } from "herdr";
+import { agents, layout, run, setShared, shared, spaces } from "./host.js";
 import { SMALL, ScrollPool, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, agentMark, agentWords, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
 import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profiles, shownProfile, shownSpace, spaceProfiles, spacesOf, switchProfile } from "./config.js";
 import { startAgent } from "./source.js";

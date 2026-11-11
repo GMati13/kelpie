@@ -4,7 +4,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, exec, readTextFile, run } from "herdr";
+import { exec, readTextFile } from "herdr";
+import { agents, run } from "./host.js";
 import { skinTheme } from "./skins/index.js";
 import { SMALL, ago, chrome, claudeSession, icon, modFile, resumeArgv } from "./ui.js";
 import { Source, empty, frame, startAgent } from "./source.js";

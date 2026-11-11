@@ -66,7 +66,8 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
 
 - `mock.reset()`: everything back to empty (call it in `beforeEach`).
 - `mock.state`: what Herdr would report. `shared` (a Map behind `shared()`/`setShared()`; values are
-  copied in and out as JSON, as Herdr's store does), `spaces`, `agents`, `panes`, `terminals`, `layout`,
+  copied in and out as JSON, as Herdr's store does, and every read is handed out frozen: Kelpie keeps a
+  read for the whole render, `mods/kelpie/host.js`, so a mod changing one in place fails), `spaces`, `agents`, `panes`, `terminals`, `layout`,
   `focused`, `props` (an overlay's or block's props), `theme`, `window` (`platform: "macos"`), `settings`,
   `appHome` and `home` (non-existent paths by default: set them to a `tempDir()` when a test writes files).
 - `mock.calls`: every call made, in order, as `{ fn, args }`; `mock.of("exec")` gives the argument lists of
@@ -81,7 +82,7 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
   repo's `mods/` (used by `readTextFile` and `realExec`).
 - `mock.sharedValue(key)`: a shared value without recording a call.
 - `mock.reads`: how many times a render read each host value (`spaces`, `agents`, `panes`, `terminals`,
-  `focused`, `shared:<key>`); set it to `{}` before the render to count.
+  `focused`, `layout`, `shared:<key>`); set it to `{}` before the render to count.
 - `nextCommand()` and `watchFolder()` never resolve, so a mod's command loop just waits.
 
 ### `gpui-kit` and `gpui-base`

@@ -13,7 +13,8 @@
 //   uncommitted work, sessions and the footer's limits.
 // Times in the fixture are relative ("-2h", "-3d", "+40m"), so the demo never looks stale.
 
-import { agents, exec, readTextFile, run, setShared, shared, spaces } from "herdr";
+import { exec, readTextFile } from "herdr";
+import { agents, run, setShared, shared, spaces } from "./host.js";
 import { modFile } from "./ui.js";
 import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
 
