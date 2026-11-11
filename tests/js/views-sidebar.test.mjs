@@ -207,6 +207,30 @@ test("unfolded, the queue is inside Next's card", async () => {
   assert.equal(byId(folded, "queue-ACME-160"), null);
 });
 
+// Folded, Next leads with the most urgent item, never a pick of Claude's in front of it (#87): with
+// that story shown, it says you're on it and names what ⌘⇧J goes to in a smaller line under it.
+test("folded, Next leads with what needs you, even while it's shown", async () => {
+  // One story that needs you (its checks fail), then Claude's picks: no reviews, spaces or asks.
+  const failing = stories.data.prs.filter((p) => /ACME-152/.test(p.title) && !p.merged);
+  assert.ok(failing.length, "the demo has ACME-151's failing pull request (its subtask ACME-152's)");
+  setupDemoWorld({ stories: { ...stories, data: { ...stories.data, prs: failing, reviews: [] } }, spaces: [], paused: {} });
+  mock.state.shared.set("kelpie.next.asks", {});
+  putShared("kelpie.next.suggested", PICKS);
+  const card = async () => byId((await sharedDraw()).el, "story-next");
+  let el = await card();
+  assert.match(render(byId(el, "queue-next"), skinTheme()), /ACME-151/, "nothing shown: the urgent story");
+  putShared("kelpie.stories.preview", { [DEMO]: "ACME-151" });
+  el = await card();
+  const lead = render(byId(el, "queue-next"), skinTheme());
+  assert.match(lead, /ACME-151/, "shown: still the urgent story, not the pick after it");
+  assert.match(lead, /You're on it/, "saying it's the one on screen");
+  const then = byId(el, "queue-then");
+  assert.ok(then, "what ⌘⇧J goes to, in a line of its own");
+  assert.match(render(then, skinTheme()), /ACME-180|itinerary/, "Claude's first pick");
+  assert.doesNotMatch(render(el, skinTheme()).split("\n")[0], /accent/, "the card isn't tinted as a pick");
+  snap("sidebar/next-on-it", el);
+});
+
 // The header counts the queue, as every group counts: a position there ("3 of 3") disagreed with the
 // lit row (where you are). With one group, it has no label of its own.
 test("Next's header counts the queue; a lone group has no label", async () => {
