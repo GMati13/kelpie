@@ -157,6 +157,15 @@ test("header: working alone, no Request approval", async () => {
   assert.equal(byId(lone, "pull-approval"), null);
 });
 
+// KELPIE-85: a story's Merge is on the story in every mode: ACME-171 has two pull requests ready to
+// merge, so its header's main action is Merge all, working alone too.
+test("header: Merge all for a story ready to merge, working alone too", async () => {
+  for (const [profile, st] of [[{}, stories], [ALONE, aloneStories]]) {
+    const { el } = await header({ space: "ACME-171", profile, stories: st });
+    assert.ok(byId(el, "story-merge-all"), "Merge all is the main action");
+  }
+});
+
 test("Kelpie-Plain: the header of a story whose agent needs you", async () => {
   snap("plain/header/needs-you", (await header({ space: "ACME-142", layout: "Kelpie-Plain" })).el);
 });

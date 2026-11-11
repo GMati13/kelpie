@@ -62,16 +62,47 @@ test("working alone: Reviews for you shows only with a review asked for", async 
   assert.ok(texts(await sharedCopy()).includes("Nothing waiting for your review."), "a team's still says so");
 });
 
-test("working alone: Your pull requests holds only the ones on no story, without Request approval", async () => {
-  const el = await list({ profile: { jira: { ...demoProfile().jira, solo: true } } });
-  assert.ok(byId(el, "mine-docs#58"), "a pull request naming no ticket stays");
-  assert.equal(byId(el, "mine-web#418"), null, "ACME-142's is on its story");
-  assert.equal(byId(el, "mine-web#423"), null, "ACME-175's too");
+// KELPIE-85: Your pull requests is the same for everyone: only the ones on no story of the list, as a
+// story's own are on the story (its row and header carry Merge and Request approval).
+for (const [who, profile] of [["a team", {}], ["working alone", { jira: { ...demoProfile().jira, solo: true } }]]) {
+  test(`${who}: Your pull requests holds only the ones on no story`, async () => {
+    const el = await list({ profile });
+    assert.ok(byId(el, "mine-docs#58"), "a pull request naming no ticket stays");
+    assert.equal(byId(el, "mine-web#418"), null, "ACME-142's is on its story");
+    assert.equal(byId(el, "mine-web#423"), null, "ACME-175's too");
+    assert.equal(byId(el, "mine-story-ACME-142"), null, "no story headings");
+    assert.ok(byId(el, "merge-wrap-none"), "the Desk's Merge stays with the ones naming no ticket");
+  });
+}
+
+test("working alone: no Request approval anywhere in the list", async () => {
+  const alone = { jira: { ...demoProfile().jira, solo: true } };
+  const { el, view, cx } = await draw((setupDemoWorld({ stories, profile: alone }), new StoryList()));
   assert.equal(byId(el, "approval-wrap-none"), null, "nobody to ask for an approval");
-  assert.ok(!handlers(el).some((h) => /^approval-/.test(h.id)), "no Request approval menu at all");
-  const team = await list();
-  assert.ok(byId(team, "mine-web#418") && byId(team, "approval-wrap-ACME-142"), "a team's keeps every story's");
+  handlers(el, "on_hover").find((h) => h.id === "story-ACME-142").fn(true, cx);
+  const over = view.render(cx);
+  assert.ok(byId(over, "merge-ACME-142-more"), "Merge shows on the row hovered");
+  assert.ok(!handlers(over).some((h) => /^approval-/.test(h.id)), "no Request approval menu at all");
+  setupDemoWorld({ stories });
+  const team = await draw(new StoryList());
+  handlers(team.el, "on_hover").find((h) => h.id === "story-ACME-142").fn(true, team.cx);
+  assert.ok(byId(team.view.render(team.cx), "approval-ACME-142-more"), "and on a story's row hovered");
 });
+
+// KELPIE-85: working alone lost the one-click Merge with the story headings under Your pull requests.
+// A story with pull requests ready to merge (ACME-171) offers Merge on its row at rest, in every mode,
+// and its menu starts the merge agent in one more click.
+for (const [who, profile] of [["a team", {}], ["working alone", { jira: { ...demoProfile().jira, solo: true } }]]) {
+  test(`${who}: a story ready to merge offers Merge on its row`, async () => {
+    const { el, view, cx } = await draw((setupDemoWorld({ stories, profile }), new StoryList()));
+    const row = byId(el, "story-ACME-171");
+    assert.ok(byId(row, "merge-ACME-171-more"), "Merge at rest, without opening the story");
+    assert.equal(byId(byId(el, "story-ACME-142"), "merge-ACME-142-more"), null, "not on a row with nothing ready, at rest");
+    handlers(el).find((h) => h.id === "merge-ACME-171-more").fn({}, cx);
+    const open = view.render(cx);
+    assert.ok(texts(byId(open, "merge-ACME-171-menu-list")).includes("New agent"), "its menu starts the merge agent");
+  });
+}
 
 test("working alone with no pull request off a story: no Your pull requests", async () => {
   const onStories = { ...stories, data: { ...stories.data, prs: stories.data.prs.filter((p) => !/docs#58|docs\/pull\/58/.test(p.url ?? "")) } };
@@ -226,26 +257,25 @@ test("the open queue lights the item shown, not the one after it", async () => {
   assert.ok(!lit(open, "queue-ACME-142"), "nothing shown: Next's first item isn't lit");
 });
 
-// A story with many pull requests folds by its heading's chevron: its rows go, the heading says how
-// many and the most urgent state, and it stays folded per profile.
-test("a story's pull requests fold under its heading", async () => {
+// A group of pull requests folds by its heading's chevron (the "No ticket" one under Your pull
+// requests): its rows go, the heading says how many and the most urgent state, and it stays folded
+// per profile.
+test("a heading's pull requests fold under it", async () => {
   setupDemoWorld({ stories });
   const { el, view, cx } = await draw(new StoryList());
-  assert.ok(byId(el, "mine-web#418") && byId(el, "mine-docs#61"), "ACME-142's pull requests show");
-  assert.equal(byId(el, "mine-story-sum-ACME-142"), null, "no summary while open");
-  const click = handlers(el).find((h) => h.id === "mine-story-fold-ACME-142");
+  assert.ok(byId(el, "mine-docs#58"), "the pull requests naming no ticket show");
+  assert.equal(byId(el, "mine-story-sum-none"), null, "no summary while open");
+  const click = handlers(el).find((h) => h.id === "mine-story-fold-none");
   click.fn({}, { ...cx, stop_propagation() {} });
-  assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: { "mine-story:ACME-142": true } });
+  assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: { "mine-story:none": true } });
   const shut = view.render(cx);
-  assert.equal(byId(shut, "mine-web#418"), null, "its rows are gone");
-  assert.equal(byId(shut, "mine-docs#61"), null);
-  assert.ok(byId(shut, "mine-web#423"), "other stories' stay");
-  const sum = byId(shut, "mine-story-sum-ACME-142");
+  assert.equal(byId(shut, "mine-docs#58"), null, "its rows are gone");
+  const sum = byId(shut, "mine-story-sum-none");
   assert.ok(sum, "the heading says what's folded");
-  assert.match(nodeOf(sum).calls.find(([m]) => m === "tooltip")[1][0], /web#418: .*\ndocs#61: /);
-  handlers(shut).find((h) => h.id === "mine-story-fold-ACME-142").fn({}, { ...cx, stop_propagation() {} });
+  assert.match(nodeOf(sum).calls.find(([m]) => m === "tooltip")[1][0], /docs#58: /);
+  handlers(shut).find((h) => h.id === "mine-story-fold-none").fn({}, { ...cx, stop_propagation() {} });
   assert.deepEqual(mock.state.shared.get("kelpie.pulls.folded"), { [DEMO]: {} });
-  assert.ok(byId(view.render(cx), "mine-web#418"), "unfolded again");
+  assert.ok(byId(view.render(cx), "mine-docs#58"), "unfolded again");
 });
 
 // A finished story cleaned up (done, no space, nothing open: ACME-118) stays reachable in the Done

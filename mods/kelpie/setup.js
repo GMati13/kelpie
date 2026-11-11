@@ -737,7 +737,7 @@ export class Setup {
         promptField("review", "Review", this.reviewPrompt, DEFAULT_REVIEW_PROMPT,
           `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent there. ${fields(REVIEW_FIELDS)} {folder} is the checkout; {ticket}, {summary} and {description} the ticket its title names.`),
         promptField("merge", "Merge", this.mergePrompt, DEFAULT_MERGE_PROMPT,
-          `The Merge icon on a story's heading under Your pull requests: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
+          `The Merge icon on a story, in its header and on its row in the list: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
         promptField("approval", "Request approval", this.approvalPrompt, DEFAULT_APPROVAL_PROMPT,
           "The icon beside Merge while a pull request isn't approved yet. The same placeholders; {prs} only the ones not approved."),
         group("When nothing needs you", hasBoard ? null : "Shown once a board is connected"),
