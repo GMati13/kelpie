@@ -928,6 +928,16 @@ function queueRow(t, x, on, go, { card = false } = {}) {
         .when(queueAway(x), (el) => el.child(icon(own("external-link"), 12).text_color(t.dim))))
       .when(Boolean(detail), (el) => el.child(div().truncate().text_size(SMALL).text_color(t.muted).child(detail))));
 }
+// An agent's ask or a pick of Claude's gets an ✕ to drop it, folded or not: a queue of one has no
+// open list to drop it from (#64).
+function withDrop(t, profile, x, row) {
+  if (!x.suggest && !x.ask) return row;
+  const drop = () => (x.ask ? dismissAsk(profile, x.ask.id) : dismissSuggestion(profile, x.suggest.key));
+  return row.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
+    .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+    .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(); })
+    .child(icon(chrome("x"), 12)));
+}
 // Folded Next's smaller line under its main row: where ⌘⇧J goes when that isn't the main row's item
 // (the main row is on screen, or another item of the queue is): its mark and what to do, one line.
 function queueThen(t, x, go) {
@@ -3776,6 +3786,10 @@ export class StoryList extends Stories {
     const glow = (a) => alpha(t.accent, a);
     const picks = queue.filter((x) => x.suggest).length;
     const brewing = Boolean(brewingIn(st.profile));
+    // A queue of one has nothing more to show unfolded: no chevron, and an open queue that drops to
+    // one item folds rather than stay a list of one (#64).
+    const many = queue.length > 1;
+    if (!many) this.queueOpen = false;
     const toggle = (_e, cx) => { this.queueOpen = !this.queueOpen; cx.notify(); };
     const open = Boolean(this.queueOpen);
     // The most urgent: the queue's first, unless it's all picks, where Next just cycles through them.
@@ -3791,15 +3805,15 @@ export class StoryList extends Stories {
         .child(div().flex_none().text_color(t.muted).child(String(queue.length)))
         .child(div().flex_1())
         .child(h_flex().id("story-next-tools").flex_none().gap(2).items_center().on_mouse_down("left", stop).on_click(stop)
-          // Claude's picks: how many are in the queue (turning while Claude brews); opens the queue.
-          .when(picks > 0 || brewing, (el) => el.child(h_flex().id("story-next-picks").flex_none().h(20).px(6).gap(4).items_center().rounded(6).cursor_pointer()
-            .text_color(t.accent).hover((x) => x.bg(glow(0.14))).on_click(toggle)
-            .tooltip(brewing ? "Claude is looking for what to do next" : `${picks} suggested by Claude: open the queue to see them`)
+          // Claude's picks: how many are in the queue (turning while Claude brews); opens the queue, when it holds more than one.
+          .when(picks > 0 || brewing, (el) => el.child(h_flex().id("story-next-picks").flex_none().h(20).px(6).gap(4).items_center().rounded(6)
+            .text_color(t.accent).when(many, (x) => x.cursor_pointer().hover((h) => h.bg(glow(0.14))).on_click(toggle))
+            .tooltip(brewing ? "Claude is looking for what to do next" : many ? `${picks} suggested by Claude: open the queue to see them` : `${picks} suggested by Claude`)
             .child(brewing ? brewMark(t, 12) : icon(own("sparkles"), 12)).when(picks > 0, (x) => x.child(String(picks)))))
-          .child(iconButton(t, "story-queue", chrome(this.queueOpen ? "chevron-down" : "chevron-right"), toggle,
-            this.queueOpen ? "Hide the queue" : "Show the whole queue", { on: Boolean(this.queueOpen) }))))
+          .when(many, (el) => el.child(iconButton(t, "story-queue", chrome(open ? "chevron-down" : "chevron-right"), toggle,
+            open ? "Hide the queue" : "Show the whole queue", { on: open })))))
       .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
-      .when(!open, (el) => el.child(queueRow(t, lead, here, () => goNext(st.profile, lead), { card: true })
+      .when(!open, (el) => el.child(withDrop(t, st.profile, lead, queueRow(t, lead, here, () => goNext(st.profile, lead), { card: true }))
         .tooltip(`${queueAway(lead) ? "Opens on the web" : lead.suggest?.idea ? "Starts a Claude on the Desk with this idea" : here ? "Go to its step" : "Go there"}${lead === top ? " ⌘⇧J" : ""}`)))
       .when(!open && lead !== top, (el) => el.child(queueThen(t, top, () => goNext(st.profile, top))))
       .when(!picks, (el) => el.child(div().pt(2).child(this.magic(t, st, items, reviews, { slim: true }))));
@@ -3821,12 +3835,7 @@ export class StoryList extends Stories {
   // Its rows, for inside Next's card.
   queueList(t, st, items, reviews, queue, shownKey) {
     const lit = (x) => queueShown(x, shownKey);
-    const drop = (x) => (x.ask ? () => dismissAsk(st.profile, x.ask.id) : () => dismissSuggestion(st.profile, x.suggest.key));
-    const row = (x) => queueRow(t, x, lit(x), () => goNext(st.profile, x))
-      .when(Boolean(x.suggest || x.ask), (el) => el.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
-        .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(x)(); })
-        .child(icon(chrome("x"), 12))));
+    const row = (x) => withDrop(t, st.profile, x, queueRow(t, x, lit(x), () => goNext(st.profile, x)));
     // A group's label only when there's more than one group: alone it repeats the card's header.
     const groups = [queue.some((x) => !x.clean && !x.suggest && !x.review && !x.ask), queue.some((x) => x.ask), queue.some((x) => x.review && !x.suggest), queue.some((x) => x.clean)].filter(Boolean).length;
     const part = (label, list) => (!list.length ? [] : groups < 2 ? list.map(row) : [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(t.dim)
