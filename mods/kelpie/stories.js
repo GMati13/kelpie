@@ -13,7 +13,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
@@ -22,7 +22,7 @@ import { boardSite, description as boardDescription, doneOption, loadBoard, look
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
-import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
+import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -1033,7 +1033,6 @@ function ordered(items) {
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
 const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Review waiting", "muted"] };
-const AGENT = { blocked: ["Needs you", "working"], working: ["Working", "accent"], done: ["Done", "done"], idle: ["Idle", "muted"] };
 
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
 // each copy runs in its own JavaScript context. So the list alone loads, and puts a trimmed copy of
@@ -2544,7 +2543,7 @@ export class Stories extends Source {
       // An agent asking something can be answered from here, over the shown tab (the header has its own);
       // it takes Pause's place (Pause stays in the header and on its key).
       ...(agent.status === "blocked" ? [peekButton(t, `${id}-peek`, agent)] : []),
-      b("show", "Show agent", () => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); setView(st.profile, it, "agent"); }, `Show ${agent.tab_name}: ${AGENT[agent.status][0].toLowerCase()}`),
+      b("show", "Show agent", () => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); setView(st.profile, it, "agent"); }, `Show ${agent.tab_name}: ${agentWords(agent.status)}`),
       ...(agent.status === "blocked" ? [] : [this.carefulButton(t, `${id}-pause`, "Pause", agent.status === "working", (cx) => this.pauseAll(st, [{ key, agent }], cx),
         { tip: "Close its tab and keep its Claude session to resume later", confirmTip: `${agent.tab_name} is working: click again to pause it anyway` })]),
     ];
@@ -2570,10 +2569,9 @@ export class Stories extends Source {
   // done or idle (a skin's mark, else Kelpie's), or paused; empty when it has none.
   agentSlot(t, s) {
     const a = s.agent;
-    const m = a ? statusMark(t, agentState(a.status), { where: "sub", size: 8, color: t[AGENT[a.status][1]], agent: a }) ?? mark(t, agentState(a.status) ?? "idle", 14)
-      : s.paused ? mark(t, "paused", 14) : null;
+    const m = a ? agentMark(t, a.status, { where: "sub", agent: a }) : s.paused ? agentMark(t, "paused", { where: "sub" }) : null;
     return h_flex().id(`sub-mark-${s.key}`).flex_none().w(16).justify_center().items_center()
-      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${AGENT[a.status][0].toLowerCase()}` : "Paused: its session is kept to resume").child(m));
+      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${agentWords(a.status)}` : "Paused: its session is kept to resume").child(m));
   }
 
   // Whether a subtask row shows all its actions: while hovered (`this.hoverSub`, this copy's), and

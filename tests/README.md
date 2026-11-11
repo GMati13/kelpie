@@ -194,6 +194,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
+- `agent-marks.test.mjs`: an agent's state has one mark (`agentMark()`, #101): the tab bar, a split pane's
+  header, the sidebar's agent rows and a subtask's slot draw the same for each state in both layouts, no two
+  states alike (unknown isn't idle), motion only for working and needs you, a Claude's tab never its icon
+  (snapshots `toolbar/agent-states`, `plain/toolbar/agent-states`).
 - `space-menu.test.mjs`: the profile menu with many profiles: its list has a height of its own, so it
   scrolls, its last entries inside it; ↑/↓ and opening it bring a row into view; it reads Herdr's lists as
   often with 30 profiles as with 3.

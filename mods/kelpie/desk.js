@@ -8,11 +8,9 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { agents, layout, openOverlay, run, setShared, shared, spaces } from "herdr";
-import { ago, agentLabels, chrome, groupHeader, icon, mark, menuButton, own, resumeArgv, sideHidden, toggleSide } from "./ui.js";
+import { agentMark, agentWords, ago, agentLabels, chrome, groupHeader, icon, menuButton, own, resumeArgv, sideHidden, toggleSide } from "./ui.js";
 import { claudeArgv, deskOf, openDesk, shellArgv, shownProfile } from "./config.js";
-import { agentState, statusMark } from "./skins/index.js";
 
-const SAYS = { blocked: "waiting for you", working: "working", done: "done", idle: "idle" };
 const ASK = "kelpie.desk.ask"; // { profile, at }: ⌥⌘D on a closed Desk, for the sidebar to open its menu
 
 // What a new tab on the Desk runs, as the tab bar's + offers: Claude or a shell, on the profile's
@@ -81,9 +79,9 @@ export function deskRows(t, host, profile, { on = false, sessions = null } = {})
       trigger: (toggle, open) => row("desk-open-more", open, mark0, "Open the Desk").text_color(t.muted)
         .tooltip("For work without a ticket: a space in the profile's folder, with Claude or a terminal ⌥⌘D").on_click(toggle) });
   const agentRow = (a) => row(`desk-agent-${a.address}`, a.focused,
-    statusMark(t, agentState(a.status) ?? "idle", { where: "side-tab", size: 7, color: t[a.status] ?? t.dim, agent: a }) ?? mark(t, agentState(a.status) ?? "idle", 14),
+    agentMark(t, a.status, { where: "side-tab", agent: a }),
     names.get(a.address))
-    .tooltip(`${a.program?.name ?? "Agent"} · ${SAYS[a.status] ?? a.status}`)
+    .tooltip(`${a.program?.name ?? "Agent"} · ${agentWords(a.status)}`)
     .on_click(() => { openDesk(profile); if (a.pane) run("pane.focus", { pane: a.pane }); })
     .on_mouse_down("left", (e, cx) => { if (e.click_count === 2) { cx.stop_propagation(); run("tab.rename", { id: a.tab }); } });
   return [head, ...(deskRow ? [deskRow] : []), ...here.map(agentRow)];

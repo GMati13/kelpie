@@ -7,7 +7,7 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home, panes, props, run } from "herdr";
-import { SMALL, chrome, icon, iconButton, programIcon, sessionTitle, status } from "./ui.js";
+import { SMALL, agentMark, agentWords, chrome, icon, iconButton, programIcon, sessionTitle } from "./ui.js";
 import { decor, skinFont, skinText, skinTheme } from "./skins/index.js";
 
 // Herdr's own pane icons (its shipped `pane` mod, a real folder, so they draw).
@@ -41,8 +41,10 @@ export class PaneHead {
     // A shell's title is often its folder already.
     const place = where && !name.includes(where) && !/^[~/]/.test(name) ? where : "";
     const lit = p.focused;
-    const pic = programIcon(p.program, lit ? t.foreground : t.dim);
-    const mark = status(t, p.status);
+    // An agent's pane leads with its state (agentMark(), as its tab does), any other with its program.
+    const agent = Boolean(p.program?.agent || p.status);
+    const pic = agent ? div().id(`pane-mark-${pane}`).flex_none().tooltip(agentWords(p.status)).child(agentMark(t, p.status, { where: "pane" }))
+      : programIcon(p.program, lit ? t.foreground : t.dim);
     const tools = lit || this.hovered;
     return decor("blockDecor", t, h_flex().id(`pane-head-${pane}`).size_full().pl(10).pr(2).gap(8).items_center()
       .bg(t.background).border_b(1).border_color(lit ? t.accent : t.border).text_size(SMALL)
@@ -51,7 +53,6 @@ export class PaneHead {
       .on_click(() => run("pane.focus", { pane }))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(skinFont(div().flex_none().max_w(360).truncate().font_medium().text_color(lit ? t.foreground : t.muted), "tab").tooltip(p.title || name).child(skinText(name, "tab")))
-      .when(Boolean(mark), (el) => el.child(mark))
       .child(h_flex().flex_1().min_w(0).gap(8).items_center().text_color(t.dim)
         .when(Boolean(place), (el) => el.child(div().min_w(0).truncate().child(place)))
         .when(Boolean(p.branch), (el) => el.child(h_flex().flex_none().gap(4).items_center()
