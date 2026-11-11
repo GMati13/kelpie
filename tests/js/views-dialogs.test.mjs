@@ -268,6 +268,8 @@ test("the profile dialog's GitHub page: with an account picked, the shell functi
   const el = profilePage("github", { github: { owner: "kelpie--demo", demo: true, account: "kelpie-demo" } });
   const words = texts(el).join("\n");
   for (const s of ["GitHub account", "KELPIE_GH_ACCOUNT=kelpie-demo", "Check my shell"]) assert.ok(words.includes(s), s);
+  // A login shell's bash reads ~/.bash_profile, not ~/.bashrc, unless the first reads the second.
+  assert.ok(words.includes("~/.bashrc, with your ~/.bash_profile reading it"), "the bash setup an agent's shell reads");
   assert.ok(byId(el, "setup-gh-copy"));
   snap("dialogs/profile-github", el);
 });
@@ -304,6 +306,8 @@ test("the profile dialog's Board page on Jira: the choice of board, then Jira's 
   assert.deepEqual(texts(byId(el, "setup-board-kind-1")), ["GitHub Project"]);
   assert.ok(byId(el, "setup-jira-check"));
   assert.equal(byId(el, "setup-project-check"), null);
+  // The Keychain line is zsh's (read -rs "t?…"); bash would refuse it.
+  assert.ok(texts(el).join("\n").includes("run this in a zsh terminal"), "says which shell the line is for");
   snap("dialogs/profile-board-jira", el);
 });
 
