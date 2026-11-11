@@ -79,7 +79,7 @@ describe("demoPulls and the local helpers", () => {
     assert.deepEqual(mine.map((p) => `${p.repository.name}#${p.number}`), ["web#418", "payments#97", "search#233", "charts#58", "web#415", "web#423", "docs#58", "docs#61"]);
     assert.deepEqual((await demoPulls("user:kelpie--demo is:pr is:merged author:@me merged:>=2026-01-01")).map((p) => p.number), [291, 409, 412, 298, 287]);
     const reviews = await demoPulls("user:kelpie--demo is:pr is:open review-requested:@me");
-    assert.deepEqual(reviews.map((p) => [p.number, p.author.login]), [[421, "priya-n"], [305, "tomas-r"]]);
+    assert.deepEqual(reviews.map((p) => [p.number, p.author.login]), [[421, "priya-n"], [305, "tomas-r"], [427, "sam-okafor"], [311, "sam-okafor"]]);
   });
   test("a pull request as GitHub's search gives it", async () => {
     const [p] = await demoPulls("is:open");

@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readRepo } from "../lib/helpers.mjs";
 import {
-  ASK_PROMPTS, CONFIGURE_SCOPES, CONFIRM_KEYS, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, SUGGEST_FIELDS,
+  ASK_PROMPTS, CONFIGURE_SCOPES, CONFIRM_KEYS, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, SUGGEST_FIELDS,
 } from "../../mods/kelpie/config.js";
 
 const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
@@ -49,6 +49,6 @@ describe("configure-profile", () => {
   });
   test("lists every button message and prompt placeholder", () => {
     for (const { id } of ASK_PROMPTS) assert.match(guide, new RegExp(`^\\| \`${id}\` \\|`, "m"), id);
-    for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS, ...CONFIGURE_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
+    for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...STORY_REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS, ...CONFIGURE_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
   });
 });

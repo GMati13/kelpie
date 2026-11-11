@@ -15,7 +15,7 @@ import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
-import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { githubAccounts, searchPulls } from "./pulls.js";
@@ -150,6 +150,9 @@ export class Setup {
     this.reviewPrompt = TextareaState.new({ value: saved.github?.reviewPrompt || DEFAULT_REVIEW_PROMPT });
     this.reviewPrompt.set_auto_grow(3, 12);
     this.reviewPrompt.on("change", (_e, cx) => cx.notify());
+    this.storyReviewPrompt = TextareaState.new({ value: saved.github?.storyReviewPrompt || DEFAULT_STORY_REVIEW_PROMPT });
+    this.storyReviewPrompt.set_auto_grow(3, 12);
+    this.storyReviewPrompt.on("change", (_e, cx) => cx.notify());
     // The messages pull request buttons send to agents, folded away until opened; defaults aren't saved.
     this.asks = Object.fromEntries(ASK_PROMPTS.map((a) => {
       const state = TextareaState.new({ value: saved.prompts?.[a.id] || a.text });
@@ -377,6 +380,7 @@ export class Setup {
     const prompt = this.prompt.value().trim();
     const orchestrator = this.orchestrator.value().trim();
     const reviewPrompt = this.reviewPrompt.value().trim();
+    const storyReviewPrompt = this.storyReviewPrompt.value().trim();
     const mergePrompt = this.mergePrompt.value().trim();
     const approvalPrompt = this.approvalPrompt.value().trim();
     const asks = Object.fromEntries(ASK_PROMPTS.map((a) => [a.id, this.asks[a.id].value().trim()]).filter(([id, v]) => v && v !== ASK_PROMPTS.find((a) => a.id === id).text));
@@ -412,7 +416,7 @@ export class Setup {
         folder,
         jira: onJira && parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...boardParts } : null,
         project: project ? { url: projectUrl, ...project, ...(prefixes ? { prefixes } : {}), ...boardParts } : null,
-        github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
+        github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(storyReviewPrompt && storyReviewPrompt !== DEFAULT_STORY_REVIEW_PROMPT ? { storyReviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
         notify: { pulls: this.notifyPulls },
@@ -502,7 +506,7 @@ export class Setup {
       }
       case "prompts": return custom([
         this.prompt.value().trim() !== DEFAULT_PROMPT, Boolean(this.orchestrator.value().trim()),
-        this.reviewPrompt.value().trim() !== DEFAULT_REVIEW_PROMPT, this.mergePrompt.value().trim() !== DEFAULT_MERGE_PROMPT,
+        this.reviewPrompt.value().trim() !== DEFAULT_REVIEW_PROMPT, this.storyReviewPrompt.value().trim() !== DEFAULT_STORY_REVIEW_PROMPT, this.mergePrompt.value().trim() !== DEFAULT_MERGE_PROMPT,
         this.approvalPrompt.value().trim() !== DEFAULT_APPROVAL_PROMPT, this.suggestPrompt.value().trim() !== SUGGEST_PROMPT,
       ].filter(Boolean).length);
       case "messages": return custom(ASK_PROMPTS.filter((a) => this.asks[a.id].value().trim() !== a.text).length);
@@ -740,6 +744,8 @@ export class Setup {
         group("Pull requests", hasGithub ? null : "Saved once GitHub is connected"),
         promptField("review", "Review", this.reviewPrompt, DEFAULT_REVIEW_PROMPT,
           `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent in the profile's folder, pointed at the checkout to read, as it's someone else's code. ${fields(REVIEW_FIELDS)} {folder} is the checkout; {ticket}, {summary} and {description} the ticket its title names.`),
+        promptField("story-review", "Review a story", this.storyReviewPrompt, DEFAULT_STORY_REVIEW_PROMPT,
+          `The Review menu on a story's heading under Reviews for you: one agent reviews all of the story's pull requests waiting for you, together, each checked out as Start review does. ${fields(STORY_REVIEW_FIELDS)} {prs} lists each pull request with its link, title, author and checkout; {ticket}, {summary} and {description} are the story's.`),
         promptField("merge", "Merge", this.mergePrompt, DEFAULT_MERGE_PROMPT,
           `The Merge icon on a story, in its header and on its row in the list: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
         promptField("approval", "Request approval", this.approvalPrompt, DEFAULT_APPROVAL_PROMPT,
