@@ -161,6 +161,9 @@ v_flex
           svg own:sparkles [fg=accent]
           div [fg=accent]
             "Suggested by Claude · 20m"
+          h_flex #queue-run-all [fg=dim hover(bg=accent/24 fg=accent)] {click} tip="Start every pick at once, each in its own agent: you'll see what each does first"
+            svg own:play
+            "Run all"
           h_flex #queue-remagic [fg=dim hover(bg=accent/24 fg=accent)] {click} tip="Ask Claude again, from where things stand now"
             svg own:sparkles
             "Re-magic"
