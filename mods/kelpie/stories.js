@@ -2134,10 +2134,14 @@ export class Stories extends Source {
   }
 
   // Only the sessions again (the list's copy), merged into what's loaded: an agent's tab opening or
-  // closing changes them, not what Jira or GitHub say. A full load on the way brings them anyway.
+  // closing changes them, not what Jira or GitHub say. Asked for while a full load or another read
+  // runs, it isn't dropped: that one read the sessions when it began, maybe before the tab changed,
+  // so they're read again once it ends (`sessionsAgain`, state()).
   loadSessions(cx) {
     const ctx = this.context();
-    if (!this.loader || !this.ready(ctx) || this.sessionsBusy || this.busy.has(ctx.key) || !this.cache[ctx.key]?.data) return;
+    if (!this.loader || !this.ready(ctx) || !this.cache[ctx.key]?.data) return;
+    if (this.sessionsBusy || this.busy.has(ctx.key)) { this.sessionsAgain = true; return; }
+    this.sessionsAgain = false;
     this.sessionsBusy = true;
     cx.spawn(async (cx) => {
       try {
@@ -2250,6 +2254,7 @@ export class Stories extends Source {
       if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
       if (this.quickAgain && !this.quickBusy) this.quickPulls(cx);
+      if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
       return super.state(cx);
     }
     const ctx = this.context();
