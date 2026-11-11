@@ -179,6 +179,70 @@ test("the Desk closed, and open without an agent", async () => {
   snap("sidebar/desk-no-agent", deskRows(t, {}, profileById(DEMO)));
 });
 
+// The Desk's heading goes to the Desk itself, without picking one of its agents (#133): its plain
+// terminals counted after its agents, a click there showing the Desk on that terminal (a menu of
+// them when there are several); its + and clock menus still open their own menus.
+const deskWorld = (tabs) => setupDemoWorld({ stories, spaces: [{ name: "Desk", tabs }] });
+const deskSpace = () => mock.state.spaces.find((s) => s.name === "Desk");
+const runs = () => mock.calls.filter((c) => c.fn === "run").map((c) => [c.args[0], c.args[1]]);
+const AGENT_TAB = FIXTURE.spaces.find((s) => s.name === "Desk").tabs.find((c) => c.agent);
+test("the Desk's heading shows the Desk without focusing an agent", () => {
+  deskWorld([AGENT_TAB, { name: "Terminal" }]);
+  const desk = deskSpace();
+  assert.ok(desk && !desk.active, "the Desk is open, another space shown");
+  const el = deskRows(skinTheme(), {}, profileById(DEMO));
+  const click = handlers(el, "on_click").find((h) => h.id === "desk-head");
+  assert.ok(click, "the heading is clickable");
+  mock.calls = [];
+  click.fn({}, { notify() {}, stop_propagation() {} });
+  assert.deepEqual(runs(), [["space.select", { id: desk.id }]], "it shows the Desk, and focuses no pane");
+});
+
+test("with agents, the Desk's heading counts its terminals", () => {
+  deskWorld([AGENT_TAB, { name: "Terminal" }]);
+  const t = skinTheme();
+  const one = deskRows(t, {}, profileById(DEMO));
+  snap("sidebar/desk-agent-terminal", one);
+  const mark = byId(one, "desk-terminals");
+  assert.ok(mark, "a terminal mark in the heading");
+  assert.deepEqual(texts(mark), ["1"]);
+  mock.calls = [];
+  handlers(mark, "on_click")[0].fn({}, { notify() {}, stop_propagation() {} });
+  const tab = deskSpace().tabs.find((c) => c.name === "Terminal");
+  assert.deepEqual(runs().at(-1), ["tab.select", { id: tab.id }], "one terminal: a click shows it");
+  // Its clicks stay off the heading, which would show the Desk where it was instead.
+  assert.ok(handlers(byId(one, "desk-terminals-wrap"), "on_click").some((h) => h.id === "desk-terminals-wrap"));
+
+  deskWorld([AGENT_TAB, { name: "Terminal" }, { name: "Build" }]);
+  const host = {};
+  const two = deskRows(t, host, profileById(DEMO));
+  assert.deepEqual(texts(byId(two, "desk-terminals")), ["2"]);
+  handlers(byId(two, "desk-terminals"), "on_click")[0].fn({}, { notify() {}, stop_propagation() {} });
+  assert.equal(host.menu, "desk-terminals", "several: a click opens a menu of them");
+  const menu = deskRows(t, host, profileById(DEMO));
+  const build = deskSpace().tabs.find((c) => c.name === "Build");
+  mock.calls = [];
+  handlers(menu, "on_click").find((h) => h.id === "desk-terminals-row-2").fn({}, { notify() {}, stop_propagation() {} });
+  assert.deepEqual(runs().at(-1), ["tab.select", { id: build.id }]);
+
+  // Without terminals, nothing in the heading but its agents' count.
+  deskWorld([AGENT_TAB]);
+  assert.equal(byId(deskRows(t, {}, profileById(DEMO)), "desk-terminals"), null);
+});
+
+test("the Desk heading's + and clock menus still open", () => {
+  deskWorld([AGENT_TAB, { name: "Terminal" }]);
+  const host = {};
+  const sessions = [{ id: "demo-x", title: "Earlier", updated: NOW - 3600e3, cwd: "/x" }];
+  const el = deskRows(skinTheme(), host, profileById(DEMO), { sessions });
+  for (const id of ["desk-new", "desk-sessions"]) {
+    host.menu = null;
+    handlers(el, "on_click").find((h) => h.id === `${id}-more`).fn({}, { notify() {}, stop_propagation() {} });
+    assert.equal(host.menu, id, `${id} opens its menu`);
+  }
+  assert.ok(!handlers(byId(el, "desk-head"), "on_click").some((h) => /^desk-(new|sessions)/.test(h.id ?? "")), "they aren't inside the clickable heading");
+});
+
 // The top of the list: the freshness line and the counts (its root's first child, pinned), then Next
 // (the list's first item, as it scrolls with the list, #125), drawn together.
 const head = (el) => v_flex().child(nodeOf(el).calls.find(([m]) => m === "child")[1][0]).child(byId(el, "story-next-wrap"));
