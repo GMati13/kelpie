@@ -10,7 +10,7 @@ v_flex
         div [fg=dim]
           "3"
     h_flex
-      h_flex #count-needs-you [fg=working] tip="1 need you"
+      h_flex #count-needs-you [fg=working] tip="1 needs you"
         div
           div [bg=working/40] ~loop(opacity)
             div [bg=working]
@@ -58,7 +58,7 @@ v_flex
           "Needs you"
         div [fg=muted]
           "4"
-      h_flex #queue-ACME-142 [hover(bg=hover)] {click}
+      h_flex #queue-ACME-142 [hover(bg=hover)] {click} tip="ACME-142: ACME-143's agent needs you\nOffline mode for saved trips"
         div
           div
             div [bg=working/40] ~loop(opacity)
@@ -69,7 +69,7 @@ v_flex
               "ACME-142: ACME-143's agent needs you"
           div [fg=muted]
             "Offline mode for saved trips"
-      h_flex #queue-ACME-160 [hover(bg=hover)] {click}
+      h_flex #queue-ACME-160 [hover(bg=hover)] {click} tip="ACME-160: Changes requested on ACME-161 (search#233)\nTypo-tolerant search"
         div
           div
             svg own:message-square [fg=working]
@@ -79,7 +79,7 @@ v_flex
               "ACME-160: Changes requested on ACME-161 (search#233)"
           div [fg=muted]
             "Typo-tolerant search"
-      h_flex #queue-ACME-151 [hover(bg=hover)] {click}
+      h_flex #queue-ACME-151 [hover(bg=hover)] {click} tip="ACME-151: Checks failing on ACME-152 (payments#97)\nPay with Apple Pay at checkout"
         div
           div
             svg own:circle-x [fg=blocked]
@@ -89,7 +89,7 @@ v_flex
               "ACME-151: Checks failing on ACME-152 (payments#97)"
           div [fg=muted]
             "Pay with Apple Pay at checkout"
-      h_flex #queue-ACME-171 [hover(bg=hover)] {click}
+      h_flex #queue-ACME-171 [hover(bg=hover)] {click} tip="ACME-171: Approved, checks pass or none · ready to merge\nDark mode for the dashboard"
         div
           div
             svg chrome:check [fg=done]
@@ -104,7 +104,7 @@ v_flex
           "From agents"
         div [fg=muted]
           "1"
-      h_flex #queue-ask:demo-0 [hover(bg=hover)] {click}
+      h_flex #queue-ask:demo-0 [hover(bg=hover)] {click} tip="Pick the dark mode accent colour\nACME-172 · Two blues read well on the dark background: I'd like your choice before I set the token."
         div
           div
             div [bg=working/40] ~loop(opacity)
@@ -122,7 +122,7 @@ v_flex
           "To review"
         div [fg=muted]
           "2"
-      h_flex #queue-review:web#421 [hover(bg=hover)] {click}
+      h_flex #queue-review:web#421 [hover(bg=hover)] {click} tip="web#421: Review requested by priya-n\npriya-n · ACME-166 Share a trip with a link"
         div
           div
             svg own:eye [fg=accent]
@@ -132,7 +132,7 @@ v_flex
               "web#421: Review requested by priya-n"
           div [fg=muted]
             "priya-n · ACME-166 Share a trip with a link"
-      h_flex #queue-review:api#305 [hover(bg=hover)] {click}
+      h_flex #queue-review:api#305 [hover(bg=hover)] {click} tip="api#305: Review requested by tomas-r\ntomas-r · Bump OpenTelemetry to 1.28"
         div
           div
             svg own:eye [fg=accent]
@@ -147,7 +147,7 @@ v_flex
           "Clean up"
         div [fg=muted]
           "1"
-      h_flex #queue-clean [hover(bg=hover)] {click}
+      h_flex #queue-clean [hover(bg=hover)] {click} tip="3 stories: clean up all\nACME-190, ACME-122, ACME-116"
         div
           div
             svg own:brush-cleaning [fg=dim]
@@ -169,7 +169,7 @@ v_flex
             h_flex #queue-remagic [fg=dim hover(bg=accent/24 fg=accent)] {click} tip="Ask Claude again, from where things stand now"
               svg own:sparkles
               "Re-magic"
-          h_flex #queue-suggest:ACME-180 [hover(bg=hover)] {click}
+          h_flex #queue-suggest:ACME-180 [hover(bg=hover)] {click} tip="Start the PDF itinerary layout\nNext in the sprint's order, and nobody has started on Export an itinerary as PDF yet."
             div
               div
                 svg own:sparkles [fg=accent]
@@ -181,7 +181,7 @@ v_flex
                 "Next in the sprint's order, and nobody has started on Export an itinerary as PDF yet."
             div #queue-drop-suggest:ACME-180 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this suggestion"
               svg chrome:x
-          h_flex #queue-suggest:idea:2 [hover(bg=hover)] {click}
+          h_flex #queue-suggest:idea:2 [hover(bg=hover)] {click} tip="Load the map library on demand\nThe Desk found it's half the bundle and every page pays for it."
             div
               div
                 svg own:lightbulb [fg=accent]

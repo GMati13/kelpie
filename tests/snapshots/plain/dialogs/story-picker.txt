@@ -8,7 +8,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
     svg chrome:search [fg=dim]
     Input.new [fg=foreground]
   v_flex #sp-list
-    h_flex #sp-ACME-142 [bg=hover hover(bg=hover)] {click}
+    h_flex #sp-ACME-142 [bg=hover hover(bg=hover)] {click} tip="ACME-142 Offline mode for saved trips\nACME-143's agent needs you"
       div [bg=working]
       v_flex
         h_flex
@@ -20,7 +20,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
           "ACME-143's agent needs you"
       div [fg=dim]
         "Open here"
-    h_flex #sp-ACME-151 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-151 [hover(bg=hover)] {click} tip="ACME-151 Pay with Apple Pay at checkout\nChecks failing on ACME-152 (payments#97)"
       div [bg=blocked]
       v_flex
         h_flex
@@ -32,7 +32,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
           "Checks failing on ACME-152 (payments#97)"
       div [fg=dim]
         "Open here"
-    h_flex #sp-ACME-160 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-160 [hover(bg=hover)] {click} tip="ACME-160 Typo-tolerant search\nChanges requested on ACME-161 (search#233)"
       div [bg=working]
       v_flex
         h_flex
@@ -44,7 +44,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
           "Changes requested on ACME-161 (search#233)"
       div [fg=dim]
         "Open here"
-    h_flex #sp-ACME-171 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-171 [hover(bg=hover)] {click} tip="ACME-171 Dark mode for the dashboard\nApproved, checks pass or none · ready to merge"
       div [bg=done]
       v_flex
         h_flex
@@ -56,7 +56,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
           "Approved, checks pass or none · ready to merge"
       div [fg=dim]
         "Open here"
-    h_flex #sp-ACME-175 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-175 [hover(bg=hover)] {click} tip="ACME-175 Fix the flaky login test\nAgent working · PR in review"
       div [bg=accent]
       v_flex
         h_flex
@@ -68,7 +68,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
           "Agent working · PR in review"
       div [fg=dim]
         "Open here"
-    h_flex #sp-ACME-138 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-138 [hover(bg=hover)] {click} tip="ACME-138 Rate-limit the public API\nPaused · 1 subtask · 1 in progress"
       div [bg=dim]
       v_flex
         h_flex
@@ -78,7 +78,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
             "Rate-limit the public API"
         div [fg=muted]
           "Paused · 1 subtask · 1 in progress"
-    h_flex #sp-ACME-184 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-184 [hover(bg=hover)] {click} tip="ACME-184 Show times in each stop's time zone\n2 subtasks · 2 in progress"
       div [bg=dim]
       v_flex
         h_flex
@@ -88,7 +88,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
             "Show times in each stop's time zone"
         div [fg=muted]
           "2 subtasks · 2 in progress"
-    h_flex #sp-ACME-180 [hover(bg=hover)] {click}
+    h_flex #sp-ACME-180 [hover(bg=hover)] {click} tip="ACME-180 Export an itinerary as PDF\n2 subtasks · 2 to do"
       div [bg=dim]
       v_flex
         h_flex

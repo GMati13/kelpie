@@ -11,7 +11,7 @@ v_flex #story-next [bg=raised border=border]
         "2"
       div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
         svg chrome:chevron-right
-  h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
+  h_flex #queue-next [hover(bg=hover)] {click} tip="ACME-142: ACME-143's agent needs you\nOffline mode for saved trips\nGo there ⌘⇧J"
     div
       div
         div [bg=working/40] ~loop(opacity)

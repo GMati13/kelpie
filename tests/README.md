@@ -194,6 +194,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally, in a fake HOME).
+- `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
+  the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
+  placeholders, so the agents' guide keeps up with the profile's settings.
 - `tests/python/test_plugin.py`: the plugin's MCP server (`plugin/server.py`) against a fake `herdr-app`, its
   manifests, and the evals' stand-in tool list, `plugin/evals/mocks/kelpie/_tools.json`, kept equal to what the
   server lists. After changing a tool, save it again:
