@@ -13,7 +13,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
@@ -22,7 +22,7 @@ import { boardSite, description as boardDescription, doneOption, loadBoard, look
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
-import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
+import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -1033,7 +1033,6 @@ function ordered(items) {
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
 const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Review waiting", "muted"] };
-const AGENT = { blocked: ["Needs you", "working"], working: ["Working", "accent"], done: ["Done", "done"], idle: ["Idle", "muted"] };
 
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
 // each copy runs in its own JavaScript context. So the list alone loads, and puts a trimmed copy of
@@ -1074,32 +1073,38 @@ function limitCard(t, st) {
     .child(div().font_medium().text_color(t.working).child(title))
     .child(div().text_color(t.muted).child(line));
 }
-const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
 const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
 // Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
 // before brings, as the search lags behind a merge or new checks. A merge read here stays until a
-// load shows it; a closed one leaves the lists. 10 minutes at most.
+// load shows it; a closed one leaves the lists. One the quick read found newly opened (`opened`: the
+// id of the profile it was found for, as FRESH serves every profile; an agent's, before the search's
+// index has it) joins that profile's pull requests, and stays until its load shows it. 10 minutes at most.
 const FRESH = {};
 const FRESH_FOR = 10 * 60 * 1000;
 const freshNow = (url) => { const f = FRESH[url]; return f && Date.now() - f.at < FRESH_FOR ? f : null; };
-function withFresh(data) {
+function withFresh(data, profile) {
   if (!data?.prs || !Object.keys(FRESH).some(freshNow)) return data;
   const swap = (list, open) => (list ?? []).flatMap((p) => {
     const f = freshNow(p.url);
     // A review keeps the shape the load gives it (no `merged`), so an unchanged read changes nothing.
     return !f ? [p] : f.pr.closed || (open && f.pr.merged) ? [] : [open ? { ...f.pr, merged: p.merged } : f.pr];
   });
-  return { ...data, prs: swap(data.prs, false), reviews: swap(data.reviews, true) };
+  const known = new Set([...data.prs, ...(data.reviews ?? [])].map((p) => p.url));
+  const opened = Object.keys(FRESH).filter((url) => !known.has(url) && freshNow(url)?.opened === profile && !FRESH[url].pr.closed).map((url) => FRESH[url].pr);
+  return { ...data, prs: [...opened, ...swap(data.prs, false)], reviews: swap(data.reviews, true) };
 }
 // A fresh load's answer, the load having begun at `began`: what was read again before it began is
 // forgotten (the load is as new), but a merge it doesn't show yet; what was read since stays put in.
+// `profile`: the id of the profile loaded (another's newly opened ones are its own load's to settle).
 // Exported for the tests.
-export function settlePulls(data, began) {
+export function settlePulls(data, began, profile) {
   for (const [url, f] of Object.entries(FRESH)) {
+    if (data && f.opened && f.opened !== profile && freshNow(url)) continue;
     const was = (data?.prs ?? []).find((p) => p.url === url);
-    if (!freshNow(url) || (f.at < began && !(f.pr.merged && was && !was.merged))) delete FRESH[url];
+    const ahead = (f.pr.merged && was && !was.merged) || (f.opened && data && !was); // what the search doesn't show yet
+    if (!freshNow(url) || (f.at < began && !ahead)) delete FRESH[url];
   }
-  return withFresh(data);
+  return withFresh(data, profile);
 }
 // Puts a change into a profile's loaded stories: the shared copy every view reads, and the list's own.
 // Written only when it changes something, as every copy draws again on a write (the quick read runs
@@ -1500,6 +1505,7 @@ function pruneShared(profile, data) {
   keep(PR_FOLDS, ([id]) => ids.has(id));
   keep(DONE_OPEN, ([id]) => ids.has(id));
   keep(DONE_CLEAN, ([id]) => ids.has(id));
+  keep(PICKS_ASKED, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile), null, { all: true }).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
@@ -2269,29 +2275,37 @@ export class Stories extends Source {
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
-    }, began));
+    }, began, setup.profile?.id));
   }
 
   // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
-  // away and in one small question, not the searches of a whole load; what they say now is put into
-  // the loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
-  quickPulls(cx) {
+  // away and in one small question, not the searches of a whole load, with your newest open ones (one
+  // an agent has just opened, which the search finds only later); what they say now is put into the
+  // loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
+  //   `direct`: asked for because something just happened (an agent's turn ending), not by the 20 s
+  // timer. Reacting to that is what the quick read is for, so while GitHub's budget runs low only the
+  // full loads and the timer's reads give way (#131); used up, nothing asks, as GitHub refuses anyway.
+  quickPulls(cx, { direct = false } = {}) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
-    // Worth a read only while GitHub's limit has room: low or used up, the loads bring it.
-    if (ctx.setup.github.demo ? demoLimit() : blockedFor(ctx.setup.github.account) || lowFor(ctx.setup.github.account)) return;
-    if (this.quickBusy) { this.quickAgain = true; return; }
+    const account = ctx.setup.github.account;
+    if (ctx.setup.github.demo ? demoLimit() : blockedFor(account) || (!direct && lowFor(account))) return;
+    if (this.quickBusy) { this.quickAgain = this.quickAgain === "direct" || direct ? "direct" : true; return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;
-    const ids = [...(data?.prs ?? []).filter((p) => !p.merged), ...(data?.reviews ?? [])].map((p) => p.id).filter(Boolean);
-    if (!ids.length) return;
+    if (!data) return;
+    const ids = [...(data.prs ?? []).filter((p) => !p.merged), ...(data.reviews ?? [])].map((p) => p.id).filter(Boolean);
+    const known = new Set([...(data.prs ?? []), ...(data.reviews ?? [])].map((p) => p.url));
     this.quickBusy = true;
     cx.spawn(async (cx) => {
       try {
         const at = Date.now();
-        const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null });
-        for (const n of found) FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at };
-        if (found.length) patchLoaded(ctx.profile, withFresh);
+        const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null, owner: ctx.setup.github.owner });
+        for (const n of found) {
+          const opened = FRESH[n.url]?.opened ?? (known.has(n.url) ? null : ctx.profile.id);
+          FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at, ...(opened ? { opened } : {}) };
+        }
+        if (found.length) patchLoaded(ctx.profile, (d) => withFresh(d, ctx.profile.id));
       } catch {
         // the next load or read brings it
       } finally {
@@ -2336,7 +2350,7 @@ export class Stories extends Source {
       const e = sharedData(ctx);
       if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
-      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx);
+      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct" });
       if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
       const st = super.state(cx);
       // A failed load (GitHub's limit, say, which lasts) shows how old the stories shown are, not
@@ -2365,17 +2379,15 @@ export class Stories extends Source {
     super.load(cx, opts);
   }
 
-  // An agent finishing its turn may have pushed or opened a pull request, so Jira and GitHub load
-  // again, but at most once a minute: a burst of agents finishing makes one load now and one more
-  // when the minute is up.
+  // An agent finishing its turn may have pushed, merged or opened a pull request: the quick read
+  // (quickPulls(): its pull requests by id and your newest open ones, 1 point) shows that at once. It
+  // starts no full load of its own: a load after every turn, at most every 30 s, was most of what an
+  // account spent while agents worked (up to ~2,100 points an hour, #131), so the board and the
+  // searches wait for the list's 2-minute timer, or Refresh. A burst of turns ending makes one read,
+  // and one more once it ends (`quickAgain`).
   loadAfterAgent(cx) {
     if (!this.loader) return;
-    this.quickPulls(cx);
-    const wait = FULL_EVERY - (Date.now() - (this.fullAt ?? 0));
-    if (wait <= 0) return this.load(cx, { again: true });
-    if (this.trailing) return;
-    this.trailing = true;
-    cx.timer.after(wait, (cx) => { this.trailing = false; this.load(cx, { again: true }); });
+    this.quickPulls(cx, { direct: true });
   }
 
   // Pauses agents (by key) off the render: their sessions are read first, which takes a moment.
@@ -2544,7 +2556,7 @@ export class Stories extends Source {
       // An agent asking something can be answered from here, over the shown tab (the header has its own);
       // it takes Pause's place (Pause stays in the header and on its key).
       ...(agent.status === "blocked" ? [peekButton(t, `${id}-peek`, agent)] : []),
-      b("show", "Show agent", () => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); setView(st.profile, it, "agent"); }, `Show ${agent.tab_name}: ${AGENT[agent.status][0].toLowerCase()}`),
+      b("show", "Show agent", () => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); setView(st.profile, it, "agent"); }, `Show ${agent.tab_name}: ${agentWords(agent.status)}`),
       ...(agent.status === "blocked" ? [] : [this.carefulButton(t, `${id}-pause`, "Pause", agent.status === "working", (cx) => this.pauseAll(st, [{ key, agent }], cx),
         { tip: "Close its tab and keep its Claude session to resume later", confirmTip: `${agent.tab_name} is working: click again to pause it anyway` })]),
     ];
@@ -2570,10 +2582,9 @@ export class Stories extends Source {
   // done or idle (a skin's mark, else Kelpie's), or paused; empty when it has none.
   agentSlot(t, s) {
     const a = s.agent;
-    const m = a ? statusMark(t, agentState(a.status), { where: "sub", size: 8, color: t[AGENT[a.status][1]], agent: a }) ?? mark(t, agentState(a.status) ?? "idle", 14)
-      : s.paused ? mark(t, "paused", 14) : null;
+    const m = a ? agentMark(t, a.status, { where: "sub", agent: a }) : s.paused ? agentMark(t, "paused", { where: "sub" }) : null;
     return h_flex().id(`sub-mark-${s.key}`).flex_none().w(16).justify_center().items_center()
-      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${AGENT[a.status][0].toLowerCase()}` : "Paused: its session is kept to resume").child(m));
+      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${agentWords(a.status)}` : "Paused: its session is kept to resume").child(m));
   }
 
   // Whether a subtask row shows all its actions: while hovered (`this.hoverSub`, this copy's), and
@@ -4037,6 +4048,24 @@ export class StoryList extends Stories {
     fetchAvatars(entry.data).catch(() => {});
   }
 
+  // Whether picks the person asked for arrived since this copy last looked (PICKS_ASKED, written by
+  // brew()): each copy opens the queue once per run, per profile, so another profile's run opens it
+  // the next time that profile shows. Not for picks that came before this copy was drawn (a reload),
+  // nor when the person folded the queue after asking: their fold wins. A queue of one has nothing
+  // to open, so the run counts as seen; while no pick of it shows, it doesn't.
+  picksArrived(profile, many, picks) {
+    const born = this.queueBorn ?? 0;
+    const run = (shared(PICKS_ASKED) ?? {})[profile?.id];
+    const seen = (this.queueSeen ??= {});
+    if (!run || run.at <= (seen[profile.id] ?? 0)) return false;
+    // While none of its picks shows (set aside on this draw, say), the run isn't used up.
+    if (!picks) return false;
+    seen[profile.id] = run.at;
+    // Picks last a day (SUGGEST_FOR): a run older than that has nothing left to show, as has one
+    // whose picks were all dropped or set aside since.
+    return many && run.done >= born && Date.now() - run.done < SUGGEST_FOR && !((this.queueFolded?.[profile.id] ?? 0) > run.at);
+  }
+
   // Next: one card, the whole queue's. A header line ("Next", how many items, Claude's picks as a ✨
   // badge, the chevron) over, folded, the queue's most urgent item, or, unfolded, the whole queue
   // inside the same border (queueList()), in order, the item shown lit: Next goes to the row after it.
@@ -4053,12 +4082,25 @@ export class StoryList extends Stories {
     // A queue of one has nothing more to show unfolded: no chevron, and an open queue that drops to
     // one item folds rather than stay a list of one (#64).
     const many = queue.length > 1;
+    const scroll = () => this.listScrolls?.get(st.profile?.id ?? null).box;
+    // Opened for another profile's picks: that profile's alone, so this one shows folded.
+    if (this.queueOpenFor && this.queueOpenFor !== st.profile?.id) { this.queueOpen = false; this.queueOpenFor = null; }
+    // Picks the person asked for (a What next? run of theirs) open the queue once (#124), its top in
+    // view as the chevron brings it: what needs you stays first, the picks under it. Already open,
+    // it stays where the person has it, as does the list.
+    if (this.picksArrived(st.profile, many, picks) && !this.queueOpen) {
+      this.queueOpen = true;
+      this.queueOpenFor = st.profile?.id;
+      scroll()?.scroll_to_item(0);
+    }
     if (!many) this.queueOpen = false;
     // Opening it brings the card's top into view: it scrolls with the list (#125), which may be
     // scrolled past it. The list's first child is an empty line, so "to the top" is its top.
     const toggle = (_e, cx) => {
       this.queueOpen = !this.queueOpen;
-      if (this.queueOpen) this.listScrolls?.get(st.profile?.id ?? null).box.scroll_to_item(0);
+      this.queueOpenFor = null;
+      if (this.queueOpen) scroll()?.scroll_to_item(0);
+      else this.queueFolded = { ...this.queueFolded, [st.profile?.id]: Date.now() };
       cx.notify();
     };
     const open = Boolean(this.queueOpen);
@@ -4201,6 +4243,9 @@ export class StoryList extends Stories {
   }
 
   render(cx) {
+    // When this copy was first drawn, whatever it showed (picksArrived()): an "All clear" Next
+    // whose run brings picks still opens on them.
+    this.queueBorn ??= Date.now();
     const { st, t, early, items, reviews, shown, done } = this.prepare(cx);
     if (early) return early;
     orderAgents(st.profile, items);
@@ -5121,6 +5166,21 @@ const BREWING = "kelpie.next.brewing";
 const BREW_FOR = 10 * 60 * 1000;
 const brewingIn = (profile) => { const at = (shared(BREWING) ?? {})[profile?.id]; return at && Date.now() - at < BREW_FOR + 30000 ? at : null; };
 const setBrewing = (profile, at) => setShared(BREWING, { ...(shared(BREWING) ?? {}), [profile.id]: at });
+// A run the person started that handed picks in: { [profile id]: { at: its start, done: when it
+// ended } }, so every copy showing that profile opens Next's queue once (picksArrived()).
+const PICKS_ASKED = "kelpie.next.picked";
+// Whether any of the profile's picks shows, not set aside as it arrived (applyPicks()): only then is
+// there something for the opened queue to show.
+const picksShow = (profile) => ((shared(SUGGESTED) ?? {})[profile.id]?.items ?? []).some((x) => !x.aside);
+const setPicked = (profile, at) => setShared(PICKS_ASKED, { ...(shared(PICKS_ASKED) ?? {}), [profile.id]: { at, done: Date.now() } });
+// How a run that handed picks in ended, the demo's and Claude's alike: none (`none` says why), all
+// already in hand (under way, needing you, finished…), said, as the queue has nothing new to open
+// on, or some to show, noted so Next opens on them.
+function brewed(profile, started, count, none) {
+  if (!count) notify({ title: "No suggestions this time", body: none, level: "info", timeout: 6000 });
+  else if (picksShow(profile)) setPicked(profile, started);
+  else notify({ title: "Nothing new to suggest", body: "Everything Claude suggested is already under way or waiting on you.", level: "info", timeout: 6000 });
+}
 
 // Asks Claude for picks: `claude -p` on the profile's account, in its folder, no session saved,
 // with no file-editing tools (read only as the prompt says; what else it may use is its own
@@ -5142,7 +5202,7 @@ export async function brew(profile, task) {
   try {
     if (isDemo(profile)) {
       const { kept } = await applyPicks(profile, await demoSuggest());
-      if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
+      brewed(profile, started, kept.length, "The demo's fixture has no picks.");
       return;
     }
     if (!(await hasPlugin(profile))) { await askPlugin(profile, "what-next"); return; }
@@ -5157,7 +5217,7 @@ export async function brew(profile, task) {
     if (!out || out.is_error) throw new Error(String(out?.result ?? r.stderr ?? "").trim().split("\n").pop() || `Claude stopped (code ${r.code}).`);
     const got = (shared(SUGGESTED) ?? {})[profile.id];
     if (!got || got.at < started) throw new Error(`Claude finished without handing its suggestions to Kelpie. ${String(out.result ?? "").trim().split("\n").pop()}`.trim());
-    if (!got.items?.length) notify({ title: "No suggestions this time", body: "Claude found nothing worth suggesting.", level: "info", timeout: 6000 });
+    brewed(profile, started, got.items?.length ?? 0, "Claude found nothing worth suggesting.");
   } catch (e) {
     notify({ title: "What next? didn't work", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 });
   } finally {

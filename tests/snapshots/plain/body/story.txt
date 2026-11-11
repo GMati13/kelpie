@@ -110,7 +110,7 @@ v_flex [fg=foreground]
                       h_flex [bg=background]
                         h_flex #sub-agent-ACME-143-peek [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Answer ACME-143 here, without switching spaces"
                           "Peek"
-                  h_flex #sub-mark-ACME-143 tip="ACME-143: needs you"
+                  h_flex #sub-mark-ACME-143 tip="ACME-143: waiting for you"
                     div
                       div [bg=working/40] ~loop(opacity)
                         div [bg=working]

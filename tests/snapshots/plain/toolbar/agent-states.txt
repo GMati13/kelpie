@@ -1,0 +1,36 @@
+== needs you
+h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      div [bg=working/40] ~loop(opacity)
+        div [bg=working]
+  div
+    "Cache trips for offline use"
+== working
+h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      svg chrome:spinner [fg=accent] ~spin
+  div
+    "Cache trips for offline use"
+== done
+h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      svg chrome:check [fg=done]
+  div
+    "Cache trips for offline use"
+== idle
+h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      div [border=muted]
+  div
+    "Cache trips for offline use"
+== unknown
+h_flex #tab-t0-0 [bg=selected fg=foreground] {hover down:left move up:left click down:right} tip="ACME-143"
+  div
+    div
+      div [bg=unknown opacity=0.6]
+  div
+    "Cache trips for offline use"

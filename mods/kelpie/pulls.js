@@ -8,7 +8,7 @@ import { exec } from "herdr";
 import { skinTheme } from "./skins/index.js";
 import { SMALL, ago, avatar, chip, modFile, openExternal, textButton } from "./ui.js";
 import { Source, empty, frame, needsSetup, startAgent } from "./source.js";
-import { demoApprove, demoPullBody, demoPulls, demoReadPulls } from "./demo.js";
+import { demoApprove, demoNewestPulls, demoPullBody, demoPulls, demoReadPulls } from "./demo.js";
 import { guarded } from "./ghlimit.js";
 
 // What the list keeps of a pull request; `id` is its node id, for reading it again (readPulls()).
@@ -57,16 +57,27 @@ export async function searchPulls(q, { light = false, demo = false, account = nu
 // changed them (an agent's turn ending) and while they're in flight: quick, and unlike the search
 // (whose index lags behind a merge or new checks) up to date. One constant query, the ids variables,
 // each checked first; `state` says merged or closed. At most 100 (GitHub's most for nodes(ids:)).
+// With `owner`, the same question also asks for your newest open pull requests (GitHub's own list of
+// them, not the search, so one an agent has just opened is there at once), only those under the
+// owner's address kept: the quick read adds the ones the list doesn't have yet.
 const NODE_ID = /^[A-Za-z0-9_=-]{1,100}$/;
-const READ = `query KelpiePulls($ids: [ID!]!) { rateLimit { remaining limit resetAt } nodes(ids: $ids) { ... on PullRequest { state ${FIELDS} } } }`;
-export async function readPulls(ids, { demo = false, account = null } = {}) {
+const NODES = `nodes(ids: $ids) { ... on PullRequest { state ${FIELDS} } }`;
+const NEWEST = `viewer { pullRequests(first: 10, states: OPEN, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { state ${FIELDS} } } }`;
+const READ = `query KelpiePulls($ids: [ID!]!) { rateLimit { remaining limit resetAt } ${NODES} }`;
+const READ_NEW = `query KelpiePullsNew($ids: [ID!]!) { rateLimit { remaining limit resetAt } ${NODES} ${NEWEST} }`;
+const ONLY_NEW = `query KelpieNewPulls { rateLimit { remaining limit resetAt } ${NEWEST} }`;
+export async function readPulls(ids, { demo = false, account = null, owner = null } = {}) {
   const list = [...new Set(ids.filter((id) => typeof id === "string" && NODE_ID.test(id)))].slice(0, 100);
-  if (!list.length) return [];
-  if (demo) return (await demoReadPulls(list)).map(decided);
-  const r = await gh(account, ["api", "graphql", ...list.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${READ}`]);
+  if (!list.length && !owner) return [];
+  const under = (n) => !owner || String(n?.url ?? "").toLowerCase().startsWith(`https://github.com/${String(owner).toLowerCase()}/`);
+  if (demo) return dedupe([...(list.length ? await demoReadPulls(list) : []), ...(owner ? (await demoNewestPulls()).filter(under) : [])]).map(decided);
+  const query = !owner ? READ : list.length ? READ_NEW : ONLY_NEW;
+  const r = await gh(account, ["api", "graphql", ...list.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${query}`]);
   if (r.code !== 0) throw new Error(r.stderr.trim().split("\n")[0] || "gh couldn't read the pull requests.");
-  return (JSON.parse(r.stdout).data?.nodes ?? []).filter((n) => n?.number).map(decided);
+  const data = JSON.parse(r.stdout).data;
+  return dedupe([...(data?.nodes ?? []), ...(data?.viewer?.pullRequests?.nodes ?? []).filter(under)]).filter((n) => n?.number).map(decided);
 }
+const dedupe = (list) => list.filter((n, i) => n && list.findIndex((m) => m?.url === n.url) === i);
 
 // Approves a pull request as the person, on their own click in a review's header (never an agent's
 // message: agents approve through their own access). Only a github.com pull request's address is

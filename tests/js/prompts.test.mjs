@@ -202,6 +202,25 @@ describe("What next? runs read only, and hands its picks in through the plugin",
     const [[n]] = errors();
     assert.match(n.body, /without handing its suggestions to Kelpie\. I couldn't reach Jira\./);
   });
+  // Picks handed in open Next's queue (#124): the run is noted for every copy; one that ends with
+  // none, or fails, isn't.
+  test("a run that hands picks in is noted, so Next opens on them; a failed or empty one isn't", async () => {
+    const picked = () => mock.sharedValue("kelpie.next.picked")?.w ?? null;
+    world();
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "t");
+    assert.equal(picked(), null, "failed: not noted");
+    world({ handIn: () => mock.state.shared.set("kelpie.next.suggested", { w: { at: Date.now(), items: [] } }) });
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "t");
+    assert.equal(picked(), null, "no picks: not noted");
+    world({ handIn: () => mock.state.shared.set("kelpie.next.suggested", { w: { at: Date.now(), items: [{ key: "AA-1", action: "Do it", aside: "It's in progress." }] } }) });
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "t");
+    assert.equal(picked(), null, "every pick set aside: nothing to show, not noted");
+    assert.ok(mock.of("notify").some(([n]) => n.title === "Nothing new to suggest"), "and said, not silent");
+    world({ handIn: handed });
+    const before = Date.now();
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "t");
+    assert.ok(picked()?.at >= before && picked().done >= picked().at, "noted with the run's start and end");
+  });
   test("picks from before the run don't count as handed in", async () => {
     mock.state.shared.set("kelpie.next.suggested", { w: { at: Date.now() - 60e3, items: [{ key: "AA-1", action: "Do it" }] } });
     world();
