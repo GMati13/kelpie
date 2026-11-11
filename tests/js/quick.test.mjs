@@ -144,14 +144,14 @@ describe("an agent's turn ending reads the pull requests again at once", () => {
   test("checks turned green show without waiting for the next full load", async () => {
     assert.equal(checksOf(shown(WEB423)), "PENDING");
     setShared("kelpie.demo.at", Date.now() - 21000); // they turned green meanwhile
-    list.fullAt = Date.now(); // a full load just ran: the next waits its 30 s
+    list.fullAt = 0; // long since the last full load: a turn ending still starts none (#146)
     let loads = 0;
     const fetch = list.fetch.bind(list);
     list.fetch = (ctx) => { loads++; return fetch(ctx); };
     list.loadAfterAgent(cx);
     await cx.settle(10);
     assert.equal(checksOf(shown(WEB423)), "SUCCESS");
-    assert.equal(loads, 0, "no full load: that waits its turn");
+    assert.equal(loads, 0, "no full load: the board waits for the timer");
   });
 
   test("checks running count as in flight, so the 20 s timer reads them", () => {

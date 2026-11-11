@@ -1,5 +1,5 @@
 // When the story list loads again (Source.load in source.js, Stories in stories.js): a reload asked
-// for while a load runs (Refresh, Kelpie's own action, an agent's turn ending) isn't dropped. The load
+// for while a load runs (Refresh, Kelpie's own action) isn't dropped. The load
 // running began before the change, so the list loads once more as soon as it ends, instead of
 // showing the old state until the next 2-minute timer.
 import { afterEach, beforeEach, test } from "node:test";
@@ -54,14 +54,16 @@ test("Refresh pressed while a load runs loads again once it ends: the change sho
   assert.equal(list.asked.length, 2, "and only once");
 });
 
-test("an agent's turn ending while a load runs loads again once it ends", async () => {
-  list.fullAt = 0; // its minute is up
+test("KELPIE-146: an agent's turn ending loads no board, while a load runs or after it", async () => {
+  // The quick read shows what the turn changed (quick.test.mjs); the board waits for the timer.
+  list.fullAt = 0; // long since the last load
   list.loadAfterAgent(cx);
   list.asked[0](checks("PENDING"));
   await settle();
   list.state(cx);
+  list.loadAfterAgent(cx);
   await settle();
-  assert.equal(list.asked.length, 2);
+  assert.equal(list.asked.length, 1);
 });
 
 test("a timer's or a stale copy's request during a load isn't kept: that load answers it", async () => {
