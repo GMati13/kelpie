@@ -533,3 +533,17 @@ test("a deleted profile's run note is pruned with the next load", async () => {
   await draw(new StoryList());
   assert.deepEqual(Object.keys(mock.sharedValue("kelpie.next.picked")), [DEMO]);
 });
+
+// A deleted profile's stories copy (80 KB and more) and every other entry kept by profile went on
+// living in shared state, written out with every write of it (#39).
+test("a deleted profile's stories copy and other entries are pruned with the next load", async () => {
+  setupDemoWorld({ stories });
+  const keys = ["kelpie.stories.data", "kelpie.stories.preview", "kelpie.stories.note", "kelpie.next.asks", "kelpie.next.suggested",
+    "kelpie.next.brewing", "kelpie.point", "kelpie.clean.leftovers", "kelpie.clean.checking", "kelpie.pulls.folded", "kelpie.done.open"];
+  for (const key of keys) putShared(key, { ...(mock.sharedValue(key) ?? {}), gone: { at: NOW } });
+  putShared("kelpie.paused", { ...(mock.sharedValue("kelpie.paused") ?? {}), gone: { "ACME-1": { id: "s" } } });
+  await draw(new StoryList());
+  for (const key of keys) assert.ok(!("gone" in (mock.sharedValue(key) ?? {})), `${key} keeps the deleted profile's entry`);
+  assert.ok("gone" in mock.sharedValue("kelpie.paused"), "paused sessions stay");
+  assert.ok(DEMO in mock.sharedValue("kelpie.stories.data"), "the shown profile's copy stays");
+});
