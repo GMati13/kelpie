@@ -550,7 +550,10 @@ export async function watchPlaying() {
   playingBusy = true;
   try {
     let folders = [];
-    const pids = playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout);
+    // No browser running in any slot: nothing of it can play, so pmset isn't asked (every 3 s, for
+    // everyone who never opens Web).
+    const browsers = terminals().some((x) => isSlot(x.name) && x.state === "live");
+    const pids = browsers ? playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout) : [];
     if (pids.length) folders = playingFolders((await exec("ps", ["eww", "-o", "command=", "-p", pids.join(",")]).catch(() => null))?.stdout);
     // The demo has no browser: its fixture says whether it plays.
     for (const p of profiles()) if (isDemo(p) && demoPlaying()) folders.push(p.id.replace(/[^A-Za-z0-9_-]/g, "-"));
