@@ -28,7 +28,7 @@ describe("sendToClaude sends to Claude", () => {
       foreground = fg;
       await sendToClaude("t1", "hello");
       assert.deepEqual(mock.of("hc")[0][0], ["get", "t1", "--json"]);
-      assert.deepEqual(sends(), [["send", "t1", "hello"]]);
+      assert.deepEqual(sends(), [["send", "--json", "--", "t1", "hello"]]);
     });
   }
 });
@@ -63,6 +63,35 @@ describe("sendToClaude refuses anything else", () => {
   });
 });
 
+// hc answers a refused send with an exit code, not a rejection: taken as sent, Kelpie once said
+// "Sent" for a message that never went (KELPIE-120).
+describe("sendToClaude says when hc didn't send", () => {
+  const refuse = (answer) => {
+    mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude", argv: ["claude"] } }), stderr: "" } : answer);
+  };
+  test("an agent blocked on a question", async () => {
+    refuse({ code: 5, stdout: JSON.stringify({ error: { kind: "blocked", message: "t1 is blocked" } }), stderr: "" });
+    await assert.rejects(sendToClaude("t1", "hello"), /waiting for your answer/);
+  });
+  test("an agent still settling", async () => {
+    refuse({ code: 5, stdout: JSON.stringify({ error: { kind: "unavailable", message: "t1 is still starting: its output has not settled" } }), stderr: "" });
+    await assert.rejects(sendToClaude("t1", "hello"), /still starting or busy printing/);
+  });
+  test("an error hc has no plain words for keeps its own message", async () => {
+    refuse({ code: 4, stdout: JSON.stringify({ error: { kind: "config", message: "bad draft_wait" } }), stderr: "" });
+    await assert.rejects(sendToClaude("t1", "hello"), /bad draft_wait/);
+  });
+  test("a failure with no JSON at all", async () => {
+    refuse({ code: 1, stdout: "", stderr: "" });
+    await assert.rejects(sendToClaude("t1", "hello"), /code 1/);
+  });
+  test("text starting with a dash goes after --, never read as an option", async () => {
+    refuse(undefined);
+    await sendToClaude("t1", "--force yes");
+    assert.deepEqual(sends(), [["send", "--json", "--", "t1", "--force yes"]]);
+  });
+});
+
 // Every hc() call in the mods is a literal list whose first word is known, and the only "send" is
 // sendToClaude's own: a message typed into a shell would run as a command.
 const jsFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -87,6 +116,6 @@ test("every hc send in the mods goes through sendToClaude", () => {
     }
   }
   assert.equal(seen.length, 1, `one hc send: ${seen}`);
-  assert.match(bodyOf(readRepo("mods/kelpie/config.js"), "export async function sendToClaude(address, text) {"), /return hc\(\["send", address, text\]\);/);
+  assert.match(bodyOf(readRepo("mods/kelpie/config.js"), "export async function sendToClaude(address, text) {"), /await hc\(\["send", "--json", "--", address, text\]\);/);
   assert.match(seen[0], /^mods\/kelpie\/config\.js:/);
 });

@@ -927,7 +927,27 @@ export async function sendToClaude(address, text) {
     || (/(^|\/)node$/.test(first ?? "") && /(^|\/)claude(\.m?js)?$|\/@anthropic-ai\/claude-code\/[\w./-]*\.m?js$/.test(script ?? ""))
     || (/(^|\/)sh$/.test(first ?? "") && /\/demo\/agent\.sh$/.test(script ?? ""));
   if (!claude) throw new Error(`it isn't running Claude (it runs ${fg.name || "something unknown"}), so nothing was sent`);
-  return hc(["send", address, text]);
+  // hc answers a send it refused (the agent blocked, still settling, gone) with an exit code, not a
+  // rejection, so that's checked: taken as sent, Kelpie said "Sent" for a message that never went.
+  // The text goes after `--`, so one starting with a dash is never read as an option.
+  const sent = await hc(["send", "--json", "--", address, text]);
+  if (sent.code !== 0) throw new Error(sendError(sent));
+  return sent;
+}
+
+// Why hc didn't send, in plain words: its error's kind, else its own message (nothing was sent).
+const SEND_ERRORS = {
+  blocked: "it's waiting for your answer: answer it first",
+  unavailable: "it's still starting or busy printing: try again in a moment",
+  finished: "it has ended",
+  not_found: "its terminal is gone",
+  cancelled: "the send was cancelled",
+};
+function sendError(r) {
+  let err = {};
+  try { err = JSON.parse(r.stdout || r.stderr || "{}").error ?? {}; } catch { /* not JSON: its text below */ }
+  const why = SEND_ERRORS[err.kind] ?? err.message ?? (r.stderr || r.stdout || "").trim().split("\n")[0];
+  return why || `the send ended with code ${r.code}`;
 }
 
 // Runs one of a profile's commands (commands.leftovers, commands.cleanUp, commands.status) for a ticket key, in the
