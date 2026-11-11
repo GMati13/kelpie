@@ -85,6 +85,15 @@ describe("sendToClaude says when hc didn't send", () => {
     refuse({ code: 1, stdout: "", stderr: "" });
     await assert.rejects(sendToClaude("t1", "hello"), /code 1/);
   });
+  // hc holds a send behind a draft for up to a minute, and Herdr stops a mod's hc after 30 s: the
+  // message never went, and its error named Herdr's internals.
+  test("a send Herdr stopped after 30 s says why in plain words", async () => {
+    mock.on.hc = (args) => {
+      if (args[0] === "get") return { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" };
+      throw new Error("`herdr.hc`: hc took longer than 30 s and was stopped.");
+    };
+    await assert.rejects(sendToClaude("t1", "hello"), (e) => /typed in it and not sent yet/.test(e.message) && !/herdr\.hc/.test(e.message));
+  });
   test("text starting with a dash goes after --, never read as an option", async () => {
     refuse(undefined);
     await sendToClaude("t1", "--force yes");
@@ -116,6 +125,6 @@ test("every hc send in the mods goes through sendToClaude", () => {
     }
   }
   assert.equal(seen.length, 1, `one hc send: ${seen}`);
-  assert.match(bodyOf(readRepo("mods/kelpie/config.js"), "export async function sendToClaude(address, text) {"), /await hc\(\["send", "--json", "--", address, text\]\);/);
+  assert.match(bodyOf(readRepo("mods/kelpie/config.js"), "export async function sendToClaude(address, text) {"), /await hc\(\["send", "--json", "--", address, text\]\)/);
   assert.match(seen[0], /^mods\/kelpie\/config\.js:/);
 });

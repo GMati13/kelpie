@@ -930,10 +930,15 @@ export async function sendToClaude(address, text) {
   // hc answers a send it refused (the agent blocked, still settling, gone) with an exit code, not a
   // rejection, so that's checked: taken as sent, Kelpie said "Sent" for a message that never went.
   // The text goes after `--`, so one starting with a dash is never read as an option.
-  const sent = await hc(["send", "--json", "--", address, text]);
+  // hc holds a send while the person has something typed and not sent in that terminal (up to a
+  // minute), and Herdr stops a mod's hc after 30 s: then nothing is delivered (seen in the demo).
+  const sent = await hc(["send", "--json", "--", address, text]).catch((e) => {
+    throw new Error(/longer than/.test(String(e?.message ?? e)) ? HELD : String(e?.message ?? e));
+  });
   if (sent.code !== 0) throw new Error(sendError(sent));
   return sent;
 }
+const HELD = "it held the message back for 30 s, most likely behind something typed in it and not sent yet: send or clear that, then try again";
 
 // Why hc didn't send, in plain words: its error's kind, else its own message (nothing was sent).
 const SEND_ERRORS = {
