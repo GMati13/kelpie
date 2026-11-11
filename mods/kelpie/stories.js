@@ -406,6 +406,12 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     if (p) kids.set(p, [...(kids.get(p) ?? []), c]);
   }
   const mine = new Set(data.mine.map((i) => i.key));
+  // Whether a ticket is the person's, wherever Kelpie asks (the subtask groups, the progress bar,
+  // sinking, Move to Done, Next): on a board worked alone (the load's `solo`, board.js) every ticket
+  // in scope is, whoever it's assigned to; else the ones the board gives as theirs. `assignedToYou`
+  // stays what the board says, for the avatar's "(you)": a solo load doesn't ask whose they are.
+  const yours = (k) => data.solo === true || mine.has(k);
+  const assignedToYou = (k) => data.solo !== true && mine.has(k);
   const kept = new Set(data.kept ?? []);
   const columns = data.columns ?? [];
   const from = handoverFrom(columns, handover);
@@ -426,17 +432,17 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     const children = kids.get(key) ?? [];
     const sub = (c) => ({
       key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, tags: tagsOf(c.fields, usualSub), status: c.fields?.status?.name,
-      category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
+      category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: yours(c.key), you: assignedToYou(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
     });
-    const own = children.filter((c) => mine.has(c.key));
+    const own = children.filter((c) => yours(c.key));
     // Kept only as something of it is here (data.kept, hereKeys()), with nothing of it yours any more:
     // reassigned, to the people its subtasks are assigned to, else the story's assignee.
     const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
-    const gone = kept.has(key) && !mine.has(key) && !own.length;
+    const gone = kept.has(key) && !yours(key) && !own.length;
     return {
-      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: yours(key), you: assignedToYou(key),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
@@ -2273,7 +2279,7 @@ export class Stories extends Source {
     // else (hereKeys()): the board is asked for those by key too.
     const prior = this.cache?.[key]?.data ?? null;
     const keep = { keys: hereKeys(setup.profile, prior), projects: prior ? [...projectsOf(prior)] : [], repos: prior?.repos ?? {} };
-    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await loadBoard(boardOf(setup), keep);
+    const { site, columns, sprints, mine, parents, children, links, repos, project, kept, solo, cut } = await loadBoard(boardOf(setup), keep);
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
@@ -2283,6 +2289,7 @@ export class Stories extends Source {
     return settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
+      ...(solo ? { solo: true } : {}), ...(cut ? { cut } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began, setup.profile?.id));
@@ -2807,7 +2814,7 @@ export class Stories extends Source {
         // (fittedTags()), so they give way before the title and never push the status off the line.
         .child(it.tags?.length ? this.fittedTags(t, it.tags, "story-tags", `head:${it.key}`) : div().flex_1())
         .when(Boolean(subMeter), (el) => el.child(div().flex_none().child(subMeter)))
-        .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.mine, it.avatar)))
+        .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.you, it.avatar)))
         .when(Boolean(it.status), (el) => el.child(it.review || it.pr ? div().flex_none().child(lozenge(t, it.status, it.category))
           : this.statusChip(t, st, it.key, it.status, it.category, "story-status-menu", cx))))
       .child(h_flex().flex_none().gap(6).items_center().ml(8).children(actions))
@@ -3050,7 +3057,7 @@ export class Stories extends Source {
       .on_hover(hover(s.key))
       .child(h_flex().gap(10).items_center().min_w(0)
         // Who it's assigned to leads the row: the first thing looked for.
-        .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.mine, s.avatar))
+        .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.you, s.avatar))
         .child(skinFont(div(), "numbers").flex_none().w(84).text_size(SMALL).text_color(t.dim).child(s.key))
         // As high as a button, so a row is the same height with its actions shown or not.
         .child(h_flex().id(`sub-main-${s.key}`).relative().flex_1().min_w(0).h(CONTROL).items_center()
@@ -4413,6 +4420,10 @@ export class StoryList extends Stories {
       .child(v_flex().flex_none().px(INSET).pb(10).gap(8)
         .child(h_flex().flex_none().gap(8).items_center().child(div().flex_1().min_w(0).child(fresh)).when(Boolean(cleanAll), (el) => el.child(cleanAll)))
         .when(Boolean(limit), (el) => el.child(limit))
+        // Past a Project load's page limit the rest is left out (project.js `cut`, most likely on a
+        // board worked alone, read whole), and the list says so rather than seem whole.
+        .when(Boolean(st.data?.cut), (el) => el.child(div().id("stories-cut").flex_none().text_size(SMALL).text_color(t.muted)
+          .child(`Only the first ${String(Number(st.data.cut)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} items of the board were read: stories further down its order don't show.`)))
         .when(Boolean(said), (el) => el.child(div().id("stories-note").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(said.full ?? said.text).child(said.text)))
         .when(counts.some(([n]) => n), (el) => el.child(h_flex().flex_wrap().gap(12).items_center().children(counts.filter(([n]) => n)
           .map(([n, label, c, state]) => countBadge(t, `count-${state}`, state, n, `${n} ${label}`, t[c]).when(n === 1, (x) => x.child("1")))))))

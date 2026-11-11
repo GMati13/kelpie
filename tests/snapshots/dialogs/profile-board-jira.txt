@@ -168,7 +168,7 @@ div #work-setup-fit [bg=#00000080]
             div
               "I work alone"
             div [fg=dim]
-              "Off: the stories past your part are listed as waiting on others."
+              "Off: only the stories assigned to you show, and those past your part are listed as waiting on others."
           h_flex [bg=border]
             div [bg=muted]
         h_flex #setup-move-to-done {click}

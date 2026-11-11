@@ -25,6 +25,9 @@ import { issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setSta
 import { loadProject } from "./project.js";
 
 const PAGES = 5; // up to 500 tickets a search
+// Whose tickets the stories' search finds: the person's own, or on a board worked alone everyone's
+// and nobody's. Constants, picked by the flag.
+const WHOSE = Object.freeze({ mine: " AND assignee = currentUser()", all: "" });
 
 // What a GitHub Project's Status option means to Kelpie, as Jira's status categories do: a closed
 // issue, or one in the last option, is done; the first option, or one named as work not started yet
@@ -71,7 +74,8 @@ async function byKeys(cfg, keys, and = null) {
 // request; stories.js hereKeys()) that the search by assignee left out, as they're someone else's now
 // (or out of the sprint): { parents, children, mine } to add to the load. Only keys of the board's
 // projects (this load's, or `keep.projects`, the last load's) are asked for; a subtask's key brings
-// its story. `mine`: those of them Jira gives as the person's own (`assignee = currentUser()`).
+// its story. `mine`: those of them Jira gives as the person's own (`assignee = currentUser()`), or
+// all of them on a board worked alone (`cfg.solo`), where every ticket is the person's.
 async function keptJira(cfg, keep, have) {
   const projects = new Set([...(keep.projects ?? []), ...[...have].map((k) => k.split("-")[0])]);
   const asked = [...new Set(keep.keys ?? [])].filter((k) => KEY.test(k) && !have.has(k) && projects.has(k.split("-")[0]));
@@ -85,14 +89,17 @@ async function keptJira(cfg, keep, have) {
   const stories = new Set(parents.map((i) => i.key));
   const children = all.filter((i) => i.fields?.issuetype?.subtask && stories.has(i.fields?.parent?.key));
   const keys = [...parents, ...children].map((i) => i.key);
-  const own = keys.length ? new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key)) : new Set();
+  const own = cfg.solo === true ? new Set(keys) : keys.length ? new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key)) : new Set();
   return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => own.has(i.key)) };
 }
 
-// The board's current work as it answers it: { site, columns, sprints, mine, parents, children }, the
-// issues still as the board gave them (the list trims them). The stories are the parents of your
+// The board's current work as it answers it: { site, columns, sprints, mine, parents, children, solo },
+// the issues still as the board gave them (the list trims them). The stories are the parents of your
 // subtasks and your own issues, in the board's order, with all of their subtasks, then the stories
 // `keep` names that the board no longer gives as yours (keptJira(), project.js), each with its subtasks.
+// On a board worked alone (`cfg.solo`, "I work alone"; `solo: true` in the answer) every ticket in
+// scope is the person's, assigned to anyone or nobody: the search has no assignee clause (one of two
+// constants, never built from a value), and every issue it finds is in `mine`.
 export async function loadBoard(board, keep = {}) {
   if (board.kind === "project") return loadProject(board, keep);
   const cfg = board.cfg;
@@ -104,7 +111,8 @@ export async function loadBoard(board, keep = {}) {
   const columns = (config.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
   // A scrum board's active sprints, or a Kanban board's open work (sprint.js boardScope).
   const { sprints, jql: scope } = boardScope(active, config);
-  const mine = scope ? await search(cfg, `${scope} AND assignee = currentUser() ORDER BY Rank`) : [];
+  const solo = cfg.solo === true;
+  const mine = scope ? await search(cfg, `${scope}${solo ? WHOSE.all : WHOSE.mine} ORDER BY Rank`) : [];
   const parents = new Map();
   for (const i of mine) {
     const p = i.fields?.issuetype?.subtask ? i.fields.parent : i;
@@ -117,7 +125,8 @@ export async function loadBoard(board, keep = {}) {
   for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
   const children = found.filter((i) => !parents.has(i.key));
   const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]));
-  return { site: active.site, columns, sprints, mine: [...mine, ...kept.mine], parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
+  // Worked alone, a story's subtasks found beside it are the person's too, whoever has them.
+  return { site: active.site, columns, sprints, mine: [...mine, ...(solo ? children : []), ...kept.mine], ...(solo ? { solo: true } : {}), parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
 }
 
 // The board's own address (a link to it is one an agent may offer, stories.js askLink()), from what

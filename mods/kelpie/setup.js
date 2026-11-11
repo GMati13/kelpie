@@ -699,7 +699,7 @@ export class Setup {
             this.handover ? { id: "setup-handover-reset", action: (_e, cx) => { this.handover = null; cx.notify(); } } : null)
           : hint(onJira ? "Check the connection to choose the column where your part of a story is done." : "Check the Project to choose the column where your part of a story is done."),
         toggle("setup-solo", "I work alone", this.solo, (_e, cx) => { this.solo = !this.solo; cx.notify(); },
-          this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
+          this.solo ? `Every story in scope is yours, assigned to anyone or nobody, so all of them show. Nobody else has the stories past your part: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: only the stories assigned to you show, and those past your part are listed as waiting on others."),
         toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
           this.moveToDone ? "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
       ],
