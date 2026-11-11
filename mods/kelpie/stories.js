@@ -1074,7 +1074,6 @@ function limitCard(t, st) {
     .child(div().font_medium().text_color(t.working).child(title))
     .child(div().text_color(t.muted).child(line));
 }
-const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
 const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
 // Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
 // before brings, as the search lags behind a merge or new checks. A merge read here stays until a
@@ -2283,12 +2282,15 @@ export class Stories extends Source {
   // away and in one small question, not the searches of a whole load, with your newest open ones (one
   // an agent has just opened, which the search finds only later); what they say now is put into the
   // loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
-  quickPulls(cx) {
+  //   `direct`: asked for because something just happened (an agent's turn ending), not by the 20 s
+  // timer. Reacting to that is what the quick read is for, so while GitHub's budget runs low only the
+  // full loads and the timer's reads give way (#131); used up, nothing asks, as GitHub refuses anyway.
+  quickPulls(cx, { direct = false } = {}) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
-    // Worth a read only while GitHub's limit has room: low or used up, the loads bring it.
-    if (ctx.setup.github.demo ? demoLimit() : blockedFor(ctx.setup.github.account) || lowFor(ctx.setup.github.account)) return;
-    if (this.quickBusy) { this.quickAgain = true; return; }
+    const account = ctx.setup.github.account;
+    if (ctx.setup.github.demo ? demoLimit() : blockedFor(account) || (!direct && lowFor(account))) return;
+    if (this.quickBusy) { this.quickAgain = this.quickAgain === "direct" || direct ? "direct" : true; return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;
     if (!data) return;
@@ -2348,7 +2350,7 @@ export class Stories extends Source {
       const e = sharedData(ctx);
       if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
-      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx);
+      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct" });
       if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
       const st = super.state(cx);
       // A failed load (GitHub's limit, say, which lasts) shows how old the stories shown are, not
@@ -2377,17 +2379,15 @@ export class Stories extends Source {
     super.load(cx, opts);
   }
 
-  // An agent finishing its turn may have pushed or opened a pull request, so Jira and GitHub load
-  // again, but at most once a minute: a burst of agents finishing makes one load now and one more
-  // when the minute is up.
+  // An agent finishing its turn may have pushed, merged or opened a pull request: the quick read
+  // (quickPulls(): its pull requests by id and your newest open ones, 1 point) shows that at once. It
+  // starts no full load of its own: a load after every turn, at most every 30 s, was most of what an
+  // account spent while agents worked (up to ~2,100 points an hour, #131), so the board and the
+  // searches wait for the list's 2-minute timer, or Refresh. A burst of turns ending makes one read,
+  // and one more once it ends (`quickAgain`).
   loadAfterAgent(cx) {
     if (!this.loader) return;
-    this.quickPulls(cx);
-    const wait = FULL_EVERY - (Date.now() - (this.fullAt ?? 0));
-    if (wait <= 0) return this.load(cx, { again: true });
-    if (this.trailing) return;
-    this.trailing = true;
-    cx.timer.after(wait, (cx) => { this.trailing = false; this.load(cx, { again: true }); });
+    this.quickPulls(cx, { direct: true });
   }
 
   // Pauses agents (by key) off the render: their sessions are read first, which takes a moment.

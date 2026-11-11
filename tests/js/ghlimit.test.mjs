@@ -233,6 +233,32 @@ describe("the story list", () => {
     }
   });
 
+  test("KELPIE-146: running low, an agent's turn ending still reads its pull requests; used up, nothing", async () => {
+    // Reacting to what just happened is the quick read's job: low, only the full loads and the 20 s
+    // timer's reads give way.
+    for (const [account, set] of [["turn-low", () => guarded("turn-low", ["api", "graphql"], async () => answer(left(100)))], ["turn-used", () => setShared(LIMIT, { "turn-used": { graphql: { until: NOW + 60e3, hits: 1 } } })]]) {
+      setupDemoWorld({ profile: PROJECT_PROFILE(account) });
+      await set();
+      const ctx = new StoryList().context();
+      const prs = [{ ...pr("WEB-1 add it", { checks: "PENDING" }), id: "PR_1" }];
+      setShared("kelpie.stories.data", { [ctx.profile.id]: { key: ctx.key, data: { ...LOADED().data, prs }, at: NOW, error: null } });
+      let reads = 0;
+      const base = mock.on.exec;
+      mock.on.exec = (cmd, args) => (cmd === "sh" && String(args[0]).endsWith("/gh.sh") ? (reads++, answer({ nodes: [] })) : base(cmd, args));
+      const cx = fakeCx();
+      const list = new Answered();
+      list.loader = true;
+      list.state(cx);
+      await settle(cx);
+      const loads = list.asked;
+      reads = 0;
+      list.loadAfterAgent(cx);
+      await settle(cx);
+      assert.equal(reads, account === "turn-low" ? 1 : 0, account);
+      assert.equal(list.asked, loads, `${account}: no full load`);
+    }
+  });
+
   test("with room in the budget, nothing changes", async () => {
     await guarded("roomy", ["api", "graphql"], async () => answer(left(4000)));
     world("roomy");
