@@ -237,6 +237,12 @@ const later = (p) => {
   const at = shared(DEMO_AT);
   return p.later && typeof at === "number" && Date.now() - at >= Number(p.later.after ?? 0) * 1000 ? { ...p, ...p.later, later: null } : p;
 };
+// A pull request an agent opens while the demo runs (`opens`, {after, found}: seconds after kelpie.demo):
+// none before `after` (the tests, a demo made before: never), and GitHub's search finds it only from
+// `found`, as its index lags; GitHub's own list of your newest ones (demoNewestPulls()) has it at once.
+const since = () => { const at = shared(DEMO_AT); return typeof at === "number" ? (Date.now() - at) / 1000 : null; };
+const opened = (p) => !p.opens || (since() ?? -1) >= Number(p.opens.after ?? 0);
+const searchable = (p) => !p.opens || (since() ?? -1) >= Number(p.opens.found ?? p.opens.after ?? 0);
 // A demo pull request's node id, as GitHub's search gives one (readPulls() asks by it).
 const pullId = (p) => `demo-pr-${p.repo}-${p.number}`;
 function asPull(f, raw) {
@@ -265,13 +271,20 @@ export async function demoPulls(q) {
   const pick = /review-requested:@me/.test(q) ? (p) => p.reviewer && !p.merged
     : /is:merged/.test(q) ? (p) => !p.reviewer && p.merged
     : (p) => !p.reviewer && !p.merged;
-  return f.pulls.filter(pick).map((p) => asPull(f, p));
+  return f.pulls.filter((p) => searchable(p) && pick(p)).map((p) => asPull(f, p));
+}
+// readPulls()'s newest open pull requests of yours, for a demo profile: newest first, the ones the
+// search doesn't find yet too.
+export async function demoNewestPulls() {
+  const f = await demoFixture();
+  return f.pulls.filter((p) => !p.reviewer && !p.merged && opened(p)).map((p) => ({ ...asPull(f, p), state: "OPEN" }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 10);
 }
 // readPulls(ids) for a demo profile: those pull requests as GitHub's nodes(ids:) gives them, with
 // their state.
 export async function demoReadPulls(ids) {
   const f = await demoFixture();
-  return ids.map((id) => f.pulls.find((p) => pullId(p) === id)).filter(Boolean).map((p) => ({ ...asPull(f, p), state: p.merged ? "MERGED" : "OPEN" }));
+  return ids.map((id) => f.pulls.find((p) => pullId(p) === id && opened(p))).filter(Boolean).map((p) => ({ ...asPull(f, p), state: p.merged ? "MERGED" : "OPEN" }));
 }
 
 const counted = (patch) => {

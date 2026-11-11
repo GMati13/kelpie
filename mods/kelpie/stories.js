@@ -1077,28 +1077,35 @@ const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at m
 const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
 // Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
 // before brings, as the search lags behind a merge or new checks. A merge read here stays until a
-// load shows it; a closed one leaves the lists. 10 minutes at most.
+// load shows it; a closed one leaves the lists. One the quick read found newly opened (`opened`: the
+// id of the profile it was found for, as FRESH serves every profile; an agent's, before the search's
+// index has it) joins that profile's pull requests, and stays until its load shows it. 10 minutes at most.
 const FRESH = {};
 const FRESH_FOR = 10 * 60 * 1000;
 const freshNow = (url) => { const f = FRESH[url]; return f && Date.now() - f.at < FRESH_FOR ? f : null; };
-function withFresh(data) {
+function withFresh(data, profile) {
   if (!data?.prs || !Object.keys(FRESH).some(freshNow)) return data;
   const swap = (list, open) => (list ?? []).flatMap((p) => {
     const f = freshNow(p.url);
     // A review keeps the shape the load gives it (no `merged`), so an unchanged read changes nothing.
     return !f ? [p] : f.pr.closed || (open && f.pr.merged) ? [] : [open ? { ...f.pr, merged: p.merged } : f.pr];
   });
-  return { ...data, prs: swap(data.prs, false), reviews: swap(data.reviews, true) };
+  const known = new Set([...data.prs, ...(data.reviews ?? [])].map((p) => p.url));
+  const opened = Object.keys(FRESH).filter((url) => !known.has(url) && freshNow(url)?.opened === profile && !FRESH[url].pr.closed).map((url) => FRESH[url].pr);
+  return { ...data, prs: [...opened, ...swap(data.prs, false)], reviews: swap(data.reviews, true) };
 }
 // A fresh load's answer, the load having begun at `began`: what was read again before it began is
 // forgotten (the load is as new), but a merge it doesn't show yet; what was read since stays put in.
+// `profile`: the id of the profile loaded (another's newly opened ones are its own load's to settle).
 // Exported for the tests.
-export function settlePulls(data, began) {
+export function settlePulls(data, began, profile) {
   for (const [url, f] of Object.entries(FRESH)) {
+    if (data && f.opened && f.opened !== profile && freshNow(url)) continue;
     const was = (data?.prs ?? []).find((p) => p.url === url);
-    if (!freshNow(url) || (f.at < began && !(f.pr.merged && was && !was.merged))) delete FRESH[url];
+    const ahead = (f.pr.merged && was && !was.merged) || (f.opened && data && !was); // what the search doesn't show yet
+    if (!freshNow(url) || (f.at < began && !ahead)) delete FRESH[url];
   }
-  return withFresh(data);
+  return withFresh(data, profile);
 }
 // Puts a change into a profile's loaded stories: the shared copy every view reads, and the list's own.
 // Written only when it changes something, as every copy draws again on a write (the quick read runs
@@ -2269,12 +2276,13 @@ export class Stories extends Source {
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
-    }, began));
+    }, began, setup.profile?.id));
   }
 
   // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
-  // away and in one small question, not the searches of a whole load; what they say now is put into
-  // the loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
+  // away and in one small question, not the searches of a whole load, with your newest open ones (one
+  // an agent has just opened, which the search finds only later); what they say now is put into the
+  // loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
   quickPulls(cx) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
@@ -2283,15 +2291,19 @@ export class Stories extends Source {
     if (this.quickBusy) { this.quickAgain = true; return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;
-    const ids = [...(data?.prs ?? []).filter((p) => !p.merged), ...(data?.reviews ?? [])].map((p) => p.id).filter(Boolean);
-    if (!ids.length) return;
+    if (!data) return;
+    const ids = [...(data.prs ?? []).filter((p) => !p.merged), ...(data.reviews ?? [])].map((p) => p.id).filter(Boolean);
+    const known = new Set([...(data.prs ?? []), ...(data.reviews ?? [])].map((p) => p.url));
     this.quickBusy = true;
     cx.spawn(async (cx) => {
       try {
         const at = Date.now();
-        const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null });
-        for (const n of found) FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at };
-        if (found.length) patchLoaded(ctx.profile, withFresh);
+        const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null, owner: ctx.setup.github.owner });
+        for (const n of found) {
+          const opened = FRESH[n.url]?.opened ?? (known.has(n.url) ? null : ctx.profile.id);
+          FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at, ...(opened ? { opened } : {}) };
+        }
+        if (found.length) patchLoaded(ctx.profile, (d) => withFresh(d, ctx.profile.id));
       } catch {
         // the next load or read brings it
       } finally {
