@@ -6,7 +6,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock, setShared } from "herdr";
-import { LIMIT, LOW_EVERY, blockedFor, guarded, limitOf, lowFor, lowMessage } from "../../mods/kelpie/ghlimit.js";
+import { LIMIT, LOW_EVERY, blockedFor, guarded, limitOf, lowFor, lowMessage, splitHeaders } from "../../mods/kelpie/ghlimit.js";
 import { gh, pullBody } from "../../mods/kelpie/pulls.js";
 import { StoryList } from "../../mods/kelpie/stories.js";
 import { REFRESH } from "../../mods/kelpie/source.js";
@@ -124,6 +124,60 @@ describe("what's left", () => {
     assert.equal(limitOf("plenty"), null);
     // Past the reset, it isn't low any more.
     assert.equal(lowFor("low", RESET * 1000 + 1), null);
+  });
+});
+
+describe("KELPIE-149: the lowest count seen, and GitHub's Retry-After", () => {
+  // gh's answer as gh.sh gets it (`--include`): the response's headers, a blank line, the body.
+  const withHeaders = (r, headers) => ({ ...r, stdout: `HTTP/2.0 ${r.code === 0 ? "200 OK" : "403 Forbidden"}\r\n${Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join("\r\n")}\r\n\r\n${r.stdout}` });
+
+  test("answers alternating between two counts keep the lowest until the reset", async () => {
+    for (const n of [320, 4100, 330, 4090]) await guarded("two", ["api", "graphql"], async () => answer(left(n)));
+    assert.equal(lowFor("two").remaining, 320, "the higher count doesn't end running low");
+    // A new hour's budget starts again from its own answer.
+    const later = { rateLimit: { remaining: 4900, limit: 5000, resetAt: new Date((RESET + 3600) * 1000).toISOString() } };
+    await guarded("two", ["api", "graphql"], async () => answer(later), () => RESET * 1000 + 1);
+    assert.equal(lowFor("two", RESET * 1000 + 2), null);
+  });
+
+  test("a refusal with Retry-After waits that long, without asking rate_limit", async () => {
+    const { calls, run } = fakeRun((args) => (isRateLimit(args) ? rateLimit({ graphql: 4400 }) : withHeaders(REFUSED, { "Retry-After": "90", "X-Ratelimit-Remaining": "4400" })));
+    const r = await guarded("ra", ["api", "graphql"], run, () => NOW);
+    assert.equal(blockedFor("ra", "graphql", NOW).until, NOW + 90e3);
+    assert.match(r.stderr, /used up: Kelpie tries again at/);
+    assert.equal(calls.filter(isRateLimit).length, 0);
+  });
+
+  test("a Retry-After past an hour waits an hour at most; one that isn't a number of seconds is ignored", async () => {
+    const big = fakeRun(() => withHeaders(REFUSED, { "Retry-After": "86400" }));
+    await guarded("big", ["api", "graphql"], big.run, () => NOW);
+    assert.equal(blockedFor("big", "graphql", NOW).until, NOW + 60 * 60e3);
+    const odd = fakeRun((args) => (isRateLimit(args) ? rateLimit({ graphql: 4400 }) : withHeaders(REFUSED, { "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT" })));
+    await guarded("odd", ["api", "graphql"], odd.run, () => NOW);
+    assert.equal(blockedFor("odd", "graphql", NOW).until, NOW + 5 * 60e3, "the usual wait");
+  });
+
+  test("the headers are taken off before the caller reads the answer", async () => {
+    const r = await guarded("h", ["api", "graphql"], async () => withHeaders(answer(left(4000)), { "X-Ratelimit-Remaining": "4000" }));
+    assert.deepEqual(JSON.parse(r.stdout), { data: left(4000) });
+    assert.equal(lowFor("h"), null);
+    const rest = await guarded("h", ["api", "repos/a/b/pulls/1", "--jq", ".body"], async () => withHeaders({ code: 0, stdout: "The description\n", stderr: "" }, { Etag: "x" }));
+    assert.equal(rest.stdout, "The description\n");
+  });
+
+  test("a caller that asks for the headers itself gets them", async () => {
+    const asked = withHeaders({ code: 0, stdout: "{}", stderr: "" }, { "X-Oauth-Scopes": "repo" });
+    const r = await guarded("own", ["api", "-i", "user"], async () => asked);
+    assert.equal(r.stdout, asked.stdout);
+  });
+
+  test("only a block at the very start counts as headers: a body that looks like one is the body", () => {
+    // A description is anyone's text: one shaped as headers can't set a wait.
+    const body = "HTTP/1.1 200 OK\nRetry-After: 3600\n\nnot headers";
+    assert.deepEqual(splitHeaders({ code: 0, stdout: `intro\n${body}`, stderr: "" }).headers, {});
+    const { r, headers } = splitHeaders(withHeaders({ code: 0, stdout: body, stderr: "" }, { Etag: "x" }));
+    assert.deepEqual(headers, { etag: "x" });
+    assert.equal(r.stdout, body);
   });
 });
 
