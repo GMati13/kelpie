@@ -1237,7 +1237,44 @@ const RENAMED = new Set();
 // the story view) keeps its own.
 const DESCRIPTIONS = {}; // key -> { blocks, at, loading, error }
 const MOVES = {}; // key -> { list: [{ id, name, to, category }], at, loading, error }: where its status can go
-const MOVED = {}; // key -> { status, category, at }: a status just set here, shown until the stories catch up
+const MOVED = {}; // key -> { status, category, id, at }: a status just set here, shown until the stories catch up
+const MOVED_FOR = 10 * 60 * 1000; // a move the board's answers still don't show is kept this long at most
+const movedNow = (key) => { const m = MOVED[key]; return m && Date.now() - m.at < MOVED_FOR ? m : null; };
+// The loaded stories with the moves made here put in: the list's groups, order, progress and Next
+// follow a move at once, not only its chip, and don't wait for a load (whose search lags).
+function withMoved(data) {
+  if (!data?.parents || !Object.keys(MOVED).some(movedNow)) return data;
+  const fix = (i) => {
+    const m = movedNow(i.key);
+    if (!m || i.fields?.status?.name === m.status) return i;
+    return { ...i, fields: { ...i.fields, status: { id: m.id ?? i.fields?.status?.id ?? null, name: m.status, statusCategory: { key: m.category ?? null } } } };
+  };
+  return { ...data, parents: data.parents.map(fix), children: (data.children ?? []).map(fix) };
+}
+// A fresh load's answer: a move it shows is settled and forgotten; one it doesn't show yet (Jira's
+// search lags behind a move) stays put into it, so the list doesn't fall back to the old status.
+// Exported for the tests.
+export function settleMoved(data) {
+  const issues = [...(data?.parents ?? []), ...(data?.children ?? [])];
+  for (const key of Object.keys(MOVED)) {
+    if (!movedNow(key) || issues.some((i) => i.key === key && i.fields?.status?.name === MOVED[key].status)) delete MOVED[key];
+  }
+  return withMoved(data);
+}
+// A ticket moved here (its chip, Move to Done): noted, and put into the profile's loaded stories, the
+// shared copy every view reads and the list's own. `o` is the option moved to; its status id is a
+// Project option's own id, a Jira transition's `toId`. Exported for the tests.
+export function noteMoved(profile, key, o, board) {
+  MOVED[key] = { status: o.to, category: o.category ?? null, id: (board?.kind === "project" ? o.id : o.toId) ?? null, at: Date.now() };
+  delete MOVES[key];
+  const all = shared(DATA) ?? {}, e = all[profile?.id];
+  if (e?.data) setShared(DATA, { ...all, [profile.id]: { ...e, data: withMoved(e.data) } });
+  for (const [k, c] of Object.entries(CACHE)) {
+    let id = null;
+    try { id = JSON.parse(k)[0]; } catch {}
+    if (c?.data && id === profile?.id) CACHE[k] = { ...c, data: withMoved(c.data) };
+  }
+}
 const DESC_EVERY = 5 * 60 * 1000;
 // Descriptions read like an article ("calm reader"): body text at 14 on a 24px line, no wider than
 // about 64 characters, in a centred column with room on every side; the opening paragraph (usually
@@ -1901,12 +1938,12 @@ export class Stories extends Source {
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
-    return {
+    return settleMoved({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
-    };
+    });
   }
 
   // The details only read what the list loads: no timer of their own, but for one that draws again
@@ -2047,7 +2084,7 @@ export class Stories extends Source {
   // no Status there, so its chip is only the lozenge.
   statusChip(t, st, key, status, category, id, cx) {
     const moved = MOVED[key];
-    const shown = moved && moved.status !== status && Date.now() - moved.at < 60 * 1000 ? moved : { status, category };
+    const shown = moved && moved.status !== status && Date.now() - moved.at < MOVED_FOR ? moved : { status, category };
     // Moving (its own move, or Move to Done on it now): the working mark in the lozenge's place. Held
     // by a run on its story (waiting its turn in Move to Done, or a clean-up): the lozenge alone.
     const busy = ticketBusy(key);
@@ -2095,8 +2132,7 @@ export class Stories extends Source {
     cx.spawn(async (cx) => {
       try {
         await moveStatus(boardOf(st.setup), key, x, st.data);
-        MOVED[key] = { status: x.to, category: x.category, at: Date.now() };
-        delete MOVES[key];
+        noteMoved(st.profile, key, x, boardOf(st.setup));
         say(`${key} moved to ${x.to}.`);
         setShared(REFRESH, Date.now());
       } catch (e) {
@@ -4248,8 +4284,8 @@ function askCleanUp(profile, it) {
 // itself last, once every subtask is done; tickets already done are left alone. A ticket's status is
 // the one shown, so a move made a moment ago counts (MOVED).
 const shownDone = (t) => {
-  const m = MOVED[t.key];
-  return (m && Date.now() - m.at < 60 * 1000 ? m.category : t.category) === "done";
+  const m = movedNow(t.key);
+  return (m ? m.category : t.category) === "done";
 };
 // What it would move: { mine: your subtasks not done, others: others' not done, story: whether the
 // story moves too (not done, and no one else's subtask open) }; null for what isn't a board's ticket
@@ -4324,8 +4360,7 @@ async function movingToDone(s, it, plan, clean, at) {
     try {
       const o = await doneOption(board, t.key, data);
       await moveStatus(board, t.key, o, data);
-      MOVED[t.key] = { status: o.to, category: o.category ?? "done", at: Date.now() };
-      delete MOVES[t.key];
+      noteMoved(s.st.profile, t.key, { ...o, category: o.category ?? "done" }, board);
       moved.push(t.key);
     } catch (e) {
       failed.push({ key: t.key, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
