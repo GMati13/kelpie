@@ -16,7 +16,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command.
 
-**Agents changing profiles.** What can run a command, steer agents or move the sign-in (`CONFIRM_KEYS` in config.js) waits for the person's click in Kelpie, through a dialog button, never a command an agent could run itself. A new setting of that kind joins `CONFIRM_KEYS`.
+**Agents changing profiles.** Each section takes only its own keys (`SECTION_KEYS` in config.js), so a secret can't slip in under a name `SECRET` doesn't catch; a new setting joins its section's list. What can run a command, steer agents or move the sign-in (`CONFIRM_KEYS` in config.js) waits for the person's click in Kelpie, through a dialog button, never a command an agent could run itself. A new setting of that kind joins `CONFIRM_KEYS`.
 
 **Messages to agents.** Only through `sendToClaude()`, which checks the terminal's real foreground process. Never `hc(["send", …])` directly.
 
@@ -44,6 +44,5 @@ Where the code doesn't meet these rules yet (fix them with tests, then remove th
 - Add to chat (`pasteToChat()`, `mods/kelpie-artifacts/main.js`) pastes a file path into an agent's terminal with `terminal.paste`, without `sendToClaude()`'s check that the terminal really runs Claude. It presses no Enter, so nothing runs by itself.
 - Screenshot mark-up (`FLATTEN_SCRIPT`, `mods/kelpie-artifacts/markup.js`) writes into a fixed folder, `${TMPDIR:-/tmp}/herdr-markup` (shared `/tmp` on Linux), made with default permissions: its files get `mktemp` names, but another user could own the folder first. Thumbnails (`session.js`) add `.png` to a `mktemp` name, a name `mktemp` didn't reserve.
 - `~/.cache/kelpie/sessions.json` (sessions.py) and the Web panel's folders (`~/.local/share/kelpie/web/<profile>/`, main.js) are created with the default permissions, not private.
-- Inside a profile section, a key is refused as a secret only by its name (`SECRET` in config.js: token, password, secret), so `github.pat` passes; sections don't have their own list of allowed keys.
 - What next? passes its whole prompt as a command-line argument (`claude -p <task>` in `brew()`), visible to other users in `ps`.
 - `.claude/settings.json` allows every `gh api` call, including ones that write.
