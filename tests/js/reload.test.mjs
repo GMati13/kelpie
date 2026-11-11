@@ -72,3 +72,56 @@ test("a timer's or a stale copy's request during a load isn't kept: that load an
   await settle();
   assert.equal(list.asked.length, 1);
 });
+
+// An agent's tab opening or closing reads only the sessions again (loadSessions()). Asked for while a
+// full load or another sessions read runs, it isn't dropped: that one read them when it began, maybe
+// before the tab changed, so they're read once more as soon as it ends.
+const sessionReads = () => {
+  const reads = [];
+  list.fetchSessions = () => new Promise((resolve) => reads.push(resolve));
+  return reads;
+};
+const loadedSessions = () => list.cache[list.context().key]?.data?.sessions;
+
+test("a tab changing while a full load runs reads the sessions once that load ends", async () => {
+  list.asked[0](checks(null)); // the first load answered: the list has data
+  await settle();
+  const reads = sessionReads();
+  list.load(cx, { again: true }); // a full load begins (it read the sessions as it began)
+  await settle();
+  assert.equal(list.asked.length, 2);
+  list.loadSessions(cx); // then a tab opens
+  await settle();
+  assert.equal(reads.length, 0, "not beside the full load");
+  list.asked[1](checks(null));
+  await settle();
+  list.state(cx); // the draw after it ends
+  await settle();
+  assert.equal(reads.length, 1, "read again, not left for the next load");
+  reads[0]([{ id: "new-tab" }]);
+  await settle();
+  assert.deepEqual(loadedSessions(), [{ id: "new-tab" }]);
+  list.state(cx);
+  await settle();
+  assert.equal(reads.length, 1, "and only once");
+});
+
+test("a tab changing while the sessions are read reads them once more after", async () => {
+  list.asked[0](checks(null));
+  await settle();
+  const reads = sessionReads();
+  list.loadSessions(cx);
+  await settle();
+  assert.equal(reads.length, 1);
+  list.loadSessions(cx); // another tab, while that read runs
+  await settle();
+  assert.equal(reads.length, 1, "one read at a time");
+  reads[0]([{ id: "first" }]);
+  await settle();
+  list.state(cx);
+  await settle();
+  assert.equal(reads.length, 2);
+  reads[1]([{ id: "first" }, { id: "second" }]);
+  await settle();
+  assert.deepEqual(loadedSessions(), [{ id: "first" }, { id: "second" }]);
+});

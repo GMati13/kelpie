@@ -54,6 +54,8 @@ const TAB_W = 200;
 // shrinking to the window less `margin` on each side, so on a laptop (1440×900, zoomed too) Save and
 // Cancel stay on screen and the page and the side tabs scroll instead. Exported for the tests.
 export const FIT = { w: 820, h: 900, margin: 24 };
+// The see-through dark laid over the window around the card, as Herdr dims behind its own dialogs.
+const DIM = "#00000080";
 
 // The dialog's side tabs, one section each, in groups (a heading over each but the first). `focus`
 // in props may name one (jira, github…). Each tab's second line says what's set (`tabStatus()`).
@@ -551,13 +553,8 @@ export class Setup {
     const ask = (scope, label = "Ask Claude") => open.length
       ? menuButton(this.menus, t, `setup-ask-${scope}`, label, askRows(scope), { tip: askTip, dim: true, width: 340 })
       : textButton(t, `setup-ask-${scope}`, label, (_e, cx) => this.configure(scope, cx), { dim: true, tip: askTip });
-    // The sidebar's "Let me configure it for you": everything at once.
-    const configureCard = (id, action) => v_flex().id(id).p(12).gap(4).rounded(10).border_1().border_color(t.border).bg(t.popover).cursor_pointer()
-      .hover((s) => s.bg(t.hover)).tooltip(askTip).on_click(action)
-      .child(h_flex().gap(8).items_start()
-        .child(div().flex_none().mt(2).text_color(t.accent).child(icon(own("message-square"))))
-        .child(div().flex_1().min_w(0).text_size(TEXT).font_medium().child("Let me configure it for you")))
-      .child(div().text_size(SMALL).text_color(t.dim).child("A Claude on the Desk goes through every setting with you, checks them and saves them."));
+    // "Let me configure it for you": everything at once, a quiet button at the start of the Save row.
+    const configureButton = (id, action) => textButton(t, id, "Let me configure it for you", action, { tip: askTip, lead: div().text_color(t.accent).child(icon(own("message-square"))) });
     // A page's heading: its title (with Set up with Claude for the whole page) and what it's for.
     const page = (title, about, scope = this.tab) => v_flex().pb(4).gap(4)
       .child(h_flex().items_center().gap(8)
@@ -657,6 +654,13 @@ export class Setup {
         check("name"),
         field("Folder", row(grow(input(this.folder)), textButton(t, "setup-folder-pick", "Choose…", (_e, cx) => this.chooseFolder(cx))),
           "Its agents start here and its Claude sessions show; spaces opened in it, or under it, belong to this profile."),
+        // Deleting sits at the end of its own page, far from Save and Let me configure it for you.
+        this.profile ? group("Delete profile", null) : null,
+        this.profile ? h_flex().pt(DIALOG.gap).gap(DIALOG.gap).items_center()
+          .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.dim).child("Removes this profile from Kelpie. Its folder and what's in it stay."))
+          .child(this.armedOn("delete")
+            ? primaryButton(t, "setup-remove", `Delete ${this.profile.name}`, (_e, cx) => this.careful("delete", () => { saveProfile(this.profile.id, null); closeOverlay(props().overlay); }, cx)).bg(t.blocked)
+            : textButton(t, "setup-remove", "Delete profile", (_e, cx) => this.careful("delete", () => {}, cx), { tip: "Asks once more" })) : null,
       ],
 
       agents: () => [
@@ -783,16 +787,15 @@ export class Setup {
         .when(failed, (el) => el.child(div().size(6).flex_none().rounded_full().bg(t.blocked)));
     };
     const discarding = this.armedOn("discard");
-    const deleting = this.armedOn("delete");
 
-    // The window, then the card in its middle (FIT): the card is the dialog's frame.
-    return div().id("work-setup-fit").size_full().flex().items_center().justify_center().p(FIT.margin).child(v_flex().id("work-setup").track_focus(this.handle)
+    // The window, then the card in its middle (FIT): the card is the dialog's frame. With no frame
+    // Herdr dims nothing (the dialog is the whole window), so the window around the card is dimmed here.
+    return div().id("work-setup-fit").size_full().bg(DIM).flex().items_center().justify_center().p(FIT.margin).child(v_flex().id("work-setup").track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { this.close(cx); cx.stop_propagation(); } })
       .w_full().max_w(FIT.w).h_full().max_h(FIT.h).min_h(0).overflow_hidden().rounded(12).border_1().border_color(t.border).shadow_lg()
       .bg(t.popover).text_color(t.foreground).text_size(TEXT)
       .child(h_flex().flex_1().min_h(0)
-        // The side: the profile's name over its tabs, which scroll when the window is short, and the
-        // configure card kept at the bottom.
+        // The side: the profile's name over its tabs, which scroll when the window is short.
         .child(v_flex().w(TAB_W).flex_none().h_full().min_h(0).rounded_tl(11).bg(t.background).border_r_1().border_color(t.border)
           .child(v_flex().id("setup-tabs").flex_1().min_h(0).p(DIALOG.gap).pt(DIALOG.pad).gap(2).overflow_y_scrollbar()
             .child(v_flex().px(10).pb(DIALOG.section).gap(2)
@@ -801,18 +804,15 @@ export class Setup {
             .children(TABS.flatMap((x) => [
               x.group ? div().px(10).pt(DIALOG.section).pb(4).text_size(SMALL).font_medium().text_color(t.dim).child(x.group) : null,
               tabRow(x),
-            ].filter(Boolean))))
-          .child(div().flex_none().p(DIALOG.gap).pt(4).child(open.length
-            ? menuButton(this.menus, t, "setup-configure-all", "", askRows("all"), { anchor: "bottom_left", width: 340, trigger: (toggle) => configureCard("setup-configure-all-more", toggle) })
-            : configureCard("setup-configure-all", (_e, cx) => this.configure("all", cx)))))
+            ].filter(Boolean)))))
         // The shown tab's page; its own scroll, from the top on each tab.
         .child(v_flex().id(`work-setup-body-${this.tab}`).flex_1().min_w(0).h_full().min_h(0).px(DIALOG.pad + 8).pt(DIALOG.pad).pb(DIALOG.pad + 8).overflow_y_scrollbar()
           .children(pages[this.tab]().filter(Boolean))))
-      // Save and Cancel: outside both scrolls, always on screen.
+      // Let me configure it for you, then Save and Cancel: outside both scrolls, always on screen.
       .child(h_flex().flex_none().px(DIALOG.pad).py(12).gap(DIALOG.gap).items_center().border_t_1().border_color(t.border)
-        .when(Boolean(this.profile), (el) => el.child(deleting
-          ? primaryButton(t, "setup-remove", `Delete ${this.profile.name}`, (_e, cx) => this.careful("delete", () => { saveProfile(this.profile.id, null); closeOverlay(props().overlay); }, cx)).bg(t.blocked)
-          : textButton(t, "setup-remove", "Delete profile", (_e, cx) => this.careful("delete", () => {}, cx), { dim: true, tip: "Asks once more" })))
+        .child(open.length
+          ? menuButton(this.menus, t, "setup-configure-all", "", askRows("all"), { anchor: "bottom_left", width: 340, trigger: (toggle) => configureButton("setup-configure-all-more", toggle) })
+          : configureButton("setup-configure-all", (_e, cx) => this.configure("all", cx)))
         .child(div().flex_1())
         .when(dirty || discarding, (el) => el.child(h_flex().gap(6).items_center().text_size(SMALL).text_color(discarding ? t.working : t.dim)
           .child(div().size(6).rounded_full().bg(t.working))

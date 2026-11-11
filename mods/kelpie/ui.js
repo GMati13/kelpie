@@ -153,14 +153,14 @@ export function soundBars(t, size = ICON) {
 
 // Buttons come in two kinds, drawn alike everywhere (headers, rows, dialogs, menus): the same
 // height, radius, padding and text size, only their fill differs.
-const button = (t, id, label, action, tip) => skinFont(h_flex().id(id).h(CONTROL).flex_none().px(10).items_center().rounded(7).cursor_pointer()
+const button = (t, id, label, action, tip, lead) => skinFont(h_flex().id(id).h(CONTROL).flex_none().px(10).items_center().rounded(7).cursor_pointer()
   .font_medium(), "label", SMALL).when(Boolean(tip), (el) => el.tooltip(tip))
-  .on_mouse_down("left", stop).on_click(action).child(skinText(label, "label"));
+  .on_mouse_down("left", stop).on_click(action).when(Boolean(lead), (el) => el.gap(6).child(lead)).child(skinText(label, "label"));
 
 // A quiet button, no fill until hovered; `on` marks the selected one of a group, `dim` one that sits
-// back further (menuButton passes `dim` and a text `size` through).
-export function textButton(t, id, label, action, { on = false, tip, dim = false } = {}) {
-  return decor("controlDecor", t, button(t, id, label, action, tip)
+// back further (menuButton passes `dim` and a text `size` through); `lead`, an icon before the words.
+export function textButton(t, id, label, action, { on = false, tip, dim = false, lead } = {}) {
+  return decor("controlDecor", t, button(t, id, label, action, tip, lead)
     .when(on, (el) => el.bg(t.selected)).text_color(on ? t.foreground : dim ? t.dim : t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)), { kind: "text", id, label, on });
 }
 
