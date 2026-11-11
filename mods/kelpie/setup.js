@@ -79,8 +79,8 @@ const NOT_PROJECT = "That isn't a GitHub Project's address: https://github.com/u
 const projectKey = (p) => (p ? `${p.ownerType}/${String(p.owner).toLowerCase()}/${p.number}` : "");
 // The messages a review's buttons send (the rest are a pull request's), in config.js ASK_PROMPTS.
 const REVIEW_ASKS = ["post", "approve", "changes"];
-// The message a What next? idea starts its Desk agent with: in a group of its own.
-const IDEA_ASKS = ["idea"];
+// The messages What next?'s picks start agents with (an idea, Run all's stories): a group of their own.
+const IDEA_ASKS = ["idea", "picked"];
 // How long a careful button (Delete, Discard) stays armed for its second press.
 const ARMED_MS = 4000;
 
@@ -757,8 +757,11 @@ export class Setup {
         group("Reviews", "Nothing is posted until you press one"),
         ...ASK_PROMPTS.filter((a) => REVIEW_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label.replace(/ \(review\)$/, ""), this.asks[a.id], a.text, null)),
         group("What next?"),
-        ...ASK_PROMPTS.filter((a) => IDEA_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, "Start an idea", this.asks[a.id], a.text,
-          "A click on one of Claude's improvement ideas in Next starts a Claude on the Desk with this. {idea} is Claude's brief, {where} the file or area, {why} why it pays off.")),
+        ...ASK_PROMPTS.filter((a) => IDEA_ASKS.includes(a.id)).map((a) => (a.id === "idea"
+          ? promptField(`ask-${a.id}`, "Start an idea", this.asks[a.id], a.text,
+            "A click on one of Claude's improvement ideas in Next starts a Claude on the Desk with this. {idea} is Claude's brief, {where} the file or area, {why} why it pays off.")
+          : promptField(`ask-${a.id}`, "Run a pick", this.asks[a.id], a.text,
+            "Run all in Next starts each of Claude's picks in its own agent: this follows the ticket prompt in its first message. {action} is what Claude suggests, {why} why now."))),
         group("Setup"),
         promptField("configure", "Let me configure it for you", this.configurePrompt, CONFIGURE_PROMPT,
           "What a Set up with Claude or Ask Claude button starts a Claude on the Desk with. {name} and {id} are the profile's, {scope} and {about} what to set up, {home} Herdr's folder. Kelpie's Claude Code plugin does the rest."),

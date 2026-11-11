@@ -889,7 +889,8 @@ export function addAsk(profile, { action, why, key, url, terminal } = {}) {
 // profile: { at, items: [{ key, title, action, why, url, from }] }; `key` a story key (a subtask's
 // became its story's) or "pr:<repo>#<n>". Kept a day. In the queue each is { key: "suggest:<key>",
 // suggest, it }, `it` its story while the list has it; it drops out once that story is finished,
-// handed over, or already needs you, or when dismissed (its ✕ in the queue).
+// handed over, already needs you or is in progress (underWay(): the person has it in hand already, so
+// Run all never starts a second agent on it), or when dismissed (its ✕ in the queue).
 const SUGGESTED = "kelpie.next.suggested";
 const SUGGEST_FOR = 24 * 3600 * 1000;
 function suggestedIn(profile, items, needs = new Set()) {
@@ -900,7 +901,7 @@ function suggestedIn(profile, items, needs = new Set()) {
     // A pull request picked ("pr:<repo>#<n>") that's already in the queue as a review or a lone pull
     // request of yours is there already: not again as a pick.
     const pr = s.key.startsWith("pr:") ? s.key.slice(3) : null;
-    if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`))) || (it && (finished(it) || sunk(it)))) return [];
+    if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`))) || (it && (finished(it) || sunk(it) || underWay(it)))) return [];
     return [{ key: `suggest:${s.key}`, suggest: s, it }];
   });
 }
@@ -4024,14 +4025,21 @@ export class StoryList extends Stories {
 
   // The suggestions' group, the card's last: tinted as the magic button is, a header "Suggested by
   // Claude" with their age, and a small Re-magic that asks again (brewing in its place while Claude
-  // runs; the new picks replace these). No border of its own: it's part of Next.
+  // runs; the new picks replace these). With two picks or more, any of them startable, Run all beside
+  // it: a dialog listing what each would do, whose button starts them (askRunPicks()). No border of
+  // its own: it's part of Next.
   suggestBox(t, st, items, reviews, said, row) {
     const glow = (a) => alpha(t.accent, a);
     const at = (shared(SUGGESTED) ?? {})[st.profile.id]?.at;
+    const runAll = said.length > 1 && picksPlan(said).some((p) => p.run);
     return v_flex().id("queue-suggested").flex_none().pb(2).gap(2).rounded(8).bg(glow(0.07))
       .child(h_flex().flex_none().pl(10).pr(2).pt(4).gap(6).items_center()
         .child(icon(own("sparkles"), 12).text_color(t.accent))
         .child(div().flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.accent).child(`Suggested by Claude${at ? ` · ${ago(at)}` : ""}`))
+        .when(runAll, (el) => el.child(h_flex().id("queue-run-all").flex_none().px(6).py(2).gap(4).items_center().rounded(6).cursor_pointer().text_size(SMALL).text_color(t.dim)
+          .hover((x) => x.bg(glow(0.14)).text_color(t.accent)).tooltip("Start every pick at once, each in its own agent: you'll see what each does first")
+          .on_click(() => askRunPicks(st.profile, said))
+          .child(icon(own("play"), 12)).child("Run all")))
         .child(brewingIn(st.profile)
           ? h_flex().id("queue-remagic").flex_none().px(6).py(2).gap(4).items_center().text_size(SMALL).text_color(t.accent).tooltip("Claude is looking around again")
             .child(brewMark(t, 12)).child(div().frames(brewWords(brewingIn(st.profile), true), 2400))
@@ -5050,8 +5058,80 @@ export async function brew(profile, task) {
 export function startIdea(profile, s) {
   const name = `Idea: ${s.action}`.slice(0, 60);
   // The idea is Claude's words, maybe drawn from others' (tickets, pull requests): information.
-  openDesk(profile, { name, argv: claudeArgv(profile), task: `${askText(profile, "idea", { idea: s.idea, where: s.where || "not said", why: s.why || "not said" })}\n\n${OTHERS}` });
+  const desk = openDesk(profile, { name, argv: claudeArgv(profile), task: `${askText(profile, "idea", { idea: s.idea, where: s.where || "not said", why: s.why || "not said" })}\n\n${OTHERS}` });
   dismissSuggestion(profile, s.key);
+  return desk;
+}
+
+// Run all (the suggestions' group, with two picks or more): what each pick would do, for its dialog
+// and its run. A story of the list gets a new agent on the key picked (a subtask Claude named, else
+// the story's own, or a ticket without subtasks' single sub, as Start work does); an idea a Claude on
+// the Desk (startIdea()); one that only opens on the web (unassigned, the backlog, someone's pull
+// request) is left for the person, saying why. Exported for the tests.
+export function picksPlan(said) {
+  return said.map((x) => {
+    const s = x.suggest;
+    if (s.idea) return { x, run: "idea", text: `${s.action}: a Claude on the Desk looks into it with you` };
+    if (!x.it) return { x, run: null, text: `${s.action}: left for you, as ${s.key.startsWith("pr:") ? "it's someone else's pull request, on GitHub" : "it isn't in your list yet (unassigned or in the backlog): assign it on the board"}` };
+    const it = x.it;
+    const key = (s.from && it.subs.some((t) => t.key === s.from) ? s.from : null) ?? (it.story ? it.key : it.subs[0]?.key ?? it.key);
+    return { x, run: "story", key, text: `${s.action}: a new agent on ${key}${it.space ? "" : ", in a new space"}` };
+  });
+}
+// Each pick's key in the dialog: its ticket's, or none for an idea or a pull request.
+const pickKey = (p) => (p.run === "story" ? p.key : p.x.suggest.key.startsWith("pr:") ? p.x.suggest.key.slice(3) : p.x.suggest.idea ? null : p.x.suggest.key);
+// Its dialog: every pick and what will happen to it, the ones it can run ticked (all at first). Its
+// button starts them itself (dialogs.js Confirm, `runPicks`): no command does, as any agent can run
+// one and this starts agents with Claude's words in their first message.
+function askRunPicks(profile, said) {
+  const plan = picksPlan(said);
+  const runs = plan.filter((p) => p.run).length;
+  if (!runs) return say("None of these picks can be started from here: each opens on the web, for you.");
+  const items = plan.map((p) => ({ key: pickKey(p), text: p.text, ...(p.run ? { choose: p.x.suggest.key } : {}) }));
+  openOverlay({ mod: MOD, kind: "dialog", width: 560, height: Math.min(560, 230 + Math.min(items.length, 10) * 30), props: {
+    role: "confirm", title: `Start ${runs === 1 ? "1 of Claude's picks" : `${runs} of Claude's picks`}?`, yes: "Start them", working: "Starting…",
+    detail: "Each starts in its own agent, one after another, with Claude's suggestion added to its first message. Turn off any you'd rather leave for now:",
+    items, runPicks: { profile: profile.id } } });
+}
+// Run all's dialog button: starts the ticked picks (`keys`, their suggestion keys) as they stand now,
+// one after another (a new space has to show before the next agent can open in it), each story
+// through once() as its own Start would, so a click elsewhere meanwhile can't start a second. Each
+// one started leaves the queue; the rest stay. The note says how far it got and names any that
+// failed. Returns { started, failed: [{ key, why }] }, null when the profile isn't shown any more.
+export async function runPicks({ profile, keys = null }) {
+  const s = storyItems();
+  if (s?.st.profile.id !== profile) { say("Nothing was started: that profile isn't shown any more."); return null; }
+  const want = keys ? new Set(keys) : null;
+  const plan = picksPlan(needQueueOf(s.st.profile, s.items, s.reviews).filter((x) => x.suggest)).filter((p) => p.run && (!want || want.has(p.x.suggest.key)));
+  if (!plan.length) { say("Nothing was started: those picks are gone from Next."); return null; }
+  const started = [], failed = [];
+  const ran = await once(`picks:${profile}`, async () => {
+    for (const [i, p] of plan.entries()) {
+      const name = p.run === "story" ? p.key : p.x.suggest.action;
+      say(`Starting ${name}: ${i + 1} of ${plan.length}…`);
+      try {
+        if (p.run === "idea") {
+          if (!(await startIdea(s.st.profile, p.x.suggest))) throw new Error("the Desk didn't show up in time");
+        } else {
+          const { it } = p.x, { action, why } = p.x.suggest;
+          const task = `${ticketTask(s.st, it, p.key)}\n\n${askText(s.st.profile, "picked", { action, why: why || "not said" })}\n\n${OTHERS}`;
+          const id = await once(it.key, () => launch(s.st.profile, it, { name: p.key, argv: claudeArgv(s.st.profile), task }));
+          if (id === undefined) throw new Error("it was already starting");
+          if (!id) throw new Error("its new space didn't show up in time");
+          dismissSuggestion(s.st.profile, p.x.suggest.key);
+        }
+        started.push(name);
+      } catch (e) {
+        failed.push({ key: name, why: String(e?.message ?? e).split("\n")[0].slice(0, 160) });
+      }
+    }
+    return true;
+  });
+  if (!ran) { say("Claude's picks are already being started."); return null; }
+  const failedText = failed.map((f) => `${f.key} (${f.why})`).join(", ");
+  say(`Started ${started.length} of ${plan.length}${started.length ? `: ${started.join(", ")}` : ""}.${failed.length ? ` Didn't start: ${failedText}.` : ""}`);
+  if (failed.length) notify({ title: `${failed.length === 1 ? "A pick" : `${failed.length} picks`} didn't start`, body: `${failedText}.`, level: "warning" });
+  return { started, failed };
 }
 function suggestTask(st, items, reviews) {
   const cfg = boardOf(st.setup)?.cfg;
