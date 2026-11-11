@@ -9,6 +9,8 @@ import {
 } from "../../mods/kelpie/config.js";
 
 const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
+// Let me configure it for you's placeholders (configureText() in config.js; {guide} is an old one, kept for saved prompts).
+const CONFIGURE_FIELDS = ["name", "id", "scope", "about", "home"];
 const bullet = (start) => guide.split("\n").find((l) => l.startsWith(start)) ?? "";
 
 describe("configure-profile", () => {
@@ -36,12 +38,17 @@ describe("configure-profile", () => {
       assert.ok(carry.includes(`\`${k}\``), `${k} carried over to the new board`);
     }
   });
+  test("says what working alone changes: Built, and no Request approval (worksAlone() in config.js)", () => {
+    const solo = bullet("- **I work alone**");
+    assert.match(solo, /"Built"/);
+    assert.match(solo, /Request approval isn't offered/);
+  });
   test("lists every scope Let me configure it for you sends", () => {
     const rows = guide.split("## Scopes")[1].split("\n## ")[0].split("\n").filter((l) => l.startsWith("| `")).map((l) => l.split(" | ")[0]);
     for (const scope of Object.keys(CONFIGURE_SCOPES)) assert.ok(rows.some((r) => r.includes(`\`${scope}\``)), scope);
   });
   test("lists every button message and prompt placeholder", () => {
     for (const { id } of ASK_PROMPTS) assert.match(guide, new RegExp(`^\\| \`${id}\` \\|`, "m"), id);
-    for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
+    for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS, ...CONFIGURE_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
   });
 });
