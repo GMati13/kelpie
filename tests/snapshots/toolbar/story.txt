@@ -3,9 +3,10 @@ h_flex
     h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
       div
         div
-          div [bg=#e8603f52] ~loop(opacity)
-          div [bg=#e8603f]
-          div [bg=#ffb39a opacity=0.75]
+          div
+            div [bg=#e8603f52] ~loop(opacity)
+            div [bg=#e8603f]
+            div [bg=#ffb39a opacity=0.75]
       div
         "Cache trips for offline use"
     h_flex #tab-t0-1 [fg=muted hover(bg=hover fg=foreground) border=#00000000] {hover down:left move up:left click down:right}

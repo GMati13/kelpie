@@ -132,7 +132,7 @@ test("subtask rows line up: the same columns on every row", async () => {
   // Key, title (its actions laid over it), the agent's mark, avatar, status: no "No PR yet".
   assert.deepEqual(["ACME-143", "ACME-144", "ACME-145"].map(cols), [5, 5, 5]);
   const slot = (key) => render(byId(el, `sub-mark-${key}`), skinTheme());
-  assert.match(slot("ACME-143"), /tip="ACME-143: needs you"\n  div/, "the agent's mark, saying its state");
+  assert.match(slot("ACME-143"), /tip="ACME-143: waiting for you"\n  div/, "the agent's mark, saying its state");
   assert.doesNotMatch(slot("ACME-145"), /tip=|\n  div/, "an empty slot");
   assert.doesNotMatch(render(byId(el, "sub-row-ACME-144"), skinTheme()), /No PR yet/);
 });
