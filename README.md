@@ -34,7 +34,7 @@ A story nobody has started yet:
 
 ## Requirements
 
-- [Herdr](https://herdr.dev), with its `herdr-app` and `hc` commands on your `PATH` (tested with Herdr 0.1.14 and herdr-core 0.1.19), and [Claude Code](https://claude.com/claude-code)
+- [Herdr](https://herdr.dev), with its `herdr-app` and `hc` commands on your `PATH` (tested with Herdr 0.1.15 and herdr-core 0.1.20), and [Claude Code](https://claude.com/claude-code)
 - `git`, `jq`, `curl`, and `python3` (its standard library only)
 - For pull requests, and for a GitHub Project as the board: the GitHub CLI `gh`, signed in (`gh auth login`). Moving a Project's tickets from Kelpie also needs gh's `project` scope (the profile dialog checks it and gives the command)
 - For Jira (Jira Cloud only): an API token, kept in the macOS Keychain or printed by a command of your own (`op read …`, `pass …`, `secret-tool lookup …`); the profile dialog sets it up
@@ -43,7 +43,7 @@ A story nobody has started yet:
   - [`terminal-browser`](https://terminal-browser.com) (`brew install --cask terminal-browser`) for the Web panel
   - `sqlite3`, which lets Restart browser forget a page that froze it
 
-Developed on macOS. Linux is meant to work but is less tested. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only (without it, the gallery's thumbnails are the full images).
+Developed on macOS. Linux is meant to work but is less tested. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only. Without `sips`, the Screenshots gallery shows the full images as its thumbnails.
 
 ## Install
 
@@ -58,7 +58,7 @@ cd kelpie
 Then:
 
 1. **Restart Herdr** if it's running: it loads fonts only at start.
-2. **Add Kelpie's keys** to Herdr's own `~/.config/herdr-app/keys.json`. Kelpie's `keys.json` has a section for each layout (`layout:Kelpie`, `layout:Kelpie-Plain`), which go in as they are, and one global key (`cmd-shift-s` toggles the Web panel), which goes into your `global` section. This merges them, keeping a backup and your own keys (Kelpie's win where both bind the same key):
+2. **Add Kelpie's keys** to Herdr's own `~/.config/herdr-app/keys.json`. Kelpie's `keys.json` has a section for each layout (`layout:Kelpie`, `layout:Kelpie-Plain`), which go in as they are, and one global key (`cmd-shift-s` toggles the Web panel), which goes into your `global` section. From your Kelpie clone, this merges them, keeping a backup and your own keys (Kelpie's win where both bind the same key; with `HERDR_APP_HOME`, use that folder for `k`):
 
    ```sh
    k=~/.config/herdr-app/keys.json
@@ -72,7 +72,7 @@ Then:
 
 ### Profiles
 
-A profile is a folder you work in, plus whatever you connect to it: a board, Jira or a GitHub Project (its sprint becomes the sidebar's stories; below), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`) and a GitHub account (below, Several accounts), a start page for the Web panel. Only the folder is needed. Without a board, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile whose folder it started in. Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
+A profile is a folder you work in, plus whatever you connect to it: a board, Jira or a GitHub Project (its sprint becomes the sidebar's stories; below), a GitHub owner (pull requests and reviews), a Claude account (Default, Claude's own `~/.claude`, or any other `~/.claude*` folder that has a `settings.json` or `projects/`: one you've run Claude with via `CLAUDE_CONFIG_DIR`) and a GitHub account (below, Several accounts), a start page for the Web panel. Only the folder is needed. Without a board, the sidebar lists the profile's spaces and their agents instead. A space belongs to the profile it was opened from (`cmd-n`), else to the profile whose folder it started in. Each profile also has a Desk, first in its sidebar: one space for work that isn't on any ticket (`cmd-alt-d`). Every setting can also be set up by a Claude agent: "Let me configure it for you" in the profile dialog, through Kelpie's Claude Code plugin (below; Kelpie offers to install it the first time).
 
 ### A board: Jira or a GitHub Project
 
@@ -131,13 +131,13 @@ Each profile can run on its own Claude account and its own GitHub account, so wo
   It needs `python3` and Herdr's `herdr-app` on your `PATH`, and shows stories of the profile Kelpie has on screen (a story's own description; not a subtask's yet).
 - **Changing a skin's art:** the art is already built; after editing it, rebuild with `python3 mods/kelpie/skins/<name>/build.py` (needs pillow).
 
-## Try it without Jira
+## Try the demo
 
 ```sh
 herdr-app do kelpie.demo
 ```
 
-This adds a profile called Acme, with a made-up sprint, pull requests and agents in every state, and opens its stories as spaces. Nothing reaches Jira, GitHub or Claude. Its agents are a stand-in script, and its links can't reach anyone. What it shows comes from `mods/kelpie/demo/demo.json`: edit it and press Refresh to set up another situation.
+With a Kelpie layout picked, this adds a profile called Acme, with a made-up sprint, pull requests and agents in every state, and opens its stories as spaces. Nothing reaches Jira, GitHub or Claude. Its agents are a stand-in script, and its links can't reach anyone. What it shows comes from `mods/kelpie/demo/demo.json`: edit it and press Refresh to set up another situation.
 
 To see the same stories on a GitHub Project instead of Jira, open the demo with that board (`kelpie.demo` puts Jira back):
 
