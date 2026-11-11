@@ -8,7 +8,7 @@
 import { gh } from "./pulls.js";
 import { adfText, markdownBlocks } from "./adf.js";
 import { prefixFor } from "./config.js";
-import { demoFixture, demoMoveTo } from "./demo.js";
+import { demoCommentsOf, demoFixture, demoMoveTo } from "./demo.js";
 
 // A Project ticket key: a repo's prefix and the issue's number (config.js PREFIX).
 const TICKET = /^([A-Z][A-Z0-9]+)-(\d+)$/;
@@ -21,6 +21,14 @@ const ID = /^[A-Za-z0-9_=-]{1,100}$/;
 // One issue: its title, and its parent's (a sub-issue's story), with the body for the review prompt.
 const ISSUE = `query KelpieIssue($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issue(number: $number) {
   number title body parent { number title repository { nameWithOwner } } } } }`;
+// How many of a ticket's comments are shown (the newest), on either board.
+export const COMMENTS_MAX = 50;
+// A comment's author as shown: no control characters, one line, 80 characters at most.
+export const commentAuthor = (v) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) : "") || "Someone";
+// An issue's newest comments (COMMENTS_MAX), oldest of them first, with what's left
+// of the budget (ghlimit.js reads it off every GraphQL answer).
+const COMMENTS = `query KelpieComments($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issue(number: $number) {
+  comments(last: 50) { totalCount nodes { id createdAt body author { login avatarUrl(size: 48) ... on User { name } } } } } } rateLimit { remaining limit resetAt } }`;
 // A Project item's Status set to one of its options.
 const MOVE = `mutation KelpieMove($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`;
 
@@ -69,6 +77,24 @@ export async function issueDescription(board, data, key) {
   const ref = issueRef(board, data, key);
   if (!ref) throw new Error(`Kelpie doesn't know which repo ${key} is in.`);
   return markdownBlocks(await issueBody(board, ref));
+}
+
+// A ticket's comments (board.js comments()): { total, list: [{ id, author, avatar, at, blocks }] }, the
+// bodies GitHub's Markdown, drawn through markdownBlocks(). One constant query, the issue's owner, repo
+// and number its variables. The demo's come from its fixture.
+export async function issueComments(board, data, key) {
+  const shape = (c) => ({ id: String(c.id ?? ""), author: commentAuthor(c.author), avatar: c.avatar ?? null, at: c.at, blocks: markdownBlocks(c.body ?? "") });
+  if (board.cfg?.demo) {
+    const list = demoCommentsOf(await demoIssue(key));
+    return { total: list.length, list: list.map(shape) };
+  }
+  const ref = issueRef(board, data, key);
+  if (!ref?.owner || !ref.repo || !ref.number) throw new Error(`Kelpie doesn't know which repo ${key} is in.`);
+  const r = await gh(board.account, ["api", "graphql", "-f", `owner=${ref.owner}`, "-f", `repo=${ref.repo}`, "-F", `number=${ref.number}`, "-f", `query=${COMMENTS}`]);
+  if (r.code !== 0) throw new Error(firstLine(r, `GitHub didn't send ${key}'s comments.`));
+  const c = JSON.parse(r.stdout)?.data?.repository?.issue?.comments;
+  const list = (c?.nodes ?? []).slice(-COMMENTS_MAX).map((n) => shape({ id: n.id, author: n.author?.name || n.author?.login, avatar: n.author?.avatarUrl, at: Date.parse(n.createdAt) || null, body: n.body }));
+  return { total: Math.max(Number(c?.totalCount) || 0, list.length), list };
 }
 
 // The issue as GitHub answers it ({ number, title, body, parent }), or null when there's none.

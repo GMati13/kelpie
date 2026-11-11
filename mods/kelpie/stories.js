@@ -18,7 +18,7 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { boardSite, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
@@ -1197,7 +1197,7 @@ export function setView(profile, it, mode) {
 // The main stack's child for a view: the terminals, the Screenshots view, or the story's own view.
 export const stackChild = (mode) => (mode === "agent" ? "main" : mode === "shots" ? "story-shots" : "story-view");
 const EXTRA = {};
-const PICKED = { file: {}, more: new Set(), opened: new Set() };
+const PICKED = { file: {}, more: new Set(), opened: new Set(), talk: new Set(), allTalk: new Set() };
 const SHOTS = {}; // story key -> { list, at, loading }: its sessions, for the Screenshots view
 
 // Diff files you have looked at, ticked in the list: by "<repo or PR>:<path>:<hash of its patch>", so
@@ -1547,6 +1547,9 @@ const RENAMED = new Set();
 // again after the stories reload once it's a few minutes old, or on Refresh. Each copy (the header,
 // the story view) keeps its own.
 const DESCRIPTIONS = {}; // key -> { blocks, at, loading, error }
+// A ticket's comments (board.js comments()), by key, loaded and reloaded as its description is.
+const THREADS = {}; // key -> { total, list, at, loading, error }
+const COMMENTS_SHOWN = 3; // an opened thread shows its newest few, the rest behind "Show all n"
 const MOVES = {}; // key -> { list: [{ id, name, to, category }], at, loading, error }: where its status can go
 const MOVED = {}; // key -> { status, category, id, at }: a status just set here, shown until the stories catch up
 const MOVED_FOR = 10 * 60 * 1000; // a move the board's answers still don't show is kept this long at most
@@ -2199,6 +2202,9 @@ export class Stories extends Source {
     this.statuses = STATUSES;
     this.more = PICKED.more; // keys whose description shows in full
     this.opened = PICKED.opened; // subtask keys whose description shows under them
+    this.threads = THREADS;
+    this.talk = PICKED.talk; // keys whose comments are opened
+    this.allTalk = PICKED.allTalk; // keys whose comments show all, not only the newest few
   }
 
   keyOf(setup) {
@@ -3046,7 +3052,7 @@ export class Stories extends Source {
         .child(bands(Array.from({ length: 6 }, (_, i) => alpha(bg, (i + 1) / 7)), {}).flex_none().w(24).h_full())
         .child(h_flex().flex_none().h_full().gap(4).pl(4).items_center().bg(bg).children(list));
     };
-    const sub = (s, about = opened(s) ? this.description(t, st, s.key, cx, { id: `sub-desc-${s.key}` }) : null, list = acts(s)) => v_flex().id(`sub-row-${s.key}`).flex_none().gap(4).px(8).py(8).border_t_1().border_color(t.border).hover((x) => x.bg(t.hover))
+    const sub = (s, about = opened(s) ? this.description(t, st, s.key, cx, { id: `sub-desc-${s.key}` }) : null, talk = opened(s) ? this.comments(t, st, s.key, cx, { id: `sub-talk-${s.key}` }) : null, list = acts(s)) => v_flex().id(`sub-row-${s.key}`).flex_none().gap(4).px(8).py(8).border_t_1().border_color(t.border).hover((x) => x.bg(t.hover))
       .on_hover(hover(s.key))
       .child(h_flex().gap(10).items_center().min_w(0)
         // Who it's assigned to leads the row: the first thing looked for.
@@ -3065,7 +3071,7 @@ export class Stories extends Source {
         .child(this.agentSlot(t, s))
         .child(this.column("status", s.key, h_flex().flex_none().items_center()
           .when(Boolean(s.status), (el) => el.child(this.statusChip(t, st, s.key, s.status, s.category, `sub-status-${s.key}`, cx))))))
-      .when(Boolean(about), (el) => el.child(div().pl(SUB_INDENT).pb(2).child(about)))
+      .when(Boolean(about || talk), (el) => el.child(v_flex().pl(SUB_INDENT).pb(2).gap(14).when(Boolean(about), (x) => x.child(about)).when(Boolean(talk), (x) => x.child(talk))))
       .children(s.prs.map((p) => this.pr(t, p, st, it).pl(SUB_INDENT)));
     // Yours first, then everyone else's, each under a small heading; one group alone needs none.
     const heading = (id, words) => div().id(id).flex_none().px(8).pt(14).pb(6).text_size(SMALL).font_semibold().text_color(t.muted).child(words);
@@ -3077,6 +3083,8 @@ export class Stories extends Source {
     const own = it.story ? [] : it.subs[0].prs;
     // The ticket's own description first, folded to a few lines (a pull request's row has none).
     const about = it.pr ? null : this.description(t, st, it.key, cx, { id: "story-desc", fold: true });
+    // Its comments under it, in the description's column.
+    const talk = it.pr ? null : this.comments(t, st, it.key, cx, { id: "story-talk" });
     // Its pull requests and subtasks sit in a centred column of their own (ROWS wide), so a row's
     // status stays near its key and title on a very wide screen.
     const rows = v_flex().relative().w_full().min_w(0).max_w(ROWS).child(this.colProbe())
@@ -3096,6 +3104,8 @@ export class Stories extends Source {
     const overview = this.scrollBox(v_flex().id(point ? `story-overview-${it.key}-${point.at}` : `story-overview-${it.key}`), `${st.profile?.id}:${it.key}`, point?.at ?? null).flex_1().min_h(0).gap(0).overflow_y_scrollbar()
       .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
         .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
+        .when(Boolean(talk), (el) => el.child(h_flex().flex_none().w_full().justify_center().px(40).pb(32).when(!about, (x) => x.pt(24))
+          .child(v_flex().w_full().min_w(0).max_w(DOC.width).child(talk))))
         .child(h_flex().flex_none().w_full().justify_center().px(40).pb(16).child(rows)));
     // A story at work leaves its details a quarter of the column, so they often go on past the
     // block's edge: a fade over that edge says there's more to scroll to, where text cut off mid-line
@@ -3303,19 +3313,66 @@ export class Stories extends Source {
   // it's DESC_EVERY old, or after a Refresh press. `load` gives the blocks of something else's (a
   // pull request's, by its own key); the default asks Jira for the ticket's.
   descriptionOf(st, key, cx, load = () => boardDescription(boardOf(st.setup), key, st.data)) {
-    const d = this.descs[key];
+    return this.shownOnce(this.descs, st, key, cx, async () => ({ blocks: await load() }));
+  }
+
+  // A ticket's comments ({ total, list }, board.js comments()), loaded and reloaded as its description.
+  commentsOf(st, key, cx) {
+    return this.shownOnce(this.threads, st, key, cx, () => boardComments(boardOf(st.setup), key, st.data));
+  }
+
+  // Something of a ticket's kept in `store` by key: loaded by `load` (what it gives is kept, with
+  // `at`) when first shown, and again after the stories reload once it's DESC_EVERY old or after a
+  // Refresh. A failed load keeps what was there, with its `error`.
+  shownOnce(store, st, key, cx, load) {
+    const d = store[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
-    this.descs[key] = { ...(d ?? {}), loading: true, at: d?.at ?? 0 };
+    store[key] = { ...(d ?? {}), loading: true, at: d?.at ?? 0 };
     cx.spawn(async (cx) => {
       try {
-        this.descs[key] = { blocks: await load(), at: Date.now() };
+        store[key] = { ...(await load()), at: Date.now() };
       } catch (e) {
-        this.descs[key] = { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() };
+        store[key] = { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() };
       }
       cx.notify();
     });
-    return this.descs[key];
+    return store[key];
+  }
+
+  // A ticket's comments, or null while they load and when it has none (no empty heading): a folded
+  // "Comments · n" heading, opened to the newest few (COMMENTS_SHOWN), newest last, with "Show all n"
+  // above them. Each is its author (their picture when the list already has it, else initials), how
+  // long ago, and its text, drawn as a description is (selectable, links and code kept). Older ones
+  // than the board gave (board.js COMMENTS_MAX) are said to be only on the board.
+  comments(t, st, key, cx, { id }) {
+    const c = this.commentsOf(st, key, cx);
+    if (!c.list) return c.error ? div().id(`${id}-error`).text_size(SMALL).text_color(t.dim).tooltip(c.error).child("Couldn't load the comments") : null;
+    if (!c.list.length) return null;
+    const open = this.talk.has(key), all = this.allTalk.has(key);
+    const toggle = (set) => (_e, cx) => { if (set.has(key)) set.delete(key); else set.add(key); cx.notify(); };
+    const head = h_flex().id(`${id}-head`).flex_none().gap(6).items_center().cursor_pointer().text_size(SMALL).font_semibold().text_color(t.muted)
+      .hover((x) => x.text_color(t.foreground)).tooltip(open ? "Hide the comments" : "Show the comments").on_click(toggle(this.talk))
+      .child(icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim))
+      .child(`Comments · ${c.total}`);
+    if (!open) return v_flex().id(id).w_full().min_w(0).child(head);
+    const from = all ? 0 : Math.max(0, c.list.length - COMMENTS_SHOWN);
+    const away = c.total - c.list.length;
+    const link = (lid, words, action) => div().id(lid).flex_none().text_size(SMALL).text_color(t.dim).cursor_pointer().hover((x) => x.text_color(t.foreground)).on_click(action).child(words);
+    const when = (at) => (!at ? "" : ago(at) === "now" ? "just now" : `${ago(at)} ago`);
+    // Each keeps its place in the list as its id, so showing all doesn't renumber the ones shown.
+    const one = (x, n) => v_flex().id(`${id}-${n}`).flex_none().w_full().min_w(0).gap(6)
+      .child(h_flex().flex_none().gap(8).items_center().min_w(0)
+        .child(avatar(t, x.author, 18, x.author, avatarFile(x.avatar)))
+        .child(div().min_w(0).truncate().text_size(SMALL).font_semibold().text_color(t.foreground).child(x.author))
+        .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(when(x.at))))
+      .when(x.blocks.length > 0, (el) => el.child(skinFont(div(), "reading").id(`${id}-${n}-body`).pl(26).w_full().min_w(0).text_size(DOC.size).line_height(`${LINE}px`).text_color(tint(t.foreground, "c4"))
+        .child(blocksView(t, `${id}-${n}-b`, x.blocks, 14))));
+    return v_flex().id(id).w_full().min_w(0).gap(16).child(head)
+      .when(away > 0 && (all || from === 0), (el) => el.child(div().id(`${id}-away`).flex_none().text_size(SMALL).text_color(t.dim)
+        .child(`${away} older ${away === 1 ? "comment is" : "comments are"} only on ${boardOf(st.setup)?.name ?? "the board"}`)))
+      .when(from > 0, (el) => el.child(link(`${id}-all`, `Show all ${c.list.length}`, toggle(this.allTalk))))
+      .children(c.list.slice(from).map((x, i) => one(x, from + i)));
   }
 
   // A ticket's description, or null: nothing while it loads or when it's empty. Folded to a few lines
