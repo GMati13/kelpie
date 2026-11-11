@@ -421,5 +421,22 @@ test("the profile dialog's card shrinks to the window, its page and tabs scroll,
       assert.ok(path, id);
       assert.equal(path.filter(scrolls).length, 0, `${id} is outside every scroll`);
     }
+    // Let me configure it for you is a quiet button in the Save row, not a card in the side column.
+    const row = pathTo(el, "setup-save").at(-2);
+    const configure = pathTo(el, "setup-configure-all") ?? pathTo(el, "setup-configure-all-more");
+    assert.ok(configure?.includes(row), `${focus}: Let me configure it for you is in the Save row`);
+    // Delete profile is far from it: at the end of the General page, never in the Save row.
+    const remove = pathTo(el, "setup-remove");
+    if (focus === "general") assert.ok(remove && !remove.includes(row), "general: Delete profile is on the page");
+    else assert.equal(remove, null, `${focus}: no Delete profile`);
   }
+});
+
+test("Delete profile, on the General page, deletes the profile only on its second press", () => {
+  const { d, cx } = profileDialog("general");
+  press(d.render(cx), "setup-remove", cx);
+  assert.ok(mock.state.shared.get("kelpie.profiles")[DEMO], "the first press only asks");
+  assert.ok(texts(d.render(cx)).some((x) => x.startsWith("Delete ")), "it now says what it deletes");
+  press(d.render(cx), "setup-remove", cx);
+  assert.equal(mock.state.shared.get("kelpie.profiles")[DEMO], undefined);
 });
