@@ -88,8 +88,9 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
 
 Every factory (`div()`, `h_flex()`, `svg(path)`, `Button.new(id)`, `TextView.html(id, html)`, `new
 AvatarImage(path)`, ...) returns a recording element: any method call is recorded with its arguments and
-returns the same element, so any chain a view builds works. `.when(cond, fn)`, `.when_some(value, fn)` and
-`.when_else(cond, yes, no)` run their branch as gpui does. State handles (`InputState.new(cx)`,
+returns the same element, so any chain a view builds works. `.when(cond, fn)` runs its branch as gpui
+does; `.when_some()` and `.when_else()` throw, as Herdr's elements don't have them (a view calling one
+isn't drawn: "unknown element method"). State handles (`InputState.new(cx)`,
 `TextareaState.new(...)`, `VirtualListScrollHandle.new()`) keep `set_value()`/`value()` and record the rest.
 `.map(fn)` runs `fn` on the element, as gpui's does.
 `View` is a plain base class (`this.props`).

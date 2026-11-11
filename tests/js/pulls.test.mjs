@@ -74,7 +74,7 @@ test("github.account: only a GitHub name is kept, and an agent setting it waits 
   saveProfile("p", { name: "P", folder: "/w", github: { owner: "acme" } });
   assert.equal(buildProfile("p", { github: { account: "work-me" } }).github.account, "work-me");
   for (const bad of ["-o", "a b", "x;y", "-", "a--b"]) assert.throws(() => buildProfile("p", { github: { account: bad } }), /github\.account/, bad);
-  assert.deepEqual(needsYes("p", { github: { account: "work-me" } }), [{ key: "github.account", text: "work-me" }]);
+  assert.deepEqual(needsYes("p", { github: { account: "work-me" } }), [{ key: "github.account", page: "GitHub", label: "GitHub account", kind: "github", was: null, now: "work-me" }]);
   assert.deepEqual(needsYes("p", { github: { owner: "other" } }), []);
   saveProfile("p", null);
 });
