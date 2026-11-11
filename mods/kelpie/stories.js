@@ -831,7 +831,8 @@ function withFresh(data) {
   if (!data?.prs || !Object.keys(FRESH).some(freshNow)) return data;
   const swap = (list, open) => (list ?? []).flatMap((p) => {
     const f = freshNow(p.url);
-    return !f ? [p] : f.pr.closed || (open && f.pr.merged) ? [] : [f.pr];
+    // A review keeps the shape the load gives it (no `merged`), so an unchanged read changes nothing.
+    return !f ? [p] : f.pr.closed || (open && f.pr.merged) ? [] : [open ? { ...f.pr, merged: p.merged } : f.pr];
   });
   return { ...data, prs: swap(data.prs, false), reviews: swap(data.reviews, true) };
 }
@@ -846,9 +847,12 @@ export function settlePulls(data, began) {
   return withFresh(data);
 }
 // Puts a change into a profile's loaded stories: the shared copy every view reads, and the list's own.
+// Written only when it changes something, as every copy draws again on a write (the quick read runs
+// every 20 s while something is in flight).
 function patchLoaded(profile, fn) {
   const all = shared(DATA) ?? {}, e = all[profile?.id];
-  if (e?.data) setShared(DATA, { ...all, [profile.id]: { ...e, data: fn(e.data) } });
+  const next = e?.data ? fn(e.data) : null;
+  if (next && next !== e.data && JSON.stringify(next) !== JSON.stringify(e.data)) setShared(DATA, { ...all, [profile.id]: { ...e, data: next } });
   for (const [k, c] of Object.entries(CACHE)) {
     let id = null;
     try { id = JSON.parse(k)[0]; } catch {}

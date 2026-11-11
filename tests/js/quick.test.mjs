@@ -107,3 +107,16 @@ describe("settlePulls: a quick read wins over a load that began before it", () =
     assert.deepEqual(settlePulls(data({ prs: [P("PENDING")] }), Date.now() - 1000).prs, []);
   });
 });
+
+test("a quick read that finds nothing new doesn't write the shared stories, so nothing redraws", async () => {
+  setupDemoWorld();
+  settlePulls(null, Infinity);
+  const cx = fakeCx();
+  const list = new StoryList();
+  list.init(cx);
+  await cx.settle(10);
+  mock.calls = [];
+  list.quickPulls(cx);
+  await cx.settle(5);
+  assert.equal(mock.of("setShared").filter(([key]) => key === "kelpie.stories.data").length, 0);
+});
