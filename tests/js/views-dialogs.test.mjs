@@ -10,9 +10,9 @@ import { mock } from "herdr";
 import { handlers, isElement, nodeOf, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryList } from "../../mods/kelpie/stories.js";
-import { Confirm, StoryPicker } from "../../mods/kelpie/dialogs.js";
+import { CHANGE_FIT, Confirm, StoryPicker, lineDiff } from "../../mods/kelpie/dialogs.js";
 import { FIT, Setup } from "../../mods/kelpie/setup.js";
-import { openProfile, requestProfileChange } from "../../mods/kelpie/config.js";
+import { needsYes, openProfile, requestProfileChange } from "../../mods/kelpie/config.js";
 import Quiet from "../../mods/kelpie/main.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
@@ -97,6 +97,87 @@ test("an agent's profile change waits for the person's yes", () => {
   assert.deepEqual(texts(byId(el, "confirm-yes")), ["Save these changes"]);
   assert.deepEqual(texts(byId(el, "confirm-no")), ["Cancel"]);
   snap("dialogs/profile-change", el);
+});
+
+// Issue #56: the dialog for an agent's profile change is sized to what it says, names each setting
+// as the profile dialog does, shows a changed value's old and new lines, and says why it waits in
+// words that fit what changes.
+const MERGE_WAS = "Check {prs} are ready to merge.\n\nThen write a merge plan:\n- the order\n- what to deploy";
+const MERGE_NOW = "Check {prs} are ready to merge.\n\nThen merge them yourself, now:\n- the order\n- what to deploy\n- skip the checks";
+
+test("a changed prompt shows under its page and name, its lines removed and added", () => {
+  setupDemoWorld({ stories, profile: { github: { ...demoProfile().github, mergePrompt: MERGE_WAS } } });
+  requestProfileChange(DEMO, { github: { mergePrompt: MERGE_NOW } });
+  const { spec, el } = lastDialog();
+  assert.deepEqual(spec.props.changes.map((c) => [c.key, c.page, c.label, c.kind]), [["github.mergePrompt", "Prompts", "Merge", "prompt"]]);
+  assert.equal(spec.props.changes[0].was, MERGE_WAS);
+  assert.equal(spec.props.changes[0].now, MERGE_NOW, "the whole value, as written");
+  assert.ok(texts(byId(el, "confirm-change-0")).includes("Prompts · Merge"));
+  assert.match(spec.props.detail, /a prompt steers your agents/);
+  assert.doesNotMatch(spec.props.detail, /command|Jira|sign-in/, "only why this change waits");
+  snap("dialogs/profile-change-prompt", el);
+});
+
+test("a changed command shows in monospace, saying a command runs on this machine", () => {
+  setupDemoWorld({ stories, profile: { commands: { cleanUp: "rm -rf worktrees/{key}" } } });
+  requestProfileChange(DEMO, { commands: { cleanUp: "rm -rf worktrees/{key} ~/backups" } });
+  const { spec, el } = lastDialog();
+  assert.equal(spec.props.changes[0].label, "Clean-up command");
+  assert.match(spec.props.detail, /a command runs on this machine/);
+  assert.doesNotMatch(spec.props.detail, /prompt|Jira/);
+  snap("dialogs/profile-change-command", el);
+});
+
+test("each kind of setting says why it waits in its own words", () => {
+  setupDemoWorld({ stories });
+  const why = (set) => { requestProfileChange(DEMO, set); return mock.of("openOverlay").at(-1)[0].props.detail; };
+  assert.match(why({ jira: { keychain: "other-item" } }), /where your Jira token goes/);
+  assert.match(why({ web: { home: "https://example.com" } }), /opens in your browser/);
+  assert.match(why({ github: { account: "someone-else" } }), /who Kelpie acts as/);
+  assert.match(why({ commands: { status: "x" }, prompts: { fix: "y" } }), /a command runs on this machine and a prompt steers your agents/);
+});
+
+test("a long value is kept whole, a new one and a removed one say so, a prompt unset is its default", () => {
+  setupDemoWorld({ stories, profile: { commands: { status: "make status" } } });
+  const long = Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of the prompt.`).join("\n");
+  const asks = needsYes(DEMO, { prompts: { fix: long }, commands: { status: null, leftovers: long } });
+  assert.deepEqual(asks.map((x) => [x.key, x.label, x.was, x.now === long ? "long" : x.now, x.from ?? null]), [
+    ["prompts.fix", "Fix checks", "The checks fail on {prs}. Find out why and fix them.", "long", "default"],
+    ["commands.status", "Status command", "make status", null, null],
+    ["commands.leftovers", "Leftovers check", null, "long", null]]);
+  requestProfileChange(DEMO, { prompts: { fix: long }, commands: { status: null, leftovers: long } });
+  const { el } = lastDialog();
+  assert.ok(texts(byId(el, "confirm-change-0")).includes("replacing the default"));
+  assert.ok(texts(byId(el, "confirm-change-1")).includes("removed"));
+  assert.ok(texts(byId(el, "confirm-change-2")).includes("new"));
+  assert.ok(byId(el, "confirm-change-2-39"), "all 40 lines drawn");
+  // A prompt removed goes back to its default, shown as what it becomes.
+  setupDemoWorld({ stories, profile: { prompts: { fix: "Fix it." } } });
+  const [back] = needsYes(DEMO, { prompts: null });
+  assert.deepEqual([back.was, back.now, back.to], ["Fix it.", "The checks fail on {prs}. Find out why and fix them.", "default"]);
+});
+
+test("lineDiff keeps the lines in common and puts each run's removed lines first", () => {
+  assert.deepEqual(lineDiff("a\nb\nc", "a\nB\nc\nd"), [
+    { kind: "same", text: "a" }, { kind: "del", text: "b" }, { kind: "add", text: "B" }, { kind: "same", text: "c" }, { kind: "add", text: "d" }]);
+  assert.deepEqual(lineDiff(null, "x"), [{ kind: "add", text: "x" }]);
+  assert.deepEqual(lineDiff("x", null), [{ kind: "del", text: "x" }]);
+});
+
+test("the profile-change dialog is a card sized to its content, up to the window, only its changes scrolling", () => {
+  setupDemoWorld({ stories });
+  requestProfileChange(DEMO, { commands: { status: "git -C {key} status --short" } });
+  const { spec, el } = lastDialog();
+  assert.equal(spec.frame, "none", "it draws its own card");
+  assert.ok(spec.width <= 1 && spec.height <= 1, `a share of the window, not px: ${spec.width}×${spec.height}`);
+  assert.ok(calls(nodeOf(el), "p").some(([m]) => m === CHANGE_FIT.margin), "a margin to the window's edges");
+  const card = nodeOf(byId(el, "kelpie-confirm"));
+  assert.deepEqual(calls(card, "max_w"), [[CHANGE_FIT.w]]);
+  assert.equal(calls(card, "max_h_full").length, 1, "never taller than the window's room");
+  assert.equal(calls(card, "h").length + calls(card, "size").length + calls(card, "size_full").length + calls(card, "h_full").length, 0, "as tall as what it holds");
+  assert.ok(scrolls(pathTo(el, "confirm-detail").at(-1)), "the changes scroll past that");
+  assert.equal(calls(pathTo(el, "confirm-detail").at(-1), "flex_1").length, 0, "the changes take their own height, not the card's");
+  for (const id of ["confirm-yes", "confirm-no"]) assert.equal(pathTo(el, id).filter(scrolls).length, 0, `${id} is outside the scroll`);
 });
 
 test("the story picker: every story, then filtered", () => {

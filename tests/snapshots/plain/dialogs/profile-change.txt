@@ -1,19 +1,22 @@
-v_flex #kelpie-confirm [bg=popover] {key_down}
-  div [fg=foreground]
-    "Claude wants to change Acme"
-  v_flex #confirm-detail
+div #confirm-fit
+  v_flex #kelpie-confirm [bg=popover border=border] {key_down}
+    div [fg=foreground]
+      "Claude wants to change Acme"
     div [fg=muted]
-      "These settings can run commands, send your Jira sign-in somewhere or steer your agents, so they wait for your yes:"
-    v_flex
-      h_flex
-        div [fg=dim]
-          "•"
-        div [fg=dim]
-          "commands.status"
-        div [fg=foreground]
-          "git -C {key} status --short"
-  h_flex
-    h_flex #confirm-no [fg=muted hover(bg=hover fg=foreground)] {down:left click}
-      "Cancel"
-    h_flex #confirm-yes [bg=accent fg=accent_foreground hover(opacity=0.88)] {down:left click}
-      "Save these changes"
+      "These wait for your yes, as a command runs on this machine. Nothing is saved until you press Save these changes."
+    v_flex #confirm-detail
+      v_flex #confirm-change-0
+        h_flex
+          div [fg=muted]
+            "Story commands · Status command"
+          div [fg=ansi2]
+            "new"
+        v_flex [border=border bg=background]
+          h_flex #confirm-change-0-0
+            div [fg=foreground]
+              "git -C {key} status --short"
+    h_flex
+      h_flex #confirm-no [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+        "Cancel"
+      h_flex #confirm-yes [bg=accent fg=accent_foreground hover(opacity=0.88)] {down:left click}
+        "Save these changes"

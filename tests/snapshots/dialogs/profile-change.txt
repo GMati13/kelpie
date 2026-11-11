@@ -1,29 +1,42 @@
-v_flex #kelpie-confirm [bg=popover] {key_down}
-  div [fg=foreground]
-    "Claude wants to change Acme"
-  v_flex #confirm-detail
+div #confirm-fit
+  v_flex #kelpie-confirm [bg=popover border=border] {key_down}
+    div [fg=foreground]
+      "Claude wants to change Acme"
     div [fg=muted]
-      "These settings can run commands, send your Jira sign-in somewhere or steer your agents, so they wait for your yes:"
-    v_flex
-      h_flex
-        div [fg=dim]
-          "•"
-        div [fg=dim]
-          "commands.status"
-        div [fg=foreground]
-          "git -C {key} status --short"
-      h_flex
-        div [fg=dim]
-          "•"
-        div [fg=dim]
-          "prompts.fix"
-        div [fg=foreground]
-          "Fix the checks of {prs}."
-  h_flex
-    h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
-      "Cancel"
-    h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
-      "Save these changes"
-      div
+      "These wait for your yes, as a command runs on this machine and a prompt steers your agents. Nothing is saved until you press Save these changes."
+    v_flex #confirm-detail
+      v_flex #confirm-change-0
+        h_flex
+          div [fg=muted]
+            "Story commands · Status command"
+          div [fg=ansi2]
+            "new"
+        v_flex [border=border bg=background]
+          h_flex #confirm-change-0-0
+            div [font="DM Mono" fg=foreground]
+              "git -C {key} status --short"
+      v_flex #confirm-change-1
+        h_flex
+          div [fg=muted]
+            "Messages · Fix checks"
+          div [fg=dim]
+            "replacing the default"
+        v_flex [border=border bg=background]
+          h_flex #confirm-change-1-0 [bg=ansi1/24]
+            div [fg=ansi1]
+              "−"
+            div [font="Fraunces" fg=foreground]
+              "The checks fail on {prs}. Find out why and fix them."
+          h_flex #confirm-change-1-1 [bg=ansi2/24]
+            div [fg=ansi2]
+              "+"
+            div [font="Fraunces" fg=foreground]
+              "Fix the checks of {prs}."
+    h_flex
+      h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+        "Cancel"
+      h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+        "Save these changes"
         div
-          div [bg=#7fb3ae]
+          div
+            div [bg=#7fb3ae]

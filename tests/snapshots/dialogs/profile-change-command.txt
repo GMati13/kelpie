@@ -1,0 +1,30 @@
+div #confirm-fit
+  v_flex #kelpie-confirm [bg=popover border=border] {key_down}
+    div [fg=foreground]
+      "Claude wants to change Acme"
+    div [fg=muted]
+      "These wait for your yes, as a command runs on this machine. Nothing is saved until you press Save these changes."
+    v_flex #confirm-detail
+      v_flex #confirm-change-0
+        h_flex
+          div [fg=muted]
+            "Story commands · Clean-up command"
+        v_flex [border=border bg=background]
+          h_flex #confirm-change-0-0 [bg=ansi1/24]
+            div [fg=ansi1]
+              "−"
+            div [font="DM Mono" fg=foreground]
+              "rm -rf worktrees/{key}"
+          h_flex #confirm-change-0-1 [bg=ansi2/24]
+            div [fg=ansi2]
+              "+"
+            div [font="DM Mono" fg=foreground]
+              "rm -rf worktrees/{key} ~/backups"
+    h_flex
+      h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+        "Cancel"
+      h_flex #confirm-yes [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click}
+        "Save these changes"
+        div
+          div
+            div [bg=#7fb3ae]

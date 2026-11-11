@@ -682,10 +682,12 @@ export function requestProfileChange(id, set) {
   const asks = needsYes(id, set);
   if (!asks.length) return { ok: true, profile: applyProfile(id, set) };
   setShared(PENDING, { id, set, at: Date.now() });
-  openOverlay({ mod: MOD, kind: "dialog", width: 560, height: Math.min(520, 220 + Math.min(asks.length, 10) * 26), props: {
+  // The whole window with no frame, as the profile dialog: Confirm draws its card sized to what it
+  // says, up to most of the window (dialogs.js CHANGE_FIT), as an overlay's size is only px or a
+  // share of the window and a long prompt needs the room while one line doesn't.
+  openOverlay({ mod: MOD, kind: "dialog", modal: true, frame: "none", width: 1, height: 1, props: {
     role: "confirm", pendingProfile: true, title: `Claude wants to change ${profileById(id)?.name ?? id}`,
-    detail: "These settings can run commands, send your Jira sign-in somewhere or steer your agents, so they wait for your yes:",
-    items: asks, yes: "Save these changes" } });
+    detail: whyItWaits(asks), changes: asks, yes: "Save these changes" } });
   return { ok: false, pending: true, error: "Waiting for the person to confirm these changes in Kelpie: nothing is saved until they do. Tell them to look at Kelpie." };
 }
 
@@ -771,18 +773,96 @@ export function buildProfile(id, set) {
 // folder, owner, handover, solo, moveToDone, notify) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
+// Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what
+// kind of value it is: `command` runs on this machine, `prompt` steers agents, `signin` decides where
+// the Jira token goes, `tickets` which tickets show and the keys made from them, `claude` the Claude
+// account, `github` the GitHub account, `page` a page that opens.
+const SETTING_NAMES = {
+  "commands.leftovers": ["Story commands", "Leftovers check", "command"],
+  "commands.cleanUp": ["Story commands", "Clean-up command", "command"],
+  "commands.wrapUp": ["Story commands", "Clean-up command", "command"],
+  "commands.status": ["Story commands", "Status command", "command"],
+  "prompts.suggest": ["Prompts", "What next?", "prompt"],
+  "prompts.configure": ["Messages", "Let me configure it for you", "prompt"],
+  "prompts.idea": ["Messages", "Start an idea", "prompt"],
+  "claude.config": ["Agents", "Claude account", "claude"],
+  "web.home": ["Web", "Start page", "page"],
+  "jira.url": ["Board", "Board URL", "signin"],
+  "jira.site": ["Board", "Jira site", "signin"],
+  "jira.board": ["Board", "Board number", "signin"],
+  "jira.keychain": ["Board", "Keychain item", "signin"],
+  "jira.tokenCommand": ["Board", "Token command", "command"],
+  "jira.email": ["Board", "Jira email", "signin"],
+  "jira.prompt": ["Prompts", "Agent started on a ticket", "prompt"],
+  "jira.orchestrator": ["Prompts", "Orchestrator", "prompt"],
+  "project.url": ["Board", "Project address", "tickets"],
+  "project.owner": ["Board", "Project owner", "tickets"],
+  "project.ownerType": ["Board", "Project owner's kind", "tickets"],
+  "project.number": ["Board", "Project number", "tickets"],
+  "project.prefixes": ["Board", "Ticket keys", "tickets"],
+  "project.prompt": ["Prompts", "Agent started on a ticket", "prompt"],
+  "project.orchestrator": ["Prompts", "Orchestrator", "prompt"],
+  "github.account": ["GitHub", "GitHub account", "github"],
+  "github.reviewPrompt": ["Prompts", "Review", "prompt"],
+  "github.mergePrompt": ["Prompts", "Merge", "prompt"],
+  "github.approvalPrompt": ["Prompts", "Request approval", "prompt"],
+};
+// A key not named above: its section's page, the key as it is.
+const SECTION_NAMES = { commands: ["Story commands", "command"], prompts: ["Messages", "prompt"], claude: ["Agents", "claude"], web: ["Web", "page"], jira: ["Board", "signin"], project: ["Board", "tickets"], github: ["GitHub", "github"] };
+function settingName(section, k) {
+  const named = SETTING_NAMES[`${section}.${k}`];
+  if (named) return named;
+  const ask = section === "prompts" && ASK_PROMPTS.find((a) => a.id === k);
+  const [page, kind] = SECTION_NAMES[section];
+  return [page, ask ? ask.label : k, kind];
+}
+// Why each kind waits, in the words the dialog's opening line says it.
+const WHY_KINDS = {
+  command: "a command runs on this machine",
+  prompt: "a prompt steers your agents",
+  signin: "the board's address and sign-in decide where your Jira token goes",
+  tickets: "the Project's address and ticket keys decide which tickets show, and the keys go into commands and folder names",
+  claude: "the Claude account decides which settings and hooks your agents run with",
+  github: "the GitHub account is who Kelpie acts as there, approving pull requests too",
+  page: "the start page opens in your browser",
+};
+export function whyItWaits(asks) {
+  const why = [...new Set(asks.map((x) => x.kind))].map((k) => WHY_KINDS[k]).filter(Boolean);
+  const list = why.length > 1 ? `${why.slice(0, -1).join(", ")} and ${why.at(-1)}` : why[0] ?? "";
+  return `These wait for your yes, as ${list}. Nothing is saved until you press Save these changes.`;
+}
+// A setting's value as text: a number (a board's) as its digits, nothing as null.
+const asText = (v) => (v === null || v === undefined || v === "" ? null : String(v));
+
+// The default a prompt left unset stands for, so a change shows what it really replaces.
+function promptDefault(section, k) {
+  if (section === "prompts") return k === "suggest" ? SUGGEST_PROMPT : k === "configure" ? CONFIGURE_PROMPT : ASK_PROMPTS.find((a) => a.id === k)?.text ?? null;
+  if ((section === "jira" || section === "project") && k === "prompt") return DEFAULT_PROMPT;
+  if (section === "github") return { reviewPrompt: DEFAULT_REVIEW_PROMPT, mergePrompt: DEFAULT_MERGE_PROMPT, approvalPrompt: DEFAULT_APPROVAL_PROMPT }[k] ?? null;
+  return null;
+}
+
+// What `set` changes of the settings that wait for a yes, each { key, page, label, kind, was, now,
+// from, to }: `was` null for a new one, `now` null for one removed; a prompt unset stands for its
+// default, shown as `was` (from: "default") or `now` (to: "default"). A section removed whole lists
+// each of its saved settings. Values are whole: the dialog shows them in full, to be read before a yes.
 export function needsYes(id, set) {
   const saved = profileById(id) ?? {};
   const out = [];
+  const add = (section, k, was, now) => {
+    if (JSON.stringify(was ?? null) === JSON.stringify(now ?? null)) return;
+    const [page, label, kind] = settingName(section, k);
+    const fallback = promptDefault(section, k);
+    out.push({ key: `${section}.${k}`, page, label, kind, was: asText(was) ?? fallback, now: asText(now) ?? fallback,
+      ...(asText(was) == null && fallback ? { from: "default" } : {}), ...(asText(now) == null && fallback ? { to: "default" } : {}) });
+  };
   for (const [key, value] of Object.entries(set)) {
     if (!(key in CONFIRM_KEYS)) continue;
     const only = CONFIRM_KEYS[key];
-    if (value === null || typeof value !== "object") { if (only === null && JSON.stringify(saved[key] ?? null) !== JSON.stringify(value)) out.push({ key, text: value === null ? "removed" : String(value) }); continue; }
-    for (const [k, v] of Object.entries(value)) {
-      if (only && !only.includes(k)) continue;
-      if (JSON.stringify(saved[key]?.[k] ?? null) === JSON.stringify(v ?? null)) continue;
-      out.push({ key: `${key}.${k}`, text: v === null ? "removed" : String(v).slice(0, 400) });
-    }
+    const old = saved[key] ?? {};
+    if (value === null) { if (only === null) for (const [k, v] of Object.entries(old)) add(key, k, v, null); continue; }
+    if (typeof value !== "object") continue; // buildProfile() refuses it first
+    for (const [k, v] of Object.entries(value)) if (!only || only.includes(k)) add(key, k, old[k], typeof v === "string" ? v.trim() : v);
   }
   return out;
 }
