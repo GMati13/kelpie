@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: switch-jira-to-a-project
+expected_outcome: |
+  A profile on a Jira board moves to a GitHub Project. In one save_profile change it removes the jira section (jira set to null) and sets project with the address, carrying over the person's part of the board from the Jira section: handover "QA", solo true and moveToDone false (and the custom ticket prompt). No prefixes, no secret. It sees that the change waits for the person's yes and tells them to confirm it in Kelpie.
