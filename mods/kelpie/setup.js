@@ -701,7 +701,7 @@ export class Setup {
         toggle("setup-solo", "I work alone", this.solo, (_e, cx) => { this.solo = !this.solo; cx.notify(); },
           this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
         toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
-          this.moveToDone ? "A double check in the story's header, and on each built story in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
+          this.moveToDone ? "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
       ],
 
       github: () => [
@@ -736,7 +736,7 @@ export class Setup {
         group("Stories", hasBoard ? null : "Saved once a board is connected"),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,
           `${fields(PROMPT_FIELDS)} {parent} is the story a sub-task belongs to; {subtasks} lists a story's subtasks, a line each.`),
-        field("Orchestrator", textarea(this.orchestrator), "For one agent that runs a whole story through its subtasks. Set, a story offers Start orchestrator beside Start work; the same placeholders."),
+        field("Orchestrator", textarea(this.orchestrator), "For one agent that runs a whole story through its subtasks. When set, a story's More menu offers Start orchestrator; the same placeholders."),
         group("Pull requests", hasGithub ? null : "Saved once GitHub is connected"),
         promptField("review", "Review", this.reviewPrompt, DEFAULT_REVIEW_PROMPT,
           `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent there. ${fields(REVIEW_FIELDS)} {folder} is the checkout; {ticket}, {summary} and {description} the ticket its title names.`),
@@ -744,9 +744,9 @@ export class Setup {
           `The Merge icon on a story, in its header and on its row in the list: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
         promptField("approval", "Request approval", this.approvalPrompt, DEFAULT_APPROVAL_PROMPT,
           "The icon beside Merge while a pull request isn't approved yet. The same placeholders; {prs} only the ones not approved."),
-        group("When nothing needs you", hasBoard ? null : "Shown once a board is connected"),
+        group("Next", hasBoard ? null : "Shown once a board is connected"),
         promptField("suggest", "What next?", this.suggestPrompt, SUGGEST_PROMPT,
-          "The magic button in the Next place of the story list, while nothing needs you: a Claude on the Desk that suggests what to do. {snapshot} is what the list knows (sprints, stories, subtasks, pull requests, reviews, agents); {board} the board's address; {owner} the GitHub owner; {name} the profile's. It runs in the background: its answer must end in the JSON block of picks the default asks for (keep that part). Say here what kind of work you pick up (frontend, say)."),
+          "The magic button in Next: Claude looks around in the background, reading only, with no tab of its own, and fills Next with what to do. {snapshot} is what the list knows (sprints, stories, subtasks, pull requests, reviews, agents); {board} the board's address; {owner} the GitHub owner; {name} the profile's. However this is worded, Kelpie asks for the picks itself, through its Claude Code plugin. Say here what kind of work you pick up (frontend, say)."),
         hint("A line whose placeholders all come out empty is left out."),
       ],
 
