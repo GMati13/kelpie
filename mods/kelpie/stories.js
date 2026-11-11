@@ -1880,13 +1880,26 @@ function startDeskTask(kind, profile, prs) {
   openDesk(profile, { name, argv: claudeArgv(profile), task: storyTaskText(kind, profile, NO_TICKET, prs) });
 }
 
-// Or the same task sent to a Claude already open, as its next message, then shown. Not to one waiting
-// for your answer: the message would land in its question.
-function sendStoryTask(kind, profile, it, prs, agent) {
-  if (agent.status === "blocked") return say(`${agent.tab_name} is waiting for your answer: answer it first.`);
-  sendToClaude(agent.address, storyTaskText(kind, profile, it, prs))
-    .then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); say(`Sent ${it.key ? `${it.key}'s` : "the"} ${STORY_TASKS[kind].what} to ${agent.tab_name}.`); })
-    .catch((e) => say(`Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`));
+// Or the same task sent to a Claude already open, as its next message. Not to one waiting for your
+// answer: the message would land in its question. The Claude is shown at once, with a note that it's
+// sending, as hc holds a send for a few seconds of quiet (up to a minute while the person has a draft
+// typed there): picked from a story's row in the list, nothing on screen moved meanwhile, and a
+// failure went only to the note, in details not shown. So a failure is a toast too.
+// Exported for the tests.
+export function sendStoryTask(kind, profile, it, prs, agent) {
+  const name = agent.tab_name ?? "Claude";
+  const failed = (why) => {
+    say(`Couldn't send it to ${name}. ${capitalize(why)}.`);
+    notify({ title: `Couldn't send it to ${name}`, body: `${capitalize(why)}.`, level: "warning", timeout: 8000 });
+  };
+  if (agent.status === "blocked") return failed("it's waiting for your answer: answer it first");
+  const what = `${it.key ? `${it.key}'s` : "the"} ${STORY_TASKS[kind].what}`;
+  run("space.select", { id: agent.space });
+  run("pane.focus", { pane: agent.pane });
+  say(`Sending ${what} to ${name}…`);
+  return sendToClaude(agent.address, storyTaskText(kind, profile, it, prs))
+    .then(() => say(`Sent ${what} to ${name}.`))
+    .catch((e) => failed(String(e?.message ?? e)));
 }
 
 // A pull request as the Merge and Request approval tasks list it.

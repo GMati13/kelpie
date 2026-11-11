@@ -40,7 +40,7 @@ div
           div #story-more-more [bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="More for this story"
             svg own:ellipsis
           @content
-            v_flex #story-more-menu-list [bg=popover border=border fg=foreground] {down_out}
+            v_flex #story-more-menu-list [bg=popover border=border fg=foreground] {down:left click down_out}
               h_flex #story-more-row-0 [hover(bg=hover)] {click} tip="Start a fresh Claude agent on ACME-138"
                 div
                   "Start fresh"
