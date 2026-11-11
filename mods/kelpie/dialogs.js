@@ -59,7 +59,9 @@ export class StoryPicker {
     const row = (x, i) => {
       const on = i === this.at;
       const [, line, color] = x.n;
+      // Its title and state line are cut to the row: the tooltip has them whole.
       return h_flex().id(`sp-${x.it.key}`).flex_none().h(ROW_H).mx(4).px(10).gap(10).items_center().rounded(7).cursor_pointer()
+        .tooltip([`${x.it.key} ${x.it.title ?? ""}`.trim(), line].filter(Boolean).join("\n"))
         .when(on, (el) => el.bg(t.hover)).hover((s) => s.bg(t.hover))
         .on_click(() => this.go(x))
         .child(statusMark(t, x.done ? "done" : storyState(x.it, x.n), { where: "picker", size: 8, color: t[color] ?? t.dim }) ?? div().flex_none().size(8).rounded_full().bg(t[color] ?? t.dim))

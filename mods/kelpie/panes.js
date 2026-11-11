@@ -58,9 +58,9 @@ export class PaneHead {
         .when(Boolean(p.branch), (el) => el.child(h_flex().flex_none().gap(4).items_center()
           .child(icon(chrome("git-branch"), 12)).child(div().max_w(220).truncate().child(p.branch)))))
       .when(tools, (el) => el.child(h_flex().flex_none().items_center()
-        .child(iconButton(t, `ph-right-${pane}`, paneIcon("split-right"), () => run("pane.split", { direction: "right", pane }), "Split right (⌘D)"))
-        .child(iconButton(t, `ph-down-${pane}`, paneIcon("split-down"), () => run("pane.split", { direction: "down", pane }), "Split down (⇧⌘D)"))
-        .child(iconButton(t, `ph-zoom-${pane}`, paneIcon(p.zoomed ? "unzoom" : "zoom"), () => run("pane.zoom", { pane }), p.zoomed ? "Show all panes (⇧⌘↩)" : "Zoom (⇧⌘↩)", { on: p.zoomed }))
-        .child(iconButton(t, `ph-close-${pane}`, chrome("x"), () => run("pane.close", { pane }), "Close pane (⇧⌘W)")))), { role: "pane-head", now: new Date() });
+        .child(iconButton(t, `ph-right-${pane}`, paneIcon("split-right"), () => run("pane.split", { direction: "right", pane }), "Split right ⌘D"))
+        .child(iconButton(t, `ph-down-${pane}`, paneIcon("split-down"), () => run("pane.split", { direction: "down", pane }), "Split down ⇧⌘D"))
+        .child(iconButton(t, `ph-zoom-${pane}`, paneIcon(p.zoomed ? "unzoom" : "zoom"), () => run("pane.zoom", { pane }), p.zoomed ? "Show all panes ⇧⌘↩" : "Zoom ⇧⌘↩", { on: p.zoomed }))
+        .child(iconButton(t, `ph-close-${pane}`, chrome("x"), () => run("pane.close", { pane }), "Close pane ⇧⌘W")))), { role: "pane-head", now: new Date() });
   }
 }

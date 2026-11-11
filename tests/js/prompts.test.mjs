@@ -132,7 +132,7 @@ describe("no prompt steers Claude to Kelpie's plumbing", () => {
 
   // The plugin's skills are what Kelpie gives Claude too.
   test("the plugin's skills name no way to reach Jira or GitHub, nor Kelpie's own plumbing", () => {
-    for (const skill of ["configure-profile", "show-in-kelpie"]) {
+    for (const skill of ["configure-profile", "show-in-kelpie", "ask-through-next"]) {
       const text = readRepo(`plugin/skills/${skill}/SKILL.md`);
       for (const p of [/using gh\b/i, /\bgh (api|pr|issue|search|repo|run)\b/, /\bcurl\b/, /jira\.sh/, /--token-command/, /kelpie\.apply-profile/, /herdr-app do/, /shared\.json/]) {
         assert.doesNotMatch(text, p, `${skill} names ${p}`);
@@ -146,6 +146,8 @@ describe("no prompt steers Claude to Kelpie's plumbing", () => {
     assert.match(guide, /Secrets never pass through you/);
     assert.match(guide, /don't run one yourself/);
     assert.match(guide, /You can't confirm it for them/);
+    // A token pasted anyway is in the transcript: it's replaced, never used.
+    assert.match(guide, /pastes one anyway, don't repeat it, save it or pass it to any tool[^\n]*revoke it and make a new one/);
   });
   test("the setup skill mentions Kelpie's scripts only to say they're not Claude's to run", () => {
     const guide = readRepo("plugin/skills/configure-profile/SKILL.md");

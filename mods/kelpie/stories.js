@@ -438,6 +438,8 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     return {
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
+      // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
+      handover: from >= 0 ? columns[from]?.name ?? null : null,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
@@ -573,12 +575,14 @@ function prSummary(t, open) {
   return [worst, open.map((p, i) => `${prName(p)}: ${states[i][1]}`).join("\n")];
 }
 
-// A story's subtasks assigned to you, by where they stand, and its tooltip ("2 of 3 past testing…").
+// A story's subtasks assigned to you, by where they stand, and its tooltip ("2 of 3 past QA…", by
+// the board's own name for the handover column).
 function subStages(t, it) {
   const n = { past: 0, testing: 0, doing: 0, blocked: 0, todo: 0 };
   const yours = it.subs.filter((s) => s.mine);
   for (const s of yours) n[s.stage ?? "todo"]++;
-  const tip = [`Your subtasks: ${n.past} of ${yours.length} past testing`, n.testing && `${n.testing} in testing`, n.doing && `${n.doing} in progress`,
+  const col = it.handover;
+  const tip = [`Your subtasks: ${n.past} of ${yours.length} ${col ? `past ${col}` : "past your part"}`, n.testing && `${n.testing} in ${col ?? "the handover column"}`, n.doing && `${n.doing} in progress`,
     n.blocked && `${n.blocked} blocked`, n.todo && `${n.todo} to do`].filter(Boolean).join(" · ");
   const parts = [{ n: n.past, color: t.done }, { n: n.testing, color: t.ansi4 ?? t.accent }, { n: n.doing, color: t.working },
     { n: n.blocked, color: t.blocked }, { n: n.todo, color: t.dim }];
@@ -965,10 +969,13 @@ const queueAway = (x) => Boolean((x.suggest && !x.it && !x.suggest.idea) || (x.a
 // under it what it is or why (muted, one line); ↗ when a click opens the web. `on`: the item on
 // screen, lit; `card`: folded Next's main row, which with `on` says you're on it. The item Next goes
 // to has no mark of its own: unfolded it's the row after the lit one (a "Next" tag beside the
-// header's "Next" only confused).
+// header's "Next" only confused). Both lines are cut to the row, so its tooltip has them whole (a
+// pick's why, an agent's ask, is often a sentence or two).
+const queueWords = (x) => [queueLabel(x), queueDetail(x)].filter(Boolean).join("\n");
 function queueRow(t, x, on, go, { card = false } = {}) {
   const detail = [card && on ? "You're on it" : "", queueDetail(x)].filter(Boolean).join(" · ");
   return h_flex().id(`queue-${card ? "next" : x.key}`).flex_none().px(10).py(6).gap(10).items_start().rounded(7).cursor_pointer()
+    .tooltip(queueWords(x))
     .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover))).on_click(go)
     .child(div().flex_none().mt(1).child(queueMark(t, x, 16)))
     .child(v_flex().flex_1().min_w(0).gap(1)
@@ -1033,7 +1040,9 @@ function ordered(items) {
 }
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
-const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Review waiting", "muted"] };
+// Said where pull requests would be (a story's details, Your pull requests) when they didn't load.
+const PULLS_FAILED = "Pull requests didn't load: Refresh to try again.";
+const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Waiting for review", "muted"] };
 
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
 // each copy runs in its own JavaScript context. So the list alone loads, and puts a trimmed copy of
@@ -2855,7 +2864,7 @@ export class Stories extends Source {
     const key = ticket.key;
     const paused = allPaused(it);
     const work = live.length ? (viewOf(st.profile, it) === "agent" ? null : { label: "Show agent", tip: "Show its agent" })
-      : paused.length ? { label: "Resume", tip: `Bring back ${paused.length === 1 ? "its paused session" : `its ${paused.length} paused sessions`} where they left off` }
+      : paused.length ? { label: "Resume", tip: `Bring back ${paused.length === 1 ? "its paused session where it" : `its ${paused.length} paused sessions where they`} left off` }
       : ticket.last ? { label: "Resume", tip: `Continue "${ticket.last.title}" (${ago(ticket.last.updated)} ago)`, last: true }
       : { label: it.space ? "Start agent" : "Start work", tip: `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`, fresh: true };
     // A finished story the list left out (its Done group's) is nothing to start: no filled Start work,
@@ -4012,7 +4021,7 @@ export class StoryBody extends Stories {
     if (early) return early;
     const n = storyNote(st.profile, shown);
     const note = n ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(n.full ?? n.text).child(n.text)
-      : st.data.prError ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.blocked).tooltip(st.data.prError).child("Pull requests didn't load, Refresh to try again")
+      : st.data.prError ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.blocked).tooltip(st.data.prError).child(PULLS_FAILED)
       : null;
     return decor("blockDecor", t, v_flex().size_full().min_h(0).px(INSET).pt(10).pb(6).gap(6).text_size(TEXT).text_color(t.foreground)
       .child(shown ? this.detail(t, st, shown, cx, note) : empty(t, "Pick a story on the left.", { fill: true })), storyBlock("story-body", shown));
@@ -4127,7 +4136,7 @@ export class StoryList extends Stories {
             open ? "Hide the queue" : "Show the whole queue", { on: open })))))
       .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
       .when(!open, (el) => el.child(withDrop(t, st.profile, lead, queueRow(t, lead, here, () => goNext(st.profile, lead), { card: true }))
-        .tooltip(`${queueAway(lead) ? "Opens on the web" : lead.suggest?.idea ? "Starts a Claude on the Desk with this idea" : here ? "Go to its step" : "Go there"}${lead === top ? " ⌘⇧J" : ""}`)))
+        .tooltip(`${queueWords(lead)}\n${queueAway(lead) ? "Opens on the web" : lead.suggest?.idea ? "Starts a Claude on the Desk with this idea" : here ? "Go to its step" : "Go there"}${lead === top ? " ⌘⇧J" : ""}`)))
       .when(!open && lead !== top, (el) => el.child(queueThen(t, top, () => goNext(st.profile, top))))
       .when(!picks, (el) => el.child(div().pt(2).child(this.magic(t, st, items, reviews, { slim: true }))));
     return card;
@@ -4258,7 +4267,8 @@ export class StoryList extends Stories {
     for (const { it } of started) if (it.space.name !== it.key && !RENAMED.has(it.space.id)) { RENAMED.add(it.space.id); run("space.rename", { id: it.space.id, name: it.key }); }
     const tally = (lo, hi) => items.filter((x) => x.n[0] >= lo && x.n[0] <= hi).length;
     // The summary: a mark and a number each (the words in its tooltip), coloured as the rows are.
-    const counts = [[tally(0, 0), "need you", "working", "needs-you"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
+    const needYou = tally(0, 0);
+    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
       [reviews.length, "to review", "accent", "review"], [tally(5, 5), "working", "accent", "working"], [tally(7, 7), "paused", "muted", "paused"]];
     // Next: what cmd-shift-j goes to, the one after the item shown in what needs you.
     const desk = deskOf(st.profile);
@@ -4292,7 +4302,7 @@ export class StoryList extends Stories {
     // story's own are on the story (its row's and header's Merge): it shows with something in it, or
     // to say pull requests didn't load.
     const owner = st.setup.github?.owner;
-    const noPulls = st.data.prError ? "Pull requests didn't load, Refresh to try again" : null;
+    const noPulls = st.data.prError ? PULLS_FAILED : null;
     const alone = worksAlone(st.setup);
     const always = Boolean(owner) && (!alone || Boolean(noPulls));
     // Every open pull request of yours on no story of the list, whatever its title (a story's own are on
@@ -4801,7 +4811,8 @@ async function unsaved(profile, it) {
   const ahead = !finished(it) && Boolean(it.reassigned);
   const code = await readTextFile(modFile("changes.py"));
   const r = await exec("python3", ["-I", "-c", code, profile.folder, ...(ahead ? ["--unpushed"] : []), ...storyKeys(it)], on ? { on } : {});
-  if (r.code !== 0) return [`uncommitted work in its folders (couldn't check them: ${(r.stderr || "").trim().split("\n").pop() || "changes.py failed"})`];
+  const why = (r.stderr || "").trim().split("\n").pop();
+  if (r.code !== 0) return [`uncommitted work in its folders (couldn't check them${why ? `: ${why}` : ""})`];
   const repos = JSON.parse(r.stdout || "[]");
   const dirty = repos.filter((x) => x.files?.length).map((x) => `${x.key} ${x.repo}`);
   const unpushed = repos.filter((x) => x.unpushed > 0).map((x) => `${x.unpushed === 1 ? "a commit" : `${x.unpushed} commits`} not pushed in ${x.key} ${x.repo}`);

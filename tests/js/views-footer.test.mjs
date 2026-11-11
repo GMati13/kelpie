@@ -49,6 +49,8 @@ test("near a limit, its reset time follows the share", () => {
 test("a window whose reset time has passed says reset", () => {
   const el = footer({ fiveResets: "-5m" });
   assert.deepEqual(texts(byId(el, "acct-five")), ["5h", "reset"]);
+  // Its tip in plain words (it once spoke of "the new share").
+  assert.match(render(byId(el, "acct-five"), skinTheme()), /tip="Reset: the new usage shows once a Claude session on this account runs"/);
   snap("footer/reset", lineOf(el));
 });
 

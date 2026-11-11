@@ -283,8 +283,8 @@ test("the profile dialog's Prompts, Messages and Story commands pages: their gui
   const prompts = words("prompts");
   assert.match(prompts, /starts the agent in the profile's folder, pointed at the checkout/);
   assert.doesNotMatch(prompts, /starts the agent there/);
-  assert.match(prompts, /a Claude in the background, reading only/);
-  assert.match(prompts, /Kelpie adds how to hand the picks back/);
+  assert.match(prompts, /in the background, reading only/);
+  assert.match(prompts, /Kelpie asks for the picks itself/);
   assert.doesNotMatch(prompts, /JSON|on the Desk that suggests|sub-task/);
   const messages = words("messages");
   assert.match(messages, /or start one with it when none is open/);
