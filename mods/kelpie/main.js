@@ -11,7 +11,7 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
-import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, status, stop, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
+import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
@@ -19,7 +19,7 @@ import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { goDesk } from "./desk.js";
 import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
-import { agentState, decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, statusMark, syncSkin } from "./skins/index.js";
+import { decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, syncSkin } from "./skins/index.js";
 
 function top() {
   const t = theme();
@@ -151,12 +151,10 @@ function sidebar(state) {
             .child(div().flex_1().min_w(0).truncate().child(s.name)),
           ...members.map((a) => {
             const name = agentName(a, tabs.find((c) => c.id === a.tab));
-            const pic = programIcon(a.program, t.muted);
-            return row(`agent-${a.address}`, a.focused).pl(26).tooltip(name)
+            return row(`agent-${a.address}`, a.focused).pl(26).tooltip(`${name} · ${agentWords(a.status)}`)
               .on_click(() => run("pane.focus", { pane: a.pane }))
-              .when(Boolean(pic), (el) => el.child(pic))
-              .child(div().flex_1().min_w(0).truncate().text_color(a.status === "idle" && !a.focused ? t.muted : t.foreground).child(name))
-              .when(Boolean(status(t, a.status)), (el) => el.child(status(t, a.status)));
+              .child(agentMark(t, a.status, { where: "side-tab", agent: a }))
+              .child(div().flex_1().min_w(0).truncate().text_color(a.status === "idle" && !a.focused ? t.muted : t.foreground).child(name));
           }),
         ];
       })))
@@ -274,7 +272,10 @@ function toolbar() {
     const session = sessionTitle(agentPane?.title);
     const name = session ?? (c.named ? label(c.name) : program?.name ?? `Tab ${c.index}`);
     const agentTab = all.some((p) => p.tab === c.id && p.program?.agent);
-    const mark = c.status ? statusMark(t, agentState(c.status), { where: "tab", size: 12, color: t[c.status] }) : null;
+    // A tab with an agent shows its state, always (the tab's own: the most urgent of its agents, as
+    // Herdr gives it; unknown while its Claude hasn't said yet), never the program's icon, which is
+    // only for tabs without one: so a Claude's slot is one of agentMark()'s states and nothing else.
+    const mark = agentTab || c.status ? agentMark(t, c.status, { where: "tab", size: 14 }) : null;
     // Every tab is the same boxes, shown or hovered or not, so the bar never shifts: 10px padding, a
     // 16px slot, a 6px gap, the name (180px at most), 10px padding. The slot holds the agent's mark,
     // else the program's icon, and turns into the ✕ while the pointer is on the tab (⌘W closes the
@@ -284,7 +285,7 @@ function toolbar() {
       ? div().id(`close-${c.id}`).flex().size_full().items_center().justify_center().rounded(4).cursor_pointer().text_color(t.muted)
         .hover((x) => x.bg(t.border).text_color(t.foreground)).on_mouse_down("left", stop)
         .on_click((_e, cx) => { cx.stop_propagation(); closeTab(c.id); }).child(icon(chrome("x"), 12))
-      : mark ?? status(t, c.status) ?? programIcon(program, c.active ? t.foreground : t.dim);
+      : mark ?? programIcon(program, c.active ? t.foreground : t.dim);
     const dragged = tabDrag.moved && tabDrag.id === c.id;
     const target = tabDrag.moved && tabDrag.over === c.id && tabDrag.id !== c.id ? tabDrag.side : null;
     return decor("tabDecor", t, h_flex().id(`tab-${c.id}`).relative().h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
@@ -308,7 +309,7 @@ function toolbar() {
       // first tab, just inside it, as the list clips anything left of its start.
       .when(Boolean(target), (el) => el.child(div().absolute().top(4).bottom(4).w(2).rounded(1).bg(t.accent)
         .when(target === "before", (x) => x.left(shownTabs[0]?.id === c.id ? 0 : -3)).when(target === "after", (x) => x.right(-3)))),
-      { tab: c, name, active: Boolean(c.active), state: agentState(c.status), agentTab, now: new Date() });
+      { tab: c, name, active: Boolean(c.active), state: mark ? agentStateOf(c.status) : null, agentTab, now: new Date() });
   };
   // The side panels, as icons (the open one selected), each only when the layout's panel has it.
   const panelButton = (id, path, tip) => {
