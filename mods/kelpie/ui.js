@@ -216,6 +216,32 @@ export function menuButton(host, t, id, label, rows, { tip, anchor = "top_right"
       .children(rows.map(row))));
 }
 
+// Each thing a view shows (a story, a pull request, a profile) keeps its own scroll position: an id
+// alone isn't enough, as GPUI keeps an element's own position only while it's drawn. Herdr makes scroll
+// handles only in init, so a view makes a few there (`make()`, an object of handles) and lends them
+// by key: a key shown again gets its own back; once all are lent, the one shown longest ago goes to
+// the new key, put back to the top by `reset`. So they never pile up.
+export class ScrollPool {
+  constructor(make, reset, size = 12) {
+    this.reset = reset;
+    this.free = Array.from({ length: size }, make);
+    this.lent = new Map(); // key -> handles, the most recently shown last
+  }
+  get(key) {
+    let h = this.lent.get(key);
+    if (h) this.lent.delete(key);
+    else if (this.free.length) h = this.free.pop();
+    else {
+      const [old, oldest] = this.lent.entries().next().value;
+      this.lent.delete(old);
+      h = oldest;
+      this.reset(h);
+    }
+    this.lent.set(key, h);
+    return h;
+  }
+}
+
 // "Nothing here" text, the same in every list, view and dialog: dim, small, padded. `fill` centres
 // it in the space left (a view with nothing else to show); otherwise it sits in a list.
 export function empty(t, text, { fill = false } = {}) {

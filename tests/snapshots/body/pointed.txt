@@ -52,7 +52,7 @@ div
                   div
                     div [bg=#7fb3ae]
       div #story-overview-view {size_change}
-        v_flex #story-overview-1794304800000
+        v_flex #story-overview-ACME-171-1794304800000
           v_flex #story-overview-content {size_change}
             div
               h_flex

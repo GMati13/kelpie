@@ -1,5 +1,5 @@
 div #story-overview-view {size_change}
-  v_flex #story-overview
+  v_flex #story-overview-ACME-180
     v_flex #story-overview-content {size_change}
       div
         h_flex

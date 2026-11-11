@@ -8,9 +8,9 @@
 // The footer (limits, CPU, memory) is main.js's "footer" role.
 
 import { div } from "gpui-kit";
-import { Popup, h_flex, v_flex } from "gpui-base";
+import { Popup, ScrollHandle, h_flex, v_flex } from "gpui-base";
 import { agents, run, setShared, shared, spaces, window, layout, openOverlay } from "herdr";
-import { SMALL, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, mark, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
+import { SMALL, ScrollPool, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, mark, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
 import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profiles, shownProfile, shownSpace, spaceProfiles, spacesOf, switchProfile } from "./config.js";
 import { startAgent } from "./source.js";
 import { StoryList } from "./stories.js";
@@ -169,6 +169,8 @@ export class WorkSide {
   init(cx) {
     this.stories.init(cx);
     this.sessions.init(cx);
+    // "Working on"'s place, per profile (ui.js ScrollPool).
+    this.plainScrolls = new ScrollPool(() => ({ box: ScrollHandle.new() }), (h) => h.box.scroll_to_item(0), 8);
   }
 
   render(cx) {
@@ -200,7 +202,7 @@ export class WorkSide {
       .when(Boolean(trail), (el) => el.child(h_flex().flex_none().h(18).gap(6).items_center().child(trail)));
     const recent = (st.data ?? []).filter((s) => !s.running).slice(0, 12);
     const folded = !this.earlierOpen;
-    return v_flex().id("work-side-plain").size_full().min_h(0).px(8).pb(10).text_size(TEXT).text_color(t.foreground).overflow_y_scrollbar()
+    return v_flex().id(`work-side-plain-${profile?.id ?? "none"}`).when(Boolean(this.plainScrolls), (el) => el.track_scroll(this.plainScrolls.get(profile?.id ?? null).box)).size_full().min_h(0).px(8).pb(10).text_size(TEXT).text_color(t.foreground).overflow_y_scrollbar()
       .when(Boolean(profile), (el) => el.children(deskRows(t, this.deskMenus, profile, { on: Boolean(desk?.active) })))
       .child(h_flex().flex_none().items_end().gap(4)
         .child(div().flex_1().min_w(0).child(groupHeader(t, "Working on", open.length)))

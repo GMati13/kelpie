@@ -93,8 +93,8 @@ test("the box fades in once, and the details open at their top", async () => {
   timers[0](cx);
   const shown = view.render(cx);
   assert.match(render(byId(shown, "point-box"), skinTheme()).split("\n")[0], /opacity=1/);
-  assert.ok(!byId(shown, "story-overview"), "a scroll position of its own");
-  assert.ok(render(shown, skinTheme()).includes("#story-overview-"));
+  const at = mock.sharedValue(POINT)[DEMO].at;
+  assert.ok(byId(shown, `story-overview-ACME-171-${at}`), "an id of its own while pointed (tests/js/scroll.test.mjs: put back to the top)");
 });
 
 test("a glint runs along the box's border for its first seconds, then it rests", async () => {

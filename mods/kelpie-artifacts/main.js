@@ -479,7 +479,8 @@ export default class Artifacts extends View {
         .when(badged && Boolean(item.key), (el) => el.child(div().absolute().left(6).bottom(6).px(6).py(1).rounded(4).bg("#000000a6").text_size(10.5).text_color("#ffffffd9").child(item.key)))
         .when(on, (el) => el.child(div().absolute().left(-2).top(-2).right(-2).bottom(-2).rounded(8).border(2).border_color(t.accent)));
     };
-    return v_flex().id("artifact-grid").flex_1().min_h(0).px(MARGIN).pb(MARGIN).overflow_y_scrollbar()
+    // Each story's (or terminal's) images have a grid of their own, so one's scroll isn't another's.
+    return v_flex().id(`artifact-grid-${this.scope ?? "none"}`).flex_1().min_h(0).px(MARGIN).pb(MARGIN).overflow_y_scrollbar()
       .children(sections(this.items).flatMap((day) => {
         const rows = justify(day.items, room, target, GAP, aspectOf);
         rows.forEach((row) => this.drawnRows.push(row.tiles.map((entry) => entry.item.src)));

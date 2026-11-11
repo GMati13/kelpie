@@ -5,7 +5,7 @@ div
   v_flex [fg=foreground]
     v_flex #story-detail
       div #story-overview-view {size_change}
-        v_flex #story-overview
+        v_flex #story-overview-ACME-142
           v_flex #story-overview-content {size_change}
             div
               h_flex
