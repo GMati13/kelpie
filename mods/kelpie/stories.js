@@ -1044,6 +1044,21 @@ const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "
 const PULLS_FAILED = "Pull requests didn't load: Refresh to try again.";
 const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Waiting for review", "muted"] };
 
+// Where a load's time went (#108), for the freshness line's tooltip: every part runs at once and the
+// list waits for the slowest, so each is said with how long it took. Said only for a load that took
+// LOAD_SAID or longer: a quick one has nothing to explain. `drawn`: putting the list together on this
+// draw, in this copy. Exported for the tests.
+export const LOAD_SAID = 1000;
+const LOAD_PARTS = [["board", "the board"], ["open", "your open pull requests"], ["merged", "your merged ones"], ["reviews", "reviews for you"], ["sessions", "Claude sessions"], ["sort", "sorting it out"]];
+const duration = (ms) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
+export function loadTimes(timing, drawn = null) {
+  if (!timing || !(timing.total >= LOAD_SAID)) return null;
+  const parts = LOAD_PARTS.filter(([k]) => typeof timing[k] === "number").map(([k, words]) => `${words} ${duration(timing[k])}`);
+  if (typeof drawn === "number") parts.push(`drawing the list ${duration(drawn)}`);
+  const slowest = LOAD_PARTS.filter(([k]) => k !== "sort" && typeof timing[k] === "number").sort((a, b) => timing[b[0]] - timing[a[0]])[0];
+  return `The last load took ${duration(timing.total)}${slowest ? `, most of it waiting on ${slowest[1]}` : ""}:\n${parts.join(" · ")}`;
+}
+
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
 // each copy runs in its own JavaScript context. So the list alone loads, and puts a trimmed copy of
 // what it loaded in shared state ("kelpie.stories.data", by profile); the others read that. The
@@ -2253,6 +2268,10 @@ export class Stories extends Source {
 
   async fetch({ space, setup, key }) {
     const began = Date.now();
+    // How long each part took (#108), shown in the freshness line's tooltip (loadTimes()): they all
+    // run at once and the list waits for the slowest, so this says which one that is.
+    const took = {};
+    const timed = (part, p) => p.finally(() => { took[part] = Date.now() - began; });
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -2261,31 +2280,34 @@ export class Stories extends Source {
     // their pull requests, and the frame says why.
     let prError = null;
     const pulls = owner
-      ? Promise.all([searchPulls(`user:${owner} is:pr is:open author:@me`, { demo, account }), searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo, account })])
+      ? Promise.all([timed("open", searchPulls(`user:${owner} is:pr is:open author:@me`, { demo, account })), timed("merged", searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo, account }))])
         .catch((e) => { prError = `Pull requests didn't load: ${String(e?.message ?? e)}`; return [[], []]; })
       : Promise.resolve([[], []]);
     // What doesn't wait on Jira runs beside it.
-    const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account }).catch(() => []) : Promise.resolve([]);
-    const sessionsP = this.fetchSessions({ space, setup });
+    const reviewsP = owner ? timed("reviews", searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account })).catch(() => []) : Promise.resolve([]);
+    const sessionsP = timed("sessions", this.fetchSessions({ space, setup }));
     // A GitHub Project's load also says which pull requests close its issues, which repo each key's
     // issues are in, and the Project itself (board.js); Jira's has none of those.
     // A story of yours stays while something of it is here, even once the board gives it to someone
     // else (hereKeys()): the board is asked for those by key too.
     const prior = this.cache?.[key]?.data ?? null;
     const keep = { keys: hereKeys(setup.profile, prior), projects: prior ? [...projectsOf(prior)] : [], repos: prior?.repos ?? {} };
-    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await loadBoard(boardOf(setup), keep);
+    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await timed("board", loadBoard(boardOf(setup), keep));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     // GitHub's limit refusing the pull requests isn't them gone: the last ones stay, and the
     // list's card says why (limitCard()).
     const limited = owner && (demo ? demoLimit()?.until : blockedFor(account)) && prior;
-    return settleMoved(settlePulls({
+    const sorted = Date.now();
+    const data = settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began, setup.profile?.id));
+    const end = Date.now();
+    return { ...data, timing: { ...took, sort: end - sorted, total: end - began } };
   }
 
   // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
@@ -4256,8 +4278,10 @@ export class StoryList extends Stories {
     // When this copy was first drawn, whatever it showed (picksArrived()): an "All clear" Next
     // whose run brings picks still opens on them.
     this.queueBorn ??= Date.now();
+    const drawing = Date.now();
     const { st, t, early, items, reviews, shown, done } = this.prepare(cx);
     if (early) return early;
+    this.drawMs = Date.now() - drawing; // putting the list together, for the freshness line's tooltip
     orderAgents(st.profile, items);
     // Every finished story the board has, not just the ones listed: one that's left only leftovers
     // behind is listed once they're found.
@@ -4392,7 +4416,7 @@ export class StoryList extends Stories {
     const error = limit && st.error === githubNote(st.setup) ? null : st.error;
     const fresh = skinFont(h_flex().id("stories-fresh").flex_none().h(20).gap(6).items_center().cursor_pointer()
       .text_color(!st.loading && (stale || error) ? t.working : t.dim), "fresh", SMALL).hover((x) => x.text_color(t.foreground))
-      .tooltip("Load the stories again").on_click(() => setShared(REFRESH, Date.now()))
+      .tooltip(["Load the stories again", loadTimes(st.data?.timing, this.drawMs)].filter(Boolean).join("\n")).on_click(() => setShared(REFRESH, Date.now()))
       .when(st.loading, (el) => el.child(icon(chrome("spinner"), 11).spin(900)))
       .child(skinText(st.loading ? (st.data ? `Updating… showing what was loaded ${ago(st.at) === "now" ? "just now" : `${ago(st.at)} ago`}` : "Loading…")
         : age == null ? "Not loaded yet" : stale ? `From ${ago(st.at)} ago: click to update` : `Updated ${ago(st.at) === "now" ? "just now" : `${ago(st.at)} ago`} ↻`, "fresh"))

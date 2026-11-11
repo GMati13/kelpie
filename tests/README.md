@@ -165,6 +165,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `budget.test.mjs`: what one full story load may ask of GitHub (#150): a realistic Project profile against a
   fake gh that counts requests, how many run at once and their points by GitHub's own prices (written in
   the test, from `rateLimit(dryRun: true)`: measure again when a query changes), and the hour that makes.
+- `load-times.test.mjs`: where a story load's time goes (#108): each part (the board, the three pull request
+  searches, the sessions) timed on its own, a slow one not counted against the others (the tests' clock
+  moved on by hand), and the freshness line's tooltip saying them for a load of a second or more.
 - `ghlimit.test.mjs`: GitHub's API limits (#129, ghlimit.js around pulls.js `gh()`): a refused call stops
   the rest of its kind (GraphQL or REST) as that account until the reset or a secondary limit's wait,
   said in plain words with the time; side-by-side refusals counting once; a description that mentions
