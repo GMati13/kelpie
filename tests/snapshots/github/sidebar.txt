@@ -133,7 +133,7 @@ v_flex [fg=foreground]
             h_flex #tags-ACME-142
               div #tags-ACME-142-0 [bg=#0e8a1624 fg=#0e8a16 font="DM Sans"] tip="Label: mobile"
                 "mobile"
-        h_flex #b-subs-ACME-142 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 3 subtasks · 1 in review · 1 to do · 1 done"
+        h_flex #b-subs-ACME-142 tip="Your subtasks: 0 of 2 past QA · 1 in progress · 1 to do\nAll: 3 subtasks · 1 in review · 1 to do · 1 done"
           div [bg=working/73]
           div [bg=dim/73]
     h_flex #story-ACME-151 [hover(bg=hover)] {click hover} tip="Checks failing on ACME-152 (payments#97)"
@@ -164,7 +164,7 @@ v_flex [fg=foreground]
                 "payments"
               div #tags-ACME-151-1 [bg=#8b69e424 fg=#8b69e4 font="DM Sans"] tip="Label: ios"
                 "ios"
-        h_flex #b-subs-ACME-151 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 2 subtasks · 1 in review · 1 to do"
+        h_flex #b-subs-ACME-151 tip="Your subtasks: 0 of 2 past QA · 1 in progress · 1 to do\nAll: 2 subtasks · 1 in review · 1 to do"
           div [bg=working/73]
           div [bg=dim/73]
     h_flex #story-ACME-160 [hover(bg=hover)] {click hover} tip="Changes requested on ACME-161 (search#233)"
@@ -194,7 +194,7 @@ v_flex [fg=foreground]
             h_flex #tags-ACME-160
               div #tags-ACME-160-0 [bg=#1d76db24 fg=#1d76db font="DM Sans"] tip="Label: search"
                 "search"
-        h_flex #b-subs-ACME-160 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in review"
+        h_flex #b-subs-ACME-160 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 1 subtask · 1 in review"
           div [bg=working/73]
     h_flex #story-ACME-171 [hover(bg=hover)] {click hover} tip="Approved, checks pass or none · ready to merge"
       div
@@ -229,7 +229,7 @@ v_flex [fg=foreground]
                 "design"
               div #tags-ACME-171-more [fg=dim] tip="Label: accessibility"
                 "+1"
-        h_flex #b-subs-ACME-171 tip="Your subtasks: 0 of 2 past testing · 2 in progress\nAll: 2 subtasks · 2 in review"
+        h_flex #b-subs-ACME-171 tip="Your subtasks: 0 of 2 past QA · 2 in progress\nAll: 2 subtasks · 2 in review"
           div [bg=working/73]
           div [bg=working/73]
       h_flex #actions-ACME-171
@@ -281,7 +281,7 @@ v_flex [fg=foreground]
           h_flex #b-paused-ACME-138 [fg=muted] tip="Paused: Resume picks it up"
             div
               svg own:pause [fg=dim]
-        h_flex #b-subs-ACME-138 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in progress"
+        h_flex #b-subs-ACME-138 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 1 subtask · 1 in progress"
           div [bg=working/73]
     h_flex #story-ACME-184 [hover(bg=hover)] {click hover} tip="2 subtasks · 2 in progress"
       div
@@ -293,7 +293,7 @@ v_flex [fg=foreground]
         h_flex
           div [font="DM Mono" fg=dim]
             "ACME-184"
-        h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 2 subtasks · 2 in progress"
+        h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 2 subtasks · 2 in progress"
           div [bg=working/73]
     h_flex #story-ACME-190 [hover(bg=hover)] {click hover} tip="Reassigned to Jordan Blake · clean up once you're done with it"
       div
@@ -403,7 +403,7 @@ v_flex [fg=foreground]
         h_flex
           div [font="DM Mono" fg=dim]
             "ACME-180"
-        h_flex #b-subs-ACME-180 tip="Your subtasks: 0 of 1 past testing · 1 to do\nAll: 2 subtasks · 2 to do"
+        h_flex #b-subs-ACME-180 tip="Your subtasks: 0 of 1 past QA · 1 to do\nAll: 2 subtasks · 2 to do"
           div [bg=dim/73]
     div
       div [font="DM Sans" fg=muted]
@@ -426,7 +426,7 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-129 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-        h_flex #b-subs-ACME-129 [opacity=0.6] tip="Your subtasks: 0 of 1 past testing · 1 in testing\nAll: 2 subtasks · 2 in progress"
+        h_flex #b-subs-ACME-129 [opacity=0.6] tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 2 subtasks · 2 in progress"
           div [bg=ansi4/73]
       h_flex #actions-ACME-129
         div #finish-ACME-129 {down:left click}
@@ -445,7 +445,7 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-122 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-        h_flex #b-subs-ACME-122 [opacity=0.6] tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+        h_flex #b-subs-ACME-122 [opacity=0.6] tip="Your subtasks: 1 of 1 past QA\nAll: 1 subtask · 1 done"
           div [bg=done]
       h_flex #actions-ACME-122
         div #clean-ACME-122 {down:left click}
@@ -464,7 +464,7 @@ v_flex [fg=foreground]
           h_flex #b-paused-ACME-116 [fg=muted] tip="Paused: Resume picks it up"
             div
               svg own:pause [fg=dim]
-        h_flex #b-subs-ACME-116 [opacity=0.6] tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+        h_flex #b-subs-ACME-116 [opacity=0.6] tip="Your subtasks: 1 of 1 past QA\nAll: 1 subtask · 1 done"
           div [bg=done]
       h_flex #actions-ACME-116
         div #clean-ACME-116 {down:left click}

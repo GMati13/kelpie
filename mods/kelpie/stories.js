@@ -437,6 +437,8 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     return {
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
+      // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
+      handover: from >= 0 ? columns[from]?.name ?? null : null,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub({ key, fields: f })],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
@@ -572,12 +574,14 @@ function prSummary(t, open) {
   return [worst, open.map((p, i) => `${prName(p)}: ${states[i][1]}`).join("\n")];
 }
 
-// A story's subtasks assigned to you, by where they stand, and its tooltip ("2 of 3 past testing…").
+// A story's subtasks assigned to you, by where they stand, and its tooltip ("2 of 3 past QA…", by
+// the board's own name for the handover column).
 function subStages(t, it) {
   const n = { past: 0, testing: 0, doing: 0, blocked: 0, todo: 0 };
   const yours = it.subs.filter((s) => s.mine);
   for (const s of yours) n[s.stage ?? "todo"]++;
-  const tip = [`Your subtasks: ${n.past} of ${yours.length} past testing`, n.testing && `${n.testing} in testing`, n.doing && `${n.doing} in progress`,
+  const col = it.handover;
+  const tip = [`Your subtasks: ${n.past} of ${yours.length} ${col ? `past ${col}` : "past your part"}`, n.testing && `${n.testing} in ${col ?? "the handover column"}`, n.doing && `${n.doing} in progress`,
     n.blocked && `${n.blocked} blocked`, n.todo && `${n.todo} to do`].filter(Boolean).join(" · ");
   const parts = [{ n: n.past, color: t.done }, { n: n.testing, color: t.ansi4 ?? t.accent }, { n: n.doing, color: t.working },
     { n: n.blocked, color: t.blocked }, { n: n.todo, color: t.dim }];
