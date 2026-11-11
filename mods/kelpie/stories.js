@@ -13,14 +13,14 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
-import { LOW_EVERY, blockedFor, limitMessage, limitNote, lowFor, lowMessage } from "./ghlimit.js";
+import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
@@ -1028,13 +1028,29 @@ const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
 const ARTIFACTS = "kelpie.artifacts.sessions";
-// The profile's GitHub account's limit, for the freshness line: used up or running low (ghlimit.js).
-// A demo profile's comes from its fixture (demo.js demoLimit()).
-function githubNote(setup) {
+// The profile's GitHub account's limit (ghlimit.js limitOf()): { until } used up, { reset } running
+// low, or null. A demo profile's comes from its fixture (demo.js demoLimit()).
+function githubLimit(setup) {
   if (!setup?.github?.owner && !setup?.project) return null;
-  if (!setup.github?.demo && !setup.project?.demo) return limitNote(setup.github?.account ?? null);
+  if (!setup.github?.demo && !setup.project?.demo) return limitOf(setup.github?.account ?? null);
   const d = demoLimit();
-  return d ? (d.until ? limitMessage(d) : lowMessage(d)) : null;
+  return d ? (d.until ? { until: d.until } : { reset: d.reset }) : null;
+}
+// The same in words, as a load's error says it (no stories loaded yet, the details' copies).
+const githubNote = (setup) => { const l = githubLimit(setup); return l ? (l.until ? limitMessage(l) : lowMessage(l)) : null; };
+// While GitHub's limit holds the stories back, a card under the freshness line says that what's shown
+// may be behind, and until when, in full: a note on the freshness line was cut off before its time.
+function limitCard(t, st) {
+  const l = githubLimit(st.setup);
+  if (!l) return null;
+  const until = clock12(new Date(l.until ?? l.reset));
+  const [title, line] = l.until
+    ? ["GitHub's limit is used up", `${st.at ? `These stories are as they were at ${clock12(new Date(st.at))}. ` : ""}Kelpie can't update them until ${until}, when GitHub lets it ask again.`]
+    : ["GitHub's limit is running low", `Kelpie updates the stories only every 10 minutes until ${until}, so they may be a little behind.`];
+  return v_flex().id("stories-limit").flex_none().px(10).py(8).gap(2).rounded(8).border_1()
+    .border_color(alpha(t.working, 0.35)).bg(alpha(t.working, 0.08)).text_size(SMALL)
+    .child(div().font_medium().text_color(t.working).child(title))
+    .child(div().text_color(t.muted).child(line));
 }
 const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
 const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
@@ -2224,7 +2240,7 @@ export class Stories extends Source {
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     // GitHub's limit refusing the pull requests isn't them gone: the last ones stay, and the
-    // freshness line says why (limitNote()).
+    // list's card says why (limitCard()).
     const limited = owner && (demo ? demoLimit()?.until : blockedFor(account)) && prior;
     return settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
@@ -4290,13 +4306,16 @@ export class StoryList extends Stories {
     // failed, or what's shown is over an hour old (a restart, say). A click reloads.
     const age = st.at ? Date.now() - st.at : null;
     const stale = age != null && age > 60 * 60 * 1000;
+    // GitHub's limit is the card's to say (limitCard()), whole.
+    const limit = limitCard(t, st);
+    const error = limit && st.error === githubNote(st.setup) ? null : st.error;
     const fresh = skinFont(h_flex().id("stories-fresh").flex_none().h(20).gap(6).items_center().cursor_pointer()
-      .text_color(!st.loading && (stale || st.error) ? t.working : t.dim), "fresh", SMALL).hover((x) => x.text_color(t.foreground))
+      .text_color(!st.loading && (stale || error) ? t.working : t.dim), "fresh", SMALL).hover((x) => x.text_color(t.foreground))
       .tooltip("Load the stories again").on_click(() => setShared(REFRESH, Date.now()))
       .when(st.loading, (el) => el.child(icon(chrome("spinner"), 11).spin(900)))
       .child(skinText(st.loading ? (st.data ? `Updating… showing what was loaded ${ago(st.at) === "now" ? "just now" : `${ago(st.at)} ago`}` : "Loading…")
         : age == null ? "Not loaded yet" : stale ? `From ${ago(st.at)} ago: click to update` : `Updated ${ago(st.at) === "now" ? "just now" : `${ago(st.at)} ago`} ↻`, "fresh"))
-      .when(Boolean(st.error), (el) => el.child(div().flex_1().min_w(0).truncate().tooltip(st.error).child(`· ${st.error}`)));
+      .when(Boolean(error), (el) => el.child(div().flex_1().min_w(0).truncate().tooltip(error).child(`· ${error}`)));
     // Clean up all: a broom and how many finished stories have something left to clean, beside the
     // freshness line; one dialog lists them, its Clean up runs `kelpie.clean-all`.
     // While Clean up all (or a story's clean-up) runs, the working mark in the broom's place.
@@ -4312,6 +4331,7 @@ export class StoryList extends Stories {
     return v_flex().size_full().min_h(0).text_size(TEXT).text_color(t.foreground)
       .child(v_flex().flex_none().px(INSET).pb(10).gap(8)
         .child(h_flex().flex_none().gap(8).items_center().child(div().flex_1().min_w(0).child(fresh)).when(Boolean(cleanAll), (el) => el.child(cleanAll)))
+        .when(Boolean(limit), (el) => el.child(limit))
         .when(Boolean(said), (el) => el.child(div().id("stories-note").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(said.full ?? said.text).child(said.text)))
         .when(counts.some(([n]) => n), (el) => el.child(h_flex().flex_wrap().gap(12).items_center().children(counts.filter(([n]) => n)
           .map(([n, label, c, state]) => countBadge(t, `count-${state}`, state, n, `${n} ${label}`, t[c]).when(n === 1, (x) => x.child("1")))))))

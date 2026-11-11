@@ -56,12 +56,13 @@ export function lowFor(account, now = Date.now()) {
 // account's user id).
 export const limitMessage = (b) => `GitHub's limit for this account is used up: Kelpie tries again at ${clock12(new Date(b.until))}`;
 export const lowMessage = (b) => `GitHub's limit for this account is running low: Kelpie loads less often until ${clock12(new Date(b.reset))}`;
-// For the story list's freshness line: the account's GitHub limit as it stands, or null.
-export function limitNote(account, now = Date.now()) {
+// For the story list: the account's GitHub limit as it stands, { until } used up or { reset } running
+// low, or null.
+export function limitOf(account, now = Date.now()) {
   const b = blockedFor(account, "graphql", now) ?? blockedFor(account, "core", now);
-  if (b) return limitMessage(b);
+  if (b) return { until: b.until };
   const low = lowFor(account, now);
-  return low ? lowMessage(low) : null;
+  return low ? { reset: low.reset } : null;
 }
 
 // What a GraphQL answer says is left, kept for lowFor().

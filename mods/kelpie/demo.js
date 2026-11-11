@@ -321,12 +321,15 @@ export async function demoSessions(folder) {
 // Whether the demo's browser plays sound (its globe turns into moving bars): the fixture's web.playing.
 export const demoPlaying = () => Boolean(FIXTURE?.web?.playing);
 // GitHub's limit as the demo plays it (ghlimit.js): the fixture's github.limit, "used" (refused until
-// github.resets, "+25m") or "low" (a twentieth left until then); anything else, none. The reset counts
-// from when kelpie.demo made the demo, so its time holds still (none made: from now).
+// github.resets, "+25m") or "low" (a twentieth left until then); anything else, none. It starts
+// github.after seconds after kelpie.demo made the demo, so the stories load first and the limit is
+// hit while they're shown, as it happens; its reset counts from then too, so its time holds still.
+// No demo made (the tests): at once.
 export function demoLimit() {
   const g = FIXTURE?.github;
   if (g?.limit !== "used" && g?.limit !== "low") return null;
   const at = shared(DEMO_AT);
+  if (typeof at === "number" && Date.now() - at < Number(g.after ?? 0) * 1000) return null;
   const reset = when(g.resets ?? "+25m", typeof at === "number" ? at : Date.now());
   return g.limit === "used" ? { until: reset, hits: 1 } : { remaining: 250, limit: 5000, reset };
 }

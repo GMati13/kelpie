@@ -6,7 +6,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock, setShared } from "herdr";
-import { LIMIT, LOW_EVERY, blockedFor, guarded, limitNote, lowFor } from "../../mods/kelpie/ghlimit.js";
+import { LIMIT, LOW_EVERY, blockedFor, guarded, limitOf, lowFor, lowMessage } from "../../mods/kelpie/ghlimit.js";
 import { gh, pullBody } from "../../mods/kelpie/pulls.js";
 import { StoryList } from "../../mods/kelpie/stories.js";
 import { REFRESH } from "../../mods/kelpie/source.js";
@@ -117,10 +117,11 @@ describe("what's left", () => {
   test("each GraphQL answer's rateLimit says when it runs low (under a tenth)", async () => {
     await guarded("low", ["api", "graphql"], async () => answer(left(320)));
     assert.equal(lowFor("low").remaining, 320);
-    assert.match(limitNote("low"), /running low: Kelpie loads less often until \d+:\d\d [AP]M/);
+    assert.deepEqual(limitOf("low"), { reset: RESET * 1000 });
+    assert.match(lowMessage(lowFor("low")), /running low: Kelpie loads less often until \d+:\d\d [AP]M/);
     await guarded("plenty", ["api", "graphql"], async () => answer(left(4200)));
     assert.equal(lowFor("plenty"), null);
-    assert.equal(limitNote("plenty"), null);
+    assert.equal(limitOf("plenty"), null);
     // Past the reset, it isn't low any more.
     assert.equal(lowFor("low", RESET * 1000 + 1), null);
   });
