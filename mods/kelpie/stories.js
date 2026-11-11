@@ -20,12 +20,12 @@ import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArg
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
-import { LOW_EVERY, blockedFor, limitNote, lowFor } from "./ghlimit.js";
+import { LOW_EVERY, blockedFor, limitMessage, limitNote, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
-import { demoBlob, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
+import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
@@ -1029,7 +1029,13 @@ const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
 const ARTIFACTS = "kelpie.artifacts.sessions";
 // The profile's GitHub account's limit, for the freshness line: used up or running low (ghlimit.js).
-const githubNote = (setup) => (setup?.github?.owner || setup?.project) && !setup?.github?.demo && !setup?.project?.demo ? limitNote(setup.github?.account ?? null) : null;
+// A demo profile's comes from its fixture (demo.js demoLimit()).
+function githubNote(setup) {
+  if (!setup?.github?.owner && !setup?.project) return null;
+  if (!setup.github?.demo && !setup.project?.demo) return limitNote(setup.github?.account ?? null);
+  const d = demoLimit();
+  return d ? (d.until ? limitMessage(d) : lowMessage(d)) : null;
+}
 const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
 const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
 // Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
@@ -2219,7 +2225,7 @@ export class Stories extends Source {
     const sessions = (await sessionsP) ?? [];
     // GitHub's limit refusing the pull requests isn't them gone: the last ones stay, and the
     // freshness line says why (limitNote()).
-    const limited = owner && !demo && blockedFor(account) && prior;
+    const limited = owner && (demo ? demoLimit()?.until : blockedFor(account)) && prior;
     return settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
@@ -2235,7 +2241,7 @@ export class Stories extends Source {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
     // Worth a read only while GitHub's limit has room: low or used up, the loads bring it.
-    if (blockedFor(ctx.setup.github.account) || lowFor(ctx.setup.github.account)) return;
+    if (ctx.setup.github.demo ? demoLimit() : blockedFor(ctx.setup.github.account) || lowFor(ctx.setup.github.account)) return;
     if (this.quickBusy) { this.quickAgain = true; return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;

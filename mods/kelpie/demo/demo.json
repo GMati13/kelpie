@@ -826,6 +826,7 @@
     "weekResets": "+3d"
   },
   "web": { "playing": false },
+  "github": { "limit": null, "resets": "+25m" },
   "asks": [
     {
       "tab": "ACME-172",

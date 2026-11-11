@@ -247,3 +247,23 @@ describe("the story list", () => {
     assert.equal(list.state(cx).error, null);
   });
 });
+
+// The demo plays it from its fixture (github.limit): a Jira demo's board loads, its pull requests kept.
+test("the Jira demo with its GitHub limit used up keeps its pull requests", async () => {
+  const { readFileSync } = await import("node:fs");
+  const text = readFileSync(new URL("../../mods/kelpie/demo/demo.json", import.meta.url), "utf8");
+  setupDemoWorld();
+  const list = new StoryList();
+  const ctx = list.context();
+  const before = data({ parents: [issue("ACME-1", "doing")], mine: ["ACME-1"], prs: [{ ...pr("ACME-1 add it", { number: 7 }), id: "PR_7" }] });
+  setShared("kelpie.stories.data", { [ctx.profile.id]: { key: ctx.key, data: before, at: NOW - 3 * 60e3, error: null } });
+  const base = mock.on.readTextFile;
+  mock.on.readTextFile = (path, ...rest) => (String(path).endsWith("demo/demo.json") ? JSON.stringify({ ...JSON.parse(text), github: { limit: "used" } }) : base?.(path, ...rest));
+  const cx = fakeCx();
+  list.init(cx);
+  await settle(cx);
+  const st = list.state(cx);
+  assert.ok(st.data.parents.length > 1, "the board loaded from the fixture");
+  assert.deepEqual(st.data.prs.map((p) => p.number), [7], "the pull requests stay");
+  assert.match(st.error, /used up: Kelpie tries again at/);
+});

@@ -167,7 +167,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   said in plain words with the time; side-by-side refusals counting once; a description that mentions
   rate limits isn't one; the story list loading at most every 10 minutes while the budget runs low, its
   quick reads stopped, a refused load keeping the last stories and their age, a Jira board keeping its
-  pull requests.
+  pull requests; the demo playing it from its fixture (`github.limit`). `views-github.test.mjs` checks the
+  GitHub demo's freshness line saying it, used up and running low.
 - `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
   details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
   links.

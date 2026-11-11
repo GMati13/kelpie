@@ -13,7 +13,8 @@
 // fixture by the operation's name.
 
 import { gh } from "./pulls.js";
-import { demoProject } from "./demo.js";
+import { demoLimit, demoProject } from "./demo.js";
+import { limitMessage } from "./ghlimit.js";
 import { GITHUB_LOGIN, prefixFor } from "./config.js";
 import { projectCategory } from "./board.js";
 
@@ -68,7 +69,12 @@ export const QUERIES = Object.freeze({
 // only errors are things GitHub says aren't there (an issue deleted or moved) is still its data.
 async function ask(board, args, { partial = false } = {}) {
   const all = ["api", "graphql", ...args];
-  if (board.cfg.demo) return (await demoProject(all)).data;
+  if (board.cfg.demo) {
+    const answer = await demoProject(all); // reads the fixture, so demoLimit() knows it
+    const used = demoLimit();
+    if (used?.until) throw new Error(limitMessage(used)); // the demo's GitHub limit used up (fixture github.limit)
+    return answer.data;
+  }
   const r = await gh(board.account, all);
   let out = null;
   try { out = JSON.parse(r.stdout || "null"); } catch { out = null; }
