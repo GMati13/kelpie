@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: cleanup-command-squash-merged
+expected_outcome: |
+  Looks at the folder, proposes a clean-up command that counts a branch as merged by its content, so ACME-12's squash-merged branch would be removed and ACME-14's unmerged one kept, and asks before saving.
+context:
+  scaffold_script: place-files.sh

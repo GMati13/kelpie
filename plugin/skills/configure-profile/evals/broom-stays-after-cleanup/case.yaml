@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: broom-stays-after-cleanup
+expected_outcome: |
+  Runs or reads the story commands for ACME-12, finds that its branch reached the remote's main under other hashes (rebased) while the script checks commits against the local main, and proposes judging merged by content against origin's main too, in both the leftovers check and the clean-up, asking before saving or deleting anything.
+context:
+  scaffold_script: place-files.sh
