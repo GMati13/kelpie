@@ -1054,7 +1054,13 @@ const STARTED = {};
 const AGAIN = new Set(); // profile keys asked to load again while their load ran (Source.load)
 const DATA = STORIES; // { [profile id]: { key, data, at, error } }
 const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, repo } }
-const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } }); };
+// Written only when a count changes: the Screenshots count is asked again every 5 s while a new agent
+// has no session yet, and every write of shared state redraws every copy (#39).
+export const setCounts = (key, fields) => { // exported for the tests
+  const all = shared(COUNTS) ?? {};
+  if (Object.entries(fields).every(([k, v]) => key in all && all[key]?.[k] === v)) return;
+  setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } });
+};
 // What the Screenshots view (a kelpie-artifacts block, layout id "story-shots") shows: the shown story's
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
