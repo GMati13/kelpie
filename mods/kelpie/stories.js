@@ -1036,6 +1036,8 @@ function ordered(items) {
 }
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
+// Said where pull requests would be (a story's details, Your pull requests) when they didn't load.
+const PULLS_FAILED = "Pull requests didn't load: Refresh to try again.";
 const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Waiting for review", "muted"] };
 
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
@@ -4015,7 +4017,7 @@ export class StoryBody extends Stories {
     if (early) return early;
     const n = storyNote(st.profile, shown);
     const note = n ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(n.full ?? n.text).child(n.text)
-      : st.data.prError ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.blocked).tooltip(st.data.prError).child("Pull requests didn't load, Refresh to try again")
+      : st.data.prError ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.blocked).tooltip(st.data.prError).child(PULLS_FAILED)
       : null;
     return decor("blockDecor", t, v_flex().size_full().min_h(0).px(INSET).pt(10).pb(6).gap(6).text_size(TEXT).text_color(t.foreground)
       .child(shown ? this.detail(t, st, shown, cx, note) : empty(t, "Pick a story on the left.", { fill: true })), storyBlock("story-body", shown));
@@ -4296,7 +4298,7 @@ export class StoryList extends Stories {
     // story's own are on the story (its row's and header's Merge): it shows with something in it, or
     // to say pull requests didn't load.
     const owner = st.setup.github?.owner;
-    const noPulls = st.data.prError ? "Pull requests didn't load, Refresh to try again" : null;
+    const noPulls = st.data.prError ? PULLS_FAILED : null;
     const alone = worksAlone(st.setup);
     const always = Boolean(owner) && (!alone || Boolean(noPulls));
     // Every open pull request of yours on no story of the list, whatever its title (a story's own are on

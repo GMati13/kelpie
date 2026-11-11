@@ -52,3 +52,12 @@ test("a lone pull request waiting on reviewers says Waiting for review", async (
   assert.match(out, /"Waiting for review"/);
   assert.doesNotMatch(out, /Review waiting/);
 });
+
+// Pull requests that didn't load: a sentence saying what to do (the story's details; Your pull
+// requests says the same words, PULLS_FAILED).
+test("pull requests that didn't load say to refresh, as a sentence", async () => {
+  const failed = { ...stories, data: { ...stories.data, prError: "GitHub didn't answer." } };
+  setupDemoWorld({ stories: failed, shown: "ACME-142" });
+  const out = render((await draw(new StoryBody())).el, skinTheme());
+  assert.match(out, /"Pull requests didn't load: Refresh to try again\."/);
+});
