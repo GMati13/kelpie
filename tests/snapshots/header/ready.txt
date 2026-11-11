@@ -17,8 +17,8 @@ div
             "frontend"
           div #story-tags-1 [bg=accent/24 fg=accent font="DM Sans"] tip="Label: design"
             "design"
-          div #story-tags-2 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: accessibility"
-            "accessibility"
+          div #story-tags-more [fg=dim] tip="Label: accessibility"
+            "+1"
         div #story-assignee
           div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
             "TR"

@@ -110,10 +110,8 @@ v_flex [fg=foreground]
         div [font="DM Sans"]
           "Offline mode for saved trips"
         h_flex
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-142 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-142"
-          div #here-ACME-142 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           h_flex #b-ask-ACME-142 [fg=working] tip="An agent needs you"
             div
               div [bg=working/40] ~loop(opacity)
@@ -122,15 +120,20 @@ v_flex [fg=foreground]
             div
               svg own:git-pull-request [fg=accent]
             "2"
-          h_flex #b-subs-ACME-142 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 3 subtasks · 1 in review · 1 to do · 1 done"
-            h_flex [bg=raised]
-              div [bg=working]
-              div [bg=dim]
-            div [fg=dim]
-              "0/2"
-          h_flex #tags-ACME-142
-            div #tags-ACME-142-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
-              "mobile"
+          h_flex #tags-ACME-142-zone {size_change}
+            div
+              div #tags-ACME-142-zoom {size_change}
+              h_flex
+                div #tags-ACME-142-m0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: mobile"
+                  "mobile"
+                div #tags-ACME-142-mmore [fg=dim] {size_change} tip="Label: mobile\nLabel: mobile"
+                  "+2"
+            h_flex #tags-ACME-142
+              div #tags-ACME-142-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
+                "mobile"
+        h_flex #b-subs-ACME-142 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 3 subtasks · 1 in review · 1 to do · 1 done"
+          div [bg=working/73]
+          div [bg=dim/73]
     h_flex #story-ACME-151 [hover(bg=hover)] {click hover} tip="Checks failing on ACME-152 (payments#97)"
       div
         div
@@ -139,24 +142,29 @@ v_flex [fg=foreground]
         div [font="DM Sans"]
           "Pay with Apple Pay at checkout"
         h_flex
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-151 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-151"
-          div #here-ACME-151 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           h_flex #b-pr-ACME-151 [fg=blocked] tip="payments#97: Checks failing"
             div
               svg own:circle-x [fg=blocked]
-          h_flex #b-subs-ACME-151 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 2 subtasks · 1 in review · 1 to do"
-            h_flex [bg=raised]
-              div [bg=working]
-              div [bg=dim]
-            div [fg=dim]
-              "0/2"
-          h_flex #tags-ACME-151
-            div #tags-ACME-151-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: payments"
-              "payments"
-            div #tags-ACME-151-1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] tip="Label: ios"
-              "ios"
+          h_flex #tags-ACME-151-zone {size_change}
+            div
+              div #tags-ACME-151-zoom {size_change}
+              h_flex
+                div #tags-ACME-151-m0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] {size_change} tip="Label: payments"
+                  "payments"
+                div #tags-ACME-151-m1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] {size_change} tip="Label: ios"
+                  "ios"
+                div #tags-ACME-151-mmore [fg=dim] {size_change} tip="Label: payments\nLabel: payments"
+                  "+2"
+            h_flex #tags-ACME-151
+              div #tags-ACME-151-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: payments"
+                "payments"
+              div #tags-ACME-151-1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] tip="Label: ios"
+                "ios"
+        h_flex #b-subs-ACME-151 tip="Your subtasks: 0 of 2 past testing · 1 in progress · 1 to do\nAll: 2 subtasks · 1 in review · 1 to do"
+          div [bg=working/73]
+          div [bg=dim/73]
     h_flex #story-ACME-160 [hover(bg=hover)] {click hover} tip="Changes requested on ACME-161 (search#233)"
       div
         div
@@ -165,24 +173,27 @@ v_flex [fg=foreground]
         div [font="DM Sans"]
           "Typo-tolerant search"
         h_flex
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-160 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-160"
-          div #here-ACME-160 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           h_flex #b-busy-ACME-160 [fg=accent] tip="An agent is working"
             div
               svg chrome:spinner [fg=accent] ~spin
           h_flex #b-pr-ACME-160 [fg=working] tip="search#233: Changes requested"
             div
               svg own:message-square [fg=working]
-          h_flex #b-subs-ACME-160 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in review"
-            h_flex [bg=raised]
-              div [bg=working]
-            div [fg=dim]
-              "0/1"
-          h_flex #tags-ACME-160
-            div #tags-ACME-160-0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: search"
-              "search"
+          h_flex #tags-ACME-160-zone {size_change}
+            div
+              div #tags-ACME-160-zoom {size_change}
+              h_flex
+                div #tags-ACME-160-m0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] {size_change} tip="Label: search"
+                  "search"
+                div #tags-ACME-160-mmore [fg=dim] {size_change} tip="Label: search\nLabel: search"
+                  "+2"
+            h_flex #tags-ACME-160
+              div #tags-ACME-160-0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: search"
+                "search"
+        h_flex #b-subs-ACME-160 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in review"
+          div [bg=working/73]
     h_flex #story-ACME-171 [hover(bg=hover)] {click hover} tip="Approved, checks pass or none · ready to merge"
       div
         div
@@ -191,30 +202,39 @@ v_flex [fg=foreground]
         div [font="DM Sans"]
           "Dark mode for the dashboard"
         h_flex
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-171 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-171"
-          div #here-ACME-171 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           h_flex #b-pr-ACME-171 [fg=done] tip="web#415: Approved, checks pass: ready to merge\ncharts#58: Approved, no checks: ready to merge"
             div
               svg chrome:circle-check [fg=done]
             "2"
-          h_flex #b-subs-ACME-171 tip="Your subtasks: 0 of 2 past testing · 2 in progress\nAll: 2 subtasks · 2 in review"
-            h_flex [bg=raised]
-              div [bg=working]
-            div [fg=dim]
-              "0/2"
-          h_flex #tags-ACME-171
-            div #tags-ACME-171-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: frontend"
-              "frontend"
-            div #tags-ACME-171-1 [bg=accent/24 fg=accent font="DM Sans"] tip="Label: design"
-              "design"
-            div #tags-ACME-171-more [fg=dim] tip="Label: accessibility"
-              "+1"
-      h_flex #tasks-ACME-171 {down:left click}
-        Popup.new "merge-ACME-171-menu"
-          div #merge-ACME-171-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
-            svg own:git-merge
+          h_flex #tags-ACME-171-zone {size_change}
+            div
+              div #tags-ACME-171-zoom {size_change}
+              h_flex
+                div #tags-ACME-171-m0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: frontend"
+                  "frontend"
+                div #tags-ACME-171-m1 [bg=accent/24 fg=accent font="DM Sans"] {size_change} tip="Label: design"
+                  "design"
+                div #tags-ACME-171-m2 [bg=ansi5/24 fg=ansi5 font="DM Sans"] {size_change} tip="Label: accessibility"
+                  "accessibility"
+                div #tags-ACME-171-mmore [fg=dim] {size_change} tip="Label: frontend\nLabel: frontend"
+                  "+2"
+            h_flex #tags-ACME-171
+              div #tags-ACME-171-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: frontend"
+                "frontend"
+              div #tags-ACME-171-1 [bg=accent/24 fg=accent font="DM Sans"] tip="Label: design"
+                "design"
+              div #tags-ACME-171-more [fg=dim] tip="Label: accessibility"
+                "+1"
+        h_flex #b-subs-ACME-171 tip="Your subtasks: 0 of 2 past testing · 2 in progress\nAll: 2 subtasks · 2 in review"
+          div [bg=working/73]
+          div [bg=working/73]
+      h_flex #actions-ACME-171
+        h_flex #tasks-ACME-171 {down:left click}
+          Popup.new "merge-ACME-171-menu"
+            div #merge-ACME-171-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
+              svg own:git-merge
     h_flex #story-ACME-175 [hover(bg=hover)] {click hover} tip="Agent working · PR in review"
       div
         div
@@ -223,21 +243,29 @@ v_flex [fg=foreground]
         div [font="DM Sans"]
           "Fix the flaky login test"
         h_flex
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-175 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-175"
-          div #here-ACME-175 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           h_flex #b-busy-ACME-175 [fg=accent] tip="An agent is working"
             div
               svg chrome:spinner [fg=accent] ~spin
           h_flex #b-pr-ACME-175 [fg=working] tip="web#423: Checks running"
             div
               svg chrome:clock [fg=working]
-          h_flex #tags-ACME-175
-            div #tags-ACME-175-0 [bg=blocked/24 fg=blocked font="DM Sans"] tip="Type: Bug"
-              "Bug"
-            div #tags-ACME-175-1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: ci"
-              "ci"
+          h_flex #tags-ACME-175-zone {size_change}
+            div
+              div #tags-ACME-175-zoom {size_change}
+              h_flex
+                div #tags-ACME-175-m0 [bg=blocked/24 fg=blocked font="DM Sans"] {size_change} tip="Type: Bug"
+                  "Bug"
+                div #tags-ACME-175-m1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: ci"
+                  "ci"
+                div #tags-ACME-175-mmore [fg=dim] {size_change} tip="Type: Bug\nType: Bug"
+                  "+2"
+            h_flex #tags-ACME-175
+              div #tags-ACME-175-0 [bg=blocked/24 fg=blocked font="DM Sans"] tip="Type: Bug"
+                "Bug"
+              div #tags-ACME-175-1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: ci"
+                "ci"
     h_flex #story-ACME-138 [hover(bg=hover)] {click hover} tip="Paused · 1 subtask · 1 in progress"
       div
         div
@@ -251,11 +279,8 @@ v_flex [fg=foreground]
           h_flex #b-paused-ACME-138 [fg=muted] tip="Paused: Resume picks it up"
             div
               svg own:pause [fg=dim]
-          h_flex #b-subs-ACME-138 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in progress"
-            h_flex [bg=raised]
-              div [bg=working]
-            div [fg=dim]
-              "0/1"
+        h_flex #b-subs-ACME-138 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 1 subtask · 1 in progress"
+          div [bg=working/73]
     h_flex #story-ACME-184 [hover(bg=hover)] {click hover} tip="2 subtasks · 2 in progress"
       div
         div
@@ -266,11 +291,8 @@ v_flex [fg=foreground]
         h_flex
           div [font="DM Mono" fg=dim]
             "ACME-184"
-          h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 2 subtasks · 2 in progress"
-            h_flex [bg=raised]
-              div [bg=working]
-            div [fg=dim]
-              "0/1"
+        h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past testing · 1 in progress\nAll: 2 subtasks · 2 in progress"
+          div [bg=working/73]
     h_flex #story-ACME-190 [hover(bg=hover)] {click hover} tip="Reassigned to Jordan Blake · clean up once you're done with it"
       div
         div
@@ -279,16 +301,15 @@ v_flex [fg=foreground]
         div [font="DM Sans"]
           "Remember the last search filters"
         h_flex
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-190 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-190"
-          div #here-ACME-190 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           div #gone-ACME-190
             div [bg=ansi5/33 fg=ansi5] tip="Reassigned to Jordan Blake: kept here until you clean it up"
               "JB"
-      div #clean-ACME-190 {down:left click}
-        div #clean-ACME-190 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-190: closes its space, forgets its paused session"
-          svg own:brush-cleaning
+      h_flex #actions-ACME-190
+        div #clean-ACME-190 {down:left click}
+          div #clean-ACME-190 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-190: closes its space, forgets its paused session"
+            svg own:brush-cleaning
     div
       div [font="DM Sans" fg=muted]
         "REVIEWS FOR YOU"
@@ -380,11 +401,8 @@ v_flex [fg=foreground]
         h_flex
           div [font="DM Mono" fg=dim]
             "ACME-180"
-          h_flex #b-subs-ACME-180 tip="Your subtasks: 0 of 1 past testing · 1 to do\nAll: 2 subtasks · 2 to do"
-            h_flex [bg=raised]
-              div [bg=dim]
-            div [fg=dim]
-              "0/1"
+        h_flex #b-subs-ACME-180 tip="Your subtasks: 0 of 1 past testing · 1 to do\nAll: 2 subtasks · 2 to do"
+          div [bg=dim/73]
     div
       div [font="DM Sans" fg=muted]
         "WAITING ON OTHERS"
@@ -406,14 +424,12 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-129 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-          h_flex #b-subs-ACME-129 tip="Your subtasks: 0 of 1 past testing · 1 in testing\nAll: 2 subtasks · 2 in progress"
-            h_flex [bg=raised]
-              div [bg=ansi4]
-            div [fg=dim]
-              "0/1"
-      div #finish-ACME-129 {down:left click}
-        div #finish-ACME-129-button [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-129, then the story"
-          svg own:check-check
+        h_flex #b-subs-ACME-129 tip="Your subtasks: 0 of 1 past testing · 1 in testing\nAll: 2 subtasks · 2 in progress"
+          div [bg=ansi4/73]
+      h_flex #actions-ACME-129
+        div #finish-ACME-129 {down:left click}
+          div #finish-ACME-129-button [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-129, then the story"
+            svg own:check-check
     h_flex #story-ACME-122 [hover(bg=hover)] {click hover} tip="1 subtask · 1 done"
       div
         div
@@ -422,21 +438,17 @@ v_flex [fg=foreground]
         div [font="DM Sans" fg=muted]
           "Upgrade the services to Node 22"
         h_flex [opacity=0.6]
-          div [font="DM Mono" fg=dim]
+          div #here-ACME-122 [font="DM Mono" fg=muted] tip="Open here: it has a space on this machine"
             "ACME-122"
-          div #here-ACME-122 tip="Open here: it has a space on this machine"
-            svg chrome:terminal [fg=dim]
           h_flex #b-pr-ACME-122 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-          h_flex #b-subs-ACME-122 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
-            h_flex [bg=raised]
-              div [bg=done]
-            div [fg=dim]
-              "1/1"
-      div #clean-ACME-122 {down:left click}
-        div #clean-ACME-122 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-122: closes its space"
-          svg own:brush-cleaning
+        h_flex #b-subs-ACME-122 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+          div [bg=done]
+      h_flex #actions-ACME-122
+        div #clean-ACME-122 {down:left click}
+          div #clean-ACME-122 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-122: closes its space"
+            svg own:brush-cleaning
     h_flex #story-ACME-116 [hover(bg=hover)] {click hover} tip="Paused · 1 subtask · 1 done"
       div
         div
@@ -450,14 +462,12 @@ v_flex [fg=foreground]
           h_flex #b-paused-ACME-116 [fg=muted] tip="Paused: Resume picks it up"
             div
               svg own:pause [fg=dim]
-          h_flex #b-subs-ACME-116 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
-            h_flex [bg=raised]
-              div [bg=done]
-            div [fg=dim]
-              "1/1"
-      div #clean-ACME-116 {down:left click}
-        div #clean-ACME-116 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-116: forgets its paused session"
-          svg own:brush-cleaning
+        h_flex #b-subs-ACME-116 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+          div [bg=done]
+      h_flex #actions-ACME-116
+        div #clean-ACME-116 {down:left click}
+          div #clean-ACME-116 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-116: forgets its paused session"
+            svg own:brush-cleaning
     div #stories-done {click} tip="Show the stories finished this sprint"
       div
         div [font="DM Sans" fg=muted]

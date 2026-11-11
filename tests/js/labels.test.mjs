@@ -4,11 +4,12 @@
 // story's title row and its subtask rows, on a Jira board and on a GitHub Project.
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
-import { texts } from "gpui-kit";
+import { handlers, nodeOf, texts, walk } from "gpui-kit";
+import { ROW_CONTROL } from "../../mods/kelpie/ui.js";
 import { mock } from "herdr";
 import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { byId, render } from "../lib/snapshot.mjs";
-import { Stories, StoryBody, StoryList, contrast, labelsOf, legible, tagColor, tagsOf } from "../../mods/kelpie/stories.js";
+import { Stories, StoryBody, StoryList, contrast, fitTags, labelsOf, legible, tagColor, tagsOf } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { DEMO_PROJECT_PROFILE } from "../lib/stories.mjs";
 
@@ -65,6 +66,12 @@ describe("tag colours", () => {
     for (const name of ["frontend", "design", "accessibility", "security", "mobile", "payments"]) assert.notEqual(tagColor(DARK, { name }), DARK.blocked, name);
     assert.ok(new Set(["frontend", "design", "accessibility"].map((name) => tagColor(DARK, { name }))).size > 1, "common names don't all share one colour");
   });
+  test("a colour is worked out once, but again for another theme", () => {
+    const tag = { name: "deps", color: "0b3d0f" };
+    assert.equal(tagColor(DARK, tag), legible(DARK, "#0b3d0f"));
+    assert.equal(tagColor(DARK, tag), tagColor(DARK, { ...tag }));
+    assert.equal(tagColor(LIGHT, tag), legible(LIGHT, "#0b3d0f"), "the light theme's own, not the dark one's kept");
+  });
 });
 
 // The demo, on its Jira board and as a GitHub Project of the same issues.
@@ -97,10 +104,89 @@ describe("the demo's labels", () => {
     });
   }
 
-  test("the story's title row shows up to three, and its subtask rows their own", async () => {
+  // The list's tags are whole words at the key line's end (never squeezed into "mob…"); only a name
+  // too long for any row is cut, with an ellipsis, at 110px.
+  // The list's tags fit the room the key line leaves, measured as drawn: as many whole as fit, then
+  // "+n"; the first cut with an ellipsis when not even it fits whole; only "+n" when that wouldn't read.
+  test("the list's tags fit the room measured on screen, never running past the row", async () => {
+    setupDemoWorld({ stories: jira });
+    const view = new StoryList();
+    const { cx } = await draw(view);
+    const measure = (zoom, room) => {
+      const el = view.render(cx);
+      const at = (id, width) => handlers(el, "on_size_change").find((h) => h.id === id).fn({ width: width * zoom, height: 15 * zoom }, cx);
+      at("tags-ACME-171-zoom", 100);
+      at("tags-ACME-171-m0", 56); at("tags-ACME-171-m1", 46); at("tags-ACME-171-m2", 80); at("tags-ACME-171-mmore", 16);
+      at("tags-ACME-171-zone", room);
+      return view.render(cx);
+    };
+    for (const zoom of [1, 1.2]) {
+      assert.deepEqual(tagsIn(measure(zoom, 200), "tags-ACME-171"), ["frontend", "design", "accessibility"], `all fit, at ${zoom}`);
+      assert.deepEqual(tagsIn(measure(zoom, 130), "tags-ACME-171"), ["frontend", "design", "+1"]);
+      const narrow = measure(zoom, 60);
+      assert.deepEqual(tagsIn(narrow, "tags-ACME-171"), ["frontend", "+2"], "the first cut to what's left");
+      const cut = nodeOf(byId(narrow, "tags-ACME-171-0")).calls;
+      assert.ok(cut.some(([m, a]) => m === "w" && a[0] === 40) && cut.some(([m]) => m === "truncate"), "with an ellipsis, at 60 - (4 + 16)");
+      assert.deepEqual(tagsIn(measure(zoom, 30), "tags-ACME-171"), ["+3"], "too narrow to read one: only the count");
+    }
+  });
+
+  test("fitTags: whole tags by the room, then a cut one, then only the count", () => {
+    assert.deepEqual(fitTags([50, 40], 94), { n: 2, cut: null, more: false });
+    assert.deepEqual(fitTags([50, 40, 30], 94, 16), { n: 1, cut: null, more: true }, "50 + 4 + 40 + 4 + 16 = 114 > 94");
+    assert.deepEqual(fitTags([200], 80, 16), { n: 1, cut: 80, more: false }, "one long name alone: cut to the room");
+    assert.deepEqual(fitTags([300], 400, 16), { n: 1, cut: null, more: false });
+    assert.deepEqual(fitTags([60, 40], 40, 16), { n: 0, cut: null, more: true }, "40 - 20 < 34: unreadable, so the count");
+    assert.deepEqual(fitTags([60], 10, 16), { n: 0, cut: null, more: false }, "not even the count fits");
+    assert.deepEqual(fitTags([], 100, 16), { n: 0, cut: null, more: false });
+  });
+
+  test("a long label is cut with an ellipsis at 110px, wherever it shows", async () => {
+    const long = structuredClone(jira);
+    long.data.parents.find((i) => i.key === "ACME-142").fields.labels = [{ name: "a-very-long-label-somebody-wrote-on-the-board" }];
+    setupDemoWorld({ stories: long });
+    const { el } = await draw(new StoryList());
+    const tag = nodeOf(byId(el, "tags-ACME-142-0")).calls;
+    assert.ok(tag.some(([m]) => m === "truncate") && tag.some(([m, a]) => m === "max_w" && a[0] === 110));
+  });
+
+  test("on the list, a story's own space brightens its key and its subtasks are a line under the row", async () => {
+    setupDemoWorld({ stories: jira });
+    const { el } = await draw(new StoryList());
+    assert.deepEqual(texts(byId(el, "here-ACME-142")), ["ACME-142"], "the key itself says it's open here");
+    assert.match(look(byId(el, "here-ACME-142")), /fg=muted/);
+    assert.equal(texts(byId(el, "b-subs-ACME-142")).length, 0, "no 0/2 on the key line: its words are the tooltip");
+    assert.match(look(byId(el, "b-subs-ACME-142")), /tip="Your subtasks: 0 of 2/);
+  });
+
+  // A story can show two actions at once (Merge and Request approval, say): they lie over the row's end
+  // rather than taking a column, so the text and the subtasks' line keep the row's width.
+  test("on the list, a story's actions sit in the row's corner, above its labels, and its subtasks' line stays whole", async () => {
+    const calls = (el) => nodeOf(el).calls.map(([m, a]) => [m, a[0]]);
+    setupDemoWorld({ stories: jira });
+    const { el } = await draw(new StoryList());
+    const over = calls(byId(el, "actions-ACME-171"));
+    assert.ok(over.some(([m]) => m === "absolute") && over.some(([m, v]) => m === "right" && v === 8), "laid over, at the row's end (inside its padding)");
+    // By the numbers: padding 7 + title line 20 puts the title's middle at 17; buttons ROW_CONTROL (22)
+    // high from 6 share it and end at 28, above the key line's tags (7 + 20 + 2 - 0.5 = 28.5).
+    const top = over.find(([m]) => m === "top")?.[1], high = over.find(([m]) => m === "h")?.[1];
+    assert.equal(high, ROW_CONTROL);
+    const titleLine = walk(byId(el, "story-ACME-171")).find((n) => n.calls.some(([m, a]) => m === "child" && a[0] === "Dark mode for the dashboard"));
+    const h = titleLine.calls.find(([m]) => m === "h")?.[1][0];
+    assert.equal(h, 20, "the title line's height is set, not a font's");
+    assert.equal(top + high / 2, 7 + h / 2, "centred on the title");
+    assert.ok(top >= 4, "inset from the row's top");
+    assert.ok(top + high <= 7 + h + 2 - 0.5, "ending above the labels");
+    assert.ok(!over.some(([m]) => m === "bg"), "nothing painted behind them");
+    assert.deepEqual(titleLine.calls.filter(([m]) => m === "mr").map(([, a]) => a[0]), [ROW_CONTROL + 6], "the title stops short of one button");
+    assert.ok(byId(byId(el, "actions-ACME-171"), "tasks-ACME-171"), "Merge is in it");
+    assert.ok(calls(byId(el, "b-subs-ACME-171")).some(([m]) => m === "w_full"));
+  });
+
+  test("the story's title row shows two, and its subtask rows their own", async () => {
     setupDemoWorld({ stories: jira, shown: "ACME-171" });
     const head = await draw(new Stories());
-    assert.deepEqual(tagsIn(head.el, "story-tags"), ["frontend", "design", "accessibility"]);
+    assert.deepEqual(tagsIn(head.el, "story-tags"), ["frontend", "design", "+1"], "whole words: the title is cut first");
     setupDemoWorld({ stories: jira });
     mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-171" });
     const body = await draw(new StoryBody());
