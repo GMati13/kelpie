@@ -101,7 +101,7 @@ test("header: approve a review yourself", async () => {
   assert.match(render(waiting, skinTheme()), /chrome:spinner/);
   assert.deepEqual(handlers(waiting), []);
   await cx.settle();
-  assert.equal(mock.sharedValue("kelpie.stories.note")?.text, "Approved web#421 on GitHub.");
+  assert.equal(mock.sharedValue("kelpie.stories.note")?.[DEMO]?.text, "Approved web#421 on GitHub.");
   assert.deepEqual(mock.of("hc"), [], "nothing sent to an agent");
   const pr = (await demoPulls("review-requested:@me")).find((p) => p.number === 421);
   assert.equal(pr.reviewDecision, "APPROVED");

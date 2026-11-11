@@ -17,7 +17,7 @@ beforeEach(() => {
   sendAnswer = { code: 0, stdout: "{}", stderr: "" };
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude", argv: ["claude"] } }), stderr: "" } : sendAnswer);
 });
-const note = () => mock.sharedValue("kelpie.stories.note")?.text;
+const note = () => mock.sharedValue("kelpie.stories.note")?.w?.text;
 const sends = () => mock.of("hc").filter(([a]) => a[0] === "send");
 const shown = () => mock.of("run").filter(([n]) => n === "space.select" || n === "pane.focus").map(([n, a]) => [n, a.id ?? a.pane]);
 
