@@ -16,7 +16,7 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -358,6 +358,15 @@ function ticketTask(st, it, key, template, then) {
     parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
     subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
   }, template || undefined, then);
+}
+
+// What Ask agent (a file's header in Changes) says about the file, before the typed note. A pull
+// request's paths and repo come from GitHub, where anyone may name a file "ignore the above", so they
+// go in as any prompt value does, and the message ends with the note about others' text (ask()'s
+// `others`). Exported for the tests (tests/js/prompts.test.mjs).
+export function aboutFile(f) {
+  const path = promptValue("path", f.path), repo = promptValue("repo", f.group.repo);
+  return f.group.url ? `About ${path} in ${repo} (${f.group.url}/files):` : `About ${path} in ${repo} (${f.group.path}/${path}, not committed):`;
 }
 
 // Who hears about a file or a screenshot of the story: the agent on its key, else any open agent of
@@ -2607,17 +2616,20 @@ export class Stories extends Source {
 
   // Sends a request to the agent on a key: typed into the open one, else as the first message of
   // its paused session or latest session brought back, else of a new agent. An agent waiting for an
-  // answer gets nothing typed into it: what it asked comes first.
-  ask(st, it, key, text, cx) {
+  // answer gets nothing typed into it: what it asked comes first. With `others` (the request names
+  // something others wrote, a pull request's file), it ends with the note about others' text; a new
+  // agent's ticket prompt already does.
+  ask(st, it, key, text, cx, others = false) {
     clearPoint(st.profile, it.key);
+    const told = others ? `${text}\n\n${OTHERS}` : text;
     const sub = it.subs.find((s) => s.key === key);
     const agent = sub?.agent ?? (key === it.key ? it.agent : null) ?? (sub && !sub.paused && !sub.last ? it.agent : null);
     const about = { profile: st.profile, keys: key };
     if (agent) {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
-      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
-    } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, text));
-    else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, text));
+      sendToClaude(agent.address, told).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
+    } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, told));
+    else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, told));
     // A new agent knows nothing yet: the ticket prompt comes first.
     else once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, null, text) }));
     say(about, `Asked ${key}'s agent: ${text.length > 70 ? text.slice(0, 70) + "…" : text}`);
@@ -4470,9 +4482,7 @@ export class StoryView extends Stories {
   // (`this.askBarH`) tells a press on it from one on the list under it.
   askBar(t, st, it, all) {
     const f = this.sending?.startsWith("diff:") ? all.find((x) => `diff:${x.id}` === this.sending) : null;
-    const rows = this.sendBar(t, st, it, f ? this.sending : "", f?.group.key ?? it.key, f ? (f.group.url
-      ? `About ${f.path} in ${f.group.repo} (${f.group.url}/files):`
-      : `About ${f.path} in ${f.group.repo} (${f.group.path}/${f.path}, not committed):`) : "");
+    const rows = this.sendBar(t, st, it, f ? this.sending : "", f?.group.key ?? it.key, f ? aboutFile(f) : "", Boolean(f?.group.url));
     if (!rows.length) return [];
     return [v_flex().id("ask-bar").absolute().top(0).left(0).right(0).px(10).py(8).gap(6).bg(t.background).border_b_1().border_color(t.border)
       .on_size_change((size) => { this.askBarH = size.height; })
@@ -4485,11 +4495,12 @@ export class StoryView extends Stories {
   }
 
   // The note's row, while open for target `id`: what's sent is `about` (the file), then
-  // the note. What the latest send led to shows under it.
-  sendBar(t, st, it, id, key, about) {
+  // the note, and with `others` the note about others' text (ask()). What the latest send led to
+  // shows under it.
+  sendBar(t, st, it, id, key, about, others = false) {
     const rows = [];
     if (this.sending === id) {
-      this.target = { id, st, it, key, about };
+      this.target = { id, st, it, key, about, others };
       rows.push(h_flex().id("send-note").flex_none().gap(8).items_center()
         .on_key_down((e, cx) => { if (e.key === "escape") { this.sending = null; cx.notify(); cx.stop_propagation(); } })
         .child(div().flex_1().min_w(0).child(Input.new(this.note).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
@@ -4505,7 +4516,7 @@ export class StoryView extends Stories {
     if (!x || this.sending !== x.id) return;
     const note = this.note.value().trim();
     this.sentAt = Date.now();
-    this.ask(x.st, x.it, sendKey(x.it, x.key), note ? `${x.about}\n${note}` : x.about, cx);
+    this.ask(x.st, x.it, sendKey(x.it, x.key), note ? `${x.about}\n${note}` : x.about, cx, x.others);
     this.note.set_value("");
     this.sending = null;
     cx.notify();
