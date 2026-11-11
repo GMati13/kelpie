@@ -365,6 +365,23 @@ test("I work alone: the Board page's toggle saves solo with the board, and off d
   assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, solo: true } }).d.solo, true, "a saved one opens on");
 });
 
+test("Show unassigned work: the Board page's toggle, off by default, saves unassigned true only when on", () => {
+  const { d, cx } = profileDialog("jira", {}, { filled: true });
+  assert.equal(d.draft().profile.jira.unassigned, undefined, "off by default, nothing saved");
+  press(d.render(cx), "setup-unassigned", cx);
+  assert.equal(d.draft().profile.jira.unassigned, true);
+  assert.equal(d.dirty(), true);
+  assert.ok(texts(d.render(cx)).some((x) => x.startsWith("The sprint's stories and subtasks nobody has")));
+  // It moves with the board, as the handover column does.
+  press(d.render(cx), "setup-board-kind-1", cx);
+  d.projectUrl.set_value(DEMO_PROJECT.url);
+  assert.equal(d.draft().profile.project.unassigned, true);
+  press(d.render(cx), "setup-board-kind-0", cx);
+  press(d.render(cx), "setup-unassigned", cx);
+  assert.equal(d.draft().profile.jira.unassigned, undefined);
+  assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, unassigned: true } }).d.unassigned, true, "a saved one opens on");
+});
+
 test("Move to Done: the Board page's toggle, on by default, saves moveToDone false only when off", () => {
   const { d, cx } = profileDialog("jira", {}, { filled: true });
   assert.equal(d.draft().profile.jira.moveToDone, undefined, "on by default, nothing saved");

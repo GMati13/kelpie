@@ -61,6 +61,8 @@ function fields(f, i, { withParent = true } = {}) {
   return out;
 }
 const asIssue = (f, i) => ({ key: i.key, fields: fields(f, i) });
+// An issue nobody has: no assignee named, and not yours.
+const nobodys = (i) => !i.assignee && !i.mine;
 
 // A description written as light Markdown (# headings, - and 1. lists, `code`, **bold**, blank lines
 // between paragraphs) as Atlassian Document Format.
@@ -106,7 +108,9 @@ export async function demoJira(args) {
     const among = (m, k) => Boolean(m) && m[1].split(",").map((s) => s.trim()).includes(k);
     const list = parents
       ? f.issues.filter((i) => among(named, i.key) || (i.parent && among(parents, i.parent)))
-      : /assignee = currentUser\(\)/.test(a) ? f.issues.filter((i) => i.mine) : [];
+      : /assignee = currentUser\(\)/.test(a) ? f.issues.filter((i) => i.mine)
+      // The sprint's work nobody has (the list's Unassigned section).
+      : /assignee is EMPTY/.test(a) ? f.issues.filter(nobodys) : [];
     return ok({ issues: list.map((i) => asIssue(f, i)), isLast: true });
   }
   if (what === "transition") {
@@ -175,6 +179,12 @@ function ghIssue(f, i) {
     projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name } }] },
   };
 }
+// An issue as the unassigned question asks for it: a sub-issue's story with its title, page and state.
+function withParentTitle(f, i) {
+  const out = ghIssue(f, i), parent = i.parent && issueById(f).get(i.parent);
+  if (out.parent && parent) out.parent = { ...out.parent, title: parent.summary, url: `https://github.com/${f.project.repo}/issues/${numberOf(parent.key)}`, state: columnOf(f, MOVED[parent.key] ?? parent.status) === f.board.columns.length - 1 ? "CLOSED" : "OPEN" };
+  return out;
+}
 // The variables of a gh graphql call: -f/-F name=value, `name[]` gathered into a list.
 function variables(args) {
   const out = {};
@@ -209,7 +219,8 @@ export async function demoProject(args) {
     }
     return { data };
   }
-  if (op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
+  const unassigned = op === "KelpieUnassignedUser" || op === "KelpieUnassignedOrg";
+  if (!unassigned && op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
   const sprint = f.sprints?.[0];
   const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(when("-7d")), duration: 14 } : null;
   const field = { id: "PVTIF_demo", name: f.project.iteration ?? "Sprint", configuration: { iterations: iteration ? [iteration] : [] } };
@@ -217,13 +228,15 @@ export async function demoProject(args) {
     id: PROJECT_ID, title: f.project.title, url: `https://github.com/${op === "KelpieProjectOrg" ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
     field: { id: "PVTSSF_demo", options: f.board.columns.map((c, n) => ({ id: `opt-${n}`, name: c.name })) },
     fields: { nodes: [{}, field] },
-    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter((i) => i.mine).map((i) => ({
+    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter(unassigned ? nobodys : (i) => i.mine).map((i) => ({
       id: `PVTI_${i.key}`, type: "ISSUE", isArchived: false,
       fieldValues: { nodes: iteration ? [{}, { iterationId: iteration.id, field: { id: field.id } }] : [] },
-      content: ghIssue(f, i),
+      content: unassigned ? withParentTitle(f, i) : ghIssue(f, i),
     })) },
   };
-  return { data: op === "KelpieProjectOrg" ? { organization: { projectV2: project } } : { user: { projectV2: project } } };
+  // The unassigned question asks only for the items.
+  const answer = unassigned ? { items: project.items } : project;
+  return { data: op.endsWith("Org") ? { organization: { projectV2: answer } } : { user: { projectV2: answer } } };
 }
 
 // --- GitHub -----------------------------------------------------------------------------------
@@ -394,14 +407,15 @@ export function demoAsks(f, terminalOf = () => null, project = false) {
 
 // The demo profile's board: the fixture's Jira board, or (`board` "project", kelpie.demo-github) the
 // same issues as a GitHub Project. One profile either way, as two would open spaces of the same names.
-// The fixture's profile `solo` (true) makes it a board the person works alone on.
+// The fixture's profile `solo` (true) makes it a board the person works alone on; its `unassigned`
+// (true) shows the sprint's work nobody has.
 export function demoBoard(f, board = "jira") {
   const p = f.profile;
   if (board === "project") {
     const number = 1;
-    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}) } };
+    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...(p.unassigned ? { unassigned: true } : {}) } };
   }
-  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}) }, project: null };
+  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...(p.unassigned ? { unassigned: true } : {}) }, project: null };
 }
 
 export async function setupDemo(board = "jira") {

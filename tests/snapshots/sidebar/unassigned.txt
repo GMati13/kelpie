@@ -1,0 +1,86 @@
+v_flex
+  div #stories-unassigned {click} tip="Fold the stories and subtasks in the sprint that nobody has"
+    div
+      div [font="DM Sans" fg=muted]
+        "UNASSIGNED"
+      div [font="DM Mono" fg=dim]
+        "3"
+      div
+        svg chrome:chevron-down [fg=dim]
+      div
+        div
+          div [bg=dim/f2] ×32 … [bg=dim/1a]
+  h_flex #unassigned-ACME-195 [hover(bg=hover)] {click} tip="Nobody has ACME-195 yet. Show its details: you take it on the board"
+    div
+      div
+        div [bg=dim]
+    v_flex
+      div [font="DM Sans" fg=muted]
+        "Show the day's stops on a map"
+      h_flex [opacity=0.6]
+        div [font="DM Mono" fg=dim]
+          "ACME-195"
+        div [fg=dim]
+          "Unassigned"
+        h_flex #tags-unassigned-ACME-195-zone {size_change}
+          div
+            div #tags-unassigned-ACME-195-zoom {size_change}
+            h_flex
+              div #tags-unassigned-ACME-195-m0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: mobile"
+                "mobile"
+              div #tags-unassigned-ACME-195-mmore [fg=dim] {size_change} tip="Label: mobile\nLabel: mobile"
+                "+2"
+          h_flex #tags-unassigned-ACME-195
+            div #tags-unassigned-ACME-195-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
+              "mobile"
+  h_flex #unassigned-story-ACME-198 [fg=dim hover(fg=foreground)] {click} tip="Someone else has ACME-198: show it"
+    div [font="DM Mono"]
+      "ACME-198"
+    div
+      "An accessible date picker"
+  h_flex #unassigned-ACME-199 [hover(bg=hover)] {click} tip="Nobody has ACME-199 yet. Show ACME-198, its story: you take it on the board"
+    div
+      div
+        div [bg=dim]
+    v_flex
+      div [font="DM Sans" fg=muted]
+        "Keyboard navigation in the date picker"
+      h_flex [opacity=0.6]
+        div [font="DM Mono" fg=dim]
+          "ACME-199"
+        div [fg=dim]
+          "Unassigned"
+        h_flex #tags-unassigned-ACME-199-zone {size_change}
+          div
+            div #tags-unassigned-ACME-199-zoom {size_change}
+            h_flex
+              div #tags-unassigned-ACME-199-m0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] {size_change} tip="Label: accessibility"
+                "accessibility"
+              div #tags-unassigned-ACME-199-mmore [fg=dim] {size_change} tip="Label: accessibility\nLabel: accessibility"
+                "+2"
+          h_flex #tags-unassigned-ACME-199
+            div #tags-unassigned-ACME-199-0 [bg=ansi5/24 fg=ansi5 font="DM Sans"] tip="Label: accessibility"
+              "accessibility"
+  h_flex #unassigned-ACME-201 [hover(bg=hover)] {click} tip="Nobody has ACME-201 yet. Show its details: you take it on the board"
+    div
+      div
+        div [bg=dim]
+    v_flex
+      div [font="DM Sans" fg=muted]
+        "The trip total rounds each booking twice"
+      h_flex [opacity=0.6]
+        div [font="DM Mono" fg=dim]
+          "ACME-201"
+        div [fg=dim]
+          "Unassigned"
+        h_flex #tags-unassigned-ACME-201-zone {size_change}
+          div
+            div #tags-unassigned-ACME-201-zoom {size_change}
+            h_flex
+              div #tags-unassigned-ACME-201-m0 [bg=blocked/24 fg=blocked font="DM Sans"] {size_change} tip="Type: Bug"
+                "Bug"
+              div #tags-unassigned-ACME-201-mmore [fg=dim] {size_change} tip="Type: Bug\nType: Bug"
+                "+2"
+          h_flex #tags-unassigned-ACME-201
+            div #tags-unassigned-ACME-201-0 [bg=blocked/24 fg=blocked font="DM Sans"] tip="Type: Bug"
+              "Bug"

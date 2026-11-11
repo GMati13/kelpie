@@ -194,7 +194,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   around it. `configure`: Let me configure it for you, and the plugin check and install behind it.
 - Stories over time: `moved` (a ticket's new status shown at once, until a load agrees), `quick` (pull
   requests read again when an agent's turn ends, and one an agent just opened shown at once), `reload` (a reload asked for mid-load isn't dropped),
-  `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
+  `reassigned` (a story given to someone else stays while something of it is here), `unassigned` (the
+  sprint's work nobody has, loaded apart and shown last, folded), `leftovers` (the
   check behind a finished story's broom), `note` (where the last action's note shows), `avatars`
   (assignees' pictures, fetched once).
 - Actions: `move-to-done`, `run-picks` (Claude's picks started together), `story-task-send` (the Merge

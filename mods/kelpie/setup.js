@@ -189,6 +189,8 @@ export class Setup {
     this.solo = board?.solo === true;
     // Whether stories offer Move to Done (on unless turned off; saved only when off).
     this.moveToDone = board?.moveToDone !== false;
+    // Whether the list also shows the sprint's work nobody has (off unless turned on).
+    this.unassigned = board?.unassigned === true;
     const columns = board ? loadedColumns(this.profile) : [];
     this.columns = columns.length && saved.jira ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
     this.projectColumns = columns.length && saved.project && !saved.jira ? { key: projectKey(saved.project), list: columns } : null;
@@ -395,7 +397,7 @@ export class Setup {
     const prefixRows = project ? this.prefixList() : [];
     const badPrefix = prefixRows.find((r) => r.error);
     const prefixes = prefixRows.filter((r) => r.own).map((r) => `${r.key}=${r.own}`).join(", ");
-    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(this.profile?.demo ? { demo: true } : {}) };
+    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(this.unassigned ? { unassigned: true } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
     const error = onJira && url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
       : onJira && parsed && missing ? ["jira", missing]
       : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
@@ -702,6 +704,8 @@ export class Setup {
           this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
         toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
           this.moveToDone ? "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
+        toggle("setup-unassigned", "Show unassigned work", this.unassigned, (_e, cx) => { this.unassigned = !this.unassigned; cx.notify(); },
+          this.unassigned ? "The sprint's stories and subtasks nobody has get a folded section of their own at the end of your list, so you can find something to pick up. You take one on the board." : "Off: the list shows only what's assigned to you."),
       ],
 
       github: () => [

@@ -161,6 +161,8 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["jira.handover", { jira: { handover: "QA" } }, (p) => p.jira.handover === "QA" && p.jira.keychain === "jira-acme"],
     ["jira.solo", { jira: { solo: true } }, (p) => p.jira.solo === true && p.jira.keychain === "jira-acme"],
     ["jira.moveToDone", { jira: { moveToDone: false } }, (p) => p.jira.moveToDone === false && p.jira.keychain === "jira-acme"],
+    // It changes only what the list shows: nothing runs, nothing steers an agent.
+    ["jira.unassigned", { jira: { unassigned: true } }, (p) => p.jira.unassigned === true && p.jira.keychain === "jira-acme"],
     ["an unchanged command", { commands: { status: "make status" } }, (p) => p.commands.status === "make status"],
     // Disconnecting runs nothing and sends the sign-in nowhere; connecting again needs jira.url (a yes).
     ["removing Jira", { jira: null }, (p) => p.jira === null],
@@ -168,6 +170,7 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["project.handover", { project: { handover: "QA" } }, (p) => p.project.handover === "QA" && p.project.prefixes === "acme/web=WEB", "gh"],
     ["project.solo", { project: { solo: true } }, (p) => p.project.solo === true, "gh"],
     ["project.moveToDone", { project: { moveToDone: false } }, (p) => p.project.moveToDone === false, "gh"],
+    ["project.unassigned", { project: { unassigned: true } }, (p) => p.project.unassigned === true, "gh"],
     ["removing the Project", { project: null }, (p) => p.project === null, "gh"],
   ]) {
     test(`${what}`, async () => {
@@ -200,6 +203,7 @@ describe("apply-profile: refused outright", () => {
     // "false" would read as true: working alone is a yes or no.
     ["a string for solo", { jira: { solo: "false" } }, /jira\.solo: true or false/],
     ["a string for moveToDone", { project: { moveToDone: "false" } }, /project\.moveToDone: true or false/, "gh"],
+    ["a string for unassigned", { jira: { unassigned: "false" } }, /jira\.unassigned: true or false/],
     ["a list for a section", { commands: ["rm"] }, /an object/],
     ["a lookalike board", { jira: { url: "https://evil.com/x.atlassian.net/jira/boards/1" } }, /jira\.url/],
     ["a token command without email", { jira: { tokenCommand: "op read x", email: null } }, /jira\.email/],
