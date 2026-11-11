@@ -16,10 +16,10 @@ beforeEach(() => {
 const keys = (q) => q.map((x) => x.key);
 
 // The board: AA-1 changes requested, BB-1 agent waiting, CC-1 nothing, DD-1 sunk (in QA), EE-1 done
-// with a space (to clean up), FF-1 a story whose subtask FF-2 is yours.
+// with a space (to clean up), FF-1 a story whose subtask FF-2 is yours, HH-1 not started.
 const board = () => data({
-  mine: ["AA-1", "BB-1", "CC-1", "DD-1", "EE-1", "FF-2"],
-  parents: [issue("AA-1", "doing"), issue("BB-1", "doing"), issue("CC-1", "doing"), issue("DD-1", "qa"), issue("EE-1", "done"), issue("FF-1", "doing")],
+  mine: ["AA-1", "BB-1", "CC-1", "DD-1", "EE-1", "FF-2", "HH-1"],
+  parents: [issue("AA-1", "doing"), issue("BB-1", "doing"), issue("CC-1", "doing"), issue("DD-1", "qa"), issue("EE-1", "done"), issue("FF-1", "doing"), issue("HH-1", "todo")],
   children: [issue("FF-2", "doing", "FF-1"), issue("FF-3", "todo", "FF-1")],
   prs: [pr("AA-1 x", { review: "CHANGES_REQUESTED" })],
 });
@@ -70,12 +70,14 @@ describe("needQueueOf: what Next goes through", () => {
     mock.state.agents = [{ space: "d1", status: "blocked" }];
     assert.deepEqual(keys(needQueueOf(profile, items(), [review])), ["BB-1", "AA-1", "review:web#3", "desk", "clean"]);
   });
-  test("Claude's picks come last, and drop out once their story needs you, is sunk or finished", () => {
+  // CC-1 is in progress (KELPIE-126: a story already in hand isn't a pick, so Run all never starts a
+  // second agent on it); HH-1 isn't started.
+  test("Claude's picks come last, and drop out once their story needs you, is sunk, finished or in progress", () => {
     const pick = (key) => ({ key, action: `Do ${key}`, why: "", title: "", url: "" });
-    mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["CC-1", "AA-1", "DD-1", "EE-1", "XX-9", "pr:web#4"].map(pick) } });
+    mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["HH-1", "CC-1", "AA-1", "DD-1", "EE-1", "XX-9", "pr:web#4"].map(pick) } });
     const q = needQueueOf(profile, items(), []);
-    assert.deepEqual(keys(q), ["BB-1", "AA-1", "clean", "suggest:CC-1", "suggest:XX-9", "suggest:pr:web#4"]);
-    assert.equal(q[3].it.key, "CC-1", "a pick the list has carries its story");
+    assert.deepEqual(keys(q), ["BB-1", "AA-1", "clean", "suggest:HH-1", "suggest:XX-9", "suggest:pr:web#4"]);
+    assert.equal(q[3].it.key, "HH-1", "a pick the list has carries its story");
     assert.equal(q[4].it, null, "one it doesn't opens on the web");
   });
   test("picks older than a day are gone", () => {

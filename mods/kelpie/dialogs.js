@@ -12,7 +12,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { closeOverlay, openOverlay, props, run } from "herdr";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, primaryButton, textButton, tint } from "./ui.js";
-import { moveStoryToDone, selectStory, storyItems, storyState } from "./stories.js";
+import { moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
 import { applyPendingProfile, installPlugin } from "./config.js";
 
@@ -143,6 +143,8 @@ export class Confirm {
     // `check`: a choice under the list ({ label, on, about }), its state kept here (Move to Done's
     // Clean up afterwards).
     this.checked = Boolean(props()?.check?.on);
+    // Items with `choose` (Run all's picks) each have a switch, all on at first: the ones turned off.
+    this.off = new Set();
     this.handle = cx.focus_handle();
     this.handle.focus();
   }
@@ -154,8 +156,22 @@ export class Confirm {
   // open: a closed dialog's tasks are cancelled, so closing first left Install it doing nothing.
   // `doneStory` ({ profile, key }): Move to Done's tickets moved on the board by this button (stories.js
   // moveStoryToDone()), the dialog staying open, its button saying Moving…, until they're done.
+  // `runPicks` ({ profile }): Run all's picks started by this button (stories.js runPicks()), the ones
+  // still ticked, the dialog staying open as Starting… until the last has opened: no command does it,
+  // as any agent can run one and this starts agents.
   yes(command = props().command, cx = null) {
-    const { overlay, installPlugin: install, installThen: then = null, doneStory } = props();
+    const { overlay, installPlugin: install, installThen: then = null, doneStory, runPicks: picks } = props();
+    if (picks) {
+      if (this.busy) return;
+      const keys = (props().items ?? []).filter((x) => x.choose && !this.off.has(x.choose)).map((x) => x.choose);
+      if (!keys.length) return;
+      this.busy = true;
+      const ask = { ...picks, keys };
+      if (!cx) return runPicks(ask).catch(() => null).finally(() => closeOverlay(overlay));
+      cx.notify?.();
+      cx.spawn(async () => { await runPicks(ask).catch(() => null); closeOverlay(overlay); });
+      return;
+    }
     if (doneStory) {
       if (this.busy) return;
       this.busy = true;
@@ -210,6 +226,13 @@ export class Confirm {
         .children(lines.map(line)));
   }
 
+  // A switch, as the profile dialog's (no square boxes in Kelpie); `small` for a list's rows.
+  toggle(t, on, small = false) {
+    const w = small ? 28 : 34, h = small ? 16 : 20;
+    return h_flex().flex_none().mt(small ? 2 : 1).w(w).h(h).p(2).rounded_full().bg(on ? t.accent : t.border).when(on, (c) => c.justify_end())
+      .child(div().size(h - 4).rounded_full().bg(on ? t.accent_foreground : t.muted));
+  }
+
   // The changes' height: as drawn once measured (divided by the zoom, as sizes set are zoomed again),
   // else a guess from their lines, so the first frame is near the right size.
   changesHeight(changes) {
@@ -251,23 +274,31 @@ export class Confirm {
         .when(!fit, (el) => el.flex_1())
         .when(!fit, (el) => el.child(div().text_color(t.muted).child(p.detail ?? "")))
         // `items`: a list under the sentence ({ key, text }: what a clean-up runs on, a key beside a
-        // line when given).
-        .when(Boolean(p.items?.length), (el) => el.child(v_flex().gap(4).pl(4).children(p.items.map((x) => h_flex().gap(8).items_start()
-          .child(div().flex_none().text_color(t.dim).child("•"))
-          .when(Boolean(x.key), (row) => row.child(div().flex_none().text_size(SMALL).mt(1).text_color(t.dim).child(x.key)))
-          .child(div().flex_1().min_w(0).text_color(t.foreground).child(x.text))))))
+        // line when given). One with `choose` has a switch at its end, the whole row its click.
+        .when(Boolean(p.items?.length), (el) => el.child(v_flex().gap(4).pl(4).children(p.items.map((x, i) => {
+          const on = Boolean(x.choose) && !this.off.has(x.choose);
+          return (x.choose ? h_flex().id(`confirm-pick-${i}`) : h_flex()).gap(8).items_start()
+            .when(Boolean(x.choose), (row) => row.cursor_pointer().on_click((_e, cx) => {
+              if (this.busy) return;
+              if (this.off.has(x.choose)) this.off.delete(x.choose); else this.off.add(x.choose);
+              cx.notify();
+            }))
+            .child(div().flex_none().text_color(t.dim).child("•"))
+            .when(Boolean(x.key), (row) => row.child(div().flex_none().text_size(SMALL).mt(1).text_color(t.dim).child(x.key)))
+            .child(div().flex_1().min_w(0).text_color(x.choose && !on ? t.muted : t.foreground).child(x.text))
+            .when(Boolean(x.choose), (row) => row.child(this.toggle(t, on, true)));
+        }))))
         // `check`: a switch, as the profile dialog's (no square boxes in Kelpie), the whole row its click.
         .when(Boolean(p.check), (el) => el.child(h_flex().id("confirm-check").gap(16).items_start().cursor_pointer()
           .on_click((_e, cx) => { if (this.busy) return; this.checked = !this.checked; cx.notify(); })
           .child(v_flex().flex_1().min_w(0).gap(2)
             .child(div().text_color(t.foreground).child(p.check.label))
             .when(Boolean(p.check.about), (c) => c.child(div().text_size(SMALL).text_color(t.dim).child(p.check.about))))
-          .child(h_flex().flex_none().mt(1).w(34).h(20).p(2).rounded_full().bg(this.checked ? t.accent : t.border).when(this.checked, (c) => c.justify_end())
-            .child(div().size(16).rounded_full().bg(this.checked ? t.accent_foreground : t.muted))))))
+          .child(this.toggle(t, this.checked)))))
       .child(h_flex().flex_none().justify_end().gap(DIALOG.gap)
         .child(textButton(t, "confirm-no", "Cancel", () => this.no()))
         .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, (_e, cx) => this.yes(p.alt.command, cx))))
-        .child(primaryButton(t, "confirm-yes", this.busy ? (this.checked && p.check ? "Moving and cleaning up…" : "Moving…") : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx))));
+        .child(primaryButton(t, "confirm-yes", this.busy ? (p.working ?? (this.checked && p.check ? "Moving and cleaning up…" : "Moving…")) : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx))));
     // The skin decorates the card, not the window around it.
     const card = decor("blockDecor", t, body, { role: "confirm", now: new Date() });
     return fit ? div().id("confirm-fit").size_full().flex().items_center().justify_center().p(CHANGE_FIT.margin).child(card) : card;

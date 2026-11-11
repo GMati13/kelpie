@@ -184,6 +184,7 @@ Sent to an agent already working on a pull request when a button is pressed (`pr
 | `approve` | Approve (on a review) |
 | `changes` | Request changes (on a review) |
 | `idea` | One of What next?'s improvement ideas: starts a Claude on the Desk. `{idea}` the brief, `{where}` the file or area, `{why}` why it pays off |
+| `picked` | Run all in Next: added after the ticket prompt for each of Claude's picks it starts. `{action}` what Claude suggests, `{why}` why now |
 
 `prompts.configure` is the message that started you; leave it alone unless asked.
 

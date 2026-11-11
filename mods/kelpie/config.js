@@ -501,7 +501,8 @@ export function approvalTask(github, fields) {
 // The messages a pull request's buttons send to its agent, each changeable in the profile dialog
 // (prompts.<id>; the default isn't saved). {prs}: the pull requests' links ("a and b"); a review's
 // is its one pull request. "idea" is what a What next? idea starts a Desk agent with ({idea} {where}
-// {why}; stories.js startIdea()).
+// {why}; stories.js startIdea()); "picked" what Run all adds to a picked story's ticket prompt
+// ({action} {why}, Claude's words; stories.js, its Run all dialog's button).
 export const ASK_PROMPTS = [
   { id: "fix", label: "Fix checks", text: "The checks fail on {prs}. Find out why and fix them." },
   { id: "comments", label: "Address comments", text: "Address the review comments on {prs}." },
@@ -509,6 +510,7 @@ export const ASK_PROMPTS = [
   { id: "post", label: "Post comments (review)", text: "Post your review comments on the pull request now, as one GitHub review with inline comments on the lines they're about (event COMMENT). Then tell me what you posted." },
   { id: "approve", label: "Approve (review)", text: "Approve the pull request now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted." },
   { id: "idea", label: "Start an idea (What next?)", text: "An idea for making things better, found while nothing else needed doing:\n\n{idea}\n\nWhere: {where}\nWhy: {why}\n\nLook into it with me first: is it worth doing, and how big is it? Don't change anything until I say so; if we go ahead, a ticket for it may come first." },
+  { id: "picked", label: "Run a pick (What next?)", text: "Claude suggested this as what I should do next: {action}\nWhy: {why}\n\nStart with that." },
   { id: "changes", label: "Request changes (review)", text: "Submit your review on the pull request now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted." },
 ];
 
@@ -544,7 +546,7 @@ export const SUGGEST_PROMPT = [
   "   - The board ({board}): the current sprint, then the backlog.",
   "   - GitHub ({owner}): open pull requests, mine and my team's.",
   "2. Rank what I could do on this ladder. Don't offer a lower rung while a higher one has something real:",
-  "   1. Finish my own sprint work: my tickets to do or in progress; anything of mine that's blocked, and what would unblock it.",
+  "   1. Finish my own sprint work: my tickets not started yet; anything of mine that's blocked, and what would unblock it. A ticket already in progress (on the board, or open here with a space, an agent or a pull request) is in my hands already: don't pick it.",
   "   2. Help the sprint land: unassigned sprint tickets that fit the work I do (judge it from my own tickets and pull requests), teammates' pull requests waiting for a review, tickets that look done but weren't moved.",
   "   3. Get ahead: backlog tickets likely to come next that fit my work, and unclear ones worth asking about now. If no sprint is running, look at the next planned sprint first, then the backlog.",
   "   4. Only when 1 to 3 have nothing real, make things better: in the repositories under this folder that I've worked in lately, find 2 or 3 small, concrete improvements worth doing (flaky or slow tests, TODO or FIXME notes worth doing, outdated or vulnerable dependencies, missing docs or types, CI warnings, a small refactor near recent work). Each specific: the file or area, and why it pays off.",
@@ -806,6 +808,7 @@ const SETTING_NAMES = {
   "prompts.suggest": ["Prompts", "What next?", "prompt"],
   "prompts.configure": ["Messages", "Let me configure it for you", "prompt"],
   "prompts.idea": ["Messages", "Start an idea", "prompt"],
+  "prompts.picked": ["Messages", "Run a pick", "prompt"],
   "claude.config": ["Agents", "Claude account", "claude"],
   "web.home": ["Web", "Start page", "page"],
   "jira.url": ["Board", "Board URL", "signin"],
