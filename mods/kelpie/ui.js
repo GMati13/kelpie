@@ -411,6 +411,19 @@ export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
 // own shell setup reads it (README, "Several accounts"; the profile dialog's GitHub page has it to
 // copy). None set: nothing, so gh acts as it always has.
 export const githubEnv = (account) => (account && GITHUB_LOGIN.test(account) ? [`KELPIE_GH_ACCOUNT=${account}`] : []);
+// Where an agent or terminal Kelpie starts runs, for the Claude in it (the plugin's SessionStart hook
+// and get_story, plugin/server.py): KELPIE_PROFILE, the profile's id, and KELPIE_STORY, the story's
+// key, empty on the Desk and in a space that isn't a story's. Ids and keys only, each checked first
+// (a key that isn't one is left out, so the story is empty); `placed()` gives them to env as
+// arguments in front of the argv, never written into a script.
+const PROFILE_ID = /^[a-z0-9][a-z0-9-]*$/;
+const STORY_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+export const whereEnv = (profile, key = null) => (typeof profile?.id === "string" && PROFILE_ID.test(profile.id)
+  ? [`KELPIE_PROFILE=${profile.id}`, `KELPIE_STORY=${typeof key === "string" && STORY_KEY.test(key) ? key : ""}`] : []);
+export function placed(argv, profile, key = null) {
+  const env = whereEnv(profile, key);
+  return env.length && argv?.length ? ["env", ...env, ...argv] : argv;
+}
 // The argv that resumes a Claude session, on the account (config folder) it ran on, with the profile's
 // GitHub account (githubEnv). No config (the session is in Claude's own ~/.claude): no
 // CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids

@@ -4,7 +4,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { run, setShared, shared, spaces } from "herdr";
-import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
+import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, placed, primaryButton } from "./ui.js";
 import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
 
 export const REFRESH = "kelpie.refresh";
@@ -125,19 +125,23 @@ export function needsSetup(t, st, what, glyph, line, focus = what.toLowerCase())
 }
 
 // Starts (or, if a tab with this name is open, shows) a Claude agent in the space, in its folder.
-// With no space shown (or the one shown then closed since), it gets a new space of its own.
-export function startAgent(st, { name, task, folder, argv }) {
+// With no space shown (or the one shown then closed since), it gets a new space of its own. Its
+// terminal is told the profile, and no story (placed(), ui.js): these spaces are a profile's own
+// ("Working on"), as a story's agents start through stories.js.
+export function startAgent(st, { name, task, folder, argv: given }) {
   const tab = name && spaces().flatMap((s) => s.tabs).find((c) => c.name === name);
   if (tab) return run("tab.select", { id: tab.id });
   const where = folder ?? st.setup.folder;
+  const profile = st.setup?.profile ?? st.profile;
+  const argv = placed(given ?? claudeArgv(profile), profile);
   if (!st.space || !spaces().some((s) => s.id === st.space.id)) {
-    return run("space.new", { ...(where ? { folder: where } : {}), ...(name ? { tab: name } : {}), argv: argv ?? claudeArgv(st.setup?.profile ?? st.profile), ...(task ? { task } : {}) });
+    return run("space.new", { ...(where ? { folder: where } : {}), ...(name ? { tab: name } : {}), argv, ...(task ? { task } : {}) });
   }
   return newTab({
     space: st.space.id,
     ...(where ? { folder: where } : {}),
     ...(name ? { name } : {}),
-    argv: argv ?? claudeArgv(st.setup?.profile ?? st.profile),
+    argv,
     ...(task ? { task } : {}),
   });
 }
