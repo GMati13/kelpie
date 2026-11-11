@@ -32,7 +32,7 @@ My pull requests with no ticket: none. Desk agents: none.
    - The board (https://jira.example.com/jira/software/projects/ACME/boards/7): the current sprint, then the backlog.
    - GitHub (kelpie--demo): open pull requests, mine and my team's.
 2. Rank what I could do on this ladder. Don't offer a lower rung while a higher one has something real:
-   1. Finish my own sprint work: my tickets to do or in progress; anything of mine that's blocked, and what would unblock it.
+   1. Finish my own sprint work: my tickets not started yet; anything of mine that's blocked, and what would unblock it. A ticket already in progress (on the board, or open here with a space, an agent or a pull request) is in my hands already: don't pick it.
    2. Help the sprint land: unassigned sprint tickets that fit the work I do (judge it from my own tickets and pull requests), teammates' pull requests waiting for a review, tickets that look done but weren't moved.
    3. Get ahead: backlog tickets likely to come next that fit my work, and unclear ones worth asking about now. If no sprint is running, look at the next planned sprint first, then the backlog.
    4. Only when 1 to 3 have nothing real, make things better: in the repositories under this folder that I've worked in lately, find 2 or 3 small, concrete improvements worth doing (flaky or slow tests, TODO or FIXME notes worth doing, outdated or vulnerable dependencies, missing docs or types, CI warnings, a small refactor near recent work). Each specific: the file or area, and why it pays off.

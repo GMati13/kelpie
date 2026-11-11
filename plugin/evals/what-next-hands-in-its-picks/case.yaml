@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: what-next-hands-in-its-picks
 expected_outcome: |
-  What next?'s own message (config.js suggestText, with a small snapshot; Jira and GitHub out of reach). Works from the snapshot and hands 3 to 5 picks to Kelpie in a suggest_next call, each a key from the snapshot or the review's link, with a short action and why; it doesn't rely on a JSON block in its answer, and changes nothing.
+  What next?'s own message (config.js suggestText, with a small snapshot; Jira and GitHub out of reach). Works from the snapshot and hands 3 to 5 picks to Kelpie in a suggest_next call, each a key from the snapshot or the review's link, with a short action and why, leaving out ACME-175, already in progress; it doesn't rely on a JSON block in its answer, and changes nothing.
