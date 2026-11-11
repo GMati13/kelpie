@@ -180,6 +180,26 @@ test("the profile-change dialog is a card sized to its content, up to the window
   for (const id of ["confirm-yes", "confirm-no"]) assert.equal(pathTo(el, id).filter(scrolls).length, 0, `${id} is outside the scroll`);
 });
 
+// Herdr's scroll area takes no height from what it holds (on screen the changes collapsed to
+// nothing): the changes measure themselves, and that, unzoomed, is the scroll area's height.
+test("the profile-change list is as tall as its changes as drawn, divided by the zoom", () => {
+  setupDemoWorld({ stories });
+  requestProfileChange(DEMO, { commands: { status: "git -C {key} status --short" } });
+  const [spec] = mock.of("openOverlay").at(-1);
+  mock.state.props = { ...spec.props, overlay: "overlay-1" };
+  const d = new Confirm();
+  const cx = fakeCx();
+  d.init(cx);
+  const heightOf = (el) => calls(nodeOf(byId(el, "confirm-detail")), "h").at(-1)?.[0];
+  let el = d.render(cx);
+  assert.ok(heightOf(el) > 0, "a guess before it's measured, never nothing");
+  const sized = (id, size) => handlers(el, "on_size_change").find((h) => h.id === id).fn(size, cx);
+  sized("confirm-zoom-probe", { width: 120, height: 0 });
+  sized("confirm-changes", { width: 800, height: 300 });
+  el = d.render(cx);
+  assert.equal(heightOf(el), 250);
+});
+
 test("the story picker: every story, then filtered", () => {
   setupDemoWorld({ stories, props: { role: "story-picker", overlay: "overlay-1" } });
   const picker = new StoryPicker();

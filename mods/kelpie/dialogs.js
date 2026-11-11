@@ -197,7 +197,8 @@ export class Confirm {
       const color = tag ? null : x.kind === "add" ? ADD : x.kind === "del" ? DEL : null;
       return h_flex().id(`confirm-change-${i}-${n}`).w_full().items_start().when(Boolean(color), (el) => el.bg(tint(color, "24")))
         .when(!tag, (el) => el.child(div().w(18).flex_none().text_center().text_color(color ?? t.dim).child(x.kind === "add" ? "+" : x.kind === "del" ? "−" : "")))
-        .child(skinFont(div(), font).flex_1().min_w(0).px(tag ? 10 : 4).text_color(x.kind === "same" ? t.muted : t.foreground).child(shown(x.text)));
+        // Monospace as the Changes view's, a skin's own mono font over it.
+        .child(skinFont(c.kind === "command" ? div().font_family("JetBrains Mono") : div(), font).flex_1().min_w(0).px(tag ? 10 : 4).text_color(x.kind === "same" ? t.muted : t.foreground).child(shown(x.text)));
     };
     return v_flex().id(`confirm-change-${i}`).flex_none().gap(6)
       .child(h_flex().gap(8).items_center()
@@ -209,6 +210,14 @@ export class Confirm {
         .children(lines.map(line)));
   }
 
+  // The changes' height: as drawn once measured (divided by the zoom, as sizes set are zoomed again),
+  // else a guess from their lines, so the first frame is near the right size.
+  changesHeight(changes) {
+    if (this.drawnH) return this.drawnH / (this.zoom || 1);
+    const lines = (this.diffs ?? []).reduce((n, d) => n + d.reduce((m, x) => m + Math.max(1, Math.ceil(x.text.length / 80)), 0), 0);
+    return changes.length * (20 + 6 + 12 + DIALOG.section) + lines * 22;
+  }
+
   render() {
     const t = skinTheme();
     const p = props() ?? {};
@@ -216,7 +225,8 @@ export class Confirm {
     const body = v_flex().id("kelpie-confirm").track_focus(this.handle).min_h(0).p(DIALOG.pad).gap(DIALOG.gap).bg(t.popover).text_size(TEXT)
       // The card of an agent's profile change: as tall as what it says, at most the window's room,
       // only its changes scrolling; any other confirm fills the dialog Herdr gives it.
-      .when_else(fit, (el) => el.w_full().max_w(CHANGE_FIT.w).max_h_full().rounded(12).border_1().border_color(t.border).shadow_lg(), (el) => el.size_full())
+      .when(fit, (el) => el.w_full().max_w(CHANGE_FIT.w).max_h_full().rounded(12).border_1().border_color(t.border).shadow_lg())
+      .when(!fit, (el) => el.size_full())
       .on_key_down((e, cx) => {
         if (e.key === "enter") this.yes(undefined, cx);
         else if (e.key === "escape") this.no();
@@ -225,10 +235,21 @@ export class Confirm {
       })
       .child(div().flex_none().text_size(TITLE).font_semibold().text_color(t.foreground).child(p.title ?? "Are you sure?"))
       .when(fit, (el) => el.child(div().flex_none().text_color(t.muted).child(p.detail ?? "")))
-      .child(v_flex().id("confirm-detail").min_h(0).gap(fit ? DIALOG.section : DIALOG.gap).overflow_y_scrollbar()
-        .when_else(fit, (el) => el.flex_shrink(1), (el) => el.flex_1())
+      .child(v_flex().id("confirm-detail").min_h(0).gap(DIALOG.gap).overflow_y_scrollbar()
+        // A scroll area takes no height from what it holds, so the changes measure themselves and
+        // that is its height, shrinking (and scrolling) only when the window has less room.
+        .when(fit, (el) => el.relative().flex_shrink(1).h(this.changesHeight(p.changes))
+          .child(div().id("confirm-zoom-probe").absolute().top(0).left(0).w(100).h(0).on_size_change((size, cx) => {
+            const z = size.width / 100;
+            if (z && Math.abs((this.zoom ?? 0) - z) > 0.001) { this.zoom = z; cx.notify(); }
+          }))
+          .child(v_flex().id("confirm-changes").flex_none().w_full().gap(DIALOG.section).on_size_change((size, cx) => {
+            if (Math.abs((this.drawnH ?? 0) - size.height) < 0.5) return;
+            this.drawnH = size.height;
+            cx.notify();
+          }).children(p.changes.map((c, i) => this.change(t, c, i)))))
+        .when(!fit, (el) => el.flex_1())
         .when(!fit, (el) => el.child(div().text_color(t.muted).child(p.detail ?? "")))
-        .when(fit, (el) => el.children(p.changes.map((c, i) => this.change(t, c, i))))
         // `items`: a list under the sentence ({ key, text }: what a clean-up runs on, a key beside a
         // line when given).
         .when(Boolean(p.items?.length), (el) => el.child(v_flex().gap(4).pl(4).children(p.items.map((x) => h_flex().gap(8).items_start()

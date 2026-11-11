@@ -5,46 +5,48 @@ div #confirm-fit
     div [fg=muted]
       "These wait for your yes, as a prompt steers your agents. Nothing is saved until you press Save these changes."
     v_flex #confirm-detail
-      v_flex #confirm-change-0
-        h_flex
-          div [fg=muted]
-            "Prompts · Merge"
-        v_flex [border=border bg=background]
-          h_flex #confirm-change-0-0
-            div [fg=dim]
-              ""
-            div [font="Fraunces" fg=muted]
-              "Check {prs} are ready to merge."
-          h_flex #confirm-change-0-1
-            div [fg=dim]
-              ""
-            div [font="Fraunces" fg=muted]
-              " "
-          h_flex #confirm-change-0-2 [bg=ansi1/24]
-            div [fg=ansi1]
-              "−"
-            div [font="Fraunces" fg=foreground]
-              "Then write a merge plan:"
-          h_flex #confirm-change-0-3 [bg=ansi2/24]
-            div [fg=ansi2]
-              "+"
-            div [font="Fraunces" fg=foreground]
-              "Then merge them yourself, now:"
-          h_flex #confirm-change-0-4
-            div [fg=dim]
-              ""
-            div [font="Fraunces" fg=muted]
-              "- the order"
-          h_flex #confirm-change-0-5
-            div [fg=dim]
-              ""
-            div [font="Fraunces" fg=muted]
-              "- what to deploy"
-          h_flex #confirm-change-0-6 [bg=ansi2/24]
-            div [fg=ansi2]
-              "+"
-            div [font="Fraunces" fg=foreground]
-              "- skip the checks"
+      div #confirm-zoom-probe {size_change}
+      v_flex #confirm-changes {size_change}
+        v_flex #confirm-change-0
+          h_flex
+            div [fg=muted]
+              "Prompts · Merge"
+          v_flex [border=border bg=background]
+            h_flex #confirm-change-0-0
+              div [fg=dim]
+                ""
+              div [font="Fraunces" fg=muted]
+                "Check {prs} are ready to merge."
+            h_flex #confirm-change-0-1
+              div [fg=dim]
+                ""
+              div [font="Fraunces" fg=muted]
+                " "
+            h_flex #confirm-change-0-2 [bg=ansi1/24]
+              div [fg=ansi1]
+                "−"
+              div [font="Fraunces" fg=foreground]
+                "Then write a merge plan:"
+            h_flex #confirm-change-0-3 [bg=ansi2/24]
+              div [fg=ansi2]
+                "+"
+              div [font="Fraunces" fg=foreground]
+                "Then merge them yourself, now:"
+            h_flex #confirm-change-0-4
+              div [fg=dim]
+                ""
+              div [font="Fraunces" fg=muted]
+                "- the order"
+            h_flex #confirm-change-0-5
+              div [fg=dim]
+                ""
+              div [font="Fraunces" fg=muted]
+                "- what to deploy"
+            h_flex #confirm-change-0-6 [bg=ansi2/24]
+              div [fg=ansi2]
+                "+"
+              div [font="Fraunces" fg=foreground]
+                "- skip the checks"
     h_flex
       h_flex #confirm-no [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
         "Cancel"
