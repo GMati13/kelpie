@@ -10,6 +10,7 @@ import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { handlers, nodeOf, texts } from "gpui-kit";
+import { v_flex } from "gpui-base";
 import { mock } from "herdr";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -178,8 +179,9 @@ test("the Desk closed, and open without an agent", async () => {
   snap("sidebar/desk-no-agent", deskRows(t, {}, profileById(DEMO)));
 });
 
-// The top of the list (its root's first child): the freshness line, the counts and Next.
-const head = (el) => nodeOf(el).calls.find(([m]) => m === "child")[1][0];
+// The top of the list: the freshness line and the counts (its root's first child, pinned), then Next
+// (the list's first item, as it scrolls with the list, #125), drawn together.
+const head = (el) => v_flex().child(nodeOf(el).calls.find(([m]) => m === "child")[1][0]).child(byId(el, "story-next-wrap"));
 const putShared = (key, value) => mock.state.shared.set(key, JSON.parse(JSON.stringify(value)));
 // A copy of the list that only reads the shared stories, as every copy but the loader does: the
 // loader keeps what it loaded in the module (and would load the whole fixture again), so a test that
@@ -382,4 +384,41 @@ test("a lone pick in Next can be dropped from the folded card", async () => {
   assert.ok(drop, "the folded pick has its ✕");
   drop.fn({}, { stop_propagation() {}, notify() {} });
   assert.equal(mock.state.shared.get("kelpie.next.suggested")[DEMO].items.length, 0, "and the ✕ drops it");
+});
+
+// A long open queue (#125): pinned above the list, Next's card took the sidebar's whole height,
+// left the list none and couldn't scroll itself, so its lower rows and every story were out of reach.
+// It's now the list's first item, scrolling with it; the freshness line and the counts stay pinned,
+// and opening the queue brings the card's top into view.
+test("a long open queue scrolls with the story list", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await draw(new StoryList());
+  view.queueOpen = true;
+  const el = view.render(cx);
+  const list = byId(el, `work-side-list-${DEMO}`);
+  assert.ok(list, "the list's scroll box");
+  const card = byId(list, "story-next");
+  assert.ok(card, "Next is inside the list's scroll box");
+  assert.ok(byId(card, "queue-suggest:ACME-180"), "with its last rows, reachable by scrolling");
+  const calls = nodeOf(list).calls.map(([m]) => m);
+  assert.ok(calls.includes("overflow_y_scrollbar") && calls.includes("flex_1") && calls.includes("min_h"), "the list takes the room left and scrolls");
+  // Only the list's box holds it: the pinned part above it has the freshness line and the counts.
+  const outer = nodeOf(el).calls.filter(([m]) => m === "child").map(([, a]) => a[0]);
+  const pinned = outer.find((c) => byId(c, "stories-fresh"));
+  assert.ok(pinned && byId(pinned, "count-needs-you"), "the freshness line and the counts are pinned");
+  assert.equal(byId(pinned, "story-next"), null, "Next isn't pinned");
+  snap("sidebar/queue-long", list);
+
+  // Opening the queue scrolls the list to its top, an empty first line, where the card starts.
+  view.queueOpen = false;
+  const handle = view.listScrolls.get(DEMO).box.__state;
+  const top = byId(view.render(cx), `work-side-list-${DEMO}`);
+  const first = nodeOf(top).calls.find(([m]) => m === "child")[1][0];
+  assert.equal(nodeOf(first).calls.find(([m]) => m === "id")?.[1][0], "work-side-list-top", "an empty line first");
+  handle.calls.length = 0;
+  const toggle = handlers(byId(view.render(cx), "story-next"), "on_click").find((h) => h.id === "story-queue");
+  toggle.fn({}, cx);
+  assert.equal(view.queueOpen, true);
+  assert.deepEqual(handle.calls.filter(([m]) => m === "scroll_to_item").map(([, a]) => a[0]), [0], "scrolled to the top");
 });

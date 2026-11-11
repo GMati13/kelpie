@@ -3965,7 +3965,13 @@ export class StoryList extends Stories {
     // one item folds rather than stay a list of one (#64).
     const many = queue.length > 1;
     if (!many) this.queueOpen = false;
-    const toggle = (_e, cx) => { this.queueOpen = !this.queueOpen; cx.notify(); };
+    // Opening it brings the card's top into view: it scrolls with the list (#125), which may be
+    // scrolled past it. The list's first child is an empty line, so "to the top" is its top.
+    const toggle = (_e, cx) => {
+      this.queueOpen = !this.queueOpen;
+      if (this.queueOpen) this.listScrolls?.get(st.profile?.id ?? null).box.scroll_to_item(0);
+      cx.notify();
+    };
     const open = Boolean(this.queueOpen);
     // The most urgent: the queue's first, unless it's all picks, where Next just cycles through them.
     const lead = queue[0]?.suggest ? top : queue[0] ?? top;
@@ -4253,10 +4259,15 @@ export class StoryList extends Stories {
       .child(v_flex().flex_none().px(INSET).pb(10).gap(8)
         .child(h_flex().flex_none().gap(8).items_center().child(div().flex_1().min_w(0).child(fresh)).when(Boolean(cleanAll), (el) => el.child(cleanAll)))
         .when(counts.some(([n]) => n), (el) => el.child(h_flex().flex_wrap().gap(12).items_center().children(counts.filter(([n]) => n)
-          .map(([n, label, c, state]) => countBadge(t, `count-${state}`, state, n, `${n} ${label}`, t[c]).when(n === 1, (x) => x.child("1"))))))
-        .when(Boolean(next), (el) => el.child(next)))
+          .map(([n, label, c, state]) => countBadge(t, `count-${state}`, state, n, `${n} ${label}`, t[c]).when(n === 1, (x) => x.child("1")))))))
+      // Next scrolls with the list, first in it: pinned above, a long open queue left the list no
+      // height and couldn't scroll itself (#125). The freshness line and the counts stay pinned.
       .child(v_flex().id(`work-side-list-${st.profile?.id ?? "none"}`).flex_1().min_h(0).px(8).pb(10).overflow_y_scrollbar()
         .when(Boolean(this.listScrolls), (el) => el.track_scroll(this.listScrolls.get(st.profile?.id ?? null).box))
+        // An empty first line: a handle goes "to the top" by revealing child 0 with the least scroll,
+        // which for a tall first child (an open queue) already partly in view wouldn't move.
+        .child(div().id("work-side-list-top").flex_none().w_full().h(0))
+        .when(Boolean(next), (el) => el.child(div().id("story-next-wrap").flex_none().px(INSET - 8).pb(10).child(next)))
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
