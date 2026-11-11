@@ -71,8 +71,10 @@ async function byKeys(cfg, keys, and = null) {
 // request; stories.js hereKeys()) that the search by assignee left out, as they're someone else's now
 // (or out of the sprint): { parents, children, mine } to add to the load. Only keys of the board's
 // projects (this load's, or `keep.projects`, the last load's) are asked for; a subtask's key brings
-// its story. `mine`: those of them Jira gives as the person's own (`assignee = currentUser()`).
-async function keptJira(cfg, keep, have) {
+// its story. `mine`: those of them assigned to the person: by their assignee's account id when Jira
+// named the signed-in account (`account`, jira.sh), else asked (`assignee = currentUser()`), a
+// search more (#40).
+async function keptJira(cfg, keep, have, account = "") {
   const projects = new Set([...(keep.projects ?? []), ...[...have].map((k) => k.split("-")[0])]);
   const asked = [...new Set(keep.keys ?? [])].filter((k) => KEY.test(k) && !have.has(k) && projects.has(k.split("-")[0]));
   if (!asked.length) return { parents: [], children: [], mine: [] };
@@ -85,7 +87,9 @@ async function keptJira(cfg, keep, have) {
   const stories = new Set(parents.map((i) => i.key));
   const children = all.filter((i) => i.fields?.issuetype?.subtask && stories.has(i.fields?.parent?.key));
   const keys = [...parents, ...children].map((i) => i.key);
-  const own = keys.length ? new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key)) : new Set();
+  const own = !keys.length ? new Set()
+    : account ? new Set([...parents, ...children].filter((i) => i.fields?.assignee?.accountId === account).map((i) => i.key))
+    : new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key));
   return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => own.has(i.key)) };
 }
 
@@ -111,12 +115,25 @@ export async function loadBoard(board, keep = {}) {
     if (p && !parents.has(p.key)) parents.set(p.key, { key: p.key, fields: p.fields });
   }
   // The children and, in the same search, the parents themselves: a subtask's embedded parent
-  // carries no assignee, so a story's own fields come from here when it answers.
+  // carries no assignee, so a story's own fields come from here when it answers. The kept stories
+  // are asked beside it, not after (#40: each question is a round trip to Jira), for every key this
+  // load doesn't have yet as far as it knows; one the children turn out to hold is left out after.
   const keys = [...parents.keys()].join(", ");
-  const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
+  const known = new Set([...parents.keys(), ...mine.map((i) => i.key)]);
+  const [found, more] = await Promise.all([
+    parents.size ? search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [],
+    keptJira(cfg, keep, known, config.account ?? ""),
+  ]);
   for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
   const children = found.filter((i) => !parents.has(i.key));
-  const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]));
+  const have = new Set([...parents.keys(), ...children.map((i) => i.key)]);
+  const keptParents = more.parents.filter((i) => !have.has(i.key));
+  const stories = new Set(keptParents.map((i) => i.key));
+  const kept = {
+    parents: keptParents,
+    children: more.children.filter((i) => !have.has(i.key) && stories.has(i.fields?.parent?.key)),
+    mine: more.mine.filter((i) => !have.has(i.key) && (stories.has(i.key) || stories.has(i.fields?.parent?.key))),
+  };
   return { site: active.site, columns, sprints, mine: [...mine, ...kept.mine], parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
 }
 
