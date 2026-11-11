@@ -24,7 +24,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Other people's code.** Never run it. A review agent starts outside the checkout (in the profile's folder) and reviews by reading. No default prompt asks to run, build, install or test a pull request.
 
-**Background agents.** Claude run without a terminal (What next?) runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is. Plan mode lets through only tools marked read only: in the plugin, only tools that change nothing of the person's work get that mark (`get_profile`, `get_next`, and `suggest_next`, which only changes what Kelpie suggests).
+**Background agents.** Claude run without a terminal (What next?) runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is. Plan mode lets through only tools marked read only: in the plugin, only tools that change nothing of the person's work get that mark (`get_profile`, `save_status`, which only reads a saved answer, `get_next`, and `suggest_next`, which only changes what Kelpie suggests).
 
 **Files.** Never delete, overwrite or write through a symlink to a file the person owns; installs and copies skip and report what's in the way. Deletions are guarded by an exact, tested path check (`removeDemo()`, `resetBrowser()`). Temp files and folders: `mktemp` / `mktemp -d` (private), never fixed names in `/tmp`. Caches holding prompts or titles are private.
 
@@ -40,7 +40,8 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 Where the code doesn't meet these rules yet (fix them with tests, then remove the line):
 
-- Ticket keys from Jira aren't checked against the key pattern when they're loaded; only `jira.sh transition` and `applyPicks()` (stories.js) check one. `runCommand()` (config.js) then puts `{key}` into a profile command unquoted.
+- Ticket keys from a Jira board's main load aren't checked against the key pattern (kept stories' are, in board.js, and a GitHub Project's are made and checked in project.js). `runCommand()` (config.js) then puts `{key}` into a profile command unquoted.
+- Add to chat (`pasteToChat()`, `mods/kelpie-artifacts/main.js`) pastes a file path into an agent's terminal with `terminal.paste`, without `sendToClaude()`'s check that the terminal really runs Claude. It presses no Enter, so nothing runs by itself.
 - Only the review task (`reviewTask()`), What next? (`suggestText()`), an idea's prompt (`startIdea()`) and a story Run all starts (`runPicks()`) end with `OTHERS`. The ticket prompt (`jiraTask()`: summary, subtasks) and Merge and Request approval (`mergeTask()`, `approvalTask()`: `{prs}`, pull request titles) carry others' text without it.
 - Screenshot mark-up (`FLATTEN_SCRIPT`, `mods/kelpie-artifacts/markup.js`) writes into a fixed folder, `${TMPDIR:-/tmp}/herdr-markup` (shared `/tmp` on Linux), made with default permissions: its files get `mktemp` names, but another user could own the folder first. Thumbnails (`session.js`) add `.png` to a `mktemp` name, a name `mktemp` didn't reserve.
 - `~/.cache/kelpie/sessions.json` (sessions.py) and the Web panel's folders (`~/.local/share/kelpie/web/<profile>/`, main.js) are created with the default permissions, not private.
