@@ -80,6 +80,8 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
 - `mock.repoPath(path)`: the mods count as installed in `appHome()/mods`, so `modFile()` paths map to the
   repo's `mods/` (used by `readTextFile` and `realExec`).
 - `mock.sharedValue(key)`: a shared value without recording a call.
+- `mock.reads`: how many times a render read each host value (`spaces`, `agents`, `panes`, `terminals`,
+  `focused`, `shared:<key>`); set it to `{}` before the render to count.
 - `nextCommand()` and `watchFolder()` never resolve, so a mod's command loop just waits.
 
 ### `gpui-kit` and `gpui-base`
@@ -175,6 +177,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally, in a fake HOME).
+- `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
+  footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
+  `spaceProfiles()` reads each list once.
 - `views-*.test.mjs`: what the views draw, as snapshots (next section).
 
 ## Snapshots: what the views draw

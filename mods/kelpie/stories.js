@@ -16,7 +16,7 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, INSET, MOD, SMALL, TEXT, TITLE, ago, avatar, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
@@ -154,9 +154,10 @@ const youApproved = (st, p) => {
 const RANK = { blocked: 0, working: 1, done: 2, idle: 3 };
 function profileAgents(profile) {
   const list = [];
+  const all = spaces(), byId = new Map(all.map((s) => [s.id, s])), of = spaceProfiles(all);
   for (const agent of agents()) {
-    const space = spaces().find((s) => s.id === agent.space);
-    if (space && profileOf(space)?.id === profile?.id) list.push({ agent, space });
+    const space = byId.get(agent.space);
+    if (space && of.get(space.id)?.id === profile?.id) list.push({ agent, space });
   }
   return list;
 }
@@ -4682,8 +4683,8 @@ export function nextNeed() {
 // several wait. False when none does.
 function goBlockedAgent() {
   const profile = shownProfile();
-  const all = spaces();
-  const mine = (a) => profile && profileOf(all.find((sp) => sp.id === a.space))?.id === profile.id;
+  const of = spaceProfiles();
+  const mine = (a) => profile && of.get(a.space)?.id === profile.id;
   const list = agents().filter((a) => a.status === "blocked" && a.pane)
     .sort((a, b) => Number(mine(b)) - Number(mine(a)));
   if (!list.length) return false;
@@ -4691,7 +4692,7 @@ function goBlockedAgent() {
   const a = list[(here + 1) % list.length];
   if (!mine(a)) chooseProfile(null);
   // A story preview in its profile would cover the terminal.
-  setPreview(profileOf(all.find((sp) => sp.id === a.space)), null);
+  setPreview(of.get(a.space) ?? null, null);
   run("space.select", { id: a.space });
   run("pane.focus", { pane: a.pane });
   return true;
