@@ -756,10 +756,11 @@ function queueMark(t, x, size = 16) {
 const queueAway = (x) => Boolean((x.suggest && !x.it && !x.suggest.idea) || (x.ask && !x.it && x.ask.url));
 // One item of the queue, folded Next and the open queue drawing it alike: its mark, what to do, and
 // under it what it is or why (muted, one line); ↗ when a click opens the web. `on`: the item on
-// screen, lit; `card`: folded Next's only row. The item Next goes to has no mark of its own: folded
-// it's the card's one row, unfolded the row after the lit one (a "Next" tag beside the header's
-// "Next" only confused).
+// screen, lit; `card`: folded Next's main row, which with `on` says you're on it. The item Next goes
+// to has no mark of its own: unfolded it's the row after the lit one (a "Next" tag beside the
+// header's "Next" only confused).
 function queueRow(t, x, on, go, { card = false } = {}) {
+  const detail = [card && on ? "You're on it" : "", queueDetail(x)].filter(Boolean).join(" · ");
   return h_flex().id(`queue-${card ? "next" : x.key}`).flex_none().px(10).py(6).gap(10).items_start().rounded(7).cursor_pointer()
     .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover))).on_click(go)
     .child(div().flex_none().mt(1).child(queueMark(t, x, 16)))
@@ -767,8 +768,22 @@ function queueRow(t, x, on, go, { card = false } = {}) {
       .child(h_flex().min_w(0).gap(6).items_center()
         .child(div().flex_1().min_w(0).truncate().text_size(TEXT).font_medium().child(queueLabel(x)))
         .when(queueAway(x), (el) => el.child(icon(own("external-link"), 12).text_color(t.dim))))
-      .when(Boolean(queueDetail(x)), (el) => el.child(div().truncate().text_size(SMALL).text_color(t.muted).child(queueDetail(x)))));
+      .when(Boolean(detail), (el) => el.child(div().truncate().text_size(SMALL).text_color(t.muted).child(detail))));
 }
+// Folded Next's smaller line under its main row: where ⌘⇧J goes when that isn't the main row's item
+// (the main row is on screen, or another item of the queue is): its mark and what to do, one line.
+function queueThen(t, x, go) {
+  return h_flex().id("queue-then").flex_none().px(10).py(3).gap(8).items_center().rounded(6).cursor_pointer()
+    .text_size(SMALL).text_color(t.muted).hover((s) => s.bg(t.hover)).on_click(go)
+    .tooltip(`${queueAway(x) ? "Opens on the web" : "Go there"} ⌘⇧J`)
+    .child(div().flex_none().text_color(t.dim).child("Then"))
+    .child(div().flex_none().child(queueMark(t, x, 12)))
+    .child(div().flex_1().min_w(0).truncate().child(queueLabel(x)))
+    .when(queueAway(x), (el) => el.child(icon(own("external-link"), 12).text_color(t.dim)))
+    .child(div().flex_none().text_color(t.dim).child("⌘⇧J"));
+}
+// Whether a queue item is the one on screen: its key, or for a pick or an agent's ask, its story's.
+const queueShown = (x, shownKey) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask) && x.it?.key === shownKey));
 // The one after the item shown, wrapping around; the first when the one shown isn't in it.
 const nextIn = (queue, shownKey) => queue[(queue.findIndex((x) => x.key === shownKey) + 1) % queue.length] ?? null;
 
@@ -3530,9 +3545,13 @@ export class StoryList extends Stories {
   }
 
   // Next: one card, the whole queue's. A header line ("Next", how many items, Claude's picks as a ✨
-  // badge, the chevron) over, folded, the item Next goes to, or, unfolded, the whole queue inside the
-  // same border (queueList()), in order, the item shown lit: Next goes to the row after it. Folded on a pick of Claude's, the card is tinted, so it reads as generated. While Claude has
-  // no picks, a slim magic button is the card's last row.
+  // badge, the chevron) over, folded, the queue's most urgent item, or, unfolded, the whole queue
+  // inside the same border (queueList()), in order, the item shown lit: Next goes to the row after it.
+  // Folded, it never puts a pick of Claude's in front of what needs you (#87): its main row is the
+  // queue's first item, saying "You're on it" while that's on screen, and where ⌘⇧J goes (`top`, the
+  // item after the one shown) is a smaller line under it when that's another item. Only a queue of
+  // picks alone leads with one, and the card is then tinted, so it reads as generated. While Claude
+  // has no picks, a slim magic button is the card's last row.
   // `shownKey`: the item on screen now (the story or review shown, "desk"), lit in the open queue.
   nextCard(t, st, items, reviews, queue, top, shownKey) {
     const glow = (a) => alpha(t.accent, a);
@@ -3540,7 +3559,10 @@ export class StoryList extends Stories {
     const brewing = Boolean(brewingIn(st.profile));
     const toggle = (_e, cx) => { this.queueOpen = !this.queueOpen; cx.notify(); };
     const open = Boolean(this.queueOpen);
-    const tint = !open && Boolean(top.suggest);
+    // The most urgent: the queue's first, unless it's all picks, where Next just cycles through them.
+    const lead = queue[0]?.suggest ? top : queue[0] ?? top;
+    const here = queueShown(lead, shownKey);
+    const tint = !open && Boolean(lead.suggest);
     const card = v_flex().id("story-next").flex_none().p(4).gap(2).rounded(10).border_1()
       .bg(tint ? glow(0.07) : t.raised).border_color(tint ? glow(0.3) : t.border)
       .child(h_flex().flex_none().h(24).pl(8).gap(6).items_center().text_size(SMALL)
@@ -3558,8 +3580,9 @@ export class StoryList extends Stories {
           .child(iconButton(t, "story-queue", chrome(this.queueOpen ? "chevron-down" : "chevron-right"), toggle,
             this.queueOpen ? "Hide the queue" : "Show the whole queue", { on: Boolean(this.queueOpen) }))))
       .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
-      .when(!open, (el) => el.child(queueRow(t, top, false, () => goNext(st.profile, top), { card: true })
-        .tooltip(`${queueAway(top) ? "Opens on the web" : top.suggest?.idea ? "Starts a Claude on the Desk with this idea" : "Go there"} ⌘⇧J`)))
+      .when(!open, (el) => el.child(queueRow(t, lead, here, () => goNext(st.profile, lead), { card: true })
+        .tooltip(`${queueAway(lead) ? "Opens on the web" : lead.suggest?.idea ? "Starts a Claude on the Desk with this idea" : here ? "Go to its step" : "Go there"}${lead === top ? " ⌘⇧J" : ""}`)))
+      .when(!open && lead !== top, (el) => el.child(queueThen(t, top, () => goNext(st.profile, top))))
       .when(!picks, (el) => el.child(div().pt(2).child(this.magic(t, st, items, reviews, { slim: true }))));
     return card;
   }
@@ -3578,7 +3601,7 @@ export class StoryList extends Stories {
   // not Next's, which is the one after it: lighting that lit the row under the one clicked.
   // Its rows, for inside Next's card.
   queueList(t, st, items, reviews, queue, shownKey) {
-    const lit = (x) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask) && x.it?.key === shownKey));
+    const lit = (x) => queueShown(x, shownKey);
     const drop = (x) => (x.ask ? () => dismissAsk(st.profile, x.ask.id) : () => dismissSuggestion(st.profile, x.suggest.key));
     const row = (x) => queueRow(t, x, lit(x), () => goNext(st.profile, x))
       .when(Boolean(x.suggest || x.ask), (el) => el.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
