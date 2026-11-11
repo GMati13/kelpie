@@ -6,7 +6,7 @@ v_flex #work-side-list-demo
         div [fg=dim]
           "Next"
         div [fg=muted]
-          "10"
+          "11"
         div
         h_flex #story-next-tools {down:left click}
           h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="2 suggested by Claude: open the queue to see them"
@@ -103,6 +103,21 @@ v_flex #work-side-list-demo
               "api#305: Review requested by tomas-r"
           div [fg=muted]
             "tomas-r · Bump OpenTelemetry to 1.28"
+      h_flex [fg=dim]
+        div
+          "Ready for Done"
+        div [fg=muted]
+          "1"
+      h_flex #queue-finish [hover(bg=hover)] {click} tip="ACME-129: ready for Done, move it\nPassword reset emails"
+        div
+          div
+            svg own:check-check [fg=dim]
+        v_flex
+          h_flex
+            div
+              "ACME-129: ready for Done, move it"
+          div [fg=muted]
+            "Password reset emails"
       h_flex [fg=dim]
         div
           "Clean up"

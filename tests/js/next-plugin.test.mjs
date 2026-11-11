@@ -193,6 +193,10 @@ describe("kelpie.get-next: the queue, for an agent to read", () => {
     assert.equal(review.key, "web#421");
     assert.match(review.url, /^https:\/\/github\.com\//);
     assert.deepEqual(r.items.find((x) => x.kind === "agent-ask"), { kind: "agent-ask", key: "ACME-175", action: "Read my plan", detail: `ACME-175 · ${stories.data.parents.find((p) => p.key === "ACME-175")?.fields.summary}`, url: `${stories.data.site}/browse/ACME-175` });
+    // The stories ready for Done, one item with their keys and no link, before the clean-up (KELPIE-88).
+    const finish = r.items.find((x) => x.kind === "move-to-done");
+    assert.deepEqual(finish, { kind: "move-to-done", key: "ACME-129", action: "ACME-129: ready for Done, move it", detail: stories.data.parents.find((p) => p.key === "ACME-129")?.fields.summary });
+    if (kinds.includes("clean")) assert.ok(kinds.indexOf("move-to-done") < kinds.indexOf("clean"));
   });
   test("for the asking agent's profile, by its terminal", async () => {
     request("next-get", { terminal: agentOf("ACME-175").address });

@@ -236,9 +236,11 @@ test("folded, Next leads with what needs you, even while it's shown", async () =
 // The header counts the queue, as every group counts: a position there ("3 of 3") disagreed with the
 // lit row (where you are). With one group, it has no label of its own.
 test("Next's header counts the queue; a lone group has no label", async () => {
-  // Only stories that need you: no reviews, spaces (so no agents or clean-up), asks or picks.
+  // Only stories that need you: no reviews, spaces (so no agents or clean-up), asks, picks or Ready
+  // for Done (a run of it under way, so it's left out).
   setupDemoWorld({ stories: { ...stories, data: { ...stories.data, reviews: [] } }, spaces: [], paused: {} });
   mock.state.shared.set("kelpie.next.asks", {});
+  mock.state.shared.set("kelpie.busy", { [`done-all:${DEMO}`]: { kind: "done", keys: [], step: "Moving to Done…", at: Date.now(), until: Date.now() + 60e3 } });
   const { view, cx } = await sharedDraw();
   view.queueOpen = true;
   const card = byId(view.render(cx), "story-next");
