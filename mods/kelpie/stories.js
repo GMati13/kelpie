@@ -1197,6 +1197,27 @@ export function setView(profile, it, mode) {
 // The main stack's child for a view: the terminals, the Screenshots view, or the story's own view.
 export const stackChild = (mode) => (mode === "agent" ? "main" : mode === "shots" ? "story-shots" : "story-view");
 const EXTRA = {};
+// Herdr runs for days, and each of these was kept per key for good: every story whose Changes were
+// opened kept all its patches, every description and status line seen stayed. So each keeps the
+// entries written most recently (`keep()`), at most this many; one dropped and shown again just loads
+// again. Exported for the tests.
+export const KEEP = { changes: 10, descriptions: 150, statuses: 60, shots: 60, moves: 60, texts: 100 };
+// Writes `value` under `key` as the newest entry of `store`, then drops the entries written longest
+// ago while it holds more than `max`: never one still loading (its answer is on its way and would
+// only load again) nor the one just written. Keys are story keys and file ids, never plain numbers,
+// so an object keeps them in the order written.
+function keep(store, key, value, max) {
+  delete store[key];
+  store[key] = value;
+  let n = Object.keys(store).length;
+  for (const k of Object.keys(store)) {
+    if (n <= max) break;
+    if (k === key || store[k]?.loading) continue;
+    delete store[k];
+    n--;
+  }
+  return value;
+}
 const PICKED = { file: {}, more: new Set(), opened: new Set() };
 const SHOTS = {}; // story key -> { list, at, loading }: its sessions, for the Screenshots view
 
@@ -1211,16 +1232,33 @@ function mixColor(a, b, f) {
   if (!x || !y) return a;
   return `#${x.map((v, i) => Math.round(v + (y[i] - v) * f).toString(16).padStart(2, "0")).join("")}`;
 }
+// A cache keyed by whole patches, kept under `keep` characters of them, the oldest going first: a
+// count alone (4000 patches, once) let a long session hold hundreds of MB of patches long gone.
+class ByText {
+  constructor(keep) { this.map = new Map(); this.size = 0; this.keep = keep; }
+  has(text) { return this.map.has(text); }
+  get(text) { return this.map.get(text); }
+  set(text, value) {
+    if (!this.map.has(text)) {
+      for (const old of this.map.keys()) {
+        if (this.size + text.length <= this.keep) break;
+        this.map.delete(old); this.size -= old.length;
+      }
+      this.size += text.length;
+    }
+    this.map.set(text, value);
+    return value;
+  }
+}
+// How many characters of patches each cache keyed by them holds. Exported for the tests.
+export const patchCaches = () => ({ hashes: HASHES.size, statuses: FILE_STATUS.size, diffs: DIFFS.size });
 // Hashing a whole patch is slow in the mod's engine (a lockfile's is hundreds of KB, and the view
 // asks for each file's several times a frame), so each patch's hash is kept once worked out.
-const HASHES = new Map();
+const HASHES = new ByText(8e6);
 function patchHash(text) {
   const known = HASHES.get(text);
   if (known !== undefined) return known;
-  const h = fnv(text);
-  if (HASHES.size > 4000) HASHES.clear();
-  HASHES.set(text, h);
-  return h;
+  return HASHES.set(text, fnv(text));
 }
 function fnv(text) {
   let h = 0x811c9dc5; // FNV-1a: short, and enough to tell two versions of a patch apart
@@ -1232,11 +1270,10 @@ const hashed = (text) => HASHES.has(text);
 
 // What happened to a file, from GitHub's status or the local diff's own lines: added, removed,
 // renamed or modified (copied and changed count as added and modified).
-const FILE_STATUS = new Map();
+const FILE_STATUS = new ByText(8e6);
 function fileStatus(status, patch) {
   const p = patch ?? "";
-  let by = FILE_STATUS.get(p);
-  if (!by) { if (FILE_STATUS.size > 4000) FILE_STATUS.clear(); FILE_STATUS.set(p, (by = {})); }
+  const by = FILE_STATUS.get(p) ?? FILE_STATUS.set(p, {});
   return (by[status] ??= statusOf(status, p));
 }
 function statusOf(status, patch) {
@@ -1263,9 +1300,8 @@ function changeSquares(add, del) {
 // Parsed once per patch, as the view redraws often. Every patch of the story shown stays parsed (up to
 // DIFFS_KEEP characters of patches, the oldest going first): parsing a big pull request takes longer
 // than Herdr gives a render, so it's spread over several (PARSE_FOR) and none is parsed twice.
-const DIFFS = new Map(); // patch -> rows
 const DIFFS_KEEP = 8e6;
-let diffsSize = 0;
+const DIFFS = new ByText(DIFFS_KEEP); // patch -> rows
 // Runs of removed then added lines still to be marked, by the rows they're in: marking what changed
 // in a line is a token LCS per pair tried, by far the slowest part of reading a patch, and a file of
 // long changed lines took longer than a whole render, so it's done apart, a removed line at a time,
@@ -1344,11 +1380,7 @@ function readPatch(patch) {
   // The lines after the last hunk, to the end of the file: how many is known once the file is read.
   if (gap && !whole && !cut) rows.push({ kind: "hunk", gap, trailing: true, skipped: null, from: n, at: null, delta: n - o, context: "" });
   if (!rows.some((r) => r.kind !== "note" || r.text)) rows.splice(0, rows.length, { kind: "note", text: "No lines changed: renamed, or only its mode changed." });
-  for (const old of DIFFS.keys()) {
-    if (diffsSize + patch.length <= DIFFS_KEEP) break;
-    DIFFS.delete(old); diffsSize -= old.length;
-  }
-  DIFFS.set(patch, rows); diffsSize += patch.length;
+  DIFFS.set(patch, rows);
   if (runs.length) UNMARKED.set(rows, runs);
   return rows;
 }
@@ -2514,12 +2546,12 @@ export class Stories extends Source {
   transitionsOf(st, key, cx) {
     const m = MOVES[key];
     if (m && (m.loading || Date.now() - m.at < (m.error ? 5000 : 60 * 1000))) return m;
-    MOVES[key] = { loading: true, at: 0 };
+    keep(MOVES, key, { loading: true, at: 0 }, KEEP.moves);
     cx.spawn(async (cx) => {
       try {
-        MOVES[key] = { list: await statusOptions(boardOf(st.setup), key, st.data), at: Date.now() };
+        keep(MOVES, key, { list: await statusOptions(boardOf(st.setup), key, st.data), at: Date.now() }, KEEP.moves);
       } catch (e) {
-        MOVES[key] = { error: String(e?.message ?? e), at: Date.now() };
+        keep(MOVES, key, { error: String(e?.message ?? e), at: Date.now() }, KEEP.moves);
       }
       cx.notify();
     });
@@ -3280,15 +3312,15 @@ export class Stories extends Source {
     const was = this.statuses[id];
     const refresh = shared(REFRESH);
     if (!was || (!was.loading && (Date.now() - was.at > STATUS_EVERY || was.seen !== refresh))) {
-      this.statuses[id] = { ...(was ?? {}), loading: true, at: was?.at ?? 0, seen: refresh };
+      keep(this.statuses, id, { ...(was ?? {}), loading: true, at: was?.at ?? 0, seen: refresh }, KEEP.statuses);
       cx.spawn(async (cx) => {
         try {
           const r = await runCommand(st.profile, command, it.key, STATUS_SECONDS, st.space?.machine);
           const first = r.out.split("\n").find((l) => l.trim()) ?? "";
-          this.statuses[id] = r.code === 0 ? { line: first, full: r.out, at: Date.now(), seen: refresh }
-            : { error: r.code === 143 ? "It took too long." : `It failed (${r.code})${r.out ? `: ${r.out}` : ""}`, at: Date.now(), seen: refresh };
+          keep(this.statuses, id, r.code === 0 ? { line: first, full: r.out, at: Date.now(), seen: refresh }
+            : { error: r.code === 143 ? "It took too long." : `It failed (${r.code})${r.out ? `: ${r.out}` : ""}`, at: Date.now(), seen: refresh }, KEEP.statuses);
         } catch (e) {
-          this.statuses[id] = { error: String(e?.message ?? e), at: Date.now(), seen: refresh };
+          keep(this.statuses, id, { error: String(e?.message ?? e), at: Date.now(), seen: refresh }, KEEP.statuses);
         }
         cx.notify();
       });
@@ -3306,12 +3338,12 @@ export class Stories extends Source {
     const d = this.descs[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
-    this.descs[key] = { ...(d ?? {}), loading: true, at: d?.at ?? 0 };
+    keep(this.descs, key, { ...(d ?? {}), loading: true, at: d?.at ?? 0 }, KEEP.descriptions);
     cx.spawn(async (cx) => {
       try {
-        this.descs[key] = { blocks: await load(), at: Date.now() };
+        keep(this.descs, key, { blocks: await load(), at: Date.now() }, KEEP.descriptions);
       } catch (e) {
-        this.descs[key] = { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() };
+        keep(this.descs, key, { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() }, KEEP.descriptions);
       }
       cx.notify();
     });
@@ -3352,7 +3384,7 @@ export class Stories extends Source {
   // Changes of a story (and how many screenshots), loaded when first asked for and again after each reload.
   loadExtra(st, it, cx) {
     const before = this.extra[it.key];
-    this.extra[it.key] = { ...(before ?? {}), loading: true, at: before?.at ?? 0 };
+    keep(this.extra, it.key, { ...(before ?? {}), loading: true, at: before?.at ?? 0 }, KEEP.changes);
     const keys = [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a) => a.indexOf(k) === i);
     const on = st.space?.machine ? { on: st.space.machine } : {};
     const demo = isDemo(st.profile);
@@ -3383,10 +3415,10 @@ export class Stories extends Source {
             files: (prLists[i] ?? []).map((f) => ({ id: `${prName(p)}:${f.filename}`, path: f.filename, from: f.previous_filename ?? null, add: f.additions, del: f.deletions, status: fileStatus(f.status, f.patch), sha: f.status === "removed" ? null : f.sha, patch: f.patch ?? "(no diff to show: a binary file, or too large for GitHub to inline)" })) })),
         ];
         const shots = lonePr(it) ? 0 : await countShots(sessions.map((s) => s.id), st.space?.machine ?? null).catch(() => undefined);
-        this.extra[it.key] = { groups, local, at: Date.now() };
+        keep(this.extra, it.key, { groups, local, at: Date.now() }, KEEP.changes);
         setCounts(it.key, { files: groups.reduce((n, g) => n + g.files.length, 0), shots, repo: (local.find((r) => r.files.length) ?? local[0])?.path ?? null });
       } catch (e) {
-        this.extra[it.key] = { ...(before ?? {}), error: String(e?.message ?? e), at: Date.now() };
+        keep(this.extra, it.key, { ...(before ?? {}), error: String(e?.message ?? e), at: Date.now() }, KEEP.changes);
       }
       cx.notify();
     });
@@ -3422,10 +3454,10 @@ export class Stories extends Source {
     const live = allAgents(it).map((a) => a.address).sort().join(" ");
     const unseen = Boolean(e?.list) && allAgents(it).some((a) => !e.list.some((s) => s.terminal === a.address));
     if (!e || (!e.loading && (e.at < st.at || e.live !== live || (unseen && Date.now() - e.at > 5000)))) {
-      this.shots[it.key] = { ...(e ?? {}), loading: true, at: e?.at ?? 0, live };
+      keep(this.shots, it.key, { ...(e ?? {}), loading: true, at: e?.at ?? 0, live }, KEEP.shots);
       cx.spawn(async (cx) => {
         const list = await this.storySessions(st, it, storyKeys(it)).catch(() => e?.list ?? []);
-        this.shots[it.key] = { list, at: Date.now(), live };
+        keep(this.shots, it.key, { list, at: Date.now(), live }, KEEP.shots);
         const shots = await countShots(list.map((s) => s.id), st.space?.machine ?? null).catch(() => undefined);
         if (shots !== undefined) setCounts(it.key, { shots });
         cx.notify();
@@ -3899,7 +3931,7 @@ export class Stories extends Source {
     DIFF.version++;
     if (DIFF.text[key]?.lines) return;
     if (DIFF.text[key]?.loading) return;
-    DIFF.text[key] = { loading: true };
+    keep(DIFF.text, key, { loading: true }, KEEP.texts);
     cx.spawn(async (cx) => {
       try {
         let text;
@@ -3915,9 +3947,9 @@ export class Stories extends Source {
           text = r.stdout;
         }
         if (text === null || text === undefined) throw new Error("it couldn't be read");
-        DIFF.text[key] = { lines: text.replace(/\n$/, "").split("\n").map((l) => l.replace(/\t/g, "    ")) };
+        keep(DIFF.text, key, { lines: text.replace(/\n$/, "").split("\n").map((l) => l.replace(/\t/g, "    ")) }, KEEP.texts);
       } catch (e) {
-        DIFF.text[key] = { error: String(e?.message ?? e) };
+        keep(DIFF.text, key, { error: String(e?.message ?? e) }, KEEP.texts);
       }
       DIFF.version++;
       cx.notify();
@@ -3988,10 +4020,10 @@ export class Stories extends Source {
     if (it.space || lonePr(it) || !begun(it) || (shared(COUNTS) ?? {})[it.key]?.shots !== undefined) return;
     const e = this.shots[it.key];
     if (e && (e.loading || e.at >= st.at)) return;
-    this.shots[it.key] = { ...(e ?? {}), loading: true, at: e?.at ?? 0 };
+    keep(this.shots, it.key, { ...(e ?? {}), loading: true, at: e?.at ?? 0 }, KEEP.shots);
     cx.spawn(async () => {
       const list = await this.storySessions(st, it, storyKeys(it)).catch(() => e?.list ?? []);
-      this.shots[it.key] = { list, at: Date.now() };
+      keep(this.shots, it.key, { list, at: Date.now() }, KEEP.shots);
       const shots = await countShots(list.map((s) => s.id), null).catch(() => undefined);
       setCounts(it.key, { shots: shots ?? 0 });
     });
