@@ -34,8 +34,10 @@ function day(at, now = new Date()) {
 }
 
 export class Sessions extends Source {
-  constructor() {
+  // `wanted`: whether it's drawn now (Source.wanted()).
+  constructor(wanted = () => true) {
     super("sessions", 60 * 1000);
+    this.wanted = wanted;
   }
 
   keyOf(setup) {
