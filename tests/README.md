@@ -163,6 +163,11 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
   details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
   links.
+- `labels.test.mjs`: what kind of work a ticket is (#53): labels kept clean and small (`labelsOf()`: control
+  characters, length, a colour only as six hex digits), the tags a row shows (`tagsOf()`: the usual type
+  hidden, a bug first and once on either board), colours readable on dark and light themes (`legible()`,
+  `tagColor()`), and the demo's tags on the list's rows, the title row and subtask rows, on Jira and on a
+  GitHub Project.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.

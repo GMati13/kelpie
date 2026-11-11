@@ -156,6 +156,9 @@ div
                     h_flex #sub-main-ACME-144
                       div #sub-title-ACME-144 [font="DM Sans" fg=foreground hover(fg=accent)] {click} tip="Show the description"
                         "Queue offline edits and sync them back"
+                      h_flex #sub-tags-ACME-144
+                        div #sub-tags-ACME-144-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: sync"
+                          "sync"
                     h_flex #sub-mark-ACME-144
                     h_flex
                       h_flex #sub-status-cell-ACME-144 {size_change}
