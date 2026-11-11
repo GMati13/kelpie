@@ -1,4 +1,4 @@
-div #work-setup-fit
+div #work-setup-fit [bg=#00000080]
   v_flex #work-setup [border=border bg=popover fg=foreground] {key_down}
     h_flex
       v_flex [bg=background border=border]

@@ -54,6 +54,8 @@ const TAB_W = 200;
 // shrinking to the window less `margin` on each side, so on a laptop (1440×900, zoomed too) Save and
 // Cancel stay on screen and the page and the side tabs scroll instead. Exported for the tests.
 export const FIT = { w: 820, h: 900, margin: 24 };
+// The see-through dark laid over the window around the card, as Herdr dims behind its own dialogs.
+const DIM = "#00000080";
 
 // The dialog's side tabs, one section each, in groups (a heading over each but the first). `focus`
 // in props may name one (jira, github…). Each tab's second line says what's set (`tabStatus()`).
@@ -786,8 +788,9 @@ export class Setup {
     };
     const discarding = this.armedOn("discard");
 
-    // The window, then the card in its middle (FIT): the card is the dialog's frame.
-    return div().id("work-setup-fit").size_full().flex().items_center().justify_center().p(FIT.margin).child(v_flex().id("work-setup").track_focus(this.handle)
+    // The window, then the card in its middle (FIT): the card is the dialog's frame. With no frame
+    // Herdr dims nothing (the dialog is the whole window), so the window around the card is dimmed here.
+    return div().id("work-setup-fit").size_full().bg(DIM).flex().items_center().justify_center().p(FIT.margin).child(v_flex().id("work-setup").track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { this.close(cx); cx.stop_propagation(); } })
       .w_full().max_w(FIT.w).h_full().max_h(FIT.h).min_h(0).overflow_hidden().rounded(12).border_1().border_color(t.border).shadow_lg()
       .bg(t.popover).text_color(t.foreground).text_size(TEXT)

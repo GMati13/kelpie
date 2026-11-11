@@ -413,6 +413,8 @@ test("the profile dialog's card shrinks to the window, its page and tabs scroll,
     assert.equal(calls(c, "w_full").length, 1);
     assert.equal(calls(c, "h_full").length, 1);
     assert.ok(calls(nodeOf(el), "p").some(([m]) => m === FIT.margin), "a margin to the window's edges");
+    // With no frame Herdr dims nothing behind it, so the window around the card is dimmed by the dialog.
+    assert.ok(calls(nodeOf(el), "bg").some(([c]) => /^#000000[0-9a-f]{2}$/i.test(c) && c.slice(7) !== "00"), "the window around the card is dimmed");
     assert.ok(pathTo(el, `work-setup-body-${focus}`).at(-1).calls.some(([m]) => m === "overflow_y_scrollbar"), `${focus}: the page scrolls`);
     assert.ok(scrolls(pathTo(el, "setup-tabs").at(-1)), "the side tabs scroll");
     assert.ok(pathTo(el, `setup-tab-${focus}`).some(scrolls), "each tab is inside that scroll");
