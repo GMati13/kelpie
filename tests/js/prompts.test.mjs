@@ -99,6 +99,13 @@ describe("the ticket, merge and approval prompts", () => {
   });
 });
 
+// A review's buttons say what to post in plain words, not in the API's terms (it once said
+// "event COMMENT"): how to post it is the agent's own business.
+test("a review's messages name no API field", () => {
+  for (const a of ASK_PROMPTS.filter((x) => ["post", "approve", "changes"].includes(x.id))) assert.doesNotMatch(a.text, /\bevent\b|\b(COMMENT|APPROVE|REQUEST_CHANGES)\b/, a.id);
+  assert.match(ASK_PROMPTS.find((x) => x.id === "post").text, /only comments \(it neither approves nor requests changes\)/);
+});
+
 // The texts Kelpie gives Claude, filled as it fills them.
 const TEXTS = () => ({
   DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_APPROVAL_PROMPT, SUGGEST_PROMPT, CONFIGURE_PROMPT,

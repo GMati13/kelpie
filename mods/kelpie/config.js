@@ -511,7 +511,7 @@ export const ASK_PROMPTS = [
   { id: "fix", label: "Fix checks", text: "The checks fail on {prs}. Find out why and fix them." },
   { id: "comments", label: "Address comments", text: "Address the review comments on {prs}." },
   { id: "merge", label: "Merge", text: "Merge {prs}." },
-  { id: "post", label: "Post comments (review)", text: "Post your review comments on the pull request now, as one GitHub review with inline comments on the lines they're about (event COMMENT). Then tell me what you posted." },
+  { id: "post", label: "Post comments (review)", text: "Post your review comments on the pull request now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted." },
   { id: "approve", label: "Approve (review)", text: "Approve the pull request now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted." },
   { id: "idea", label: "Start an idea (What next?)", text: "An idea for making things better, found while nothing else needed doing:\n\n{idea}\n\nWhere: {where}\nWhy: {why}\n\nLook into it with me first: is it worth doing, and how big is it? Don't change anything until I say so; if we go ahead, a ticket for it may come first." },
   { id: "picked", label: "Run a pick (What next?)", text: "Claude suggested this as what I should do next: {action}\nWhy: {why}\n\nStart with that." },
