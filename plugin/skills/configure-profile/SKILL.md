@@ -56,7 +56,7 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 
 | Scope | Covers |
 |---|---|
-| `all` | Everything, in the order below |
+| `all` | Everything, in the order below, the agents' prompts and messages included |
 | `general` | Name, folder |
 | `agents` | The accounts agents run on: Claude account |
 | `claude` | Claude account only |
@@ -66,14 +66,14 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 | `handover` | Your part on the board (the handover column) only, whichever board it is |
 | `github` | Owner, GitHub account, pull request notifications |
 | `web` | Start page |
-| `prompts` | The prompts |
-| `messages` | The button messages |
+| `prompts` | The prompts, gone through with the person (section 7) |
+| `messages` | The button messages (section 8) |
 | `commands` | Leftovers check, clean-up, status |
 | `leftovers` / `cleanUp` / `status` | That story command only |
 
 ## Setting up, from A to Z
 
-For `all`, go in this order, skipping what the person doesn't use. Ask early where this work's tickets live (a Jira board, a GitHub Project, or neither) and whether they use GitHub for its pull requests: a profile has one board at most, and without one the sidebar lists the profile's spaces and agents instead of stories.
+For `all`, go in this order, skipping what the person doesn't use. It ends with the prompts and messages (7 and 8): don't stop once the connections and commands are set, as those are where agents learn how this person works. Ask early where this work's tickets live (a Jira board, a GitHub Project, or neither) and whether they use GitHub for its pull requests: a profile has one board at most, and without one the sidebar lists the profile's spaces and agents instead of stories.
 
 ### 1. General
 
@@ -158,7 +158,18 @@ First look at how the folder is laid out: clones, worktrees, folders per ticket 
 
 ### 7. Prompts
 
-Change one only when the person wants agents to work differently: a slash command or skill they use for tickets, their merge or deploy steps, who approves. The profile dialog's Prompts page shows each default (`open_profile_page` with `prompts`). A line whose placeholders all come out empty is left out.
+The prompts are what each kind of agent is told first, and the defaults are written for anyone, so they often don't fit: the merge default asks for a merge and deploy plan across repositories, with how to deploy and roll back, which is noise for one repo with nothing to deploy and still misses what the person's own merge needs. Most people never find out they can change them, so for `all` and the `prompts` scope, go through them with the person rather than waiting to be asked. On any other scope, leave them alone unless the person brings them up.
+
+1. **Ask how they work**, a few plain questions, one at a time, each with likely answers to pick from. Only ask what bears on a prompt the profile uses (no merge or review questions without GitHub, no ticket questions without a board):
+   - How do they start on a ticket: a slash command or skill they use (`/ticket`, say), a routine (a branch per ticket, a plan first), or just "work on it"?
+   - How does a pull request get merged: one repository or several at once, a deploy afterwards or none, who approves (a teammate, nobody: they work alone), any release step?
+   - What should a review look at (their team's conventions, tests, security), beyond reading the change against its ticket?
+   - For What next?: what kind of work do they pick up (frontend, say), so unassigned tickets of that kind are pointed out?
+2. **Show the default, then a version that fits.** Read the defaults in [references/default-prompts.md](references/default-prompts.md); the profile dialog's Prompts page shows them too (`open_profile_page` with `prompts`). For each prompt their answers bear on (ticket, orchestrator, review, merge, approval, What next?), show the default briefly (its gist, or the lines that change) and propose a version that fits: drop what doesn't apply (no deploy and roll back steps for a single repository with nothing to deploy), add what they told you (their slash command, their release step). Keep the placeholders, and keep the default's safety lines: a review reads others' code without running it, and nothing is merged, posted or deployed until the person says so.
+3. **Skip what fits, and let them stop.** When a default already fits, say so in a line and move on; don't propose a change for its own sake. The person can stop at any point: "the rest are fine" ends the round. Offer the orchestrator prompt (no default, Start orchestrator appears once it's set) only when their stories have subtasks and they'd like one agent to run them.
+4. **Save only what differs from the default**, after they agree, in one `save_profile` change of its own: prompts wait for their yes in Kelpie, and nothing else in that change is saved meanwhile. A prompt they want back to the default is `null`.
+
+Every prompt says what to look at or do, never how to reach the board or GitHub: each agent uses its own access, and a prompt naming a tool or a script (`gh`, an API, Kelpie's own) is a prompt to rewrite. A line whose placeholders all come out empty is left out.
 
 | Key | When it's sent | Placeholders |
 |---|---|---|
@@ -169,11 +180,11 @@ Change one only when the person wants agents to work differently: a slash comman
 | `github.approvalPrompt` | Request approval, while a pull request isn't approved | as merge; `{prs}` only the unapproved |
 | `prompts.suggest` | What next? (the magic button under Next): a Claude in the background filling Next's queue | `{name} {snapshot} {board} {owner}`. It runs unattended; Kelpie adds how the picks come back (through its plugin) after this message, so the prompt needn't say it, and shouldn't ask for a JSON block or any other answer format |
 
-The ticket prompts live in the board's section (`jira` or `project`, whichever the profile has), so they're kept only while a board is set; `github.*` ones only while GitHub is. For `prompts.suggest`, ask what kind of work the person picks up (frontend, say) and add it, so unassigned tickets of that kind are pointed out. Like every prompt, say what to look at or do, never how to reach the board or GitHub: each agent uses its own access.
+The ticket prompts live in the board's section (`jira` or `project`, whichever the profile has), so they're kept only while a board is set; `github.*` ones only while GitHub is.
 
 ### 8. Messages
 
-Sent to an agent already working on a pull request when a button is pressed (`prompts.<id>`; the Messages page shows the defaults). `{prs}` is the pull request's link, several joined by "and".
+Sent to an agent already working on a pull request when a button is pressed (`prompts.<id>`; the Messages page shows the defaults, and so does [references/default-prompts.md](references/default-prompts.md)). `{prs}` is the pull request's link, several joined by "and". For `all` and the `messages` scope, go through them as the prompts above, only lighter: they're short, so ask only where the person's way differs (how they merge, what a posted review looks like) and save only what changes.
 
 | Id | Button |
 |---|---|
