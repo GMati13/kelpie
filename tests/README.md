@@ -191,7 +191,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
   offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
-  around it. `configure`: Let me configure it for you, and the plugin check and install behind it.
+  around it. `settings`: the shared permission list allows only gh commands that read, never `gh api`.
+  `configure`: Let me configure it for you, and the plugin check and install behind it.
 - Stories over time: `moved` (a ticket's new status shown at once, until a load agrees), `quick` (pull
   requests read again when an agent's turn ends, and one an agent just opened shown at once), `reload` (a reload asked for mid-load isn't dropped),
   `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
