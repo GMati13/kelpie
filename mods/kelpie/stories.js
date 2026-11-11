@@ -4805,7 +4805,8 @@ async function unsaved(profile, it) {
   const ahead = !finished(it) && Boolean(it.reassigned);
   const code = await readTextFile(modFile("changes.py"));
   const r = await exec("python3", ["-I", "-c", code, profile.folder, ...(ahead ? ["--unpushed"] : []), ...storyKeys(it)], on ? { on } : {});
-  if (r.code !== 0) return [`uncommitted work in its folders (couldn't check them: ${(r.stderr || "").trim().split("\n").pop() || "changes.py failed"})`];
+  const why = (r.stderr || "").trim().split("\n").pop();
+  if (r.code !== 0) return [`uncommitted work in its folders (couldn't check them${why ? `: ${why}` : ""})`];
   const repos = JSON.parse(r.stdout || "[]");
   const dirty = repos.filter((x) => x.files?.length).map((x) => `${x.key} ${x.repo}`);
   const unpushed = repos.filter((x) => x.unpushed > 0).map((x) => `${x.unpushed === 1 ? "a commit" : `${x.unpushed} commits`} not pushed in ${x.key} ${x.repo}`);
