@@ -230,7 +230,8 @@ describe("Move to Done on the demo's board", async () => {
     const home = mock.on.exec;
     mock.on.exec = (cmd, args, opts) => {
       const line = cmd === "sh" && args[0] === "-c" ? String(args[3] ?? "") : "";
-      if (line.startsWith("check-leftovers ")) return { code: 0, stdout: line.endsWith("ACME-139") ? "branch 139-token-bucket (merged)" : "", stderr: "" };
+      // Once cleaned up, the branch is gone: the check prints nothing for it.
+      if (line.startsWith("check-leftovers ")) return { code: 0, stdout: line.endsWith("ACME-139") && !ran.length ? "branch 139-token-bucket (merged)" : "", stderr: "" };
       if (line.startsWith("clean-up ")) { ran.push(line); return { code: 0, stdout: "removed branch 139-token-bucket", stderr: "" }; }
       return home(cmd, args, opts);
     };
@@ -246,6 +247,7 @@ describe("Move to Done on the demo's board", async () => {
     assert.equal(mock.sharedValue("kelpie.paused")[DEMO]["ACME-138"], undefined, "its paused session forgotten");
     assert.deepEqual(ran, ["clean-up ACME-139"], "the clean-up command ran on what the story left");
     assert.equal(note(), "Moved ACME-139 and ACME-138 to Done. Cleaned up ACME-138: removed branch 139-token-bucket");
+    assert.equal(mock.sharedValue("kelpie.clean.leftovers")?.[DEMO]?.found?.["ACME-138"], undefined, "nothing left, so no broom (#112)");
     assert.deepEqual(mock.sharedValue("kelpie.done.clean"), { [DEMO]: true });
     assert.deepEqual(mock.of("closeOverlay"), [["o2"]]);
   });
