@@ -156,7 +156,7 @@ test("changes: the file list's width can be dragged", async () => {
   assert.deepEqual(panels[0].calls.filter(([m]) => m === "size" || m === "size_range").map(([m, a]) => [m, ...a]), [["size", 260], ["size_range", 180, 640]]);
 });
 
-// A file header's actions (Copy path, Open on GitHub or Show in Finder, Ask agent) and its Viewed box
+// A file header's actions (Copy path, Open on GitHub or Show in Finder, Ask Claude) and its Viewed box
 // are told apart by where the press was, as rows of Herdr's virtual list take no click handlers.
 // Herdr reports that press as drawn, zoom included, while the header is laid out at zoom 1: a click on
 // an action used to land on another, or on none, which folded the file (issue #52).
@@ -197,7 +197,7 @@ function clickAt({ view, cx }, zoom, x, key, y = 200) {
 const headerOf = (view, fi) => view.diffView.entries.findIndex((e) => e.r.kind === "file" && e.fi === fi);
 const rowCount = ({ view, cx }) => virtualList(view.render(cx)).args[1];
 // Where each part of a header is, as laid out: the Viewed box at 32 (74 wide), then the actions 10
-// after it, 2 apart: Copy path (26), Open on GitHub or Show in Finder (26), Ask agent (84).
+// after it, 2 apart: Copy path (26), Open on GitHub or Show in Finder (26), Ask Claude (84).
 const CENTRE = { viewed: 32 + 37, copy: 116 + 13, open: 144 + 13, ask: 172 + 42 };
 
 for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
@@ -228,7 +228,7 @@ for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
       assert.ok(mock.of("exec").some(([, args]) => args.some((a) => String(a).includes("/home/test/acme/api/src/file6002.ts"))), "it showed the file");
       assert.equal(rowCount(s), rows, "the file didn't fold");
     });
-    test(`changes: at zoom ${zoom} in ${mode}, Ask agent only opens the bar`, async () => {
+    test(`changes: at zoom ${zoom} in ${mode}, Ask Claude only opens its picker`, async () => {
       const s = await storyChanges([prGroup], { all });
       const rows = rowCount(s);
       // Near its right end too, which a press not divided by the zoom missed past zoom 1.
@@ -267,9 +267,9 @@ test("changes: a press just beside a header's actions doesn't fold the file", as
   assert.ok(rowCount(s) < rows, "a press on the name folds it");
 });
 
-// Ask agent's bar is laid over the top of the diff: opening it takes no room above the list, so the
-// page doesn't move; and a press on the bar isn't a press on the row under it.
-test("changes: Ask agent's bar is laid over the diff, not above it", async () => {
+// Ask Claude's picker is laid over the top of the diff: opening it takes no room above the list, so the
+// page doesn't move; and a press on it isn't a press on the row under it.
+test("changes: Ask Claude's picker is laid over the diff, not above it", async () => {
   const s = await storyChanges([prGroup]);
   // The diff's side of the split: the box holding the list (and, before, the bar above it).
   const pane = (el) => {
@@ -281,7 +281,7 @@ test("changes: Ask agent's bar is laid over the diff, not above it", async () =>
   const before = kids(pane(s.view.render(s.cx))).length;
   clickAt(s, 1.2, CENTRE.ask, headerOf(s.view, 0));
   const el = s.view.render(s.cx);
-  assert.match(texts(el).join(" "), /Ask the agent about/);
+  assert.match(texts(el).join(" "), /Ask Claude about file6000\.ts/);
   assert.equal(kids(pane(el)).length, before, "nothing above the list");
   const bar = byId(el, "ask-bar");
   assert.ok(bar && bar.calls.some(([m]) => m === "absolute"), "the bar is laid over the list");
@@ -293,4 +293,35 @@ test("changes: Ask agent's bar is laid over the diff, not above it", async () =>
   assert.equal(rowCount(s), rows, "nor fold it");
   clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 100);
   assert.deepEqual(s.clip, ["src/file6000.ts"]);
+});
+
+// Ask Claude from a file's header (KELPIE-84): the picker offers a new Claude in the story's space
+// and the story's open Claudes; a suggestion asks the one picked, with the file it's about.
+test("changes: a suggestion in Ask Claude's picker asks the Claude picked about the file", async () => {
+  const s = await storyChanges([prGroup]);
+  mock.state.spaces = [...mock.state.spaces, { id: "s-ask", name: "Elsewhere", tabs: [] }];
+  mock.state.agents = [...mock.state.agents,
+    { address: "t-ask", tab_name: `${STORY} claude`, space: "s-ask", pane: "p-ask", status: "idle", title: "" },
+    { address: "t-other", tab_name: "ACME-999", space: "s-ask", pane: "p-other", status: "idle", title: "" }];
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  clickAt(s, 1, CENTRE.ask, headerOf(s.view, 0));
+  const el = s.view.render(s.cx);
+  const words = texts(el).join(" ");
+  assert.match(words, /New Claude in ACME-184's space/);
+  assert.match(words, new RegExp(`${STORY} claude`), "the story's open Claude is offered");
+  assert.doesNotMatch(words, /ACME-999/, "another story's Claude isn't");
+  assert.equal(s.view.target.chosen, "t-ask", "the Claude on the story's key is picked");
+  mock.calls.length = 0;
+  handlers(el).find((h) => h.id === "ask-claude-suggest-explain").fn({}, s.cx);
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][0].at(-2), "t-ask");
+  assert.match(sent[0][0].at(-1), /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
+  assert.equal(s.view.sending, null, "the picker closed");
+  // What it led to stays over the diff until closed.
+  const after = s.view.render(s.cx);
+  assert.match(texts(after).join(" "), /Sent your question to ACME-184 claude\./);
+  handlers(after).find((h) => h.id === "ask-claude-note-close").fn({}, s.cx);
+  assert.equal(byId(s.view.render(s.cx), "ask-bar"), undefined, "closed, nothing is laid over the diff");
 });

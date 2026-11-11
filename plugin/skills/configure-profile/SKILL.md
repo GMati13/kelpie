@@ -33,7 +33,7 @@ The Kelpie plugin gives you the tools for this: `get_profile` reads what's saved
 | GitHub | Optional. An owner (organisation or user): the sidebar lists the person's open pull requests and the ones waiting on their review, attached to stories by the ticket key in their titles. Optionally the GitHub account Kelpie acts as for it, for people signed in to more than one. |
 | Web | The Web panel's start page. Each profile has its own browser, with its own sign-ins. |
 | Prompts | The first message each kind of agent gets: on a ticket, an orchestrator, a review, a merge, an approval request, What next?. Each has a default. |
-| Messages | What the pull request and review buttons (Fix checks, Merge, Approve…) send to an agent that's already working. Each has a default. |
+| Messages | What the pull request and review buttons (Fix checks, Merge, Approve…) send to an agent that's already working, and Ask Claude's suggestions (Explain this, Fix this…). Each has a default. |
 | Story commands | Optional shell commands for a story: a leftovers check and a clean-up for finished stories, a status line for stories in progress. |
 
 The **Desk** is the profile's space for work without a ticket; that's usually where you are.
@@ -185,6 +185,10 @@ Sent to an agent already working on a pull request when a button is pressed (`pr
 | `changes` | Request changes (on a review) |
 | `idea` | One of What next?'s improvement ideas: starts a Claude on the Desk. `{idea}` the brief, `{where}` the file or area, `{why}` why it pays off |
 | `picked` | Run all in Next: added after the ticket prompt for each of Claude's picks it starts. `{action}` what Claude suggests, `{why}` why now |
+| `explain` | Ask Claude's "Explain this" suggestion. Kelpie puts what's asked about (a file, its pull request or repo) before it, so no placeholders |
+| `check` | Ask Claude's "Review this change", the same way |
+| `fixit` | Ask Claude's "Fix this", the same way |
+| `test` | Ask Claude's "Write a test for it", the same way |
 
 `prompts.configure` is the message that started you (`{name} {id} {scope} {about} {home}`); leave it alone unless asked.
 

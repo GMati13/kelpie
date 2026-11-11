@@ -198,12 +198,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   check behind a finished story's broom), `note` (where the last action's note shows), `avatars`
   (assignees' pictures, fetched once).
 - Actions: `move-to-done`, `run-picks` (Claude's picks started together), `story-task-send` (the Merge
-  and Request approval menus' sends), `terminal` (a story's Terminal), `pulls` (Approve), `point` (what
+  and Request approval menus' sends), `ask-claude` (who Ask Claude offers, what it sends and where), `terminal` (a story's Terminal), `pulls` (Approve), `point` (what
   Next points at in a story), `passage` (a description's passage shown), `playing` (the web panel's
   sound mark), `menu-button` (a press on an open menu stays on it), `scroll` (each thing keeps its own
   scroll position).
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
-  patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
+  patches, its file headers' actions land where they're drawn at any zoom, and Ask Claude's picker asks the Claude picked. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
   gives and Check my shell, avatar.sh, install.sh with the icon and art copies, and e2e-demo.sh's guards.
   `tests/python/`: kittyfix.py, changes.py (ticket
