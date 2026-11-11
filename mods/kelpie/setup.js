@@ -84,6 +84,8 @@ const IDEA_ASKS = ["idea", "picked"];
 // How long a careful button (Delete, Discard) stays armed for its second press.
 const ARMED_MS = 4000;
 
+// A board's kind as Jira names it, in the dialog's words (`simple` is a team-managed board).
+const BOARD_TYPES = { scrum: "Scrum", kanban: "Kanban", simple: "team-managed" };
 const keychainAccount = async (item) =>
   (await exec("sh", ["-c", 'security find-generic-password -s "$1" 2>/dev/null | sed -n \'s/^ *"acct"<blob>="\\(.*\\)"$/\\1/p\'', "sh", item])).stdout.trim();
 
@@ -270,7 +272,7 @@ export class Setup {
         ]);
         const list = (config?.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
         if (list.length) this.columns = { ...parsed, list };
-        this.result("jira", true, `Signed in. Board “${r.body?.name}” (${r.body?.type ?? "board"}${r.body?.location?.projectKey ? `, ${r.body.location.projectKey}` : ""}).`, cx);
+        this.result("jira", true, `Signed in. Board “${r.body?.name}” (${BOARD_TYPES[r.body?.type] ?? "board"}${r.body?.location?.projectKey ? `, ${r.body.location.projectKey}` : ""}).`, cx);
       } catch (e) {
         this.result("jira", false, String(e?.message ?? e), cx);
       }
@@ -617,7 +619,7 @@ export class Setup {
       this.mac && field("Keychain item", input(this.keychain), "Where the API token is kept on this Mac."),
       field(this.mac ? "Or a token command" : "Token command", input(this.tokenCommand),
         `A shell command that prints the API token, from a password manager (op read …, pass …, secret-tool lookup …). It runs for each request${this.mac ? ", instead of the Keychain when set" : ""}; the token only goes to curl, through a pipe.`),
-      field(tokenCommand ? "Jira email" : "Jira email, for storing the token", input(this.email), null),
+      field(tokenCommand || !this.mac ? "Jira email" : "Jira email, for storing the token", input(this.email), null),
       this.mac && !tokenCommand && v_flex().pt(DIALOG.section)
         .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a zsh terminal (the Mac's default shell) and paste it at the prompt:"))
         .child(h_flex().p(8).gap(8).items_center().rounded(8).bg(t.background).border_1().border_color(t.border)
