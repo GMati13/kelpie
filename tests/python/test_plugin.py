@@ -326,5 +326,32 @@ class Server(unittest.TestCase):
         self.assertTrue(text.startswith("Kelpie didn't add it: "))
 
 
+class Manifests(unittest.TestCase):
+    """What someone browsing or installing the plugin reads: the marketplace's entry and the plugin's
+    own manifest say the same, and point to where Kelpie lives."""
+
+    def read(self, *path):
+        with open(os.path.join(REPO, *path)) as f:
+            return json.load(f)
+
+    def test_the_marketplace_lists_the_plugin_as_it_describes_itself(self):
+        market, plugin = self.read(".claude-plugin", "marketplace.json"), self.read("plugin", ".claude-plugin", "plugin.json")
+        [entry] = market["plugins"]
+        self.assertEqual((market["name"], entry["name"], plugin["name"]), ("kelpie", "kelpie", "kelpie"), "installed as kelpie@kelpie")
+        self.assertEqual(entry["source"], "./plugin")
+        self.assertEqual(entry["description"], plugin["description"])
+        self.assertIn("Next", market["description"], "the marketplace says what the plugin does, not only part of it")
+        self.assertIn("Herdr", plugin["description"], "says it needs Kelpie in Herdr")
+
+    def test_the_manifest_has_what_a_published_plugin_shows(self):
+        plugin = self.read("plugin", ".claude-plugin", "plugin.json")
+        self.assertRegex(plugin["version"], r"^\d+\.\d+\.\d+$")
+        with open(os.path.join(REPO, "LICENSE")) as f:
+            self.assertTrue(f.readline().startswith(plugin["license"]), "the licence is the repo's")
+        for key in ("homepage", "repository"):
+            self.assertRegex(plugin.get(key, ""), r"^https://github\.com/[\w-]+/kelpie$", key)
+        self.assertEqual(plugin["homepage"], plugin["repository"])
+
+
 if __name__ == "__main__":
     unittest.main()
