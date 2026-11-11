@@ -107,6 +107,8 @@ describe("no prompt steers Claude to Kelpie's plumbing", () => {
     assert.match(guide, /Secrets never pass through you/);
     assert.match(guide, /don't run one yourself/);
     assert.match(guide, /You can't confirm it for them/);
+    // A token pasted anyway is in the transcript: it's replaced, never used.
+    assert.match(guide, /pastes one anyway, don't repeat it, save it or pass it to any tool[^\n]*revoke it and make a new one/);
   });
   test("the setup skill mentions Kelpie's scripts only to say they're not Claude's to run", () => {
     const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
