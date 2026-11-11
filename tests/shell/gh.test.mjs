@@ -1,6 +1,7 @@
 // mods/kelpie/gh.sh, run for real with a fake gh: a profile's GitHub account is asked for its token by
 // name and that token reaches gh only through its environment, never its arguments; no account runs
-// gh as it is; a name that isn't a GitHub login, or one gh isn't signed in to, runs nothing.
+// gh as it is; an API call also asks for the response's headers (`--include`), for ghlimit.js; a
+// name that isn't a GitHub login, or one gh isn't signed in to, runs nothing.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeBin, repoFile, sh } from "../lib/helpers.mjs";
@@ -25,7 +26,7 @@ describe("gh.sh", () => {
     assert.equal(r.code, 0, r.stderr);
     const [ask, call] = fakes.calls("gh");
     assert.deepEqual(ask.argv, ["auth", "token", "--hostname", "github.com", "--user", "work-me"]);
-    assert.deepEqual(call.argv, ["api", "graphql", "-f", "q=is:pr"]);
+    assert.deepEqual(call.argv, ["api", "--include", "graphql", "-f", "q=is:pr"]);
     assert.equal(tokenOf(call), TOKEN);
     assert.ok(!call.argv.join(" ").includes(TOKEN));
     assert.ok(!r.stdout.includes(TOKEN) && !r.stderr.includes(TOKEN), "the token is never printed");
@@ -36,8 +37,17 @@ describe("gh.sh", () => {
     assert.equal(run("", "api", "user").code, 0);
     const calls = fakes.calls("gh");
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].argv, ["api", "user"]);
+    assert.deepEqual(calls[0].argv, ["api", "--include", "user"]);
     assert.equal(tokenOf(calls[0]), null);
+  });
+
+  test("an API call asks for the response's headers, for the limit guard, unless it asks itself or pages", () => {
+    const { fakes, run } = setup();
+    for (const args of [["api", "-i", "user"], ["api", "--include", "user"], ["api", "--paginate", "repos/a/b/pulls/1/files"], ["auth", "status"]]) {
+      fakes.clear();
+      assert.equal(run("", ...args).code, 0);
+      assert.deepEqual(fakes.calls("gh")[0].argv, args, args.join(" "));
+    }
   });
 
   test("an account gh isn't signed in to fails with what to do, and gh isn't run", () => {
