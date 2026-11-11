@@ -433,12 +433,15 @@ export const worksAlone = (p) => Boolean(boardOf(p)?.cfg?.solo);
 // The task an agent started on a Jira ticket gets: the space's own template (jira.prompt), else this.
 // Placeholders: {key} {summary} {url} {type} {status} {parent} (the story's key and summary, or empty)
 // {subtasks} (a story's subtasks, a line each: "KEY — title (status)"; empty for a subtask).
-// With `template`, that one instead (the orchestrator prompt).
+// With `template`, that one instead (the orchestrator prompt). `then` is what follows it in the same
+// first message (a button's ask, a pick of Claude's). It ends with OTHERS whatever the template says,
+// as the summary and the subtasks' titles are others' words.
 export const PROMPT_FIELDS = ["key", "summary", "url", "type", "status", "parent", "subtasks"];
 export const DEFAULT_PROMPT = "Work on {key}: {summary}\n{url}";
 
-export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT) {
-  return template.replace(/\{(\w+)\}/g, (all, name) => (PROMPT_FIELDS.includes(name) ? promptValue(name, fields[name]) : all)).trim();
+export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT, then = "") {
+  const filled = template.replace(/\{(\w+)\}/g, (all, name) => (PROMPT_FIELDS.includes(name) ? promptValue(name, fields[name]) : all)).trim();
+  return [filled, then.trim(), OTHERS].filter(Boolean).join("\n\n");
 }
 
 // The task a review agent starts with: the profile's own template (github.reviewPrompt), else this.
@@ -467,7 +470,8 @@ export function reviewTask(github, fields) {
 // The task a merge agent starts with (a story's Merge, in its header and on its row): the profile's
 // own template (github.mergePrompt), else this. Placeholders: {ticket} {summary} (the story) and
 // {prs}, its open pull requests of yours, a line each: "repo#n: title (state) url". Lines whose
-// placeholders all came out empty are left out, as for reviews.
+// placeholders all came out empty are left out, as for reviews. Both end with OTHERS, whatever the
+// template says: the story's summary and the pull requests' titles are others' words.
 export const MERGE_FIELDS = ["ticket", "summary", "prs"];
 export const DEFAULT_MERGE_PROMPT = [
   "Get {ticket}: {summary} ready to merge and deploy.",
@@ -479,7 +483,7 @@ export const DEFAULT_MERGE_PROMPT = [
 ].join("\n");
 
 export function mergeTask(github, fields) {
-  return fillLines(github?.mergePrompt?.trim() ? github.mergePrompt : DEFAULT_MERGE_PROMPT, MERGE_FIELDS, fields);
+  return `${fillLines(github?.mergePrompt?.trim() ? github.mergePrompt : DEFAULT_MERGE_PROMPT, MERGE_FIELDS, fields)}\n\n${OTHERS}`;
 }
 
 // The task Request approval starts with (shown on a story's header and row while one
@@ -495,7 +499,7 @@ export const DEFAULT_APPROVAL_PROMPT = [
 ].join("\n");
 
 export function approvalTask(github, fields) {
-  return fillLines(github?.approvalPrompt?.trim() ? github.approvalPrompt : DEFAULT_APPROVAL_PROMPT, MERGE_FIELDS, fields);
+  return `${fillLines(github?.approvalPrompt?.trim() ? github.approvalPrompt : DEFAULT_APPROVAL_PROMPT, MERGE_FIELDS, fields)}\n\n${OTHERS}`;
 }
 
 // The messages a pull request's buttons send to its agent, each changeable in the profile dialog

@@ -41,7 +41,6 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 Where the code doesn't meet these rules yet (fix them with tests, then remove the line):
 
 - Ticket keys from Jira aren't checked against the key pattern when they're loaded; only `jira.sh transition` and `applyPicks()` (stories.js) check one. `runCommand()` (config.js) then puts `{key}` into a profile command unquoted.
-- Only the review task (`reviewTask()`), What next? (`suggestText()`), an idea's prompt (`startIdea()`) and a story Run all starts (`runPicks()`) end with `OTHERS`. The ticket prompt (`jiraTask()`: summary, subtasks) and Merge and Request approval (`mergeTask()`, `approvalTask()`: `{prs}`, pull request titles) carry others' text without it.
 - Screenshot mark-up (`FLATTEN_SCRIPT`, `mods/kelpie-artifacts/markup.js`) writes into a fixed folder, `${TMPDIR:-/tmp}/herdr-markup` (shared `/tmp` on Linux), made with default permissions: its files get `mktemp` names, but another user could own the folder first. Thumbnails (`session.js`) add `.png` to a `mktemp` name, a name `mktemp` didn't reserve.
 - `~/.cache/kelpie/sessions.json` (sessions.py) and the Web panel's folders (`~/.local/share/kelpie/web/<profile>/`, main.js) are created with the default permissions, not private.
 - Inside a profile section, a key is refused as a secret only by its name (`SECRET` in config.js: token, password, secret), so `github.pat` passes; sections don't have their own list of allowed keys.

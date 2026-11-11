@@ -348,15 +348,16 @@ async function resumeAll(profile, it, keys) {
 
 // What the ticket prompt fills in for a key of story `it`: the story's own fields (with its subtasks,
 // a line each) or a subtask's (with its story as the parent). With `template`, that prompt instead
-// of the ticket prompt (the orchestrator's).
-function ticketTask(st, it, key, template) {
+// of the ticket prompt (the orchestrator's); `then`, what follows it in the same message, before the
+// note about others' text (config.js jiraTask()).
+function ticketTask(st, it, key, template, then) {
   const s = key === it.key && it.story ? it : it.subs.find((x) => x.key === key) ?? it;
   const board = boardOf(st.setup);
   return jiraTask(board, {
     key, url: ticketUrl(board, st.data, key) ?? "", summary: s.title || it.title, type: s.type, status: s.status,
     parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
     subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
-  }, ...(template ? [template] : []));
+  }, template || undefined, then);
 }
 
 // Who hears about a file or a screenshot of the story: the agent on its key, else any open agent of
@@ -2609,7 +2610,7 @@ export class Stories extends Source {
     } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, text));
     else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, text));
     // A new agent knows nothing yet: the ticket prompt comes first.
-    else once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: `${ticketTask(st, it, key)}\n\n${text}` }));
+    else once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, null, text) }));
     say(about, `Asked ${key}'s agent: ${text.length > 70 ? text.slice(0, 70) + "…" : text}`);
     cx.notify();
   }
@@ -5286,7 +5287,7 @@ export async function runPicks({ profile, keys = null }) {
           if (!(await startIdea(s.st.profile, p.x.suggest))) throw new Error("the Desk didn't show up in time");
         } else {
           const { it } = p.x, { action, why } = p.x.suggest;
-          const task = `${ticketTask(s.st, it, p.key)}\n\n${askText(s.st.profile, "picked", { action, why: why || "not said" })}\n\n${OTHERS}`;
+          const task = ticketTask(s.st, it, p.key, null, askText(s.st.profile, "picked", { action, why: why || "not said" }));
           const id = await once(it.key, () => launch(s.st.profile, it, { name: p.key, argv: claudeArgv(s.st.profile), task }));
           if (id === undefined) throw new Error("it was already starting");
           if (!id) throw new Error("its new space didn't show up in time");
