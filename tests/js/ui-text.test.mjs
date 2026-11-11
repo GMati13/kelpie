@@ -8,6 +8,7 @@ import { Stories, StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { Setup } from "../../mods/kelpie/setup.js";
+import { StoryPicker } from "../../mods/kelpie/dialogs.js";
 import { fakeCx } from "../lib/views.mjs";
 import { texts } from "gpui-kit";
 
@@ -126,4 +127,13 @@ test("Next's rows have their words whole in a tooltip", async () => {
   view.queueOpen = false;
   const card = render(view.render(cx), skinTheme()).split("\n").find((l) => l.includes("#queue-next "));
   assert.match(card, /tip="[^"\\]+\\n[^"\\]+\\n(Go there|Go to its step)/, card);
+});
+
+// The story picker cuts a row's title and state line to its width: the row's tooltip has them whole.
+test("the story picker's rows have their words whole in a tooltip", async () => {
+  setupDemoWorld({ stories, props: { role: "story-picker", overlay: "overlay-1" } });
+  const out = render((await draw(new StoryPicker())).el, skinTheme());
+  const row = out.split("\n").find((l) => l.includes("#sp-ACME-142 "));
+  assert.ok(row, "ACME-142 has a row");
+  assert.match(row, /tip="ACME-142 Offline mode for saved trips\\n[^"]+"/);
 });
