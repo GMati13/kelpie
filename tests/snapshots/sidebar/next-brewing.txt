@@ -10,7 +10,7 @@ v_flex
         div [fg=dim]
           "3"
     h_flex
-      h_flex #count-needs-you [fg=working] tip="1 need you"
+      h_flex #count-needs-you [fg=working] tip="1 needs you"
         div
           div [bg=working/40] ~loop(opacity)
             div [bg=working]

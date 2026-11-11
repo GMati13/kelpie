@@ -22,3 +22,10 @@ test("a story row's subtasks tooltip names the handover column", async () => {
   assert.match(out, /Your subtasks: 0 of 1 past QA · 1 in QA/);
   assert.doesNotMatch(out, /testing/);
 });
+
+// The list's counts read as a sentence in their tooltips: "1 needs you", "2 need you".
+test("the story list's counts agree with their number", async () => {
+  const out = await sidebar();
+  assert.match(out, /tip="1 needs you"/);
+  assert.doesNotMatch(out, /tip="1 need you"/);
+});

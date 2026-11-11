@@ -4261,7 +4261,8 @@ export class StoryList extends Stories {
     for (const { it } of started) if (it.space.name !== it.key && !RENAMED.has(it.space.id)) { RENAMED.add(it.space.id); run("space.rename", { id: it.space.id, name: it.key }); }
     const tally = (lo, hi) => items.filter((x) => x.n[0] >= lo && x.n[0] <= hi).length;
     // The summary: a mark and a number each (the words in its tooltip), coloured as the rows are.
-    const counts = [[tally(0, 0), "need you", "working", "needs-you"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
+    const needYou = tally(0, 0);
+    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
       [reviews.length, "to review", "accent", "review"], [tally(5, 5), "working", "accent", "working"], [tally(7, 7), "paused", "muted", "paused"]];
     // Next: what cmd-shift-j goes to, the one after the item shown in what needs you.
     const desk = deskOf(st.profile);
