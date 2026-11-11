@@ -525,7 +525,8 @@ export function askText(profile, id, fields = {}) {
 
 // What next? (the magic button in the story list's Next place): a Claude run in the background
 // (claude -p, no terminal, no saved session; stories.js brew()) that looks at where everything stands
-// and answers with picks for Next's queue as a JSON block. Its message is prompts.suggest (the default
+// and hands picks for Next's queue to the plugin's tool (HAND_IN, below). It runs whether or not
+// something needs the person (the slim button under Next's card, kelpie.what-next). Its message is prompts.suggest (the default
 // isn't saved). Placeholders: {name} (the profile), {snapshot} (what the list knows: sprints, stories,
 // pull requests, reviews, agents; stories.js suggestSnapshot), {board} (the Jira board's address),
 // {owner} (GitHub). It says what to look at, never how to reach or sign in to it: the agent uses
@@ -534,7 +535,7 @@ export function askText(profile, id, fields = {}) {
 // empty is left out.
 export const SUGGEST_FIELDS = ["name", "snapshot", "board", "owner"];
 export const SUGGEST_PROMPT = [
-  "Help me choose what to work on next in \"{name}\". Nothing needs me right now: no agent waiting on me, no failing checks or requested changes, no review asked of me, nothing to clean up.",
+  "Help me choose what to work on next in \"{name}\". What already needs me (an agent waiting on me, failing checks, requested changes, a review asked of me, something to clean up) is in my Next queue: don't pick that, find what comes after it.",
   "",
   "You run unattended: nobody will read your messages or answer questions, only the picks you hand to Kelpie.",
   "",
