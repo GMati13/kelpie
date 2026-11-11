@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { boardOf } from "../../mods/kelpie/config.js";
 import { loadBoard, ticketUrl } from "../../mods/kelpie/board.js";
-import { QUERIES } from "../../mods/kelpie/project.js";
+import { KEPT_SLOTS, QUERIES } from "../../mods/kelpie/project.js";
 import { build, issue, need, ordered, pullsOf, sunk } from "../../mods/kelpie/stories.js";
 import { DEMO_PROFILE, DEMO_PROJECT_PROFILE, data as dataOf, demoData, pr } from "../lib/stories.mjs";
 
@@ -54,6 +54,8 @@ function vars(args) {
   return out;
 }
 const opOf = (args) => /^query\s+(\w+)/.exec(vars(args).query ?? "")?.[1];
+// Every sub-issue of the stories, by node id: what KelpieSubIssues answers.
+const subsOf = (stories) => new Map(Object.values(stories).flatMap((s) => s?.subIssues?.nodes ?? []).map((c) => [c.id, c]));
 // gh answering from `pages` (the Project, page by page: by cursor, null first) and `stories` (by node
 // id); every call kept in `calls` as gh's own arguments.
 function fakeGh({ pages = {}, stories = {}, answer } = {}) {
@@ -64,6 +66,7 @@ function fakeGh({ pages = {}, stories = {}, answer } = {}) {
     if (answer) return answer(args.slice(2));
     const gh = args.slice(2), v = vars(gh), op = opOf(gh);
     const data = op === "KelpieStories" ? { nodes: v.ids.map((id) => stories[id] ?? null) }
+      : op === "KelpieSubIssues" ? { nodes: v.ids.map((id) => subsOf(stories).get(id) ?? null) }
       : op === "KelpieProjectOrg" ? { organization: { projectV2: pages[v.cursor ?? null] ?? null } }
       : { user: { projectV2: pages[v.cursor ?? null] ?? null } };
     return { code: 0, stdout: JSON.stringify({ data }), stderr: "" };
@@ -118,7 +121,7 @@ describe("loading a GitHub Project", () => {
     assert.deepEqual(c.fields.status, { id: "o4", name: "Done", statusCategory: { key: "done" } });
     assert.equal(c.fields.assignee.displayName, "tomas", "a person with no name shows by their login");
     assert.deepEqual(d.links, { "https://github.com/acme/web/pull/5": "WEB-11" });
-    assert.deepEqual(calls.map((x) => opOf(x.args)), ["KelpieProjectUser", "KelpieStories"]);
+    assert.deepEqual(calls.map((x) => opOf(x.args)), ["KelpieProjectUser", "KelpieStories", "KelpieSubIssues"]);
     assert.ok(calls.every((x) => x.account === "work-me"), "as the profile's GitHub account");
   });
   test("what the list keeps of it: the issue's page and its Project item", async () => {
@@ -200,7 +203,7 @@ describe("loading a GitHub Project", () => {
 
 describe("its gh calls: constant queries, every value a variable", () => {
   test("each query is a constant with its own operation name, and no value goes into one", async () => {
-    for (const [name, q] of Object.entries({ user: "KelpieProjectUser", org: "KelpieProjectOrg", stories: "KelpieStories" })) assert.match(QUERIES[name], new RegExp(`^query ${q}\\(`));
+    for (const [name, q] of Object.entries({ user: "KelpieProjectUser", org: "KelpieProjectOrg", stories: "KelpieStories", subs: "KelpieSubIssues", kept: "KelpieKept" })) assert.match(QUERIES[name], new RegExp(`^query ${q}\\(`));
     const calls = fakeGh(sprintBoard());
     await loadBoard(boardWith({ owner: "someone-else", number: 42 }));
     for (const { args } of calls) {
@@ -230,6 +233,54 @@ describe("its gh calls: constant queries, every value a variable", () => {
     const calls = fakeGh({ pages: { null: projectOf({ items: [item(a)] }) } });
     await loadBoard(boardWith());
     assert.deepEqual(calls.map((x) => opOf(x.args)), ["KelpieProjectUser"]);
+  });
+});
+
+// KELPIE-129: what a load costs of the account's GitHub budget. GitHub charges a connection for every
+// item it could hold, nested ones multiplied: sub-issues' own fields asked inside the stories' query
+// cost 125 points for 61 stories, every load, and the account's budget ran out.
+describe("what a load costs", () => {
+  test("the stories ask only their sub-issues' ids; the sub-issues are asked flat, by id", async () => {
+    assert.match(QUERIES.stories, /subIssues\(first: 50\) \{ nodes \{ id \} \}/);
+    assert.equal(QUERIES.stories.match(/assignees\(/g).length, 1, "no issue fields under the sub-issues");
+    assert.doesNotMatch(QUERIES.subs, /subIssues/);
+    const calls = fakeGh(sprintBoard());
+    const d = await loadBoard(boardWith());
+    const subs = calls.filter((c) => opOf(c.args) === "KelpieSubIssues");
+    assert.equal(subs.length, 1);
+    assert.deepEqual(vars(subs[0].args).ids, ["I_acme_web_11", "I_acme_web_12", "I_acme_web_13"]);
+    assert.deepEqual(d.children.map((i) => i.key), ["WEB-11", "WEB-12", "WEB-13"], "each back under its story, in its order");
+  });
+  test("a sub-issue id that isn't a GitHub node id isn't sent", async () => {
+    const { pages, stories } = sprintBoard();
+    const story = stories.I_acme_web_10;
+    const bad = { ...story.subIssues.nodes[0], id: "I_1) { evil }" };
+    const calls = fakeGh({ pages, stories: { ...stories, I_acme_web_10: { ...story, subIssues: { nodes: [bad, ...story.subIssues.nodes.slice(1)] } } } });
+    await loadBoard(boardWith());
+    const sent = calls.filter((c) => opOf(c.args) === "KelpieSubIssues").flatMap((c) => vars(c.args).ids);
+    assert.ok(!sent.includes(bad.id));
+  });
+  test("kept stories are asked KEPT_SLOTS to a question, not one each", async () => {
+    const { pages, stories } = sprintBoard();
+    const calls = fakeGh({ answer: (gh) => {
+      const v = vars(gh), op = opOf(gh);
+      const json = (data) => ({ code: 0, stdout: JSON.stringify({ data }), stderr: "" });
+      if (op === "KelpieKept") return json({ viewer: { login: "alex" } });
+      if (op === "KelpieStories") return json({ nodes: v.ids.map((id) => stories[id] ?? null) });
+      if (op === "KelpieSubIssues") return json({ nodes: v.ids.map((id) => subsOf(stories).get(id) ?? null) });
+      return json({ user: { projectV2: pages[v.cursor ?? null] ?? null } });
+    } });
+    const keys = Array.from({ length: KEPT_SLOTS + 5 }, (_, n) => `WEB-${100 + n}`);
+    await loadBoard(boardWith(), { keys });
+    const kept = calls.filter((c) => opOf(c.args) === "KelpieKept").map((c) => vars(c.args));
+    assert.equal(kept.length, 2);
+    assert.equal(kept[0][`n${KEPT_SLOTS - 1}`], String(100 + KEPT_SLOTS - 1));
+    assert.equal(kept[0][`n${KEPT_SLOTS}`], undefined, "no slot past the query's");
+    assert.deepEqual(Object.keys(kept[1]).filter((k) => k.startsWith("n")).length, 5);
+    assert.equal((QUERIES.kept.match(/@include\(if: \$u\d+\)/g) ?? []).length, KEPT_SLOTS);
+  });
+  test("every query of a load asks what's left of the budget", () => {
+    for (const q of [QUERIES.user, QUERIES.org, QUERIES.stories, QUERIES.subs, QUERIES.kept]) assert.match(q, /rateLimit \{ remaining limit resetAt \}/);
   });
 });
 
@@ -375,11 +426,17 @@ describe("kept stories, by key", () => {
       const v = vars(gh);
       const json = (data) => ({ code: 0, stdout: JSON.stringify({ data }), stderr: "" });
       if (opOf(gh) === "KelpieStories") return json({ nodes: v.ids.map((id) => all[id] ?? null) });
+      if (opOf(gh) === "KelpieSubIssues") return json({ nodes: v.ids.map((id) => subsOf(all).get(id) ?? null) });
       if (opOf(gh) !== "KelpieKept") return json({ user: { projectV2: pages[v.cursor ?? null] ?? null } });
       if (down) return { code: 1, stdout: "", stderr: "gh: HTTP 502: Bad Gateway" };
-      const i = v.owner === "acme" && v.repo === "web" ? issues[v.number] : null;
-      if (!i) return { code: 1, stdout: JSON.stringify({ data: { viewer: { login: "alex" }, repository: { issue: null } }, errors: [{ type: "NOT_FOUND", message: "Could not resolve to an Issue" }] }), stderr: "" };
-      return { code: 0, stdout: JSON.stringify({ data: { viewer: { login: "alex" }, repository: { issue: { id: i.id, parent: i.parent ? { id: i.parent.id } : null } } } }), stderr: "" };
+      // As GitHub answers: each slot asked, an issue that isn't there null with a NOT_FOUND error.
+      const data = { viewer: { login: "alex" } }, errors = [];
+      for (let n = 0; v[`u${n}`] === "true"; n++) {
+        const i = v[`o${n}`] === "acme" && v[`r${n}`] === "web" ? issues[v[`n${n}`]] : null;
+        data[`k${n}`] = { issue: i ? { id: i.id, parent: i.parent ? { id: i.parent.id } : null } : null };
+        if (!i) errors.push({ type: "NOT_FOUND", path: [`k${n}`, "issue"], message: "Could not resolve to an Issue" });
+      }
+      return { code: errors.length ? 1 : 0, stdout: JSON.stringify({ data, ...(errors.length ? { errors } : {}) }), stderr: "" };
     } });
   }
 
@@ -389,13 +446,16 @@ describe("kept stories, by key", () => {
     assert.deepEqual(d.kept, ["WEB-30", "WEB-40"]);
     assert.ok(d.children.some((i) => i.key === "WEB-31"));
     assert.deepEqual(d.mine.map((i) => i.key), ["WEB-11", "WEB-40"]);
+    // KELPIE-129: one question for all of them, not one each (each costs a point, every load).
     const kept = calls.filter((c) => opOf(c.args) === "KelpieKept");
-    assert.deepEqual(kept.map((c) => vars(c.args).number), ["31", "40", "99"], "WEB-11 is loaded, OTHER has no repo");
-    for (const { args } of kept) {
-      assert.deepEqual(Object.keys(vars(args)).sort(), ["number", "owner", "query", "repo"]);
-      assert.equal(vars(args).query, QUERIES.kept);
-      assert.equal(args[args.indexOf(`number=${vars(args).number}`) - 1], "-F", "the number goes as a number");
-    }
+    assert.equal(kept.length, 1);
+    const [{ args }] = kept;
+    const v = vars(args);
+    assert.deepEqual([0, 1, 2].map((n) => v[`n${n}`]), ["31", "40", "99"], "WEB-11 is loaded, OTHER has no repo");
+    assert.equal(v.u3, undefined, "only the slots asked are turned on");
+    assert.deepEqual(Object.keys(v).sort(), ["n0", "n1", "n2", "o0", "o1", "o2", "query", "r0", "r1", "r2", "u0", "u1", "u2"]);
+    assert.equal(v.query, QUERIES.kept);
+    assert.equal(args[args.indexOf("n0=31") - 1], "-F", "the number goes as a number");
     const loaded = { ...dataOf({ mine: d.mine.map((i) => i.key), parents: d.parents.map(issue), children: d.children.map(issue) }), kept: d.kept };
     const items = build(loaded, new Map(), {});
     assert.deepEqual(items.find((x) => x.key === "WEB-30").reassigned, { to: ["Priya Nair"] });

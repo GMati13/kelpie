@@ -12,6 +12,7 @@ import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { DEMO_PROJECT_PROFILE } from "../lib/stories.mjs";
+import { readFileSync } from "node:fs";
 
 const PROFILE = { jira: null, project: DEMO_PROJECT_PROFILE.project };
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -47,4 +48,38 @@ test("a story's details on a GitHub Project: the Markdown description and its su
   const { el } = await draw(new StoryBody());
   assert.ok(byId(el, "story-desc-more"), "the description is drawn, folded");
   snap("github/body", el);
+});
+
+// KELPIE-129: GitHub's limit as the demo plays it (fixture github.limit, demo.js demoLimit()): a card
+// under the freshness line says the stories may be behind and until when, whole (a note on the
+// freshness line was cut off before its time). Used up, the stories stay, as old as they are. Its
+// time is the clock's, so the words are checked rather than snapshotted.
+const T = "\\d+:\\d\\d [AP]M";
+for (const [limit, title, line] of [
+  ["used", "GitHub's limit is used up", new RegExp(`^These stories are as they were at ${T}\\. Kelpie can't update them until ${T}, when GitHub lets it ask again\\.$`)],
+  ["low", "GitHub's limit is running low", new RegExp(`^Kelpie updates the stories only every 10 minutes until ${T}, so they may be a little behind\\.$`)],
+]) {
+  test(`the demo's GitHub limit ${limit === "used" ? "used up" : "running low"}: a card says the stories may be behind`, async () => {
+    world({ stories: { ...stories, at: Date.now() - 10 * 60e3 } }); // loaded 10 minutes ago
+    // The fixture as read from disk, with its github.limit set.
+    const text = readFileSync(new URL("../../mods/kelpie/demo/demo.json", import.meta.url), "utf8");
+    const base = mock.on.readTextFile;
+    mock.on.readTextFile = (path, ...rest) => (String(path).endsWith("demo/demo.json") ? JSON.stringify({ ...JSON.parse(text), github: { limit, resets: "+25m" } }) : base?.(path, ...rest));
+    const { cx } = await draw(new StoryList());
+    await cx.settle();
+    const el = (await draw(new StoryList(), { init: () => {} })).el;
+    const card = texts(byId(el, "stories-limit"));
+    assert.equal(card[0], title);
+    assert.match(card[1], line);
+    const fresh = texts(byId(el, "stories-fresh"));
+    assert.ok(!fresh.some((x) => /GitHub/.test(x)), "said once, in the card, not cut off on the freshness line");
+    assert.ok(byId(el, "story-ACME-142"), "the stories stay");
+    if (limit === "used") assert.ok(fresh.some((x) => /10m ago/.test(x)), "shown as old as they are, not as just loaded");
+  });
+}
+
+test("the demo's GitHub limit is off as the fixture comes", async () => {
+  world();
+  const { el } = await draw(new StoryList());
+  assert.equal(byId(el, "stories-limit"), null);
 });

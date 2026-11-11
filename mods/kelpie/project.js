@@ -13,7 +13,8 @@
 // fixture by the operation's name.
 
 import { gh } from "./pulls.js";
-import { demoProject } from "./demo.js";
+import { demoLimit, demoProject } from "./demo.js";
+import { limitMessage } from "./ghlimit.js";
 import { GITHUB_LOGIN, prefixFor } from "./config.js";
 import { projectCategory } from "./board.js";
 
@@ -45,28 +46,42 @@ const PROJECT = `id title url
     nodes { id type isArchived
       fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2IterationField { id } } } } }
       content { ... on Issue { ${ISSUE} } } } }`;
+// What GitHub says is left of the account's GraphQL budget, asked in every load's queries (pulls.js
+// gh() keeps it: Kelpie loads less often when it runs low, ghlimit.js).
+const BUDGET = "rateLimit { remaining limit resetAt }";
+// Kept stories asked for in one query (keptProject()): KEPT_SLOTS slots, each a repo and an issue
+// number, the unused ones skipped (`@include`). The text is the same every time; only variables vary.
+export const KEPT_SLOTS = 25;
+const slots = Array.from({ length: KEPT_SLOTS }, (_, n) => n);
 export const QUERIES = Object.freeze({
-  user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String) { user(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
-  org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String) { organization(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
-  stories: `query KelpieStories($ids: [ID!]!) { nodes(ids: $ids) { ... on Issue { ${ISSUE} subIssues(first: 50) { nodes { ${ISSUE} } } } } }`,
-  // A kept story's issue by its key (keptProject()): its node id and its parent's, and who gh runs as.
-  kept: `query KelpieKept($owner: String!, $repo: String!, $number: Int!) { viewer { login } repository(owner: $owner, name: $repo) { issue(number: $number) { id parent { id } } } }`,
+  user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
+  org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
+  // The stories, with only their sub-issues' ids: GitHub charges a nested connection for every item
+  // it could hold, so the sub-issues' own fields asked here (50 slots × each one's connections) cost
+  // 125 points for 61 stories, a load. They're asked flat instead (`subs`), about 4 points per 100.
+  stories: `query KelpieStories($ids: [ID!]!) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} subIssues(first: 50) { nodes { id } } } } }`,
+  subs: `query KelpieSubIssues($ids: [ID!]!) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} } } }`,
+  // Kept stories' issues by key (keptProject()): each slot's node id and its parent's, and who gh runs as.
+  kept: `query KelpieKept(${slots.map((n) => `$o${n}: String = "", $r${n}: String = "", $n${n}: Int = 0, $u${n}: Boolean = false`).join(", ")}) { ${BUDGET} viewer { login } ${slots.map((n) => `k${n}: repository(owner: $o${n}, name: $r${n}) @include(if: $u${n}) { issue(number: $n${n}) { id parent { id } } }`).join(" ")} }`,
 });
 
-// One GraphQL call, answered as its data, or an error in gh's own words.
-async function ask(board, args) {
+// One GraphQL call, answered as its data, or an error in gh's own words. `partial`: an answer whose
+// only errors are things GitHub says aren't there (an issue deleted or moved) is still its data.
+async function ask(board, args, { partial = false } = {}) {
   const all = ["api", "graphql", ...args];
-  if (board.cfg.demo) return (await demoProject(all)).data;
+  if (board.cfg.demo) {
+    const answer = await demoProject(all); // reads the fixture, so demoLimit() knows it
+    const used = demoLimit();
+    if (used?.until) throw new Error(limitMessage(used)); // the demo's GitHub limit used up (fixture github.limit)
+    return answer.data;
+  }
   const r = await gh(board.account, all);
   let out = null;
   try { out = JSON.parse(r.stdout || "null"); } catch { out = null; }
   const said = out?.errors?.[0]?.message ?? (r.stderr || "").trim().split("\n")[0].replace(/^gh: /, "");
-  if (r.code !== 0 || !out?.data) {
-    const e = new Error(said || "GitHub didn't answer the Project's question.");
-    // Only things GitHub says aren't there (an issue deleted or moved): keptProject() skips those.
-    e.notFound = Boolean(out?.errors?.length) && out.errors.every((x) => x?.type === "NOT_FOUND");
-    throw e;
-  }
+  const notFound = Boolean(out?.errors?.length) && out.errors.every((x) => x?.type === "NOT_FOUND");
+  if (partial && notFound && out?.data) return out.data;
+  if (r.code !== 0 || !out?.data) throw new Error(said || "GitHub didn't answer the Project's question.");
   return out.data;
 }
 
@@ -85,23 +100,32 @@ const today = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.g
 
 // The stories of `keep.keys` (stories.js hereKeys(): something of them is still here) that the load
 // doesn't have (`have`): each key's issue found in its repo (`repos`, by key prefix: a key of no known
-// repo is skipped), a sub-issue's story taken instead. { ids: the stories' node ids, viewer: the login
-// gh runs as }. A key GitHub says isn't there (an issue deleted or moved) is skipped; any other
-// failure fails the load, as one that left kept stories out would have their paused agents pruned.
+// repo is skipped), a sub-issue's story taken instead, KEPT_SLOTS keys a query. { ids: the stories'
+// node ids, viewer: the login gh runs as }. A key GitHub says isn't there (an issue deleted or moved)
+// is skipped; any other failure fails the load, as one that left kept stories out would have their
+// paused agents pruned.
 const REPO_PART = /^[A-Za-z0-9._-]{1,100}$/;
 async function keptProject(board, keep, have, repos) {
-  const ids = [];
-  let viewer = null;
+  const asks = [];
   for (const key of new Set(keep.keys ?? [])) {
     if (!KEY.test(key) || have.has(key)) continue;
     const at = key.lastIndexOf("-");
     const [owner, repo, extra] = String(repos[key.slice(0, at)] ?? "").split("/");
     if (extra !== undefined || !REPO_PART.test(owner ?? "") || !REPO_PART.test(repo ?? "")) continue;
-    const data = await ask(board, ["-f", `owner=${owner}`, "-f", `repo=${repo}`, "-F", `number=${key.slice(at + 1)}`, "-f", `query=${QUERIES.kept}`]).catch((e) => { if (e?.notFound) return null; throw e; });
+    asks.push({ owner, repo, number: key.slice(at + 1) });
+  }
+  const ids = [];
+  let viewer = null;
+  for (let at = 0; at < asks.length; at += KEPT_SLOTS) {
+    const chunk = asks.slice(at, at + KEPT_SLOTS);
+    const vars = chunk.flatMap((a, n) => ["-f", `o${n}=${a.owner}`, "-f", `r${n}=${a.repo}`, "-F", `n${n}=${a.number}`, "-F", `u${n}=true`]);
+    const data = await ask(board, [...vars, "-f", `query=${QUERIES.kept}`], { partial: true });
     viewer ??= data?.viewer?.login ?? null;
-    const issue = data?.repository?.issue;
-    const id = issue?.parent?.id ?? issue?.id;
-    if (typeof id === "string" && NODE_ID.test(id) && !ids.includes(id)) ids.push(id);
+    chunk.forEach((_, n) => {
+      const issue = data?.[`k${n}`]?.issue;
+      const id = issue?.parent?.id ?? issue?.id;
+      if (typeof id === "string" && NODE_ID.test(id) && !ids.includes(id)) ids.push(id);
+    });
   }
   return { ids, viewer };
 }
@@ -159,14 +183,22 @@ export async function loadProject(board, keep = {}) {
     const id = x.content.parent?.id ?? x.content.id;
     if (NODE_ID.test(id) && !ids.includes(id)) ids.push(id);
   }
-  const storiesOf = async (list) => {
+  // Issues by node id, NODES a query.
+  const byIds = async (list, query) => {
     const out = [];
     for (let at = 0; at < list.length; at += NODES) {
       const chunk = list.slice(at, at + NODES);
-      const data = await ask(board, [...chunk.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${QUERIES.stories}`]);
+      const data = await ask(board, [...chunk.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${query}`]);
       out.push(...(data.nodes ?? []).filter((n) => n?.id));
     }
     return out;
+  };
+  // The stories, then their sub-issues by id, each put back under its story in the story's order.
+  const storiesOf = async (list) => {
+    const out = await byIds(list, QUERIES.stories);
+    const subIds = [...new Set(out.flatMap((s) => (s.subIssues?.nodes ?? []).map((c) => c?.id)).filter((id) => typeof id === "string" && NODE_ID.test(id)))];
+    const subs = new Map((await byIds(subIds, QUERIES.subs)).map((c) => [c.id, c]));
+    return out.map((s) => ({ ...s, subIssues: { nodes: (s.subIssues?.nodes ?? []).map((c) => subs.get(c?.id)).filter(Boolean) } }));
   };
   const stories = await storiesOf(ids);
 
