@@ -13,7 +13,7 @@ v_flex
           "1"
         div
         h_flex #story-next-tools {down:left click}
-      h_flex #queue-next [hover(bg=hover)] {click} tip="Go there ⌘⇧J"
+      h_flex #queue-next [hover(bg=hover)] {click} tip="Desk: an agent needs you\nIts agent is waiting for your answer\nGo there ⌘⇧J"
         div
           div
             div [bg=working/40] ~loop(opacity)

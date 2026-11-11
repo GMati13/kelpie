@@ -1,5 +1,5 @@
 v_flex #sp-list
-  h_flex #sp-ACME-151 [bg=hover hover(bg=hover)] {click}
+  h_flex #sp-ACME-151 [bg=hover hover(bg=hover)] {click} tip="ACME-151 Pay with Apple Pay at checkout\nChecks failing on ACME-152 (payments#97)"
     div
       div [bg=#ef7f62]
     v_flex

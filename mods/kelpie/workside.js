@@ -223,7 +223,7 @@ export class WorkSide {
       .when(Boolean(profile), (el) => el.children(deskRows(t, this.deskMenus, profile, { on: Boolean(desk?.active) })))
       .child(h_flex().flex_none().items_end().gap(4)
         .child(div().flex_1().min_w(0).child(groupHeader(t, "Working on", open.length)))
-        .child(div().flex_none().mb(1).child(iconButton(t, "plain-space-new", chrome("plus"), () => newSpace(), "New space (⌘N)"))))
+        .child(div().flex_none().mb(1).child(iconButton(t, "plain-space-new", chrome("plus"), () => newSpace(), "New space ⌘N"))))
       .when(open.length === 0, (el) => el.child(empty(t, profile ? "Nothing else open in this profile." : "Nothing open in this profile.")))
       .children(open.flatMap((sp) => {
         const here = list.filter((a) => a.space === sp.id);

@@ -128,6 +128,12 @@ describe("cleanUp", () => {
     assert.match(note(), /wasn't cleaned up: uncommitted work in its folders \(couldn't check them: boom\)/);
     assert.deepEqual(cleanRuns(), []);
   });
+  test("a check failing without a word says so plainly, naming no script", async () => {
+    mock.on.exec = (cmd) => (cmd === "python3" ? { code: 1, stdout: "", stderr: "" } : undefined);
+    await cleanUp(profile, story());
+    assert.match(note(), /wasn't cleaned up: uncommitted work in its folders \(couldn't check them\)/);
+    assert.doesNotMatch(note(), /\.py/);
+  });
 });
 
 // One clean-up of a story at a time (#78): a second press while the first ran once ran the clean-up

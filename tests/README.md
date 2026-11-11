@@ -209,6 +209,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
+- `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
+  the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
+  placeholders, so the agents' guide keeps up with the profile's settings.
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
