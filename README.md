@@ -4,11 +4,11 @@ A kelpie is the sheepdog that works the flock on its own and comes back only whe
 
 Kelpie is early and not stable yet: things change, sometimes a lot, between updates. Pull often, and run `./install.sh` again after you do.
 
-Layouts and mods for [Herdr](https://herdr.dev) built around profiles and stories: a profile's sprint in the sidebar (from a Jira board or a GitHub Project), each story as a Herdr space with its Claude agents, its pull requests, changes and screenshots, and a browser panel per profile.
+Layouts and mods for [Herdr](https://herdr.dev) built around profiles and stories: a profile's sprint in the sidebar (from a Jira board or a GitHub Project), each story as a Herdr space with its Claude agents, its pull requests, changes, screenshots and the Claude Artifacts its agents published, and a browser panel per profile.
 
 - `layouts/Kelpie.json` (the Quiet Pages look) and `layouts/Kelpie-Plain.json` (no skin), with their themes and previews
 - `mods/kelpie`: every Kelpie view (sidebar, story header, Changes, tab bar, footer, dialogs, skins)
-- `mods/kelpie-artifacts`: the Artifacts panel and the Screenshots view
+- `mods/kelpie-artifacts`: the Screenshots panel and a story's Screenshots view (the folder keeps its old name)
 
 ![A story whose agent is at work: the story's description above its agent's terminal, the sidebar's stories each marked with what they need](docs/screenshots/story.png)
 
@@ -122,7 +122,7 @@ Each profile can run on its own Claude account and its own GitHub account, so wo
   ```
 
   It saves the limits for Kelpie and prints nothing, so it replaces a status line you already have. A word after the path names the account in the footer (`… claude-statusline.sh Work`). With `HERDR_APP_HOME`, use that folder in the path.
-- **The Web panel:** run `terminal-browser config set render.presenter patched` once, for its images to draw in place.
+- **The Web panel:** run `terminal-browser config set render.presenter patched` once, for its images to draw in place. A story's Artifacts tab opens the Claude Artifacts its agents published there: sign the profile's browser in to claude.ai once, on the Claude account the profile's agents run on (an Artifact shows only to the account that made it), or use Open in browser.
 - **Kelpie's Claude Code plugin:** lets Claude set up a profile with you ("Let me configure it for you" in the profile dialog, which offers to install it), and show you where a story says something: ask the Claude you're talking to "where does the story say…?", and it opens the story in Kelpie with the passage marked in its description, instead of only quoting it. It also connects Claude to Next: any Claude can read your queue ("what's on my plate?") and add something it needs from you, such as a choice or a plan to read, which shows in Next under its name; What next? hands its suggestions in through it too, so it needs the plugin as well. Install it on each Claude account a profile uses; in Claude Code, from anywhere:
 
   ```
