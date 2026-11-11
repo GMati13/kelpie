@@ -817,10 +817,10 @@
   "web": { "playing": false },
   "asks": [
     {
-      "tab": "ACME-175",
-      "key": "ACME-175",
-      "action": "Pick how trips are stored offline",
-      "why": "Two ways to keep trips offline: I'd like your choice before I build one.",
+      "tab": "ACME-172",
+      "key": "ACME-171",
+      "action": "Pick the dark mode accent colour",
+      "why": "Two blues read well on the dark background: I'd like your choice before I set the token.",
       "at": "-6m"
     }
   ],

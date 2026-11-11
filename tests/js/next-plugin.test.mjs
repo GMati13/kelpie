@@ -9,7 +9,7 @@ import { mock } from "herdr";
 import { handlers } from "gpui-kit";
 import { put, tempDir } from "../lib/helpers.mjs";
 import { byId } from "../lib/snapshot.mjs";
-import { StoryList, addAsk, addNextRequest, getNextRequest, needQueueOf, storyItems, suggestNextRequest } from "../../mods/kelpie/stories.js";
+import { StoryList, addAsk, addNextRequest, getNextRequest, needQueueOf, settleAsks, storyItems, suggestNextRequest, syncTracking } from "../../mods/kelpie/stories.js";
 import { profileById } from "../../mods/kelpie/config.js";
 
 let stories, home, world;
@@ -97,6 +97,48 @@ describe("kelpie.add-next: an agent asks the person for something", () => {
     assert.ok(queue().some((x) => x.ask));
     mock.state.agents = mock.state.agents.filter((a) => a.tab_name !== "ACME-175");
     assert.ok(!queue().some((x) => x.ask));
+  });
+
+  // Answered in its own tab, not through Next: the agent ends the turn it asked in, then starts a new one.
+  const setStatus = (tab, status) => { mock.state.agents = mock.state.agents.map((a) => (a.tab_name === tab ? { ...a, status } : a)); };
+  test("goes once its agent, at rest after asking, starts a new turn: someone answered it", () => {
+    setStatus("ACME-175", "working");
+    addAsk(demo(), { action: "Read my plan", terminal: agentOf("ACME-175").address });
+    syncTracking();
+    assert.ok(queue().some((x) => x.ask), "still working on the turn it asked in");
+    setStatus("ACME-175", "done");
+    syncTracking();
+    assert.ok(queue().some((x) => x.ask), "its turn ended: waiting for the answer");
+    assert.equal(asks()[0].rest, true);
+    setStatus("ACME-175", "working");
+    assert.ok(!queue().some((x) => x.ask), "answered: hidden at once");
+    syncTracking();
+    assert.deepEqual(asks(), [], "and dropped");
+  });
+
+  test("an agent already at rest as it asks: its next turn answers it", () => {
+    setStatus("ACME-172", "idle");
+    addAsk(demo(), { action: "Pick the accent colour", terminal: agentOf("ACME-172").address });
+    setStatus("ACME-172", "working");
+    settleAsks();
+    assert.deepEqual(asks(), []);
+  });
+
+  test("a permission prompt in the turn it asked in doesn't answer it", () => {
+    setStatus("ACME-175", "working");
+    addAsk(demo(), { action: "Read my plan", terminal: agentOf("ACME-175").address });
+    for (const status of ["blocked", "working"]) { setStatus("ACME-175", status); settleAsks(); }
+    assert.equal(asks().length, 1);
+    assert.ok(queue().some((x) => x.ask));
+  });
+
+  test("another agent's turn leaves it, and an ask with no agent stays", () => {
+    setStatus("ACME-175", "done");
+    addAsk(demo(), { action: "Read my plan", terminal: agentOf("ACME-175").address });
+    addAsk(demo(), { action: "Look at this", key: "ACME-180" });
+    setStatus("ACME-172", "done"); settleAsks();
+    setStatus("ACME-172", "working"); settleAsks();
+    assert.deepEqual(asks().map((a) => a.action), ["Read my plan", "Look at this"]);
   });
 
   test("a profile with no board has no Next: refused, saying so", async () => {
