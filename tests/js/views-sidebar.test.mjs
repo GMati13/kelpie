@@ -422,3 +422,51 @@ test("a long open queue scrolls with the story list", async () => {
   assert.equal(view.queueOpen, true);
   assert.deepEqual(handle.calls.filter(([m]) => m === "scroll_to_item").map(([, a]) => a[0]), [0], "scrolled to the top");
 });
+
+// Picks the person asked for open Next's queue (#124): brew() notes the run in shared
+// kelpie.next.picked as it ends with picks, and every copy showing that profile opens once.
+test("picks from a run the person started open the queue in every copy, once", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const one = await sharedDraw(), two = await sharedDraw();
+  assert.ok(!one.view.queueOpen && !two.view.queueOpen, "folded before the run ends");
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW } });
+  for (const { view, cx } of [one, two]) {
+    const card = byId(view.render(cx), "story-next");
+    assert.ok(byId(byId(card, "queue-suggested"), "queue-suggest:ACME-180"), "open, Claude's picks in view");
+  }
+  // The person folds it: it stays folded.
+  handlers(one.view.render(one.cx)).find((h) => h.id === "story-queue").fn({}, one.cx);
+  assert.equal(one.view.queueOpen, false);
+  one.view.render(one.cx);
+  assert.equal(one.view.queueOpen, false, "their fold wins");
+});
+
+test("picks that came any other way don't open the queue", async () => {
+  setupDemoWorld({ stories });
+  // An agent's suggest_next, another copy's reload: picks, but no run of the person's.
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await sharedDraw();
+  view.render(cx);
+  assert.ok(!view.queueOpen, "picks alone");
+  // A run that ended before this copy was drawn (a reload since).
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 120e3, done: NOW - 60e3 } });
+  view.render(cx);
+  assert.ok(!view.queueOpen, "a run from before this copy");
+  // Another profile's run.
+  putShared("kelpie.next.picked", { other: { at: NOW - 60e3, done: NOW } });
+  view.render(cx);
+  assert.ok(!view.queueOpen, "another profile's run");
+});
+
+test("folded again while Claude worked, the queue stays folded", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.next.suggested", PICKS);
+  const { view, cx } = await sharedDraw();
+  const chevron = () => handlers(view.render(cx)).find((h) => h.id === "story-queue").fn({}, cx);
+  chevron();
+  chevron(); // opened and folded again, after the run began
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW } });
+  view.render(cx);
+  assert.ok(!view.queueOpen);
+});

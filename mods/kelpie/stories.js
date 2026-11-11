@@ -4037,6 +4037,20 @@ export class StoryList extends Stories {
     fetchAvatars(entry.data).catch(() => {});
   }
 
+  // Whether picks the person asked for arrived since this copy last looked (PICKS_ASKED, written by
+  // brew()): each copy opens the queue once per run, per profile, so another profile's run opens it
+  // the next time that profile shows. Not for picks that came before this copy was drawn (a reload),
+  // nor when the person folded the queue after asking: their fold wins. A queue of one has nothing
+  // to open, so the run counts as seen.
+  picksArrived(profile, many) {
+    const born = (this.queueBorn ??= Date.now());
+    const run = (shared(PICKS_ASKED) ?? {})[profile?.id];
+    const seen = (this.queueSeen ??= {});
+    if (!run || run.at <= (seen[profile.id] ?? 0)) return false;
+    seen[profile.id] = run.at;
+    return many && run.done >= born && !((this.queueFolded ?? 0) > run.at);
+  }
+
   // Next: one card, the whole queue's. A header line ("Next", how many items, Claude's picks as a ✨
   // badge, the chevron) over, folded, the queue's most urgent item, or, unfolded, the whole queue
   // inside the same border (queueList()), in order, the item shown lit: Next goes to the row after it.
@@ -4046,19 +4060,29 @@ export class StoryList extends Stories {
   // picks alone leads with one, and the card is then tinted, so it reads as generated. While Claude
   // has no picks, a slim magic button is the card's last row.
   // `shownKey`: the item on screen now (the story or review shown, "desk"), lit in the open queue.
-  nextCard(t, st, items, reviews, queue, top, shownKey) {
+  nextCard(t, st, items, reviews, queue, top, shownKey, cx) {
     const glow = (a) => alpha(t.accent, a);
     const picks = queue.filter((x) => x.suggest).length;
     const brewing = Boolean(brewingIn(st.profile));
     // A queue of one has nothing more to show unfolded: no chevron, and an open queue that drops to
     // one item folds rather than stay a list of one (#64).
     const many = queue.length > 1;
+    const scroll = () => this.listScrolls?.get(st.profile?.id ?? null).box;
+    // Picks the person asked for (a What next? run of theirs) open the queue once (#124).
+    if (this.picksArrived(st.profile, many)) {
+      this.queueOpen = true;
+      scroll()?.scroll_to_item(0);
+      // Then, once drawn open, the card's end: on a short sidebar its last group, Claude's picks,
+      // comes into view (an empty line after the card is the list's third child).
+      cx?.timer.after(30, (cx) => { scroll()?.scroll_to_item(2); cx.notify(); });
+    }
     if (!many) this.queueOpen = false;
     // Opening it brings the card's top into view: it scrolls with the list (#125), which may be
     // scrolled past it. The list's first child is an empty line, so "to the top" is its top.
     const toggle = (_e, cx) => {
       this.queueOpen = !this.queueOpen;
-      if (this.queueOpen) this.listScrolls?.get(st.profile?.id ?? null).box.scroll_to_item(0);
+      if (this.queueOpen) scroll()?.scroll_to_item(0);
+      else this.queueFolded = Date.now();
       cx.notify();
     };
     const open = Boolean(this.queueOpen);
@@ -4220,7 +4244,7 @@ export class StoryList extends Stories {
     const queue = needQueueOf(st.profile, items, reviews);
     const shownKey = shown?.key ?? (onDesk ? DESK_ITEM.key : undefined);
     const top = nextIn(queue, shownKey);
-    const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey) : this.allClear(t, st, items, reviews);
+    const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey, cx) : this.allClear(t, st, items, reviews);
     // The stories, grouped by where their work is on the board: in progress (what needs you first, as
     // ordered() keeps it), to do, and the sunk ones, handed over (sunkWords), each in the list's order.
     const words = sunkWords(boardOf(st.setup));
@@ -4368,6 +4392,8 @@ export class StoryList extends Stories {
         // which for a tall first child (an open queue) already partly in view wouldn't move.
         .child(div().id("work-side-list-top").flex_none().w_full().h(0))
         .when(Boolean(next), (el) => el.child(div().id("story-next-wrap").flex_none().px(INSET - 8).pb(10).child(next)))
+        // The card's end, revealed when Claude's picks open it (picksArrived()).
+        .child(div().id("story-next-end").flex_none().w_full().h(0))
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
@@ -5121,6 +5147,10 @@ const BREWING = "kelpie.next.brewing";
 const BREW_FOR = 10 * 60 * 1000;
 const brewingIn = (profile) => { const at = (shared(BREWING) ?? {})[profile?.id]; return at && Date.now() - at < BREW_FOR + 30000 ? at : null; };
 const setBrewing = (profile, at) => setShared(BREWING, { ...(shared(BREWING) ?? {}), [profile.id]: at });
+// A run the person started that handed picks in: { [profile id]: { at: its start, done: when it
+// ended } }, so every copy showing that profile opens Next's queue once (picksArrived()).
+const PICKS_ASKED = "kelpie.next.picked";
+const setPicked = (profile, at) => setShared(PICKS_ASKED, { ...(shared(PICKS_ASKED) ?? {}), [profile.id]: { at, done: Date.now() } });
 
 // Asks Claude for picks: `claude -p` on the profile's account, in its folder, no session saved,
 // with no file-editing tools (read only as the prompt says; what else it may use is its own
@@ -5143,6 +5173,7 @@ export async function brew(profile, task) {
     if (isDemo(profile)) {
       const { kept } = await applyPicks(profile, await demoSuggest());
       if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
+      else setPicked(profile, started);
       return;
     }
     if (!(await hasPlugin(profile))) { await askPlugin(profile, "what-next"); return; }
@@ -5158,6 +5189,7 @@ export async function brew(profile, task) {
     const got = (shared(SUGGESTED) ?? {})[profile.id];
     if (!got || got.at < started) throw new Error(`Claude finished without handing its suggestions to Kelpie. ${String(out.result ?? "").trim().split("\n").pop()}`.trim());
     if (!got.items?.length) notify({ title: "No suggestions this time", body: "Claude found nothing worth suggesting.", level: "info", timeout: 6000 });
+    else setPicked(profile, started);
   } catch (e) {
     notify({ title: "What next? didn't work", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 });
   } finally {
