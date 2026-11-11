@@ -272,6 +272,27 @@ test("the profile dialog's GitHub page: with an account picked, the shell functi
   snap("dialogs/profile-github", el);
 });
 
+// The guides on the Prompts, Messages and Story commands pages say what Kelpie does: a review agent
+// starts outside the checkout, What next? runs in the background with its hand-in added by Kelpie,
+// a pull request's button starts an agent when none is open, and a story's notes and status show in
+// its details (they once said the agent starts in the checkout, a JSON block to keep, the header).
+test("the profile dialog's Prompts, Messages and Story commands pages: their guides match what Kelpie does", () => {
+  const words = (page) => texts(profilePage(page)).join("\n");
+  const prompts = words("prompts");
+  assert.match(prompts, /starts the agent in the profile's folder, pointed at the checkout/);
+  assert.doesNotMatch(prompts, /starts the agent there/);
+  assert.match(prompts, /a Claude in the background, reading only/);
+  assert.match(prompts, /Kelpie adds how to hand the picks back/);
+  assert.doesNotMatch(prompts, /JSON|on the Desk that suggests|sub-task/);
+  const messages = words("messages");
+  assert.match(messages, /or start one with it when none is open/);
+  assert.doesNotMatch(messages, /already working on the pull request/);
+  const commands = words("commands");
+  assert.match(commands, /Its last line shows in the story's details/);
+  assert.match(commands, /its details show the first line this prints/);
+  assert.doesNotMatch(commands, /header/);
+});
+
 // The Board page: Jira or a GitHub Project (tab id `jira`, also opened as `board` or `project`).
 const DEMO_PROJECT = { url: "https://github.com/users/kelpie--demo/projects/1", owner: "kelpie--demo", ownerType: "user", number: 1, demo: true };
 
