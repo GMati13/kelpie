@@ -37,7 +37,7 @@ tests/lib/views.mjs     the demo as a Herdr world at a fixed time, a fake cx, dr
 tests/lib/snapshot.mjs  a view's element tree as text, compared with tests/snapshots/ (Snapshots, below)
 tests/js/*.test.mjs     mods' logic, under the stubs; views-*.test.mjs, what the views draw
 tests/snapshots/        the views' snapshots, one .txt per state (plain/: the Kelpie-Plain layout)
-tests/shell/*.test.mjs  shell scripts run for real in temp folders (jira.sh, install.sh, ...)
+tests/shell/*.test.mjs  shell scripts run for real in temp folders (jira.sh, gh.sh, avatar.sh, install.sh, ...)
 tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (unittest; helpers in kelpie_test.py)
 ```
 
@@ -191,9 +191,24 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
   offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
-  around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
+  around it. `configure`: Let me configure it for you, and the plugin check and install behind it.
+- Stories over time: `moved` (a ticket's new status shown at once, until a load agrees), `quick` (pull
+  requests read again when an agent's turn ends, and one an agent just opened shown at once), `reload` (a reload asked for mid-load isn't dropped),
+  `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
+  check behind a finished story's broom), `note` (where the last action's note shows), `avatars`
+  (assignees' pictures, fetched once).
+- Actions: `move-to-done`, `run-picks` (Claude's picks started together), `story-task-send` (the Merge
+  and Request approval menus' sends), `terminal` (a story's Terminal), `pulls` (Approve), `point` (what
+  Next points at in a story), `passage` (a description's passage shown), `playing` (the web panel's
+  sound mark), `menu-button` (a press on an open menu stays on it), `scroll` (each thing keeps its own
+  scroll position).
+- `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
+  patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
+- `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
+  gives and Check my shell, avatar.sh, install.sh with the icon and art copies, and e2e-demo.sh's guards.
+  `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
-  read incrementally, in a fake HOME).
+  read incrementally, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
 - `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
   the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
   placeholders, so the agents' guide keeps up with the profile's settings.
@@ -229,7 +244,7 @@ test with a diff, so a change to a view shows exactly what it changed.
 | `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered); the profile dialog's Agents, GitHub and Board pages (Jira, and a GitHub Project after a Check), and what its Board page saves (one board, prefixes, the board's prompt moving with it) |
 | `views-footer` | the Claude limits line (usual, near a limit with its reset time, past a reset), the profile picker row and menu |
 
-Not covered yet: the Changes view (`StoryView`, a virtual list whose rows Herdr draws on demand), the
+Not covered yet: what the Changes view draws (`StoryView`, a virtual list whose rows Herdr draws on demand), the
 profile dialog's other pages (`setup.js`), the pane headers (`panes.js`), the plain sidebar of a profile without
 Jira (`WorkSide.plain`), the older Hub roles and the `kelpie-artifacts` mod.
 
