@@ -160,8 +160,8 @@ TOOLS = [
             "they'd take it. Use it whenever they ask what needs them, what's on their plate, what's waiting or what "
             "to do next, rather than piecing it together from their board and GitHub: Kelpie already ranks it as they see it. "
             "Order: stories that need them (an agent waiting, changes requested, checks failing, ready to merge), what "
-            "agents asked of them, pull requests waiting for their review, the Desk's agent waiting, finished stories to "
-            "clean up, then Claude's suggestions. Each with its kind, key, what to do, a detail line and its link. For "
+            "agents asked of them, pull requests waiting for their review, the Desk's agent waiting, stories whose work is "
+            "finished to move to Done, finished stories to clean up, then Claude's suggestions. Each with its kind, key, what to do, a detail line and its link. For "
             "your own profile in Kelpie (the one of the space you run in), else the one Kelpie shows. Read-only."
         ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -440,7 +440,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.4.6"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.4.7"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":
