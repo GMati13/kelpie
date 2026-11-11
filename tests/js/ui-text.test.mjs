@@ -91,3 +91,16 @@ test("the Board page's Move to Done hint doesn't say built", () => {
   assert.match(words, /on each story past your part in the list/);
   assert.doesNotMatch(words, /each built story/);
 });
+
+// A tooltip gives its key after its words the same way everywhere, "Hide the sidebar ⌘B", never in
+// brackets as some did ("Split right (⌘D)").
+test("tooltips give their keys one way", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { repoFile } = await import("../lib/helpers.mjs");
+  for (const mod of ["mods/kelpie"]) {
+    for (const f of readdirSync(repoFile(mod)).filter((x) => x.endsWith(".js"))) {
+      const found = readFileSync(repoFile(`${mod}/${f}`), "utf8").match(/\([⌃⌥⇧⌘]+[^)]{1,3}\)/gu);
+      assert.equal(found, null, `${mod}/${f}: ${found}`);
+    }
+  }
+});
