@@ -162,6 +162,13 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   requests attached by closing links (a title's key wins), a Project issue's link, and the demo loaded as
   a Project building the same stories as the Jira demo (the parity test), and what a load costs of the
   account's GitHub budget (sub-issues asked flat, kept stories `KEPT_SLOTS` a query, `rateLimit` asked).
+- `linear.test.mjs`: a Linear team as the board (linear.js, through board.js) on a faked linear.sh: its
+  address (`parseLinear()`), one board a profile, the active cycle or none or no cycles, stories and their
+  sub-issues dressed as Jira's (states in Linear's board order as columns), kept stories by number, every
+  call a constant query with its values as variables, the sign-in as the profile names it and its errors
+  in plain words, a ticket's link, description, look-up and moves (only a key and a loaded state).
+  `tests/shell/linear.test.mjs` runs linear.sh itself: only Kelpie's own operations, sent to Linear's API
+  alone, the key only on curl's stdin and refused when it could add curl options.
 - `budget.test.mjs`: what one full story load may ask of GitHub (#150): a realistic Project profile against a
   fake gh that counts requests, how many run at once and their points by GitHub's own prices (written in
   the test, from `rateLimit(dryRun: true)`: measure again when a query changes), and the hour that makes.
