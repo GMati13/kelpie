@@ -12,8 +12,14 @@ import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { demoPulls } from "../../mods/kelpie/demo.js";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
-let stories;
-before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); });
+let stories, aloneStories;
+// Working alone (the board's `solo`): the stories loaded for that profile, as a list loaded for another
+// board setting isn't used (the header would only say Loading…).
+const ALONE = { jira: { ...demoProfile().jira, solo: true } };
+before(async () => {
+  setupDemoWorld({ profile: ALONE }); aloneStories = await loadStories(StoryList);
+  setupDemoWorld(); stories = await loadStories(StoryList);
+});
 
 // The header with the story's space shown (`space`), or a story previewed from the list (`preview`).
 async function header({ space = null, preview = null, view = null, shared = {}, ...opts } = {}) {
@@ -139,17 +145,16 @@ test("header: a pull request of yours with no ticket", async () => {
 
 // Working alone (#75), nobody can approve: no Request approval, a story's or a lone pull request's.
 test("header: working alone, no Request approval", async () => {
-  const alone = { jira: { ...demoProfile().jira, solo: true } };
   assert.ok(byId((await header({ space: "ACME-160" })).el, "story-approval-more"), "a team's story offers it");
-  assert.equal(byId((await header({ space: "ACME-160", profile: alone })).el, "story-approval-more"), null);
+  const solo = (await header({ space: "ACME-160", profile: ALONE, stories: aloneStories })).el;
+  assert.ok(byId(solo, "story-key"), "the header is drawn");
+  assert.equal(byId(solo, "story-approval-more"), null);
   // docs#58 waiting on reviewers, nothing else to do: a team's header offers Request approval.
-  const waiting = { ...stories, data: { ...stories.data, prs: stories.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } };
-  const prev = stories;
-  stories = waiting;
-  try {
-    assert.ok(byId((await header({ preview: "pull:docs#58" })).el, "pull-approval"), "a team's lone pull request offers it");
-    assert.equal(byId((await header({ preview: "pull:docs#58", profile: alone })).el, "pull-approval"), null);
-  } finally { stories = prev; }
+  const waiting = (st) => ({ ...st, data: { ...st.data, prs: st.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } });
+  assert.ok(byId((await header({ preview: "pull:docs#58", stories: waiting(stories) })).el, "pull-approval"), "a team's lone pull request offers it");
+  const lone = (await header({ preview: "pull:docs#58", profile: ALONE, stories: waiting(aloneStories) })).el;
+  assert.ok(byId(lone, "story-key"), "the header is drawn");
+  assert.equal(byId(lone, "pull-approval"), null);
 });
 
 test("Kelpie-Plain: the header of a story whose agent needs you", async () => {
