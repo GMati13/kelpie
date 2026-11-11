@@ -80,6 +80,29 @@ describe("needQueueOf: what Next goes through", () => {
     assert.equal(q[3].it.key, "HH-1", "a pick the list has carries its story");
     assert.equal(q[4].it, null, "one it doesn't opens on the web");
   });
+  // KELPIE-127: a pick hidden because its story needed you came back once the story stopped needing
+  // you (its pull request merged, before the next load showed it finished), as if Claude had run again.
+  test("a pick hidden once doesn't come back when the reason goes", () => {
+    const pick = (key) => ({ key, action: `Do ${key}`, why: "", title: "", url: "" });
+    mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["AA-1", "HH-1"].map(pick) } });
+    assert.deepEqual(keys(needQueueOf(profile, items(), [])).filter((k) => k.startsWith("suggest:")), ["suggest:HH-1"]);
+    assert.equal(mock.sharedValue(SUGGESTED).w.items[0].aside, "it already needs you", "kept with the picks, so every copy agrees");
+    // AA-1's change request is gone: it no longer needs you, nor is it finished or in progress.
+    const calm = ordered(build(data({ mine: ["AA-1", "HH-1"], parents: [issue("AA-1", "todo"), issue("HH-1", "todo")] }), new Map()));
+    assert.deepEqual(keys(needQueueOf(profile, calm, [])), ["suggest:HH-1"]);
+    // Fresh picks on that list would show it: it's the mark that keeps it out.
+    mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["AA-1", "HH-1"].map(pick) } });
+    assert.deepEqual(keys(needQueueOf(profile, calm, [])), ["suggest:AA-1", "suggest:HH-1"]);
+  });
+  test("a pick is set aside with one write, not one per draw", () => {
+    const pick = (key) => ({ key, action: `Do ${key}`, why: "", title: "", url: "" });
+    mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["AA-1", "HH-1"].map(pick) } });
+    const writes = () => mock.of("setShared").filter(([k]) => k === SUGGESTED).length;
+    needQueueOf(profile, items(), []);
+    assert.equal(writes(), 1);
+    needQueueOf(profile, items(), []);
+    assert.equal(writes(), 1);
+  });
   test("picks older than a day are gone", () => {
     mock.state.shared.set(SUGGESTED, { w: { at: Date.now() - 25 * 3600e3, items: [{ key: "CC-1", action: "x" }] } });
     assert.deepEqual(keys(needQueueOf(profile, items(), [])), ["BB-1", "AA-1", "clean"]);
@@ -120,8 +143,15 @@ describe("applyPicks: Claude's picks checked against the sidebar's rules", () =>
 
   test("a subtask in the list becomes its story, saying where it came from", async () => {
     const { kept } = await applyPicks(profile, [pick({ key: "ff-2" })]);
-    assert.deepEqual(kept, [{ key: "FF-1", title: "FF-1 title", action: "Do it", why: "Because", url: "https://jira.example.com/browse/FF-1", from: "FF-2" }]);
+    assert.deepEqual(kept, [{ key: "FF-1", title: "FF-1 title", action: "Do it", why: "Because", url: "https://jira.example.com/browse/FF-1", from: "FF-2", aside: "it's in progress" }]);
     assert.deepEqual(saved(), kept);
+  });
+  // KELPIE-127: what's shown is settled against the list as the picks arrive, so a pick hidden then
+  // can't show up later as if Claude had run again.
+  test("a pick hidden as it arrives is set aside at once, and says so to Claude", async () => {
+    const { kept } = await applyPicks(profile, [pick({ key: "AA-1" }), pick({ key: "HH-1" })]);
+    assert.deepEqual(kept.map((x) => [x.key, x.aside]), [["AA-1", "it already needs you"], ["HH-1", undefined]]);
+    assert.deepEqual(saved().map((x) => x.aside), ["it already needs you", undefined]);
   });
   test("a subtask not in the list becomes its story, as Jira says; a story's parent (its epic) isn't followed", async () => {
     const { kept } = await applyPicks(profile, [pick({ key: "AA-50" }), pick({ key: "AA-60" })]);

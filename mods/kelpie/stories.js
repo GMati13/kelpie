@@ -890,21 +890,43 @@ export function addAsk(profile, { action, why, key, url, terminal } = {}) {
 // became its story's) or "pr:<repo>#<n>". Kept a day. In the queue each is { key: "suggest:<key>",
 // suggest, it }, `it` its story while the list has it; it drops out once that story is finished,
 // handed over, already needs you or is in progress (underWay(): the person has it in hand already, so
-// Run all never starts a second agent on it), or when dismissed (its ✕ in the queue).
+// Run all never starts a second agent on it), or when dismissed (its ✕ in the queue). A pick that
+// drops out is set aside for good (`aside`, why in words, kept with the picks so every copy agrees):
+// those reasons can stop being true before the next load shows the story's new state (a pull request
+// ready to merge, then merged, neither needs you nor is sunk yet), and the pick came back as if
+// Claude had run again (#127). What's shown only shrinks until Claude is asked again.
 const SUGGESTED = "kelpie.next.suggested";
 const SUGGEST_FOR = 24 * 3600 * 1000;
 function suggestedIn(profile, items, needs = new Set()) {
-  const e = (shared(SUGGESTED) ?? {})[profile?.id];
+  const all = shared(SUGGESTED) ?? {};
+  const e = all[profile?.id];
   if (!e || Date.now() - e.at > SUGGEST_FOR) return [];
-  return (e.items ?? []).flatMap((s) => {
-    const it = items.find((x) => x.it.key === s.key)?.it ?? null;
+  // Why a pick isn't shown now, in words; null when it is.
+  const asideWhy = (s, it) => {
     // A pull request picked ("pr:<repo>#<n>") that's already in the queue as a review or a lone pull
     // request of yours is there already: not again as a pick.
     const pr = s.key.startsWith("pr:") ? s.key.slice(3) : null;
-    if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`))) || (it && (finished(it) || sunk(it) || underWay(it)))) return [];
-    return [{ key: `suggest:${s.key}`, suggest: s, it }];
+    if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`)))) return "it already needs you";
+    if (!it) return null;
+    return finished(it) ? "it's finished" : sunk(it) ? "your part is done" : underWay(it) ? "it's in progress" : null;
+  };
+  let changed = false;
+  const settled = (e.items ?? []).map((s) => {
+    if (s.aside) return s;
+    const why = asideWhy(s, items.find((x) => x.it.key === s.key)?.it ?? null);
+    if (!why) return s;
+    changed = true;
+    return { ...s, aside: why };
   });
+  // Written only when a pick was newly set aside, so a render doing it draws once more and settles.
+  if (changed) setShared(SUGGESTED, { ...all, [profile.id]: { ...e, items: settled } });
+  return settled.filter((s) => !s.aside).map((s) => ({ key: `suggest:${s.key}`, suggest: s, it: items.find((x) => x.it.key === s.key)?.it ?? null }));
 }
+// The picks set aside (suggestedIn()), for the heading to say so.
+const asideIn = (profile) => {
+  const e = (shared(SUGGESTED) ?? {})[profile?.id];
+  return e && Date.now() - e.at <= SUGGEST_FOR ? (e.items ?? []).filter((s) => s.aside) : [];
+};
 function dismissSuggestion(profile, key) {
   const all = shared(SUGGESTED) ?? {};
   const e = all[profile?.id];
@@ -1769,7 +1791,7 @@ export function suggestNextRequest() {
     const profile = profileHasNext(requestProfile(req));
     if (!Array.isArray(req?.items)) throw new Error("items: a list of picks.");
     const { kept, dropped } = await applyPicks(profile, req.items.slice(0, PICKS_IN));
-    return { ok: true, profile: profile.name, kept: kept.map((k) => (k.idea ? `idea: ${k.action}` : `${k.key.replace(/^pr:/, "")}: ${k.action}`)), dropped };
+    return { ok: true, profile: profile.name, kept: kept.map((k) => `${k.idea ? "idea" : k.key.replace(/^pr:/, "")}: ${k.action}${k.aside ? ` (set aside: ${k.aside})` : ""}`), dropped };
   });
 }
 
@@ -4031,11 +4053,14 @@ export class StoryList extends Stories {
   suggestBox(t, st, items, reviews, said, row) {
     const glow = (a) => alpha(t.accent, a);
     const at = (shared(SUGGESTED) ?? {})[st.profile.id]?.at;
+    const aside = asideIn(st.profile);
     const runAll = said.length > 1 && picksPlan(said).some((p) => p.run);
     return v_flex().id("queue-suggested").flex_none().pb(2).gap(2).rounded(8).bg(glow(0.07))
       .child(h_flex().flex_none().pl(10).pr(2).pt(4).gap(6).items_center()
         .child(icon(own("sparkles"), 12).text_color(t.accent))
-        .child(div().flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.accent).child(`Suggested by Claude${at ? ` · ${ago(at)}` : ""}`))
+        .child(div().id("queue-suggested-head").flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.accent)
+          .when(aside.length > 0, (el) => el.tooltip(`Set aside until Claude is asked again: ${aside.map((s) => `${s.idea ? s.action : s.key.replace(/^pr:/, "")}, as ${s.aside}`).join("; ")}`))
+          .child(`Suggested by Claude${at ? ` · ${ago(at)}` : ""}${aside.length ? ` · ${aside.length} set aside` : ""}`))
         .when(runAll, (el) => el.child(h_flex().id("queue-run-all").flex_none().px(6).py(2).gap(4).items_center().rounded(6).cursor_pointer().text_size(SMALL).text_color(t.dim)
           .hover((x) => x.bg(glow(0.14)).text_color(t.accent)).tooltip("Start every pick at once, each in its own agent: you'll see what each does first")
           .on_click(() => askRunPicks(st.profile, said))
@@ -5193,7 +5218,10 @@ async function applyPicks(profile, items) {
   // Ideas always come after tickets and pull requests.
   const ordered = [...kept.filter((x) => !x.idea), ...kept.filter((x) => x.idea)];
   setShared(SUGGESTED, { ...(shared(SUGGESTED) ?? {}), [profile.id]: { at: Date.now(), items: ordered } });
-  return { kept: ordered, dropped };
+  // Settled against the list as it is now: a pick hidden from the start is set aside at once, so it
+  // can't show up later (suggestedIn()). A list that won't build leaves that to the next render.
+  try { const s = itemsFor(profile); if (s) needQueueOf(profile, s.items, s.reviews); } catch { /* settled when drawn */ }
+  return { kept: (shared(SUGGESTED) ?? {})[profile.id]?.items ?? ordered, dropped };
 }
 
 // cmd-shift-j, the list's "Next": each press goes to what needs you after the item shown (the stories

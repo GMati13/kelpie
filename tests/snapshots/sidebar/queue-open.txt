@@ -159,8 +159,8 @@ v_flex
       v_flex #queue-suggested [bg=accent/12]
         h_flex
           svg own:sparkles [fg=accent]
-          div [fg=accent]
-            "Suggested by Claude · 20m"
+          div #queue-suggested-head [fg=accent] tip="Set aside until Claude is asked again: web#421, as it already needs you"
+            "Suggested by Claude · 20m · 1 set aside"
           h_flex #queue-run-all [fg=dim hover(bg=accent/24 fg=accent)] {click} tip="Start every pick at once, each in its own agent: you'll see what each does first"
             svg own:play
             "Run all"
