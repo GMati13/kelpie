@@ -17,7 +17,7 @@ import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll,
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
-import { goDesk } from "./desk.js";
+import { deskAgents, goDesk, pauseDesk, pauseDeskByKey } from "./desk.js";
 import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, syncSkin } from "./skins/index.js";
 
@@ -174,18 +174,26 @@ function newTerminal(work = storyNow(), space = spaces().find((s) => s.active)) 
 
 // Closing a tab (its ✕, cmd-w): the last tab of a space closes the space, so that asks first, in words
 // that say what happens; any other tab closes at once. A story's space is paused by default (its
-// agents' sessions kept as paused, as the header's Pause does), or just closed.
+// agents' sessions kept as paused, as the header's Pause does), or just closed. So is the Desk while
+// an agent runs in it (its sessions offered again when it opens).
 function closeTab(id) {
   const space = spaces().find((s) => s.tabs.some((c) => c.id === id));
   if (!space || space.tabs.length > 1) return run("tab.close", { id });
   const key = storyKeyOf(space);
   const close = { name: "tab.close", args: { id, confirmed: true } };
+  const desk = isDesk(space) && deskAgents(shownProfile()).length > 0;
   openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 170, props: key
     ? { role: "confirm", title: `Leave ${key}?`, yes: "Pause", command: { name: `${MOD}.pause-story-${key}` }, alt: { label: "Close", command: close },
       detail: "Pause keeps its agents' sessions, to Resume from the story list. Close just closes its space." }
+    : desk ? { role: "confirm", title: "Leave the Desk?", yes: "Pause", command: { name: `${MOD}.pause-desk` }, alt: { label: "Close", command: close },
+      detail: "Pause keeps its agents' sessions, to resume when the Desk opens again. Close just closes it." }
     : { role: "confirm", title: `Close ${space.name}?`, yes: "Close", command: close,
       detail: isDesk(space) ? "It's the Desk's last tab, so the Desk closes with it. It opens again from the sidebar or ⌥⌘D." : "It's the space's last tab, so the space closes with it." } });
 }
+
+// ⌥⌘P on the Desk, pressed once where it asks first: { what, at } (desk.js pauseDeskByKey). The
+// command loop runs in the one shown toolbar copy, so a module value is enough here.
+const deskArmed = { what: null, at: 0 };
 
 // The toolbar's open menu (ui.js menuButton keeps it here: the toolbar is a function, not a view).
 const toolbarMenu = {};
@@ -630,6 +638,8 @@ async function command(c) {
   if (c === "add-next") return addNextRequest();
   if (c === "suggest-next") return suggestNextRequest();
   if (c.startsWith("pause-story-")) return pauseStoryByKey(c.slice("pause-story-".length));
+  // pause-desk: the Desk's agents paused and the Desk closed (its close dialog's and Pause dialog's Pause).
+  if (c === "pause-desk") return pauseDesk();
   if (c.startsWith("clean-story-")) return cleanStoryByKey(c.slice("clean-story-".length));
   if (c === "clean-all") return cleanAll();
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
@@ -640,6 +650,8 @@ async function command(c) {
   if (c === "demo-remove") return removeDemo().catch((e) => notify({ title: "The demo wasn't removed", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo") return setupDemo().catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   const work = storyNow();
+  // ⌥⌘P on the Desk (not a story previewed over it): its focused agent, else the whole Desk.
+  if (c === "pause" && !work?.story && isDesk(spaces().find((s) => s.active))) return pauseDeskByKey(shownProfile(), deskArmed);
   if (!work?.story) return;
   if (c === "start") return work.start();
   if (c === "pause") return work.pause();

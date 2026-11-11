@@ -179,6 +179,13 @@ test("the Desk closed, and open without an agent", async () => {
   snap("sidebar/desk-no-agent", deskRows(t, {}, profileById(DEMO)));
 });
 
+// Paused (desk.js pauseDesk, #16): the closed Desk's row says so, and its menu offers them first.
+test("the Desk closed with paused agents, its menu open", async () => {
+  setupDemoWorld({ stories, spaces: [] });
+  putShared("kelpie.desk.paused", { [DEMO]: [{ sessionId: "demo-d1", cwd: "/demo", name: "Claude", at: NOW - 40 * 60e3 }, { sessionId: "demo-d2", cwd: "/demo", name: "Idea: tidy the docs", at: NOW - 5 * 60e3 }] });
+  snap("sidebar/desk-paused", deskRows(skinTheme(), { menu: "desk-open" }, profileById(DEMO)));
+});
+
 // The top of the list: the freshness line and the counts (its root's first child, pinned), then Next
 // (the list's first item, as it scrolls with the list, #125), drawn together.
 const head = (el) => v_flex().child(nodeOf(el).calls.find(([m]) => m === "child")[1][0]).child(byId(el, "story-next-wrap"));

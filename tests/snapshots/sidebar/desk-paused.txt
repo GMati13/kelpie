@@ -1,0 +1,43 @@
+h_flex
+  div
+    div
+      div [font="DM Sans" fg=muted]
+        "DESK"
+      div
+        div
+          div [bg=dim/f2] ×32 … [bg=dim/1a]
+  h_flex
+    Popup.new "desk-new-menu"
+      div #desk-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal on the Desk"
+        svg chrome:plus
+Popup.new "desk-open-menu"
+  h_flex #desk-open-more [bg=selected fg=muted] {click} tip="Resume its paused agents, or start something new on it ⌥⌘D"
+    div
+      svg own:house [fg=dim]
+    div
+      "Open the Desk · 2 paused"
+  @content
+    v_flex #desk-open-menu-list [bg=popover border=border fg=foreground] {down:left click down_out}
+      div [fg=dim]
+        "Paused"
+      h_flex #desk-open-row-1 [hover(bg=hover)] {click} tip="Each paused agent back in its own tab, on its session"
+        div
+          "Resume all 2"
+      h_flex #desk-open-row-2 [hover(bg=hover)] {click} tip="Resume it on its session, in /demo"
+        div
+          "Claude"
+        div [fg=dim]
+          "40m ago"
+      h_flex #desk-open-row-3 [hover(bg=hover)] {click} tip="Resume it on its session, in /demo"
+        div
+          "Idea: tidy the docs"
+        div [fg=dim]
+          "5m ago"
+      div [fg=dim]
+        "New"
+      h_flex #desk-open-row-5 [hover(bg=hover)] {click} tip="A Claude agent with no task, in the profile's folder"
+        div
+          "Claude"
+      h_flex #desk-open-row-6 [hover(bg=hover)] {click} tip="A shell in the profile's folder"
+        div
+          "Terminal"

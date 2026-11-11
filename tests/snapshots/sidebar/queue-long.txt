@@ -165,6 +165,8 @@ v_flex #work-side-list-demo
           div
             div [bg=dim/f2] ×32 … [bg=dim/1a]
     h_flex
+      div #desk-pause [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Pause the Desk ⌥⌘P: keeps its agents' sessions, to resume when it opens again"
+        svg own:pause
       Popup.new "desk-sessions-menu"
         div #desk-sessions-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Earlier sessions with no ticket"
           svg chrome:clock
