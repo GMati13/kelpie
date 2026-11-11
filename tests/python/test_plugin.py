@@ -40,7 +40,8 @@ case "$FAKE_ANSWER" in
       next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
       next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
     esac ;;
-  fail) echo "no Herdr window" >&2; exit 1 ;;
+  odd) answer '["not", "an", "answer"]' ;;
+  fail) echo "no Herdr window." >&2; exit 1 ;;
   silent) ;;
 esac
 """
@@ -100,6 +101,13 @@ class Server(unittest.TestCase):
         self.assertFalse(tools["add_to_next"]["annotations"]["readOnlyHint"])
         self.assertEqual(tools["add_to_next"]["inputSchema"]["required"], ["action"])
 
+    def test_the_evals_stand_in_has_the_tools_as_the_server_lists_them(self):
+        # The evals answer every Kelpie tool from plugin/evals/mocks/kelpie/, whose _tools.json is
+        # what the agent is shown: stale, the evals would test descriptions nobody installs.
+        [listed] = self.talk({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        with open(os.path.join(REPO, "plugin", "evals", "mocks", "kelpie", "_tools.json")) as f:
+            self.assertEqual(json.load(f), listed["result"], "save it again from the server: tests/README.md")
+
     def test_unknown_methods_tools_and_bad_lines_are_errors_not_crashes(self):
         bad, unknown, tool, ping = self.talk(
             "not json",
@@ -112,6 +120,19 @@ class Server(unittest.TestCase):
         self.assertEqual(tool["error"]["code"], -32602)
         self.assertEqual(ping["result"], {})
         self.assertEqual(self.calls(), [])
+
+    def test_an_answer_it_cant_read_is_an_error_and_the_server_goes_on(self):
+        # Valid JSON that isn't an answer, or profiles that aren't a list of them, once ended the
+        # server: Claude then lost every Kelpie tool until it restarted.
+        write(os.path.join(self.home, "shared.json"), '{"kelpie.profiles": ["work"]}')
+        passage, profile, ping = self.talk(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "show_passage", "arguments": {"key": "ABC-12", "quote": "Done when it works"}}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "get_profile", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 3, "method": "ping"}, answer="odd")
+        for reply in (passage, profile):
+            self.assertTrue(reply["result"]["isError"])
+            self.assertIn("Kelpie's plugin", reply["result"]["content"][0]["text"])
+        self.assertEqual(ping["result"], {})
 
     def test_a_passage_is_written_for_kelpie_and_its_answer_returned(self):
         text, failed = self.call({"key": "abc-12", "quote": "Done  when\nit works", "note": "The criteria"})
@@ -146,6 +167,7 @@ class Server(unittest.TestCase):
         text, failed = self.call({"key": "ABC-12", "quote": "Done when it works"}, answer="fail")
         self.assertTrue(failed)
         self.assertIn("no Herdr window", text)
+        self.assertTrue(text.endswith("no Herdr window."), "Herdr's own words, one full stop: " + text)
         self.assertFalse(os.path.exists(self.kelpie("passage.json")))
         text, failed = self.call({"key": "ABC-12", "quote": "Done when it works"}, path="/usr/bin:/bin")
         self.assertTrue(failed)
@@ -309,6 +331,33 @@ class Server(unittest.TestCase):
         text, failed = self.call({"action": "Read my plan"}, tool="add_to_next", answer="refuse")
         self.assertTrue(failed)
         self.assertTrue(text.startswith("Kelpie didn't add it: "))
+
+
+class Manifests(unittest.TestCase):
+    """What someone browsing or installing the plugin reads: the marketplace's entry and the plugin's
+    own manifest say the same, and point to where Kelpie lives."""
+
+    def read(self, *path):
+        with open(os.path.join(REPO, *path)) as f:
+            return json.load(f)
+
+    def test_the_marketplace_lists_the_plugin_as_it_describes_itself(self):
+        market, plugin = self.read(".claude-plugin", "marketplace.json"), self.read("plugin", ".claude-plugin", "plugin.json")
+        [entry] = market["plugins"]
+        self.assertEqual((market["name"], entry["name"], plugin["name"]), ("kelpie", "kelpie", "kelpie"), "installed as kelpie@kelpie")
+        self.assertEqual(entry["source"], "./plugin")
+        self.assertEqual(entry["description"], plugin["description"])
+        self.assertIn("Next", market["description"], "the marketplace says what the plugin does, not only part of it")
+        self.assertIn("Herdr", plugin["description"], "says it needs Kelpie in Herdr")
+
+    def test_the_manifest_has_what_a_published_plugin_shows(self):
+        plugin = self.read("plugin", ".claude-plugin", "plugin.json")
+        self.assertRegex(plugin["version"], r"^\d+\.\d+\.\d+$")
+        with open(os.path.join(REPO, "LICENSE")) as f:
+            self.assertTrue(f.readline().startswith(plugin["license"]), "the licence is the repo's")
+        for key in ("homepage", "repository"):
+            self.assertRegex(plugin.get(key, ""), r"^https://github\.com/[\w-]+/kelpie$", key)
+        self.assertEqual(plugin["homepage"], plugin["repository"])
 
 
 if __name__ == "__main__":

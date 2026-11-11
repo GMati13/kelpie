@@ -75,7 +75,17 @@ describe("configureOnDesk", () => {
     assert.equal(spec.props.installPlugin, "work");
     assert.equal(spec.props.yes, "Install it");
     assert.match(spec.props.detail, /\.claude-work/, "names the account it's missing on");
-    assert.deepEqual(spec.props.items.map((x) => x.text), [`claude plugin marketplace add ${REPO.replace(/\/$/, "")}`, `claude plugin install ${PLUGIN}`]);
+    // On the profile's account: a plain claude would install it on ~/.claude instead.
+    const claude = `CLAUDE_CONFIG_DIR=${home}/.claude-work claude`;
+    assert.deepEqual(spec.props.items.map((x) => x.text), [`${claude} plugin marketplace add ${REPO.replace(/\/$/, "")}`, `${claude} plugin install ${PLUGIN}`]);
+  });
+  test("on the Default account the commands to copy are plain claude; a folder with a space is quoted", async () => {
+    await configureOnDesk({ id: "own", name: "Own", folder: "/own" }, "all");
+    assert.deepEqual(dialogs()[0][0].props.items.map((x) => x.text.split(" plugin ")[0]), ["claude", "claude"]);
+    mock.reset();
+    mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH, HOME: home } });
+    await configureOnDesk({ id: "x", name: "X", folder: "/x", claude: { config: `${home}/.claude-my work` } }, "all");
+    assert.equal(dialogs()[0][0].props.items[1].text, `CLAUDE_CONFIG_DIR='${home}/.claude-my work' claude plugin install ${PLUGIN}`);
   });
   test("its Install it runs both commands on the profile's account, values as arguments, never in the script", async () => {
     await configureOnDesk(work(), "status");
@@ -111,6 +121,8 @@ describe("configureOnDesk", () => {
     assert.deepEqual(ok.calls, ["plugin|marketplace|add|/repo|", `plugin|install|${PLUGIN}|`, "Configure it|"]);
     const failed = runIt("Configure it", true);
     assert.equal(failed.calls.length, 2, "no Claude after a failed install");
+    assert.match(failed.out, /The plugin didn't install: Claude's message above says why\./, "a failed install says so in Kelpie's words too");
+    assert.doesNotMatch(failed.out, /Installed/);
     const plain = runIt("", false);
     assert.equal(plain.calls.length, 2);
     assert.match(plain.out, /press the button again/);

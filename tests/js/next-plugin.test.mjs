@@ -7,10 +7,10 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mock } from "herdr";
 import { handlers } from "gpui-kit";
-import { put, tempDir } from "../lib/helpers.mjs";
+import { put, readRepo, tempDir } from "../lib/helpers.mjs";
 import { byId } from "../lib/snapshot.mjs";
 import { StoryList, addAsk, addNextRequest, getNextRequest, needQueueOf, settleAsks, storyItems, suggestNextRequest, syncTracking } from "../../mods/kelpie/stories.js";
-import { profileById } from "../../mods/kelpie/config.js";
+import { HAND_IN, OTHERS, SUGGEST_PROMPT, profileById } from "../../mods/kelpie/config.js";
 
 let stories, home, world;
 before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); });
@@ -197,5 +197,20 @@ describe("kelpie.get-next: the queue, for an agent to read", () => {
   test("for the asking agent's profile, by its terminal", async () => {
     request("next-get", { terminal: agentOf("ACME-175").address });
     assert.equal((await getNextRequest()).profile, "Acme");
+  });
+});
+
+// The plugin's What next? eval (plugin/evals/what-next-hands-in-its-picks) runs What next?'s own message:
+// a copy of an older one tests a prompt nobody gets. Every line of the default is in it, a line naming
+// only the profile with the eval's (Acme; the snapshot, board and owner lines are the eval's own), and it
+// ends as suggestText() ends every run.
+describe("the plugin's What next? eval", () => {
+  test("its prompt is What next?'s message as Kelpie sends it today", () => {
+    const prompt = readRepo("plugin/evals/what-next-hands-in-its-picks/prompt.md").split("---\n").slice(2).join("---\n").trim();
+    const lines = new Set(prompt.split("\n"));
+    for (const line of SUGGEST_PROMPT.split("\n").map((l) => l.replaceAll("{name}", "Acme"))) {
+      if (!line.includes("{")) assert.ok(lines.has(line), `missing or changed: ${line}`);
+    }
+    assert.ok(prompt.endsWith(`${HAND_IN}\n\n${OTHERS}`));
   });
 });
