@@ -201,13 +201,16 @@ describe("kelpie.get-next: the queue, for an agent to read", () => {
 });
 
 // The plugin's What next? eval (plugin/evals/what-next-hands-in-its-picks) runs What next?'s own message:
-// a copy of an older one tests a prompt nobody gets. Every line of the default without a placeholder is
-// in it, and it ends as suggestText() ends every run.
+// a copy of an older one tests a prompt nobody gets. Every line of the default is in it, a line naming
+// only the profile with the eval's (Acme; the snapshot, board and owner lines are the eval's own), and it
+// ends as suggestText() ends every run.
 describe("the plugin's What next? eval", () => {
   test("its prompt is What next?'s message as Kelpie sends it today", () => {
     const prompt = readRepo("plugin/evals/what-next-hands-in-its-picks/prompt.md").split("---\n").slice(2).join("---\n").trim();
     const lines = new Set(prompt.split("\n"));
-    for (const line of SUGGEST_PROMPT.split("\n")) if (!line.includes("{")) assert.ok(lines.has(line), `missing or changed: ${line}`);
+    for (const line of SUGGEST_PROMPT.split("\n").map((l) => l.replaceAll("{name}", "Acme"))) {
+      if (!line.includes("{")) assert.ok(lines.has(line), `missing or changed: ${line}`);
+    }
     assert.ok(prompt.endsWith(`${HAND_IN}\n\n${OTHERS}`));
   });
 });

@@ -4,7 +4,7 @@ timeout_seconds: 600
 allowed_tools: [Read, Glob, Grep, Skill, mcp__plugin_kelpie_kelpie__get_next, mcp__plugin_kelpie_kelpie__suggest_next]
 ---
 
-Help me choose what to work on next in "Acme". Nothing needs me right now: no agent waiting on me, no failing checks or requested changes, no review asked of me, nothing to clean up.
+Help me choose what to work on next in "Acme". What already needs me (an agent waiting on me, failing checks, requested changes, a review asked of me, something to clean up) is in my Next queue: don't pick that, find what comes after it.
 
 You run unattended: nobody will read your messages or answer questions, only the picks you hand to Kelpie.
 
