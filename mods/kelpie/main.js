@@ -37,7 +37,8 @@ const POLL = 5000;
 
 // CPU as a share of all cores, memory in use as a share of all of it: on macOS active, wired and
 // compressed pages; on Linux what /proc/meminfo doesn't count as available.
-const STATS = `if [ "$(uname)" = Darwin ]; then
+// Exported for the tests, which run it for real (CI runs them on macOS and Linux).
+export const STATS = `if [ "$(uname)" = Darwin ]; then
 ps -A -o %cpu= | awk -v n="$(sysctl -n hw.ncpu)" '{s+=$1} END {printf "%d ", s/n}'
 vm_stat | awk -v total="$(sysctl -n hw.memsize)" '/page size of/ {ps=$8} /Pages active/ {a=$3} /Pages wired/ {w=$4} /occupied by compressor/ {c=$5} END {printf "%d", (a+w+c)*ps*100/total}'
 else

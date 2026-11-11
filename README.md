@@ -45,7 +45,7 @@ A story nobody has started yet:
   - [`terminal-browser`](https://terminal-browser.com) (`brew install --cask terminal-browser`) for the Web panel
   - `sqlite3`, which lets Restart browser forget a page that froze it
 
-Developed on macOS. Linux is meant to work but is less tested. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only. Without `sips`, the Screenshots gallery shows the full images as its thumbnails.
+Developed on macOS. Linux is meant to work but is less tested: CI runs the tests there, but nobody has used it on a Linux desktop yet. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only. Without `sips`, the Screenshots gallery shows the full images as its thumbnails.
 
 ## Install
 
