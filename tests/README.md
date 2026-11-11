@@ -201,7 +201,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   and Request approval menus' sends), `terminal` (a story's Terminal), `pulls` (Approve), `point` (what
   Next points at in a story), `passage` (a description's passage shown), `playing` (the web panel's
   sound mark), `menu-button` (a press on an open menu stays on it), `scroll` (each thing keeps its own
-  scroll position).
+  scroll position), `artifacts-note` (Add to chat's note: the image's path, then the note as one clean
+  line, only into the agent it was opened for).
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
   patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
