@@ -428,7 +428,7 @@ export async function setupDemo(board = "jira") {
 // kelpie.demo-remove: undoes kelpie.demo. Closes the demo profile's spaces (ending their stand-in
 // agents), deletes the profile and what's kept for it in shared state, and removes its folder, only
 // when that's inside ~/.local/share/kelpie/demo (an edited fixture could name any folder).
-const BY_PROFILE = ["kelpie.paused", "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.profile.last", "kelpie.notify.prs"];
+const BY_PROFILE = ["kelpie.paused", "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.next.picked", "kelpie.profile.last", "kelpie.notify.prs"];
 export async function removeDemo() {
   const p = profileById(DEMO_ID);
   for (const s of p ? spacesOf(p) : []) run("space.close", { id: s.id, confirmed: true });
