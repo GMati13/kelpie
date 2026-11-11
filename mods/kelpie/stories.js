@@ -85,8 +85,8 @@ const CLEAN_EACH = 25; // seconds the clean-up command gets per key (cleanUp)
 const BUSY_MARGIN = 60e3; // on top of a run's own limits: the checks before it, a slow board
 const MOVE_FOR = 30e3; // one ticket's move, at most (a single chip's, each of Move to Done's)
 // Nothing starts on a story while it's being cleaned up (its space is closing, its folders going):
-// true then, after saying so.
-const cleaningNow = (key) => busyOf(key)?.kind === "clean" && (say(`${key} is being cleaned up: wait for that to finish.`), true);
+// true then, after saying so (in the shown profile when it isn't given).
+const cleaningNow = (key, profile = null) => busyOf(key)?.kind === "clean" && (say({ profile, keys: key }, `${key} is being cleaned up: wait for that to finish.`), true);
 const busyAll = () => Object.entries(shared(RUNS) ?? {}).filter(([, e]) => Date.now() < e.until);
 // Exported for the tests.
 export const busyOf = (name) => busyAll().find(([n]) => n === name)?.[1] ?? null;
@@ -236,14 +236,15 @@ const spaceAgents = (it) => (it.space ? agents().filter((a) => a.space === it.sp
 // paused (no Claude session found), the space stays, with that agent; the others' panes close.
 async function pauseWholeStory(profile, it) {
   const list = spaceAgents(it);
-  say(`Pausing ${it.key}…`);
+  const about = { profile, keys: it.key };
+  say(about, `Pausing ${it.key}…`);
   const { kept, failed } = await keepSessions(profile, list);
   if (failed.length) {
     closeAgents(kept);
-    say(`Couldn't pause ${failed.join(", ")}: no Claude session found, so the story's space stays open.`);
+    say(about, `Couldn't pause ${failed.join(", ")}: no Claude session found, so the story's space stays open.`);
     return;
   }
-  say(null);
+  say(about, null);
   const id = it.space?.id;
   if (id && spaces().some((s) => s.id === id)) run("space.close", { id, confirmed: true });
 }
@@ -306,7 +307,7 @@ async function launch(profile, it, { name, folder, argv, task }) {
 const resumeSession = (profile, it, key, s, task) => launch(profile, it, { name: key, folder: s.cwd, argv: resumeArgv(s.id, s.config, profile?.github?.account), task });
 
 // What's said when a story's new space didn't show up, so the agents after the first can't open in it.
-const noSpace = (it, left) => say(`${it.key}'s new space didn't show up in time, so ${left.join(", ")} ${left.length === 1 ? "stays" : "stay"} paused: Resume again once it's there.`);
+const noSpace = (profile, it, left) => say({ profile, keys: it.key }, `${it.key}'s new space didn't show up in time, so ${left.join(", ")} ${left.length === 1 ? "stays" : "stay"} paused: Resume again once it's there.`);
 
 // Brings back a key's paused agents; a task goes to the first of them as its next message. Each
 // leaves the paused list only once its tab opened, so a failed launch keeps its session. Returns the
@@ -325,7 +326,7 @@ async function resume(profile, it, key, task, after = []) {
     left.splice(left.indexOf(p), 1);
     savePaused(profile, key, left);
     if (!id) {
-      if (left.length || after.length) noSpace(it, [...(left.length ? [key] : []), ...after]);
+      if (left.length || after.length) noSpace(profile, it, [...(left.length ? [key] : []), ...after]);
       return null;
     }
     story = { ...it, space: { id } };
@@ -1496,7 +1497,7 @@ function forgetStory(profile, it) {
 
 // The profile's status command's first line, by story key, refreshed with the stories (Refresh) and
 // every few minutes, while the story has a space.
-const STATUSES = {}; // key -> { line, full, error, at, seen, loading }
+const STATUSES = {}; // "<profile id>:<key>" -> { line, full, error, at, seen, loading }
 const STATUS_EVERY = 3 * 60 * 1000;
 const STATUS_SECONDS = 4;
 const RENAMED = new Set();
@@ -1795,13 +1796,29 @@ export function suggestNextRequest() {
   });
 }
 
-// What the last action said (pausing, asking, cleaning up), shown under the story's title row. In
-// shared state, as the buttons sit in several copies (the title row, the details, the changes); it
-// goes after a few minutes.
-const NOTE = "kelpie.stories.note"; // { text, full, at }
+// What the last action said (pausing, asking, cleaning up), per profile, with the tickets it's about
+// (`keys`). In shared state, as the buttons sit in several copies (the title row, the details, the
+// changes); it goes after a few minutes. A note about one story (its keys all that story's) shows in
+// that story's details only; one about several stories, or the whole list (no keys: Clean up all,
+// Run all), beside the list's freshness line. Never in another profile. `about` is
+// `{ profile, keys }`: a profile or its id (the shown one when left out), a key or a list of them.
+const NOTE = "kelpie.stories.note"; // { [profile id]: { text, full, keys, at } }
 const NOTE_FOR = 5 * 60 * 1000;
-const noteNow = () => { const n = shared(NOTE); return n && Date.now() - n.at < NOTE_FOR ? n : null; };
-const say = (text, full = null) => setShared(NOTE, text ? { text, full, at: Date.now() } : null);
+const noteId = (profile) => (typeof profile === "string" ? profile : profile?.id) ?? shownProfile()?.id ?? null;
+const noteFresh = (n) => n && typeof n === "object" && typeof n.text === "string" && Date.now() - n.at < NOTE_FOR;
+const noteOf = (profile) => { const n = shared(NOTE)?.[noteId(profile)]; return noteFresh(n) ? n : null; };
+const say = (about, text, full = null) => {
+  const id = noteId(about?.profile);
+  if (!id) return;
+  const keys = [about?.keys ?? []].flat().filter(Boolean);
+  const kept = Object.fromEntries(Object.entries(shared(NOTE) ?? {}).filter(([p, n]) => p !== id && noteFresh(n)));
+  setShared(NOTE, text ? { ...kept, [id]: { text, full, keys, at: Date.now() } } : kept);
+};
+// The note about this story (`it`, a story, review or pull request shown), or null.
+const aboutStory = (n, it) => { const mine = it ? [it.key, ...(it.subs ?? []).map((x) => x.key)] : []; return n.keys.length > 0 && n.keys.every((k) => mine.includes(k)); };
+const storyNote = (profile, it) => { const n = noteOf(profile); return n && aboutStory(n, it) ? n : null; };
+// The list's: one about no story of the list alone (several, or none), so no story's details hold it.
+const listNote = (profile, its) => { const n = noteOf(profile); return n && !its.some((it) => aboutStory(n, it)) ? n : null; };
 
 // Picking a story: a started one shows its space; one not started is previewed, from its details
 // (work.js gives them the column).
@@ -1845,7 +1862,7 @@ const freeName = (base, tabs = []) => {
 // second space; with a space each press is its own tab.
 // Exported for the tests.
 export function openTerminal(profile, it) {
-  if (lonePr(it) || cleaningNow(it.key)) return;
+  if (lonePr(it) || cleaningNow(it.key, profile)) return;
   const open = async () => {
     const folder = (await ticketFolder(profile, it).catch(() => null)) ?? (shared(COUNTS) ?? {})[it.key]?.repo ?? profile.folder;
     const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
@@ -1910,17 +1927,18 @@ function startDeskTask(kind, profile, prs) {
 // Exported for the tests.
 export function sendStoryTask(kind, profile, it, prs, agent) {
   const name = agent.tab_name ?? "Claude";
+  const about = { profile, keys: it.key };
   const failed = (why) => {
-    say(`Couldn't send it to ${name}. ${capitalize(why)}.`);
+    say(about, `Couldn't send it to ${name}. ${capitalize(why)}.`);
     notify({ title: `Couldn't send it to ${name}`, body: `${capitalize(why)}.`, level: "warning", timeout: 8000 });
   };
   if (agent.status === "blocked") return failed("it's waiting for your answer: answer it first");
   const what = `${it.key ? `${it.key}'s` : "the"} ${STORY_TASKS[kind].what}`;
   run("space.select", { id: agent.space });
   run("pane.focus", { pane: agent.pane });
-  say(`Sending ${what} to ${name}…`);
+  say(about, `Sending ${what} to ${name}…`);
   return sendToClaude(agent.address, storyTaskText(kind, profile, it, prs))
-    .then(() => say(`Sent ${what} to ${name}.`))
+    .then(() => say(about, `Sent ${what} to ${name}.`))
     .catch((e) => failed(String(e?.message ?? e)));
 }
 
@@ -1963,16 +1981,17 @@ function showPullAgent(p) {
   run("pane.focus", { pane: a.pane });
   return true;
 }
-function askPull(profile, p, kind) {
+function askPull(profile, p, kind, key) {
+  const about = { profile, keys: key };
   const text = askOf(profile, kind, [p]);
   const a = pullAgent(p);
   if (!a) {
     openDesk(profile, { name: `PR ${prName(p)}`, argv: claudeArgv(profile), task: text });
-    return say(`Asked a new agent on the Desk: ${ASK[kind].toLowerCase()} ${prName(p)}.`);
+    return say(about, `Asked a new agent on the Desk: ${ASK[kind].toLowerCase()} ${prName(p)}.`);
   }
-  if (a.status === "blocked") return say(`${a.tab_name} is waiting for your answer: answer it first.`);
-  sendToClaude(a.address, text).then(() => { showPullAgent(p); say(`Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
-    .catch((e) => say(`Couldn't send it to ${a.tab_name}: ${String(e?.message ?? e)}`));
+  if (a.status === "blocked") return say(about, `${a.tab_name} is waiting for your answer: answer it first.`);
+  sendToClaude(a.address, text).then(() => { showPullAgent(p); say(about, `Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
+    .catch((e) => say(about, `Couldn't send it to ${a.tab_name}: ${String(e?.message ?? e)}`));
 }
 
 // Review agents gather in one space of the profile, "Reviews" (made on the first one), a tab per pull
@@ -2028,15 +2047,16 @@ async function reviewTicket(profile, p) {
 
 // Start review: the pull request checked out, its ticket looked up, then a Claude agent on it in the
 // profile's Reviews space (a tab "PR <repo>#<n>"), started with the profile's review prompt.
-export function startReview(profile, p) {
+export function startReview(profile, p, key = null) {
+  const about = { profile, keys: key };
   const name = `PR ${prName(p)}`;
   setPreview(profile, null);
   const open = reviewTab(p);
   if (open) return run("tab.select", { id: open.id });
   return once(name, async () => {
-    say(`Checking out ${prName(p)} for review…`);
+    say(about, `Checking out ${prName(p)} for review…`);
     const [checkout, ticket] = await Promise.all([checkoutReview(profile, p), reviewTicket(profile, p)]);
-    say(checkout.note);
+    say(about, checkout.note);
     const task = reviewTask(profile.github, { url: p.url, repo: p.repository.name, number: p.number, title: p.title, author: p.author?.login ?? "", folder: checkout.folder ?? "", ...ticket });
     // The agent starts in the profile's folder, never in the checkout: it's someone else's code, and
     // Claude would take in its settings, hooks and instructions there. It reads the checkout by path.
@@ -2143,9 +2163,6 @@ export class Stories extends Source {
   keyOf(setup) {
     return [boardOf(setup)?.cfg ?? null, setup.github, setup.folder];
   }
-
-  get flash() { return noteNow()?.text ?? null; }
-  set flash(text) { say(text); }
 
   // Stories belong to the profile, whichever of its spaces is shown.
   context() {
@@ -2320,11 +2337,12 @@ export class Stories extends Source {
   // Pauses agents (by key) off the render: their sessions are read first, which takes a moment.
   pauseAll(st, list, cx) {
     if (!list.length) return;
-    this.flash = `Pausing ${list.map((x) => x.key).join(", ")}…`;
+    const about = { profile: st.profile, keys: list.map((x) => x.key) };
+    say(about, `Pausing ${list.map((x) => x.key).join(", ")}…`);
     cx.notify();
     cx.spawn(async (cx) => {
       const failed = await pause(st.profile, list);
-      this.flash = failed.length ? `Couldn't pause ${failed.join(", ")}: no Claude session found in ${failed.length === 1 ? "its tab" : "their tabs"}.` : null;
+      say(about, failed.length ? `Couldn't pause ${failed.join(", ")}: no Claude session found in ${failed.length === 1 ? "its tab" : "their tabs"}.` : null);
       cx.notify();
     });
   }
@@ -2446,17 +2464,18 @@ export class Stories extends Source {
   // before the first answers is refused, as is one while a run on its story holds it.
   move(st, key, x, cx) {
     const held = ticketBusy(key);
-    if (held) return say(`${key} ${{ move: "is still moving", done: "is moving to Done", clean: "is being cleaned up" }[held.kind]}: wait for that to finish.`);
+    const about = { profile: st.profile, keys: key };
+    if (held) return say(about, `${key} ${{ move: "is still moving", done: "is moving to Done", clean: "is being cleaned up" }[held.kind]}: wait for that to finish.`);
     const at = takeBusy(`move:${key}`, { kind: "move", keys: [key], step: `Moving ${key} to ${x.to}…` }, MOVE_FOR);
-    say(`Moving ${key} to ${x.to}…`);
+    say(about, `Moving ${key} to ${x.to}…`);
     cx.spawn(async (cx) => {
       try {
         await moveStatus(boardOf(st.setup), key, x, st.data);
         noteMoved(st.profile, key, x, boardOf(st.setup));
-        say(`${key} moved to ${x.to}.`);
+        say(about, `${key} moved to ${x.to}.`);
         setShared(REFRESH, Date.now());
       } catch (e) {
-        say(`Couldn't move ${key} to ${x.to}: ${String(e?.message ?? e)}`);
+        say(about, `Couldn't move ${key} to ${x.to}: ${String(e?.message ?? e)}`);
       }
       endBusy(`move:${key}`, at);
       cx.notify();
@@ -2528,14 +2547,15 @@ export class Stories extends Source {
     clearPoint(st.profile, it.key);
     const sub = it.subs.find((s) => s.key === key);
     const agent = sub?.agent ?? (key === it.key ? it.agent : null) ?? (sub && !sub.paused && !sub.last ? it.agent : null);
+    const about = { profile: st.profile, keys: key };
     if (agent) {
-      if (agent.status === "blocked") { this.flash = `${agent.tab_name} is waiting for your answer: answer it first.`; cx.notify(); return; }
-      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { this.flash = `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`; cx.notify(); });
+      if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
+      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
     } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, text));
     else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, text));
     // A new agent knows nothing yet: the ticket prompt comes first.
     else once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: `${ticketTask(st, it, key)}\n\n${text}` }));
-    this.flash = `Asked ${key}'s agent: ${text.length > 70 ? text.slice(0, 70) + "…" : text}`;
+    say(about, `Asked ${key}'s agent: ${text.length > 70 ? text.slice(0, 70) + "…" : text}`);
     cx.notify();
   }
 
@@ -2837,19 +2857,20 @@ export class Stories extends Source {
     const p = it.review;
     const tab = reviewTab(p);
     const agent = tab ? agents().find((a) => a.tab === tab.id) ?? null : null;
+    const about = { profile: st.profile, keys: it.key };
     const tell = (text) => (cx) => {
-      if (agent.status === "blocked") { this.flash = `${agent.tab_name} is waiting for your answer: answer it first.`; cx.notify(); return; }
+      if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
       sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
-        .catch((e) => { this.flash = `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`; cx.notify(); });
+        .catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
     };
     const decide = (id, label, text, tip) => this.carefulButton(t, `review-${id}`, label, true, tell(text), { tip, confirmTip: `${tip}: click again to send it to its agent` });
     return [
-      primaryButton(t, "review-start", tab ? "Show review" : "Start review", () => startReview(st.profile, p), { tip: `${tab ? "Show its review agent" : `Check it out and start a review agent on it, in ${st.profile.name}'s ${REVIEWS} space`} ⌘⇧R` }),
+      primaryButton(t, "review-start", tab ? "Show review" : "Start review", () => startReview(st.profile, p, it.key), { tip: `${tab ? "Show its review agent" : `Check it out and start a review agent on it, in ${st.profile.name}'s ${REVIEWS} space`} ⌘⇧R` }),
       youApproved(st, p)
         ? doneButton(t, "review-approve-self", "Approved", mark(t, "pr-approved", 14), t.done, { tip: `You approved ${prName(p)} on GitHub` })
         : this.approving?.[p.url]
           ? doneButton(t, "review-approve-self", "Approving…", mark(t, "working", 14), t.muted, { tip: `Approving ${prName(p)} on GitHub` })
-          : this.carefulButton(t, "review-approve-self", "Approve", true, (cx) => this.approvePr(st, p, cx),
+          : this.carefulButton(t, "review-approve-self", "Approve", true, (cx) => this.approvePr(st, p, it.key, cx),
           { tip: `Approve ${prName(p)} on GitHub yourself`, confirmTip: `Click again to approve ${prName(p)} on GitHub, as yourself` }),
       ...(agent ? [
         decide("post", "Post comments", askOf(st.profile, "post", [p]), "Have the agent post its comments as a review"),
@@ -2862,8 +2883,9 @@ export class Stories extends Source {
   // Approves a review's pull request as you (approvePull), notes it (APPROVALS) so the header says
   // Approved at once, then loads the stories again.
   // While GitHub answers, the button is Approving… with a spinner (`this.approving`, by url, this copy's).
-  approvePr(st, p, cx) {
-    say(`Approving ${prName(p)}…`);
+  approvePr(st, p, key, cx) {
+    const about = { profile: st.profile, keys: key };
+    say(about, `Approving ${prName(p)}…`);
     this.approving = { ...(this.approving ?? {}), [p.url]: true };
     cx.notify();
     cx.spawn(async (cx) => {
@@ -2871,10 +2893,10 @@ export class Stories extends Source {
         await approvePull(p, { demo: Boolean(st.setup.github?.demo) || isDemo(st.profile), account: st.setup.github?.account });
         const now = Date.now();
         setShared(APPROVALS, { ...Object.fromEntries(Object.entries(shared(APPROVALS) ?? {}).filter(([, at]) => now - at < APPROVED_FOR)), [p.url]: now });
-        say(`Approved ${prName(p)} on GitHub.`);
+        say(about, `Approved ${prName(p)} on GitHub.`);
         setShared(REFRESH, Date.now());
       } catch (e) {
-        say(`Couldn't approve ${prName(p)}: ${String(e?.message ?? e)}`);
+        say(about, `Couldn't approve ${prName(p)}: ${String(e?.message ?? e)}`);
       } finally {
         delete this.approving?.[p.url];
       }
@@ -2890,7 +2912,7 @@ export class Stories extends Source {
     const p = it.pull;
     const agent = pullAgent(p);
     const kind = askFor(p);
-    const ask = kind ? this.carefulButton(t, `pull-ask-${kind}`, ASK[kind], kind === "merge", () => askPull(st.profile, p, kind),
+    const ask = kind ? this.carefulButton(t, `pull-ask-${kind}`, ASK[kind], kind === "merge", () => askPull(st.profile, p, kind, it.key),
       { tip: `${askOf(st.profile, kind, [p])}${agent ? "" : " (a new agent on the Desk)"}`, confirmTip: `Click again to ask ${agent ? agent.tab_name : "a new agent on the Desk"} to merge ${prName(p)}`, filled: true }) : null;
     const show = agent ? (ask ? textButton : primaryButton)(t, "pull-show", "Show agent", () => showPullAgent(p), { tip: `Show ${agent.tab_name} on the Desk ⌘⇧R` }) : null;
     const waiting = !p.isDraft && p.reviewDecision !== "APPROVED" && !kind && !worksAlone(st.setup);
@@ -3189,23 +3211,24 @@ export class Stories extends Source {
   statusLine(t, st, it, cx) {
     const command = st.profile.commands?.status?.trim();
     if (!command || !it.space) return null;
-    const was = this.statuses[it.key];
+    const id = `${st.profile.id}:${it.key}`; // two profiles' boards may share a key
+    const was = this.statuses[id];
     const refresh = shared(REFRESH);
     if (!was || (!was.loading && (Date.now() - was.at > STATUS_EVERY || was.seen !== refresh))) {
-      this.statuses[it.key] = { ...(was ?? {}), loading: true, at: was?.at ?? 0, seen: refresh };
+      this.statuses[id] = { ...(was ?? {}), loading: true, at: was?.at ?? 0, seen: refresh };
       cx.spawn(async (cx) => {
         try {
           const r = await runCommand(st.profile, command, it.key, STATUS_SECONDS, st.space?.machine);
           const first = r.out.split("\n").find((l) => l.trim()) ?? "";
-          this.statuses[it.key] = r.code === 0 ? { line: first, full: r.out, at: Date.now(), seen: refresh }
+          this.statuses[id] = r.code === 0 ? { line: first, full: r.out, at: Date.now(), seen: refresh }
             : { error: r.code === 143 ? "It took too long." : `It failed (${r.code})${r.out ? `: ${r.out}` : ""}`, at: Date.now(), seen: refresh };
         } catch (e) {
-          this.statuses[it.key] = { error: String(e?.message ?? e), at: Date.now(), seen: refresh };
+          this.statuses[id] = { error: String(e?.message ?? e), at: Date.now(), seen: refresh };
         }
         cx.notify();
       });
     }
-    const s = this.statuses[it.key];
+    const s = this.statuses[id];
     if (s.error) return div().id("story-status").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(s.error).child("status unavailable");
     if (!s.line) return null;
     return div().id("story-status").flex_none().truncate().text_size(SMALL).text_color(t.dim).tooltip(s.full ?? s.line).child(s.line);
@@ -3931,7 +3954,7 @@ export class StoryBody extends Stories {
   render(cx) {
     const { st, t, early, shown } = this.prepare(cx);
     if (early) return early;
-    const n = noteNow();
+    const n = storyNote(st.profile, shown);
     const note = n ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(n.full ?? n.text).child(n.text)
       : st.data.prError ? div().id("story-note").flex_none().truncate().text_size(SMALL).text_color(t.blocked).tooltip(st.data.prError).child("Pull requests didn't load, Refresh to try again")
       : null;
@@ -4274,9 +4297,13 @@ export class StoryList extends Stories {
       .child(sweeping ? busyMark(t, "stories-clean-all", sweeping) : iconButton(t, "stories-clean-all", own("brush-cleaning"), () => askCleanAll(st.profile, dirty),
         `Clean up ${dirty.length === 1 ? `the ${finished(dirty[0]) ? "finished" : "reassigned"} story` : `all ${dirty.length} ${dirty.every(finished) ? "finished " : ""}stories`} with something left`))
       .when(dirty.length > 0, (el) => el.child(div().text_size(SMALL).text_color(t.dim).child(String(dirty.length)))) : null;
+    // The last action's note when it's about several stories or the whole list (Clean up all, Run
+    // all), not one story's (that one is in its details), under the freshness line.
+    const said = listNote(st.profile, [...[...items, ...done].map((x) => x.it), ...loneOf(st.data)]);
     return v_flex().size_full().min_h(0).text_size(TEXT).text_color(t.foreground)
       .child(v_flex().flex_none().px(INSET).pb(10).gap(8)
         .child(h_flex().flex_none().gap(8).items_center().child(div().flex_1().min_w(0).child(fresh)).when(Boolean(cleanAll), (el) => el.child(cleanAll)))
+        .when(Boolean(said), (el) => el.child(div().id("stories-note").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(said.full ?? said.text).child(said.text)))
         .when(counts.some(([n]) => n), (el) => el.child(h_flex().flex_wrap().gap(12).items_center().children(counts.filter(([n]) => n)
           .map(([n, label, c, state]) => countBadge(t, `count-${state}`, state, n, `${n} ${label}`, t[c]).when(n === 1, (x) => x.child("1"))))))
         .when(Boolean(next), (el) => el.child(next)))
@@ -4353,7 +4380,8 @@ export class StoryView extends Stories {
         .child(div().flex_1().min_w(0).child(Input.new(this.note).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
         .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(`to ${sendKey(it, key)}'s agent`)));
     }
-    if (this.flash && noteNow().at >= (this.sentAt ?? Infinity)) rows.push(div().id("send-flash").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(this.flash).child(this.flash));
+    const n = storyNote(st.profile, it);
+    if (n && n.at >= (this.sentAt ?? Infinity)) rows.push(div().id("send-flash").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(n.full ?? n.text).child(n.text));
     return rows;
   }
 
@@ -4434,7 +4462,7 @@ export function storyNow() {
     show: (mode) => { if (!(mode === "start" && lonePr(it))) setView(profile, it, mode); },
     terminal: () => openTerminal(profile, it),
     claude: () => openClaude(profile, it),
-    start: () => (it.review ? startReview(profile, it.review) : it.pull ? showPullAgent(it.pull) : startWork(s.st, it)),
+    start: () => (it.review ? startReview(profile, it.review, it.key) : it.pull ? showPullAgent(it.pull) : startWork(s.st, it)),
     pause: () => pauseFocused(profile, it),
     // A story not opened shows its details anyway: nothing to fold.
     fold: () => { if (viewOf(profile, it) !== "start") foldHead(!headFolded()); },
@@ -4488,9 +4516,9 @@ async function pauseFocused(profile, it) {
   }
   if (agent.status === "working" && !armedFor(agent.address)) return notify({ title: `${agent.tab_name} is working`, body: "Press the key again to pause it anyway.", level: "warning", timeout: 6000 });
   pauseArmed = null;
-  say(`Pausing ${key}…`);
+  say({ profile, keys: key }, `Pausing ${key}…`);
   const failed = await pause(profile, [{ key, agent }]);
-  say(failed.length ? `Couldn't pause ${key}: no Claude session found in its tab.` : null);
+  say({ profile, keys: key }, failed.length ? `Couldn't pause ${key}: no Claude session found in its tab.` : null);
 }
 
 // Pauses the story a space is named after (the close dialog's Pause), as the header's Pause does.
@@ -4685,7 +4713,7 @@ export async function cleanUp(profile, it, { held = null } = {}) {
   const change = { kind: "clean", keys: storyKeys(it), step: `Cleaning up ${it.key}…`, on: null };
   if (held) { stepBusy(it.key, held, { ...change, until: Date.now() + ms }); return cleaning(profile, it, held); }
   const at = takeBusy(it.key, change, ms);
-  if (!at) return say(busyWhy(it.key));
+  if (!at) return say({ profile, keys: it.key }, busyWhy(it.key));
   try { return await cleaning(profile, it, at); } finally { endBusy(it.key, at); }
 }
 // How long a clean-up may hold its story: each key's run of the clean-up command, and the checks before.
@@ -4693,23 +4721,23 @@ const cleanLimit = (profile, it) => (cleanCommand(profile) ? leftoverKeys(profil
 async function cleaning(profile, it, at) {
   // Checked again now: an agent may have started, or a pull request opened, since the dialog showed.
   const why = cleanBlockers(it);
-  if (why.length) return say(`${it.key} wasn't cleaned up: ${why.join(", ")}.`);
+  if (why.length) return say({ profile, keys: it.key }, `${it.key} wasn't cleaned up: ${why.join(", ")}.`);
   const lose = await unsaved(profile, it);
-  if (lose.length) return say(`${it.key} wasn't cleaned up: ${lose.join(", ")}.`);
+  if (lose.length) return say({ profile, keys: it.key }, `${it.key} wasn't cleaned up: ${lose.join(", ")}.`);
   const command = cleanCommand(profile);
   const folder = command && leftoversOf(profile, it).length > 0;
   const on = it.space ? spaces().find((s) => s.id === it.space.id)?.machine : null;
-  say(`Cleaning up ${it.key}${folder ? ": running the clean-up command…" : "…"}`);
+  say({ profile, keys: it.key }, `Cleaning up ${it.key}${folder ? ": running the clean-up command…" : "…"}`);
   // run() returns nothing to wait on or catch; what it can't do it says itself.
   try { if (it.space && spaces().some((s) => s.id === it.space.id)) run("space.close", { id: it.space.id, confirmed: true }); } catch {}
   forgetStory(profile, it);
-  if (!folder) return say(`Cleaned up ${it.key}.`);
+  if (!folder) return say({ profile, keys: it.key }, `Cleaned up ${it.key}.`);
   // Each key's run, one after another: { key, code, out } (code null: it couldn't run).
   const runs = [], keys = leftoverKeys(profile, it);
   for (const [i, k] of keys.entries()) {
     const step = keys.length > 1 ? `Cleaning up ${k}: ${i + 1} of ${keys.length}…` : `Cleaning up ${it.key}: running the clean-up command…`;
     stepBusy(it.key, at, { step });
-    if (keys.length > 1) say(step);
+    if (keys.length > 1) say({ profile, keys: it.key }, step);
     const r = await runCommand(profile, command, k, CLEAN_EACH, on).catch((e) => ({ code: null, out: String(e?.message ?? e) }));
     runs.push({ key: k, ...r });
   }
@@ -4718,15 +4746,15 @@ async function cleaning(profile, it, at) {
   const keysSaid = (r) => (runs.length > 1 ? `${r.key}: ` : "");
   if (!failed) {
     const said = runs.map((r) => lastLine(r) && `${keysSaid(r)}${lastLine(r)}`).filter(Boolean).join("; ");
-    say(`Cleaned up ${it.key}${said ? `: ${said}` : "."}`, runs.map((r) => r.out).filter(Boolean).join("\n") || null);
+    say({ profile, keys: it.key }, `Cleaned up ${it.key}${said ? `: ${said}` : "."}`, runs.map((r) => r.out).filter(Boolean).join("\n") || null);
   } else if (failed.code === 143) {
     // Stopped at its time limit (runCommand): it may have hung on a prompt or a lock. What's left is
     // looked for again below, so the broom stays for it.
-    say(`${it.key} wasn't fully cleaned up: the clean-up command for ${failed.key} took longer than ${CLEAN_EACH} s and was stopped${lastLine(failed) ? ` (${lastLine(failed)})` : ""}. Kelpie looks again at what's left: try again, or clean it up by hand.`, failed.out || null);
+    say({ profile, keys: it.key }, `${it.key} wasn't fully cleaned up: the clean-up command for ${failed.key} took longer than ${CLEAN_EACH} s and was stopped${lastLine(failed) ? ` (${lastLine(failed)})` : ""}. Kelpie looks again at what's left: try again, or clean it up by hand.`, failed.out || null);
     notify({ title: `Clean-up of ${failed.key} took too long`, body: `It was stopped after ${CLEAN_EACH} s. Try again, or clean it up by hand.${failed.out ? `\n${failed.out.split("\n").slice(-4).join("\n")}` : ""}`, level: "warning" });
   } else {
     const why = failed.code === null ? "couldn't run" : `failed (${failed.code})`;
-    say(`Cleaned up ${it.key}, but the clean-up command ${why}${runs.length > 1 ? ` for ${failed.key}` : ""}${lastLine(failed) ? `: ${lastLine(failed)}` : ""}`, failed.out || null);
+    say({ profile, keys: it.key }, `Cleaned up ${it.key}, but the clean-up command ${why}${runs.length > 1 ? ` for ${failed.key}` : ""}${lastLine(failed) ? `: ${lastLine(failed)}` : ""}`, failed.out || null);
     if (failed.code !== null) notify({ title: `Clean-up command failed for ${failed.key}`, body: failed.out.split("\n").slice(-6).join("\n"), level: "warning" });
   }
   // What it left now, so the broom goes at once when nothing's left (or stays for what is), whatever
@@ -4746,7 +4774,7 @@ export function cleanStoryByKey(key) {
 // The clean-up dialog for a finished or reassigned story (its broom's): the sentence, then what the
 // clean-up command runs on as a list (the dialog grows with it).
 function askCleanUp(profile, it) {
-  if (busyOf(it.key)) return say(busyWhy(it.key));
+  if (busyOf(it.key)) return say({ profile, keys: it.key }, busyWhy(it.key));
   const parts = cleanable(profile, it);
   const items = leftoverItems(profile, it);
   const said = parts.map((p, i) => (items.length && i === parts.length - 1 ? p.replace(/ \(\d+ things\)$/, "") : p));
@@ -4785,7 +4813,7 @@ const keyList = (keys) => (keys.length < 3 ? keys.join(" and ") : `${keys.slice(
 // button moves them itself (dialogs.js Confirm, `doneStory`): no command runs it, as any agent can
 // run a command and this writes to the board.
 function askMoveToDone(st, it) {
-  if (busyOf(it.key)) return say(busyWhy(it.key));
+  if (busyOf(it.key)) return say({ profile: st.profile, keys: it.key }, busyWhy(it.key));
   const plan = donePlan(it), done = doneName(st.data);
   const whose = (x) => (x.assignee ? `${x.assignee}'s` : "unassigned");
   const items = [
@@ -4817,14 +4845,14 @@ export async function moveStoryToDone({ profile, key, clean = null }) {
   const s = storyItems();
   const it = s?.st.profile.id === profile ? [...s.items, ...s.done].map((x) => x.it).find((x) => x.key === key) : null;
   const plan = donePlan(it);
-  if (!plan) { say(`Nothing was moved: ${key} isn't among the shown profile's stories any more.`); return null; }
-  if (!finishes(s.st.setup)) { say("Nothing was moved: Move to Done is turned off for this profile."); return null; }
+  if (!plan) { say({ keys: key }, `Nothing was moved: ${key} isn't among the shown profile's stories any more.`); return null; }
+  if (!finishes(s.st.setup)) { say({ profile, keys: key }, "Nothing was moved: Move to Done is turned off for this profile."); return null; }
   // One run on a story at a time (busyOf its key): another Move to Done, or a clean-up, waits for it.
   // It locks only what clashes with it (the clean-up, its tickets' chips), not starting an agent.
   const keys = [...plan.mine.map((t) => t.key), ...(plan.story ? [key] : [])];
   const at = takeBusy(key, { kind: "done", keys, step: `Moving to Done… 1 of ${keys.length}`, on: keys[0] ?? null },
     keys.length * MOVE_FOR + BUSY_MARGIN + (clean ? cleanLimit(s.st.profile, it) : 0));
-  if (!at) { say(busyWhy(key)); return null; }
+  if (!at) { say({ profile, keys: key }, busyWhy(key)); return null; }
   try { return await movingToDone(s, it, plan, clean, at); } finally { endBusy(key, at); }
 }
 async function movingToDone(s, it, plan, clean, at) {
@@ -4854,7 +4882,7 @@ async function movingToDone(s, it, plan, clean, at) {
     : ` ${key} stays, as not all its subtasks moved.`;
   const text = `${moved.length ? `Moved ${keyList(moved)} to ${done}.` : "Nothing was moved."}${failed.length
     ? ` Couldn't move ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: move ${failed.length === 1 ? "it" : "them"} by hand.` : ""}${stays}`;
-  say(text, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
+  say({ profile, keys: key }, text, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
   if (failed.length) notify({ title: `Some of ${key} didn't move to ${done}`, body: failed.map((f) => `${f.key}: ${f.why}`).join("\n"), level: "warning" });
   if (!clean) return { moved, failed };
   // The story as it is now: done when it moved (the loaded copy still has its old status).
@@ -4862,7 +4890,7 @@ async function movingToDone(s, it, plan, clean, at) {
   const why = cleanBlockers(now);
   if (!why.length) why.push(...await unsaved(s.st.profile, now));
   if (why.length) {
-    say(`${text} ${key} wasn't cleaned up: ${why.join(", ")}.`, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
+    say({ profile, keys: key }, `${text} ${key} wasn't cleaned up: ${why.join(", ")}.`, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
     notify({ title: `${key} wasn't cleaned up`, body: `${capitalize(why.join(", "))}.`, level: "warning" });
     return { moved, failed, cleaned: false, why };
   }
@@ -4871,8 +4899,8 @@ async function movingToDone(s, it, plan, clean, at) {
   if (cleanCommand(s.st.profile)) await recheckLeftovers(s.st.profile, now);
   await cleanUp(s.st.profile, now, { held: at });
   // cleanUp() leaves its own note ("Cleaned up …"); the moves go before it.
-  const after = shared(NOTE);
-  if (after?.text) say(`${text} ${after.text}`, after.full ?? null);
+  const after = noteOf(profile);
+  if (after?.text) say({ profile, keys: key }, `${text} ${after.text}`, after.full ?? null);
   return { moved, failed, cleaned: true };
 }
 
@@ -4880,9 +4908,9 @@ async function movingToDone(s, it, plan, clean, at) {
 // with something left (and every reassigned one, saying who has it), one line each; its button runs
 // kelpie.clean-all (cleanAll()).
 function askCleanAll(profile, dirty) {
-  if (busyOf(`all:${profile.id}`)) return say("Clean up all is already running.");
+  if (busyOf(`all:${profile.id}`)) return say({ profile }, "Clean up all is already running.");
   dirty = dirty.filter((it) => !busyOf(it.key));
-  if (!dirty.length) return say("Those stories are already being cleaned up.");
+  if (!dirty.length) return say({ profile }, "Those stories are already being cleaned up.");
   const what = dirty.every(finished) ? "finished " : "";
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(dirty.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${dirty.length === 1 ? `1 ${what}story` : `${dirty.length} ${what}stories`}?`, yes: "Clean up all",
@@ -4900,14 +4928,14 @@ export async function cleanAll() {
   const dirty = s.items.map((x) => x.it).filter((it) => cleanable(profile, it).length && !busyOf(it.key));
   if (!dirty.length) return;
   const at = takeBusy(name, { kind: "clean", keys: [], step: "Cleaning up…" }, dirty.reduce((n, it) => n + cleanLimit(profile, it), 0));
-  if (!at) return say("Clean up all is already running.");
+  if (!at) return say({ profile }, "Clean up all is already running.");
   try {
     for (const [i, it] of dirty.entries()) {
       stepBusy(name, at, { step: `Cleaning up ${it.key}: ${i + 1} of ${dirty.length} stories…` });
       await cleanUp(profile, it);
     }
   } finally { endBusy(name, at); }
-  if (dirty.length > 1) say(`Cleaned up ${dirty.length} stories: ${dirty.map((it) => it.key).join(", ")}.`);
+  if (dirty.length > 1) say({ profile }, `Cleaned up ${dirty.length} stories: ${dirty.map((it) => it.key).join(", ")}.`);
 }
 
 export function pauseStoryByKey(key) {
@@ -5111,7 +5139,7 @@ const pickKey = (p) => (p.run === "story" ? p.key : p.x.suggest.key.startsWith("
 function askRunPicks(profile, said) {
   const plan = picksPlan(said);
   const runs = plan.filter((p) => p.run).length;
-  if (!runs) return say("None of these picks can be started from here: each opens on the web, for you.");
+  if (!runs) return say({ profile }, "None of these picks can be started from here: each opens on the web, for you.");
   const items = plan.map((p) => ({ key: pickKey(p), text: p.text, ...(p.run ? { choose: p.x.suggest.key } : {}) }));
   openOverlay({ mod: MOD, kind: "dialog", width: 560, height: Math.min(560, 230 + Math.min(items.length, 10) * 30), props: {
     role: "confirm", title: `Start ${runs === 1 ? "1 of Claude's picks" : `${runs} of Claude's picks`}?`, yes: "Start them", working: "Starting…",
@@ -5125,15 +5153,15 @@ function askRunPicks(profile, said) {
 // failed. Returns { started, failed: [{ key, why }] }, null when the profile isn't shown any more.
 export async function runPicks({ profile, keys = null }) {
   const s = storyItems();
-  if (s?.st.profile.id !== profile) { say("Nothing was started: that profile isn't shown any more."); return null; }
+  if (s?.st.profile.id !== profile) { say({}, "Nothing was started: that profile isn't shown any more."); return null; }
   const want = keys ? new Set(keys) : null;
   const plan = picksPlan(needQueueOf(s.st.profile, s.items, s.reviews).filter((x) => x.suggest)).filter((p) => p.run && (!want || want.has(p.x.suggest.key)));
-  if (!plan.length) { say("Nothing was started: those picks are gone from Next."); return null; }
+  if (!plan.length) { say({ profile }, "Nothing was started: those picks are gone from Next."); return null; }
   const started = [], failed = [];
   const ran = await once(`picks:${profile}`, async () => {
     for (const [i, p] of plan.entries()) {
       const name = p.run === "story" ? p.key : p.x.suggest.action;
-      say(`Starting ${name}: ${i + 1} of ${plan.length}…`);
+      say({ profile }, `Starting ${name}: ${i + 1} of ${plan.length}…`);
       try {
         if (p.run === "idea") {
           if (!(await startIdea(s.st.profile, p.x.suggest))) throw new Error("the Desk didn't show up in time");
@@ -5152,9 +5180,9 @@ export async function runPicks({ profile, keys = null }) {
     }
     return true;
   });
-  if (!ran) { say("Claude's picks are already being started."); return null; }
+  if (!ran) { say({ profile }, "Claude's picks are already being started."); return null; }
   const failedText = failed.map((f) => `${f.key} (${f.why})`).join(", ");
-  say(`Started ${started.length} of ${plan.length}${started.length ? `: ${started.join(", ")}` : ""}.${failed.length ? ` Didn't start: ${failedText}.` : ""}`);
+  say({ profile }, `Started ${started.length} of ${plan.length}${started.length ? `: ${started.join(", ")}` : ""}.${failed.length ? ` Didn't start: ${failedText}.` : ""}`);
   if (failed.length) notify({ title: `${failed.length === 1 ? "A pick" : `${failed.length} picks`} didn't start`, body: `${failedText}.`, level: "warning" });
   return { started, failed };
 }
