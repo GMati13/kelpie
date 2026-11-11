@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: plan-to-read-before-building
+expected_outcome: |
+  The ticket asks for a plan the person reads before any code is written. Writes the plan in its reply, asks the person to read it and say go, calls add_to_next once for ACME-177 with an action about reading the plan, and writes no export code.
+context:
+  scaffold_script: place-files.sh
