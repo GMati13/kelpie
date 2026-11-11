@@ -11,7 +11,7 @@ v_flex #story-next [bg=raised border=border]
         "3"
       div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
         svg chrome:chevron-right
-  h_flex #queue-next [bg=selected] {click} tip="Go to its step"
+  h_flex #queue-next [bg=selected] {click} tip="ACME-151: Checks failing on ACME-152 (payments#97)\nPay with Apple Pay at checkout\nGo to its step"
     div
       div
         svg own:circle-x [fg=blocked]

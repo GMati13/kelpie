@@ -1,6 +1,6 @@
 // What the UI says in words (#32): plain, accurate, one wording for one thing, no internal names.
 // Each test pins a wording that was wrong once.
-import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
+import { DEMO, FIXTURE, NOW, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../lib/snapshot.mjs";
@@ -103,4 +103,27 @@ test("tooltips give their keys one way", async () => {
       assert.equal(found, null, `${mod}/${f}: ${found}`);
     }
   }
+});
+
+// Next's rows cut their two lines to the sidebar's width, so each row's tooltip has them whole: what
+// to do, and Claude's why (often a sentence or two) or what the agent asked.
+test("Next's rows have their words whole in a tooltip", async () => {
+  const pick = FIXTURE.suggest[0];
+  setupDemoWorld({ stories });
+  mock.state.shared.set("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [
+    { key: "ACME-180", title: "Export an itinerary as PDF", action: pick.action, why: pick.why, url: "https://jira.example.com/browse/ACME-180" },
+  ] } });
+  const view = new StoryList();
+  const { cx } = await draw(view);
+  view.queueOpen = true;
+  const out = render(view.render(cx), skinTheme());
+  const row = out.split("\n").find((l) => l.includes("#queue-suggest:ACME-180 "));
+  assert.ok(row, "the pick has a row in the open queue");
+  assert.ok(row.includes(pick.why.slice(0, 40)), row);
+  const asked = out.split("\n").find((l) => /#queue-ask:/.test(l));
+  assert.ok(asked && /tip="[^"]+\\n[^"]+"/.test(asked), `an agent's ask, with its why: ${asked}`);
+  // Folded, Next's one row keeps its words too, before where a click goes.
+  view.queueOpen = false;
+  const card = render(view.render(cx), skinTheme()).split("\n").find((l) => l.includes("#queue-next "));
+  assert.match(card, /tip="[^"\\]+\\n[^"\\]+\\n(Go there|Go to its step)/, card);
 });

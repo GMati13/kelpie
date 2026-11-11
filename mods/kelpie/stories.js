@@ -968,10 +968,13 @@ const queueAway = (x) => Boolean((x.suggest && !x.it && !x.suggest.idea) || (x.a
 // under it what it is or why (muted, one line); ↗ when a click opens the web. `on`: the item on
 // screen, lit; `card`: folded Next's main row, which with `on` says you're on it. The item Next goes
 // to has no mark of its own: unfolded it's the row after the lit one (a "Next" tag beside the
-// header's "Next" only confused).
+// header's "Next" only confused). Both lines are cut to the row, so its tooltip has them whole (a
+// pick's why, an agent's ask, is often a sentence or two).
+const queueWords = (x) => [queueLabel(x), queueDetail(x)].filter(Boolean).join("\n");
 function queueRow(t, x, on, go, { card = false } = {}) {
   const detail = [card && on ? "You're on it" : "", queueDetail(x)].filter(Boolean).join(" · ");
   return h_flex().id(`queue-${card ? "next" : x.key}`).flex_none().px(10).py(6).gap(10).items_start().rounded(7).cursor_pointer()
+    .tooltip(queueWords(x))
     .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover))).on_click(go)
     .child(div().flex_none().mt(1).child(queueMark(t, x, 16)))
     .child(v_flex().flex_1().min_w(0).gap(1)
@@ -4132,7 +4135,7 @@ export class StoryList extends Stories {
             open ? "Hide the queue" : "Show the whole queue", { on: open })))))
       .when(open, (el) => el.children(this.queueList(t, st, items, reviews, queue, shownKey)))
       .when(!open, (el) => el.child(withDrop(t, st.profile, lead, queueRow(t, lead, here, () => goNext(st.profile, lead), { card: true }))
-        .tooltip(`${queueAway(lead) ? "Opens on the web" : lead.suggest?.idea ? "Starts a Claude on the Desk with this idea" : here ? "Go to its step" : "Go there"}${lead === top ? " ⌘⇧J" : ""}`)))
+        .tooltip(`${queueWords(lead)}\n${queueAway(lead) ? "Opens on the web" : lead.suggest?.idea ? "Starts a Claude on the Desk with this idea" : here ? "Go to its step" : "Go there"}${lead === top ? " ⌘⇧J" : ""}`)))
       .when(!open && lead !== top, (el) => el.child(queueThen(t, top, () => goNext(st.profile, top))))
       .when(!picks, (el) => el.child(div().pt(2).child(this.magic(t, st, items, reviews, { slim: true }))));
     return card;
