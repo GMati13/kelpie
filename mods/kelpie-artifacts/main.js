@@ -355,8 +355,8 @@ export default class Artifacts extends View {
       .child(this.capsule(t)
         .child(tool("box", "Box")).child(tool("arrow", "Arrow")).child(tool("pen", "Pen")).child(tool("text", "Text"))
         .child(div().flex_none().w(1).h(14).mx(4).bg(t.border))
-        .child(history("undo", "Undo", m.marks.length > 0, () => undo(m), "Undo (⌘Z)"))
-        .child(history("redo", "Redo", m.undone.length > 0, () => redo(m), "Redo (⇧⌘Z)"))
+        .child(history("undo", "Undo", m.marks.length > 0, () => undo(m), "Undo ⌘Z"))
+        .child(history("redo", "Redo", m.undone.length > 0, () => redo(m), "Redo ⇧⌘Z"))
         .child(this.button(t, "markup-cancel", "Cancel", () => { this.markup = null; }))
         .when(m.marks.length > 0 || Boolean(m.editing), (el) => el
           .child(this.button(t, "markup-save", m.saving ? "Saving…" : "Save copy", (cx) => this.saveMarks(t, item, size, cx), false, "Keep this version in the gallery"))
@@ -553,7 +553,7 @@ export default class Artifacts extends View {
           .when(roomy && !this.session?.on, (c) => c.child(this.button(t, "artifact-preview", "Preview", () => { openExternal(item.path); })))))
         // The path is the original's (on the agent's machine), for pasting into an agent or a shell.
         .when(roomy, (el) => el.child(this.capsule(t)
-          .child(this.button(t, "artifact-copy", this.copied === item.path ? "Copied" : "Copy path", (cx) => this.copyPath(item, cx), false, "Copy the image's path (⌘C)"))
+          .child(this.button(t, "artifact-copy", this.copied === item.path ? "Copied" : "Copy path", (cx) => this.copyPath(item, cx), false, "Copy the image's path ⌘C"))
           .when(!this.session?.on, (c) => c.child(this.button(t, "artifact-reveal", revealLabel(), () => { reveal(item.path); }))))))
       .when(at > 0, (el) => el.child(edge("artifact-prev", "left", "chevron-left", -1, "Previous")))
       .when(at < this.items.length - 1, (el) => el.child(edge("artifact-next", "right", "chevron-right", 1, "Next")))

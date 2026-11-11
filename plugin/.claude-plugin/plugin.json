@@ -1,10 +1,12 @@
 {
   "name": "kelpie",
-  "description": "Lets Claude show you where a story on your board (Jira or a GitHub Project) says something in Kelpie, read and add to your Next queue, and set up your Kelpie profiles with you.",
-  "version": "0.4.4",
+  "description": "Connects Claude to Kelpie, your Herdr layout of stories, pull requests and agents: Claude can show you where a story on your board (Jira or a GitHub Project) says something, read and add to your Next queue, and set up your Kelpie profiles with you. Needs Kelpie running in Herdr.",
+  "version": "0.4.6",
   "author": {
     "name": "Kelpie"
   },
+  "homepage": "https://github.com/GMati13/kelpie",
+  "repository": "https://github.com/GMati13/kelpie",
   "license": "MIT",
   "keywords": [
     "kelpie",

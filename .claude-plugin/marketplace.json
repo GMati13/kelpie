@@ -1,13 +1,13 @@
 {
   "name": "kelpie",
-  "description": "Kelpie's plugin for Claude Code: lets Claude show you things in Kelpie.",
+  "description": "Kelpie's own marketplace, holding its Claude Code plugin: Claude shows you where your stories say something, reads and adds to your Next queue, and sets up your Kelpie profiles with you.",
   "owner": {
     "name": "Kelpie"
   },
   "plugins": [
     {
       "name": "kelpie",
-      "description": "Lets Claude show you where a story on your board (Jira or a GitHub Project) says something in Kelpie, read and add to your Next queue, and set up your Kelpie profiles with you.",
+      "description": "Connects Claude to Kelpie, your Herdr layout of stories, pull requests and agents: Claude can show you where a story on your board (Jira or a GitHub Project) says something, read and add to your Next queue, and set up your Kelpie profiles with you. Needs Kelpie running in Herdr.",
       "source": "./plugin",
       "category": "productivity"
     }

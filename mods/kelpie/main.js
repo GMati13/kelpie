@@ -87,7 +87,7 @@ async function claudeAccounts() {
 // 5:00 PM"), and short for beside a share that's near the limit ("20m", "1h20", "16h", "Sat").
 function resetTip(limit, now = Date.now()) {
   if (!limit?.resets_at) return null;
-  if (limit.resets_at * 1000 <= now) return "Reset: the next session that runs shows the new share";
+  if (limit.resets_at * 1000 <= now) return "Reset: the new usage shows once a Claude session on this account runs";
   const when = resetLabel(limit.resets_at, now);
   return /^[A-Z]/.test(when) ? `Resets ${when}` : `Resets in ${when}, at ${clock12(new Date(limit.resets_at * 1000))}`;
 }

@@ -433,12 +433,15 @@ export const worksAlone = (p) => Boolean(boardOf(p)?.cfg?.solo);
 // The task an agent started on a Jira ticket gets: the space's own template (jira.prompt), else this.
 // Placeholders: {key} {summary} {url} {type} {status} {parent} (the story's key and summary, or empty)
 // {subtasks} (a story's subtasks, a line each: "KEY — title (status)"; empty for a subtask).
-// With `template`, that one instead (the orchestrator prompt).
+// With `template`, that one instead (the orchestrator prompt). `then` is what follows it in the same
+// first message (a button's ask, a pick of Claude's). It ends with OTHERS whatever the template says,
+// as the summary and the subtasks' titles are others' words.
 export const PROMPT_FIELDS = ["key", "summary", "url", "type", "status", "parent", "subtasks"];
 export const DEFAULT_PROMPT = "Work on {key}: {summary}\n{url}";
 
-export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT) {
-  return template.replace(/\{(\w+)\}/g, (all, name) => (PROMPT_FIELDS.includes(name) ? promptValue(name, fields[name]) : all)).trim();
+export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT, then = "") {
+  const filled = template.replace(/\{(\w+)\}/g, (all, name) => (PROMPT_FIELDS.includes(name) ? promptValue(name, fields[name]) : all)).trim();
+  return [filled, then.trim(), OTHERS].filter(Boolean).join("\n\n");
 }
 
 // The task a review agent starts with: the profile's own template (github.reviewPrompt), else this.
@@ -467,7 +470,8 @@ export function reviewTask(github, fields) {
 // The task a merge agent starts with (a story's Merge, in its header and on its row): the profile's
 // own template (github.mergePrompt), else this. Placeholders: {ticket} {summary} (the story) and
 // {prs}, its open pull requests of yours, a line each: "repo#n: title (state) url". Lines whose
-// placeholders all came out empty are left out, as for reviews.
+// placeholders all came out empty are left out, as for reviews. Both end with OTHERS, whatever the
+// template says: the story's summary and the pull requests' titles are others' words.
 export const MERGE_FIELDS = ["ticket", "summary", "prs"];
 export const DEFAULT_MERGE_PROMPT = [
   "Get {ticket}: {summary} ready to merge and deploy.",
@@ -479,7 +483,7 @@ export const DEFAULT_MERGE_PROMPT = [
 ].join("\n");
 
 export function mergeTask(github, fields) {
-  return fillLines(github?.mergePrompt?.trim() ? github.mergePrompt : DEFAULT_MERGE_PROMPT, MERGE_FIELDS, fields);
+  return `${fillLines(github?.mergePrompt?.trim() ? github.mergePrompt : DEFAULT_MERGE_PROMPT, MERGE_FIELDS, fields)}\n\n${OTHERS}`;
 }
 
 // The task Request approval starts with (shown on a story's header and row while one
@@ -495,7 +499,7 @@ export const DEFAULT_APPROVAL_PROMPT = [
 ].join("\n");
 
 export function approvalTask(github, fields) {
-  return fillLines(github?.approvalPrompt?.trim() ? github.approvalPrompt : DEFAULT_APPROVAL_PROMPT, MERGE_FIELDS, fields);
+  return `${fillLines(github?.approvalPrompt?.trim() ? github.approvalPrompt : DEFAULT_APPROVAL_PROMPT, MERGE_FIELDS, fields)}\n\n${OTHERS}`;
 }
 
 // The messages a pull request's buttons send to its agent, each changeable in the profile dialog
@@ -507,7 +511,7 @@ export const ASK_PROMPTS = [
   { id: "fix", label: "Fix checks", text: "The checks fail on {prs}. Find out why and fix them." },
   { id: "comments", label: "Address comments", text: "Address the review comments on {prs}." },
   { id: "merge", label: "Merge", text: "Merge {prs}." },
-  { id: "post", label: "Post comments (review)", text: "Post your review comments on the pull request now, as one GitHub review with inline comments on the lines they're about (event COMMENT). Then tell me what you posted." },
+  { id: "post", label: "Post comments (review)", text: "Post your review comments on the pull request now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted." },
   { id: "approve", label: "Approve (review)", text: "Approve the pull request now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted." },
   { id: "idea", label: "Start an idea (What next?)", text: "An idea for making things better, found while nothing else needed doing:\n\n{idea}\n\nWhere: {where}\nWhy: {why}\n\nLook into it with me first: is it worth doing, and how big is it? Don't change anything until I say so; if we go ahead, a ticket for it may come first." },
   { id: "picked", label: "Run a pick (What next?)", text: "Claude suggested this as what I should do next: {action}\nWhy: {why}\n\nStart with that." },
@@ -521,7 +525,8 @@ export function askText(profile, id, fields = {}) {
 
 // What next? (the magic button in the story list's Next place): a Claude run in the background
 // (claude -p, no terminal, no saved session; stories.js brew()) that looks at where everything stands
-// and answers with picks for Next's queue as a JSON block. Its message is prompts.suggest (the default
+// and hands picks for Next's queue to the plugin's tool (HAND_IN, below). It runs whether or not
+// something needs the person (the slim button under Next's card, kelpie.what-next). Its message is prompts.suggest (the default
 // isn't saved). Placeholders: {name} (the profile), {snapshot} (what the list knows: sprints, stories,
 // pull requests, reviews, agents; stories.js suggestSnapshot), {board} (the Jira board's address),
 // {owner} (GitHub). It says what to look at, never how to reach or sign in to it: the agent uses
@@ -530,7 +535,7 @@ export function askText(profile, id, fields = {}) {
 // empty is left out.
 export const SUGGEST_FIELDS = ["name", "snapshot", "board", "owner"];
 export const SUGGEST_PROMPT = [
-  "Help me choose what to work on next in \"{name}\". Nothing needs me right now: no agent waiting on me, no failing checks or requested changes, no review asked of me, nothing to clean up.",
+  "Help me choose what to work on next in \"{name}\". What already needs me (an agent waiting on me, failing checks, requested changes, a review asked of me, something to clean up) is in my Next queue: don't pick that, find what comes after it.",
   "",
   "You run unattended: nobody will read your messages or answer questions, only the picks you hand to Kelpie.",
   "",
@@ -667,7 +672,12 @@ const PLUGIN_USES = {
 };
 export async function askPlugin(profile, use = "configure", scope = "all") {
   const source = await pluginSource();
-  const account = claudeKey(claudeConfigOf(profile)) || "~/.claude";
+  const dir = claudeKey(claudeConfigOf(profile));
+  const account = dir || "~/.claude";
+  // The commands to copy run on the profile's account too: a plain `claude` installs on ~/.claude,
+  // and this account would still be without it. Folders quoted only when they need it.
+  const q = (v) => (/^[\w./~-]+$/.test(v) ? v : `'${v.replace(/'/g, "'\\''")}'`);
+  const claude = dir ? `CLAUDE_CONFIG_DIR=${q(dir)} claude` : "claude";
   const [why, again] = PLUGIN_USES[use] ?? PLUGIN_USES.configure;
   const configure = use === "configure" && source;
   const then = configure ? " Install it, and a Claude on the Desk then starts setting it up with you." : ` Install it, then press ${again} again.`;
@@ -675,7 +685,7 @@ export async function askPlugin(profile, use = "configure", scope = "all") {
     role: "confirm", installPlugin: source ? profile.id : null, ...(configure ? { installThen: Object.hasOwn(CONFIGURE_SCOPES, scope) ? scope : "all" } : {}),
     title: "Claude needs Kelpie's plugin for this",
     detail: `${why} It isn't installed on this profile's Claude account (${account}) yet.${source ? then : " Install it from your Kelpie folder with:"}`,
-    items: [{ text: `claude plugin marketplace add ${source ?? "<your Kelpie folder>"}` }, { text: `claude plugin install ${PLUGIN}` }],
+    items: [{ text: `${claude} plugin marketplace add ${source ? q(source) : "<your Kelpie folder>"}` }, { text: `${claude} plugin install ${PLUGIN}` }],
     yes: source ? "Install it" : "OK" } });
 }
 // The dialog's Install it: both commands in a terminal on the profile's Desk, on its account, so the
@@ -687,7 +697,7 @@ export async function installPlugin(id, scope = null) {
   const source = await pluginSource();
   if (!profile || !source) return;
   const task = scope && Object.hasOwn(CONFIGURE_SCOPES, scope) ? configureText(profile, scope) : "";
-  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
+  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; else printf "\\nThe plugin didn\'t install: Claude\'s message above says why. Once that\'s sorted, press the button in Kelpie again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
   return openDesk(profile, { name: task ? "Configure" : "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, task, ...claudeArgv(profile)] });
 }
 

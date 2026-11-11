@@ -130,7 +130,7 @@ div #work-setup-fit [bg=#00000080]
           Input.new [border=input bg=background fg=foreground]
         v_flex
           div [fg=dim]
-            "No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a terminal and paste it at the prompt:"
+            "No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a zsh terminal (the Mac's default shell) and paste it at the prompt:"
           h_flex [bg=background border=border]
             div [fg=muted]
               "read -rs \"t?Jira token: \" && printf 'add-generic-password -U -s \"<keychain item>\" -a \"<jira email>\" -w %s\\n' \"$t\" | security -i; unset t; echo"
@@ -176,7 +176,7 @@ div #work-setup-fit [bg=#00000080]
             div
               "Move to Done"
             div [fg=dim]
-              "A double check in the story's header, and on each built story in the list, moves your subtasks and then the story to the board's last column in one go."
+              "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go."
           h_flex [bg=accent]
             div [bg=accent_foreground]
     h_flex [border=border]

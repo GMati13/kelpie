@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: not-in-the-description
+expected_outcome: |
+  ACME-142's description says offline edits are queued and synced, and caches trips opened in the last 30 days, but never says how long offline edits are kept. Tells the person the description doesn't say it, without showing the closest passage in Kelpie as if it did, and without inventing a duration.
+context:
+  scaffold_script: place-files.sh

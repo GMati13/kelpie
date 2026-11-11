@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import {
-  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, shellArgv, spacesOf,
+  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
 import { existsSync } from "node:fs";
@@ -104,10 +104,10 @@ describe("handoverFrom: where your part of a ticket is done", () => {
 describe("prompt templates", () => {
   test("jiraTask: the default, the profile's own, a blank one counting as none", () => {
     const fields = { key: "ABC-1", summary: "Login", url: "https://jira.example.com/browse/ABC-1", type: "Story", status: "To Do", parent: "", subtasks: "ABC-2 — Form (To Do)" };
-    assert.equal(jiraTask(null, fields), "Work on ABC-1: Login\nhttps://jira.example.com/browse/ABC-1");
-    assert.equal(jiraTask({ prompt: "{type} {key} ({status})\n{subtasks}\n{other}" }, fields), "Story ABC-1 (To Do)\nABC-2 — Form (To Do)\n{other}");
+    assert.equal(jiraTask(null, fields), `Work on ABC-1: Login\nhttps://jira.example.com/browse/ABC-1\n\n${OTHERS}`);
+    assert.equal(jiraTask({ prompt: "{type} {key} ({status})\n{subtasks}\n{other}" }, fields), `Story ABC-1 (To Do)\nABC-2 — Form (To Do)\n{other}\n\n${OTHERS}`);
     assert.equal(jiraTask({ prompt: "   " }, fields), jiraTask(null, fields));
-    assert.equal(jiraTask(null, fields, "Orchestrate {key}"), "Orchestrate ABC-1");
+    assert.equal(jiraTask(null, fields, "Orchestrate {key}"), `Orchestrate ABC-1\n\n${OTHERS}`);
   });
   test("fillLines: a line whose placeholders all came out empty goes, others stay", () => {
     const t = "Ticket {ticket}: {summary}\nPRs:\n{prs}\n\nKeep {other}\nPlain line";
@@ -119,15 +119,15 @@ describe("prompt templates", () => {
   });
   test("mergeTask and approvalTask: the defaults, without their ticket lines on the Desk", () => {
     const prs = "web#1: Login (approved) https://github.com/kelpie--demo/web/pull/1";
-    assert.equal(mergeTask(null, { ticket: "ABC-1", summary: "Login", prs }), DEFAULT_MERGE_PROMPT.replace("{ticket}", "ABC-1").replace("{summary}", "Login").replace("{prs}", prs));
+    assert.equal(mergeTask(null, { ticket: "ABC-1", summary: "Login", prs }), `${DEFAULT_MERGE_PROMPT.replace("{ticket}", "ABC-1").replace("{summary}", "Login").replace("{prs}", prs)}\n\n${OTHERS}`);
     const desk = approvalTask({}, { ticket: "", summary: "", prs });
     assert.ok(!desk.includes("{"), desk);
     assert.ok(desk.startsWith("These pull requests aren't approved yet:\nweb#1"), desk);
-    assert.equal(desk.split("\n").length, DEFAULT_APPROVAL_PROMPT.split("\n").length - 1);
+    assert.equal(desk.split("\n").length, DEFAULT_APPROVAL_PROMPT.split("\n").length - 1 + 2, "a line less, then the note about others' text");
   });
   test("mergeTask and approvalTask: the profile's own templates", () => {
-    assert.equal(mergeTask({ mergePrompt: "Merge {prs} for {ticket}" }, { ticket: "ABC-1", prs: "x" }), "Merge x for ABC-1");
-    assert.equal(approvalTask({ approvalPrompt: "Chase {prs}" }, { prs: "y" }), "Chase y");
+    assert.equal(mergeTask({ mergePrompt: "Merge {prs} for {ticket}" }, { ticket: "ABC-1", prs: "x" }), `Merge x for ABC-1\n\n${OTHERS}`);
+    assert.equal(approvalTask({ approvalPrompt: "Chase {prs}" }, { prs: "y" }), `Chase y\n\n${OTHERS}`);
   });
   test("askText: the profile's message, else the default; unknown placeholders left", () => {
     assert.equal(askText(null, "fix", { prs: "a and b" }), "The checks fail on a and b. Find out why and fix them.");
