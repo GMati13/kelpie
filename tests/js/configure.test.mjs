@@ -121,6 +121,8 @@ describe("configureOnDesk", () => {
     assert.deepEqual(ok.calls, ["plugin|marketplace|add|/repo|", `plugin|install|${PLUGIN}|`, "Configure it|"]);
     const failed = runIt("Configure it", true);
     assert.equal(failed.calls.length, 2, "no Claude after a failed install");
+    assert.match(failed.out, /The plugin didn't install: Claude's message above says why\./, "a failed install says so in Kelpie's words too");
+    assert.doesNotMatch(failed.out, /Installed/);
     const plain = runIt("", false);
     assert.equal(plain.calls.length, 2);
     assert.match(plain.out, /press the button again/);

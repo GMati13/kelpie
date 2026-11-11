@@ -692,7 +692,7 @@ export async function installPlugin(id, scope = null) {
   const source = await pluginSource();
   if (!profile || !source) return;
   const task = scope && Object.hasOwn(CONFIGURE_SCOPES, scope) ? configureText(profile, scope) : "";
-  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
+  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; else printf "\\nThe plugin didn\'t install: Claude\'s message above says why. Once that\'s sorted, press the button in Kelpie again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
   return openDesk(profile, { name: task ? "Configure" : "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, task, ...claudeArgv(profile)] });
 }
 
