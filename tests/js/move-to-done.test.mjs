@@ -17,7 +17,7 @@ import { COLUMNS, data, issue } from "../lib/stories.mjs";
 import { bodyOf, readRepo, until } from "../lib/helpers.mjs";
 
 const statusOf = async (key) => (await demoJira(["get", `/rest/api/3/issue/${key}`])).body.fields.status.name;
-const note = () => mock.sharedValue("kelpie.stories.note")?.text ?? "";
+const note = () => mock.sharedValue("kelpie.stories.note")?.[DEMO]?.text ?? "";
 const refreshes = () => mock.of("setShared").filter(([k]) => k === "kelpie.refresh").length;
 const story = (key) => storyItems().items.map((x) => x.it).find((x) => x.key === key);
 
