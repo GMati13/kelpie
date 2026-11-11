@@ -101,6 +101,13 @@ class Server(unittest.TestCase):
         self.assertFalse(tools["add_to_next"]["annotations"]["readOnlyHint"])
         self.assertEqual(tools["add_to_next"]["inputSchema"]["required"], ["action"])
 
+    def test_the_evals_stand_in_has_the_tools_as_the_server_lists_them(self):
+        # The evals answer every Kelpie tool from plugin/evals/mocks/kelpie/, whose _tools.json is
+        # what the agent is shown: stale, the evals would test descriptions nobody installs.
+        [listed] = self.talk({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        with open(os.path.join(REPO, "plugin", "evals", "mocks", "kelpie", "_tools.json")) as f:
+            self.assertEqual(json.load(f), listed["result"], "save it again from the server: tests/README.md")
+
     def test_unknown_methods_tools_and_bad_lines_are_errors_not_crashes(self):
         bad, unknown, tool, ping = self.talk(
             "not json",

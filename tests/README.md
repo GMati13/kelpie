@@ -194,6 +194,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally, in a fake HOME).
+- `tests/python/test_plugin.py`: the plugin's MCP server (`plugin/server.py`) against a fake `herdr-app`, its
+  manifests, and the evals' stand-in tool list, `plugin/evals/mocks/kelpie/_tools.json`, kept equal to what the
+  server lists. After changing a tool, save it again:
+  `printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | python3 -I plugin/server.py | jq .result > plugin/evals/mocks/kelpie/_tools.json`.
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
