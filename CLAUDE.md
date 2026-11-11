@@ -30,6 +30,8 @@ tests/                         # stubs/ (herdr, gpui-kit, gpui-base for Node), l
 tests/snapshots/               # what each view draws, as text (js/views-*.test.mjs; re-recording: tests/README.md)
 scripts/pre-commit             # git hook running ./test.sh (enable: git config core.hooksPath scripts)
 scripts/e2e-demo.sh            # end-to-end check in a second Herdr window on a throwaway home (macOS, not CI; ask first)
+scripts/bench-background.py    # times sessions.py, changes.py and a review's checkout on a made-up home (#40)
+docs/performance/               # the performance review's write-ups (background.md: scripts and loads)
 .github/workflows/test.yml     # CI: ./test.sh on macOS and Linux, on every push and pull request
 ```
 
