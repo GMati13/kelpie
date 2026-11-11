@@ -1,17 +1,19 @@
 v_flex
-  h_flex
-    div
-      h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
-        "Updated just now ↻"
   v_flex
-    h_flex [fg=muted]
+    h_flex
       div
-        svg chrome:check [fg=done]
-      div
-        "All clear: nothing needs you"
-    h_flex #story-magic [bg=accent/14 hover(bg=accent/29)] {click size_change} tip="Claude looks at the sprint, the backlog, your pull requests and reviews in the background, and fills Next with what to do"
-      div [border=accent/4d]
-      div #magic-zoom-probe {size_change}
-      svg own:sparkles [fg=accent] ~loop(opacity)
-      div [fg=accent]
-        "Conjure what's next"
+        h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
+          "Updated just now ↻"
+  div #story-next-wrap
+    v_flex
+      h_flex [fg=muted]
+        div
+          svg chrome:check [fg=done]
+        div
+          "All clear: nothing needs you"
+      h_flex #story-magic [bg=accent/14 hover(bg=accent/29)] {click size_change} tip="Claude looks at the sprint, the backlog, your pull requests and reviews in the background, and fills Next with what to do"
+        div [border=accent/4d]
+        div #magic-zoom-probe {size_change}
+        svg own:sparkles [fg=accent] ~loop(opacity)
+        div [fg=accent]
+          "Conjure what's next"
