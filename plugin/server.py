@@ -275,7 +275,8 @@ def kelpie(command):
     except subprocess.TimeoutExpired:
         raise Unreachable("Kelpie can't be reached: Herdr didn't answer.")
     if run.returncode != 0:
-        raise Unreachable(f"Kelpie can't be reached: {(run.stderr or run.stdout).strip()[:300] or 'Herdr refused the command'}.")
+        said = (run.stderr or run.stdout).strip()[:300].rstrip(". ")
+        raise Unreachable(f"Kelpie can't be reached: {said or 'Herdr refused the command'}.")
 
 
 def ask(name, request, command, wait=None):
@@ -439,7 +440,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.4.5"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.4.6"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":
@@ -455,6 +456,9 @@ def handle(msg):
             text, failed = str(e), True
         except OSError as e:
             text, failed = f"Kelpie can't be reached: {e.strerror or e}.", True
+        except Exception as e:  # an answer of another shape: one failed call, never the whole server
+            text, failed = (f"Kelpie's plugin couldn't make sense of Kelpie's answer ({type(e).__name__}): only this call "
+                            "failed. Try again; if it keeps happening, Kelpie and its plugin may be out of step: update both."), True
         reply(id_, {"content": [{"type": "text", "text": text}], "isError": failed})
     else:
         reply(id_, error={"code": -32601, "message": f"No method {method!r}."})

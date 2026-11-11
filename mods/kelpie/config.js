@@ -672,7 +672,12 @@ const PLUGIN_USES = {
 };
 export async function askPlugin(profile, use = "configure", scope = "all") {
   const source = await pluginSource();
-  const account = claudeKey(claudeConfigOf(profile)) || "~/.claude";
+  const dir = claudeKey(claudeConfigOf(profile));
+  const account = dir || "~/.claude";
+  // The commands to copy run on the profile's account too: a plain `claude` installs on ~/.claude,
+  // and this account would still be without it. Folders quoted only when they need it.
+  const q = (v) => (/^[\w./~-]+$/.test(v) ? v : `'${v.replace(/'/g, "'\\''")}'`);
+  const claude = dir ? `CLAUDE_CONFIG_DIR=${q(dir)} claude` : "claude";
   const [why, again] = PLUGIN_USES[use] ?? PLUGIN_USES.configure;
   const configure = use === "configure" && source;
   const then = configure ? " Install it, and a Claude on the Desk then starts setting it up with you." : ` Install it, then press ${again} again.`;
@@ -680,7 +685,7 @@ export async function askPlugin(profile, use = "configure", scope = "all") {
     role: "confirm", installPlugin: source ? profile.id : null, ...(configure ? { installThen: Object.hasOwn(CONFIGURE_SCOPES, scope) ? scope : "all" } : {}),
     title: "Claude needs Kelpie's plugin for this",
     detail: `${why} It isn't installed on this profile's Claude account (${account}) yet.${source ? then : " Install it from your Kelpie folder with:"}`,
-    items: [{ text: `claude plugin marketplace add ${source ?? "<your Kelpie folder>"}` }, { text: `claude plugin install ${PLUGIN}` }],
+    items: [{ text: `${claude} plugin marketplace add ${source ? q(source) : "<your Kelpie folder>"}` }, { text: `${claude} plugin install ${PLUGIN}` }],
     yes: source ? "Install it" : "OK" } });
 }
 // The dialog's Install it: both commands in a terminal on the profile's Desk, on its account, so the
@@ -692,7 +697,7 @@ export async function installPlugin(id, scope = null) {
   const source = await pluginSource();
   if (!profile || !source) return;
   const task = scope && Object.hasOwn(CONFIGURE_SCOPES, scope) ? configureText(profile, scope) : "";
-  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
+  const script = 'root=$1; task=$2; shift 2; "$@" plugin marketplace add "$root"; if "$@" plugin install "$PLUGIN"; then [ -n "$task" ] && { printf "\\nInstalled. Starting Claude to set up your profile...\\n\\n"; exec "$@" "$task"; }; printf "\\nInstalled. Back in Kelpie, press the button again.\\n"; else printf "\\nThe plugin didn\'t install: Claude\'s message above says why. Once that\'s sorted, press the button in Kelpie again.\\n"; fi; exec "${SHELL:-/bin/sh}" -l';
   return openDesk(profile, { name: task ? "Configure" : "Install the Kelpie plugin", argv: ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", script, "sh", source, task, ...claudeArgv(profile)] });
 }
 
