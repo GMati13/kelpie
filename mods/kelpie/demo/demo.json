@@ -1,5 +1,5 @@
 {
-  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
+  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
   "profile": {
     "name": "Acme",
     "folder": "~/.local/share/kelpie/demo/acme",
@@ -422,6 +422,7 @@
       "title": "ACME-175 Wait for the session cookie in the login test",
       "updated": "-8m",
       "checks": "PENDING",
+      "later": { "after": 20, "checks": "SUCCESS" },
       "files": [
         {
           "path": "e2e/login.e2e.ts",

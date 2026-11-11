@@ -217,9 +217,20 @@ export async function demoProject(args) {
 // --- GitHub -----------------------------------------------------------------------------------
 
 const prUrl = (f, p) => `https://github.com/${f.profile.owner}/${p.repo}/pull/${p.number}`;
-function asPull(f, p) {
+// When kelpie.demo last made the demo: a fixture pull request's `later` ({after: seconds, checks}) takes
+// its place that long after it, so a change can be watched reaching the list (a PR's checks turning
+// green). None (the tests, a demo made before): the fixture as it is.
+const DEMO_AT = "kelpie.demo.at";
+const later = (p) => {
+  const at = shared(DEMO_AT);
+  return p.later && typeof at === "number" && Date.now() - at >= Number(p.later.after ?? 0) * 1000 ? { ...p, ...p.later, later: null } : p;
+};
+// A demo pull request's node id, as GitHub's search gives one (readPulls() asks by it).
+const pullId = (p) => `demo-pr-${p.repo}-${p.number}`;
+function asPull(f, raw) {
+  const p = later(raw);
   return {
-    number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
+    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
     reviewDecision: APPROVED.has(prUrl(f, p)) ? "APPROVED" : p.review ?? null, viewerReview: APPROVED.has(prUrl(f, p)) ? "APPROVED" : null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };
@@ -243,6 +254,12 @@ export async function demoPulls(q) {
     : /is:merged/.test(q) ? (p) => !p.reviewer && p.merged
     : (p) => !p.reviewer && !p.merged;
   return f.pulls.filter(pick).map((p) => asPull(f, p));
+}
+// readPulls(ids) for a demo profile: those pull requests as GitHub's nodes(ids:) gives them, with
+// their state.
+export async function demoReadPulls(ids) {
+  const f = await demoFixture();
+  return ids.map((id) => f.pulls.find((p) => pullId(p) === id)).filter(Boolean).map((p) => ({ ...asPull(f, p), state: p.merged ? "MERGED" : "OPEN" }));
 }
 
 const counted = (patch) => {
@@ -380,6 +397,7 @@ export async function setupDemo(board = "jira") {
   setShared("kelpie.paused", { ...(shared("kelpie.paused") ?? {}), [DEMO_ID]: paused });
   setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address, board === "project") });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
+  setShared(DEMO_AT, Date.now());
 }
 
 // kelpie.demo-remove: undoes kelpie.demo. Closes the demo profile's spaces (ending their stand-in
@@ -393,6 +411,7 @@ export async function removeDemo() {
     const all = shared(key);
     if (all && typeof all === "object" && DEMO_ID in all) { const rest = { ...all }; delete rest[DEMO_ID]; setShared(key, rest); }
   }
+  setShared(DEMO_AT, null);
   const owned = shared("kelpie.space.profile") ?? {};
   setShared("kelpie.space.profile", Object.fromEntries(Object.entries(owned).filter(([, id]) => id !== DEMO_ID)));
   const web = shared("kelpie.web");

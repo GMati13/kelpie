@@ -19,7 +19,7 @@ import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
-import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
+import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
@@ -819,14 +819,49 @@ const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
 const ARTIFACTS = "kelpie.artifacts.sessions";
-const FULL_EVERY = 60 * 1000; // an agent finishing reloads Jira and GitHub at most this often
+const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
+const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
+// Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
+// before brings, as the search lags behind a merge or new checks. A merge read here stays until a
+// load shows it; a closed one leaves the lists. 10 minutes at most.
+const FRESH = {};
+const FRESH_FOR = 10 * 60 * 1000;
+const freshNow = (url) => { const f = FRESH[url]; return f && Date.now() - f.at < FRESH_FOR ? f : null; };
+function withFresh(data) {
+  if (!data?.prs || !Object.keys(FRESH).some(freshNow)) return data;
+  const swap = (list, open) => (list ?? []).flatMap((p) => {
+    const f = freshNow(p.url);
+    return !f ? [p] : f.pr.closed || (open && f.pr.merged) ? [] : [f.pr];
+  });
+  return { ...data, prs: swap(data.prs, false), reviews: swap(data.reviews, true) };
+}
+// A fresh load's answer, the load having begun at `began`: what was read again before it began is
+// forgotten (the load is as new), but a merge it doesn't show yet; what was read since stays put in.
+// Exported for the tests.
+export function settlePulls(data, began) {
+  for (const [url, f] of Object.entries(FRESH)) {
+    const was = (data?.prs ?? []).find((p) => p.url === url);
+    if (!freshNow(url) || (f.at < began && !(f.pr.merged && was && !was.merged))) delete FRESH[url];
+  }
+  return withFresh(data);
+}
+// Puts a change into a profile's loaded stories: the shared copy every view reads, and the list's own.
+function patchLoaded(profile, fn) {
+  const all = shared(DATA) ?? {}, e = all[profile?.id];
+  if (e?.data) setShared(DATA, { ...all, [profile.id]: { ...e, data: fn(e.data) } });
+  for (const [k, c] of Object.entries(CACHE)) {
+    let id = null;
+    try { id = JSON.parse(k)[0]; } catch {}
+    if (c?.data && id === profile?.id) CACHE[k] = { ...c, data: fn(c.data) };
+  }
+}
 const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; return e && e.key === ctx.key ? e : null; };
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
-const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
+const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
   author: p.author ? { login: p.author.login } : null, repository: { name: p.repository?.name }, commits: { nodes: [{ commit: { statusCheckRollup: { state: checksOf(p) } } }] } });
 const session = (x) => ({ id: x.id, title: x.title, cwd: x.cwd, updated: x.updated, running: x.running, first: x.first, ...(x.config ? { config: x.config } : {}) });
@@ -1267,13 +1302,7 @@ export function settleMoved(data) {
 export function noteMoved(profile, key, o, board) {
   MOVED[key] = { status: o.to, category: o.category ?? null, id: (board?.kind === "project" ? o.id : o.toId) ?? null, at: Date.now() };
   delete MOVES[key];
-  const all = shared(DATA) ?? {}, e = all[profile?.id];
-  if (e?.data) setShared(DATA, { ...all, [profile.id]: { ...e, data: withMoved(e.data) } });
-  for (const [k, c] of Object.entries(CACHE)) {
-    let id = null;
-    try { id = JSON.parse(k)[0]; } catch {}
-    if (c?.data && id === profile?.id) CACHE[k] = { ...c, data: withMoved(c.data) };
-  }
+  patchLoaded(profile, withMoved);
 }
 const DESC_EVERY = 5 * 60 * 1000;
 // Descriptions read like an article ("calm reader"): body text at 14 on a 24px line, no wider than
@@ -1914,6 +1943,7 @@ export class Stories extends Source {
   }
 
   async fetch({ space, setup, key }) {
+    const began = Date.now();
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -1938,12 +1968,48 @@ export class Stories extends Source {
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
-    return settleMoved({
+    return settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
+    }, began));
+  }
+
+  // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
+  // away and in one small question, not the searches of a whole load; what they say now is put into
+  // the loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
+  quickPulls(cx) {
+    const ctx = this.context();
+    if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
+    if (this.quickBusy) { this.quickAgain = true; return; }
+    this.quickAgain = false;
+    const data = this.cache[ctx.key]?.data;
+    const ids = [...(data?.prs ?? []).filter((p) => !p.merged), ...(data?.reviews ?? [])].map((p) => p.id).filter(Boolean);
+    if (!ids.length) return;
+    this.quickBusy = true;
+    cx.spawn(async (cx) => {
+      try {
+        const at = Date.now();
+        const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null });
+        for (const n of found) FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at };
+        if (found.length) patchLoaded(ctx.profile, withFresh);
+      } catch {
+        // the next load or read brings it
+      } finally {
+        this.quickBusy = false;
+        cx.notify();
+      }
     });
+  }
+
+  // Something of the profile in flight, so its pull requests are worth reading every QUICK_EVERY:
+  // checks running on one of yours, or one of its agents working (it may merge or push any moment).
+  inFlight(ctx) {
+    const data = this.cache[ctx.key]?.data;
+    if ((data?.prs ?? []).some((p) => !p.merged && ["PENDING", "EXPECTED"].includes(checksOf(p)))) return true;
+    const mine = new Set(spacesOf(ctx.profile).map((s) => s.id));
+    return agents().some((a) => a.status === "working" && mine.has(a.space));
   }
 
   // The details only read what the list loads: no timer of their own, but for one that draws again
@@ -1972,6 +2038,7 @@ export class Stories extends Source {
       const e = sharedData(ctx);
       if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
+      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx);
       return super.state(cx);
     }
     const ctx = this.context();
@@ -1990,6 +2057,7 @@ export class Stories extends Source {
   // when the minute is up.
   loadAfterAgent(cx) {
     if (!this.loader) return;
+    this.quickPulls(cx);
     const wait = FULL_EVERY - (Date.now() - (this.fullAt ?? 0));
     if (wait <= 0) return this.load(cx, { again: true });
     if (this.trailing) return;
@@ -3547,6 +3615,7 @@ export class StoryList extends Stories {
   init(cx) {
     this.loader = true;
     Source.prototype.init.call(this, cx);
+    cx.timer.every(QUICK_EVERY, (cx) => { if (this.inFlight(this.context())) this.quickPulls(cx); });
   }
 
   // A fresh load from Jira and GitHub (not the sessions alone, nor the copy kept from before a
