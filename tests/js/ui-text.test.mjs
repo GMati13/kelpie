@@ -97,7 +97,7 @@ test("the Board page's Move to Done hint doesn't say built", () => {
 test("tooltips give their keys one way", async () => {
   const { readdirSync, readFileSync } = await import("node:fs");
   const { repoFile } = await import("../lib/helpers.mjs");
-  for (const mod of ["mods/kelpie"]) {
+  for (const mod of ["mods/kelpie", "mods/kelpie-artifacts"]) {
     for (const f of readdirSync(repoFile(mod)).filter((x) => x.endsWith(".js"))) {
       const found = readFileSync(repoFile(`${mod}/${f}`), "utf8").match(/\([⌃⌥⇧⌘]+[^)]{1,3}\)/gu);
       assert.equal(found, null, `${mod}/${f}: ${found}`);
