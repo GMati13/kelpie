@@ -3,7 +3,7 @@
 // belongs to the profile whose folder it is in (the deepest one). Each profile has:
 //   name     what it's called
 //   folder   where its agents start and whose Claude sessions show
-//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone }: a Jira
+//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority }: a Jira
 //            Cloud board URL pasted in setup, the Keychain item whose account is the Jira email and
 //            password the API token (macOS), or instead a shell command that prints the token, with the
 //            email beside it (any system; jira.sh keeps the token in pipes), the task
@@ -12,12 +12,15 @@
 //            column from which your part of a ticket is done (none: handoverFrom() picks one), and
 //            `solo` (true/false) when the person works alone on it: the stories past that column then
 //            wait on them, not on others, and the list says so (sunkWords); `moveToDone` false hides
-//            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise
-//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone }: a GitHub
+//            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise;
+//            `byPriority` (true/false) orders each group's stories by their priority, and `showPriority`
+//            (true/false) marks rows with it (priorityOf()), both off unless set
+//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority, priorityField }: a GitHub
 //            Project as the board instead of Jira (a profile has one or the other): its address
 //            (parseProject()), the ticket key prefix per repo (parsePrefixes(); none: the repo's
-//            name, defaultPrefix()), the same prompts, handover column, solo and moveToDone as Jira's. Read as the
-//            github section's account, as pull requests are
+//            name, defaultPrefix()), the same prompts, handover column, solo, moveToDone and priority as
+//            Jira's, `priorityField` the name of its single-select field that holds the priority (none:
+//            no priority). Read as the github section's account, as pull requests are
 //   github   { owner, account }: an organisation or user whose pull requests show; `account`, optional,
 //            the GitHub account (a login gh is signed in to) Kelpie's own gh calls act as, named to its
 //            agents and terminals as KELPIE_GH_ACCOUNT
@@ -430,6 +433,18 @@ export function sunkWords(board) {
 // approves their work, so the sidebar leaves out what only a team needs (stories.js StoryList).
 export const worksAlone = (p) => Boolean(boardOf(p)?.cfg?.solo);
 
+// How the profile's board uses its tickets' priority (#122): `order` sorts each group of the story list
+// by it (what needs you still first; equal ones, and tickets with none after the lowest, in the board's
+// order), `show` marks rows with it. Both off unless set: the board's order, nothing shown. Where it
+// comes from: Jira's own priority field and the site's levels, or a Project's single-select field
+// named by `priorityField` (`field`), its options' order as the levels'. A Project without one has none.
+export function priorityOf(p) {
+  const b = boardOf(p);
+  const field = b?.kind === "project" ? String(b.cfg.priorityField ?? "").trim() || null : null;
+  const has = b?.kind === "jira" || Boolean(field);
+  return { order: has && b.cfg.byPriority === true, show: has && b.cfg.showPriority === true, field };
+}
+
 // The task an agent started on a Jira ticket gets: the space's own template (jira.prompt), else this.
 // Placeholders: {key} {summary} {url} {type} {status} {parent} (the story's key and summary, or empty)
 // {subtasks} (a story's subtasks, a line each: "KEY — title (status)"; empty for a subtask).
@@ -705,6 +720,8 @@ export async function installPlugin(id, scope = null) {
 // profile, and writes what happened to profile-apply.result.json ({ ok, error | profile, at }). The
 // plugin's configure-profile skill documents the rules: known keys only, sections merged (a null key or section removed), strings
 // only, no secrets, and the same checks as the dialog's Save.
+// A board's settings that are true or false only.
+const FLAGS = ["solo", "moveToDone", "byPriority", "showPriority"];
 const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
 const SECRET = /token$|^token|password|secret/i;
 // A change to a profile from outside the dialog (an agent's request, a `herdr-app do` command): saved
@@ -764,7 +781,7 @@ export function buildProfile(id, set) {
     const section = { ...(next[key] ?? {}) };
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
-      const flag = (key === "jira" || key === "project") && (k === "solo" || k === "moveToDone"); // true/false only, never a string
+      const flag = (key === "jira" || key === "project") && FLAGS.includes(k); // true/false only, never a string
       const ok = v === null || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: ${flag ? "true or false" : `a string${key === "notify" ? " or true/false" : ""}`}, or null to remove it.`);
       if (v === null) delete section[k]; else section[k] = typeof v === "string" ? v.trim() : v;
@@ -803,7 +820,7 @@ export function buildProfile(id, set) {
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
-// folder, owner, handover, solo, moveToDone, notify) applies at once.
+// folder, owner, handover, solo, moveToDone, the priority settings, notify) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 // Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what

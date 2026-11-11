@@ -16,7 +16,7 @@ import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTex
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -422,11 +422,13 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
   // The board's usual type at each level (every story a Story, every subtask a Sub-task) says
   // nothing, so only other types are tags (tagsOf()).
   const usualStory = usualType(data.parents), usualSub = usualType(data.children);
+  const rankOf = priorityRanks(data.priorities);
   const item = (key, f) => {
     const children = kids.get(key) ?? [];
     const sub = (c) => ({
       key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, tags: tagsOf(c.fields, usualSub), status: c.fields?.status?.name,
       category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
+      priority: rankOf(c.fields?.priority),
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
     });
@@ -437,6 +439,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     const gone = kept.has(key) && !mine.has(key) && !own.length;
     return {
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      priority: rankOf(f?.priority),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
@@ -456,6 +459,18 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
   }
   if (all) return items;
   return items.filter((it) => settled(it, left) === done);
+}
+// A ticket's priority as build() gives it: { name, rank, of } (`rank` its level's place among the
+// board's `of` levels, 0 the highest), or null when it has none or the board's levels aren't loaded
+// (the profile doesn't use priority). A level is matched by id, as the board gives it, else by name.
+export function priorityRanks(levels) { // exported for the tests
+  const list = Array.isArray(levels) ? levels : [];
+  return (p) => {
+    if (!p?.name || !list.length) return null;
+    const at = list.findIndex((l) => l.id === p.id);
+    const rank = at >= 0 ? at : list.findIndex((l) => l.name === p.name);
+    return rank >= 0 ? { name: list[rank].name, rank, of: list.length } : null;
+  };
 }
 // Finished stories leave the list once nothing of theirs is open (no pull request) and nothing's left
 // to clean up: no space, no paused session, no leftovers found (`left`, the story keys with some). One
@@ -602,6 +617,25 @@ function subsLine(t, it) {
   const segs = parts.flatMap((p) => Array.from({ length: p.n }, () => p.color));
   return h_flex().id(`b-subs-${it.key}`).w_full().h(2).mt(3).gap(2).tooltip(tip)
     .children(segs.map((c, i) => div().flex_1().h_full().rounded(1).bg(i < parts[0].n ? c : alpha(c, 0.45))));
+}
+
+// A ticket's priority as a small mark (#122), the same on either board: chevrons pointing up for the
+// levels above the middle (the highest, doubled, in the theme's amber: the one that should stand out;
+// the next ones quiet), down for those below it (dim), nothing for the middle level or a ticket with
+// none, so a list of ordinary work stays plain. Nothing red: the highest is urgent, not an error. Its
+// tooltip says the level by the board's name. Null when there's nothing to draw.
+export function priorityLook(p) { // exported for the tests
+  if (!p || !(p.of > 1)) return null;
+  const mid = (p.of - 1) / 2;
+  if (p.rank === mid) return null;
+  if (p.rank === 0) return { icon: "chevrons-up", color: "working" };
+  if (p.rank < mid) return { icon: "chevron-up", color: "muted" };
+  return { icon: p.rank === p.of - 1 ? "chevrons-down" : "chevron-down", color: "dim" };
+}
+function priorityMark(t, id, p) {
+  const look = priorityLook(p);
+  if (!look) return null;
+  return div().id(id).flex_none().child(icon(own(look.icon), 12).text_color(t[look.color])).tooltip(`Priority: ${p.name}`);
 }
 
 // `bar: false` leaves the subtasks' bar out, for rows that draw it as subsLine().
@@ -1034,9 +1068,12 @@ const storyBlock = (role, it) => ({ role, now: new Date(), story: it ?? null, st
 
 // The list's order: what needs you, then the rest, then what's sunk; each in the board's order (the
 // order build() keeps), so a story only moves when what it needs from you changes. With `n`, its need.
-function ordered(items) {
+// `byPriority` (the profile's, priorityOf()): within each of those, the highest priority first, then
+// the board's order; a story with none after the lowest. Next's queue keeps this order among equals.
+function ordered(items, byPriority = false) {
   const tier = (x) => (x.n[0] <= NEEDS_YOU ? 0 : sunk(x.it, x.n) ? 2 : 1);
-  return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || a.i - b.i);
+  const level = (x) => (byPriority ? x.it.priority?.rank ?? Infinity : 0);
+  return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || (level(a) === level(b) ? 0 : level(a) < level(b) ? -1 : 1) || a.i - b.i);
 }
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
@@ -1131,10 +1168,17 @@ function patchLoaded(profile, fn) {
 }
 const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; return e && e.key === ctx.key ? e : null; };
 
+// A priority as it's kept, the board's level or a ticket's: { id, name }, both strangers' text, cleaned
+// and cut as a tag's name is; null without a name.
+const priorityLevel = (p) => {
+  const name = tagName(p?.name);
+  return name ? { id: String(p?.id ?? name).slice(0, 40), name } : null;
+};
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
+  ...((p) => (p ? { priority: p } : {}))(priorityLevel(i.fields?.priority)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -1794,7 +1838,7 @@ function requestProfile(req) {
 function itemsFor(profile) {
   const data = (shared(DATA) ?? {})[profile?.id]?.data;
   if (!hasBoard(profile) || !data) return null;
-  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover, { left: leftStories(profile) })), reviews: reviewsOf(data) };
+  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover, { left: leftStories(profile) }), priorityOf(profile).order), reviews: reviewsOf(data) };
 }
 const profileHasNext = (profile) => {
   if (!profile) throw new Error("No Kelpie profile is shown.");
@@ -2273,7 +2317,7 @@ export class Stories extends Source {
     // else (hereKeys()): the board is asked for those by key too.
     const prior = this.cache?.[key]?.data ?? null;
     const keep = { keys: hereKeys(setup.profile, prior), projects: prior ? [...projectsOf(prior)] : [], repos: prior?.repos ?? {} };
-    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await loadBoard(boardOf(setup), keep);
+    const { site, columns, sprints, mine, parents, children, links, repos, project, kept, priorities } = await loadBoard(boardOf(setup), keep);
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
@@ -2283,6 +2327,7 @@ export class Stories extends Source {
     return settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
+      ...(priorities ? { priorities: priorities.map(priorityLevel).filter(Boolean).slice(0, 20) } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began, setup.profile?.id));
@@ -2704,6 +2749,8 @@ export class Stories extends Source {
           .child(it.space
             ? skinFont(div().id(`here-${it.key}`), "numbers").flex_none().text_color(t.muted).tooltip("Open here: it has a space on this machine").child(it.key)
             : skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
+          // Its priority right after its key, while the profile shows it (priorityOf()).
+          .when(Boolean(st && priorityOf(st.setup).show && priorityLook(it.priority)), (el) => el.child(priorityMark(t, `prio-${it.key}`, it.priority)))
           // Someone else has it now: who, as their avatar (the row's tooltip says it in words).
           .when(Boolean(it.reassigned), (el) => el.child(div().id(`gone-${it.key}`).flex_none()
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
@@ -3021,6 +3068,7 @@ export class Stories extends Source {
     if (lonePr(it)) return this.reviewDetail(t, st, it, note, cx);
     // A subtask's title shows its description under it, and hides it again.
     const opened = (s) => this.opened.has(s.key);
+    const showPriority = priorityOf(st.setup).show;
     const title = (s) => skinFont(div(), "ui").id(`sub-title-${s.key}`).flex_1().min_w(0).truncate().cursor_pointer().text_color(s.category === "done" ? t.muted : t.foreground).hover((x) => x.text_color(t.accent))
       .tooltip(opened(s) ? "Hide the description" : "Show the description")
       .on_click((_e, cx) => { if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key); cx.notify(); }).child(s.title);
@@ -3051,7 +3099,12 @@ export class Stories extends Source {
       .child(h_flex().gap(10).items_center().min_w(0)
         // Who it's assigned to leads the row: the first thing looked for.
         .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.mine, s.avatar))
-        .child(skinFont(div(), "numbers").flex_none().w(84).text_size(SMALL).text_color(t.dim).child(s.key))
+        // Its priority after its key, in the key's column, while the profile shows it (priorityOf()).
+        .child(showPriority && priorityLook(s.priority)
+          ? h_flex().flex_none().w(84).gap(4).items_center()
+            .child(skinFont(div(), "numbers").flex_none().text_size(SMALL).text_color(t.dim).child(s.key))
+            .child(priorityMark(t, `sub-prio-${s.key}`, s.priority))
+          : skinFont(div(), "numbers").flex_none().w(84).text_size(SMALL).text_color(t.dim).child(s.key))
         // As high as a button, so a row is the same height with its actions shown or not.
         .child(h_flex().id(`sub-main-${s.key}`).relative().flex_1().min_w(0).h(CONTROL).items_center()
           .child(title(s))
@@ -3971,7 +4024,7 @@ export class Stories extends Source {
       if ([...sig].some(([pane, now]) => was.get(pane) === "working" && (now === "done" || now === "idle"))) this.loadAfterAgent(cx);
       else if (sig.size !== was.size || [...sig.keys()].some((pane) => !was.has(pane))) this.loadSessions(cx);
     }
-    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover, { left: leftStories(st.profile) }));
+    const items = ordered(build(st.data, live, pausedIn(st.profile), storySpaces(st.profile), boardOf(st.setup)?.handover, { left: leftStories(st.profile) }), priorityOf(st.setup).order);
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
@@ -4593,7 +4646,7 @@ export function storyItems() {
   const data = sharedData(ctx)?.data;
   if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
   const handover = boardOf(ctx.setup)?.handover;
-  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), handover, { left: leftStories(ctx.profile) })), done: doneIn(data, ctx.profile, handover), reviews: reviewsOf(data), lone: loneOf(data) };
+  return { st: { ...ctx, data }, items: ordered(build(data, agentsByKey(ctx.profile), pausedIn(ctx.profile), storySpaces(ctx.profile), handover, { left: leftStories(ctx.profile) }), priorityOf(ctx.setup).order), done: doneIn(data, ctx.profile, handover), reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).
@@ -5101,12 +5154,16 @@ export function suggestSnapshot(st, items, reviews) {
   const handover = columns[handoverFrom(columns, board?.handover)]?.name ?? "the last";
   const solo = Boolean(board?.cfg?.solo);
   if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; ${solo ? `I work alone: from ${handover} on, a ticket waits on me to check it` : `my part is done from ${handover}`}`);
+  // Each ticket's priority when the board gives one (whatever the profile shows), and its levels.
+  const levels = st.data.priorities ?? [];
+  if (levels.length) out.push(`Priority levels, highest first: ${levels.map((l) => l.name).join(" → ")}`);
   out.push("", "My stories (in the sprint, assigned to me or with my subtasks):");
   const stories = items.map((x) => x.it).filter((it) => !it.review && !it.pull);
   if (!stories.length) out.push("- none");
+  const prio = (x) => (x.priority ? ` · priority ${x.priority.name}` : "");
   for (const it of stories) {
-    out.push(`- ${it.key} ${it.title} [${it.status ?? it.type}]: ${need(it)[1]}${it.space ? " · open here" : ""}${agentsOf(it) ? ` · agents: ${agentsOf(it)}` : ""}${sunk(it) ? (solo ? " · built, mine to check" : " · my part is done") : ""}`);
-    if (it.story) for (const s of it.subs) out.push(`  - ${s.key} ${s.title} [${s.status ?? "?"}]${s.mine ? " (mine)" : ""}`);
+    out.push(`- ${it.key} ${it.title} [${it.status ?? it.type}]${prio(it)}: ${need(it)[1]}${it.space ? " · open here" : ""}${agentsOf(it) ? ` · agents: ${agentsOf(it)}` : ""}${sunk(it) ? (solo ? " · built, mine to check" : " · my part is done") : ""}`);
+    if (it.story) for (const s of it.subs) out.push(`  - ${s.key} ${s.title} [${s.status ?? "?"}]${prio(s)}${s.mine ? " (mine)" : ""}`);
     for (const p of allPrs(it)) out.push(`  - PR ${pr(p)}`);
   }
   const lone = pullsOf(st.data);

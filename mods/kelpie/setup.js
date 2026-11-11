@@ -18,6 +18,7 @@ import { deskAgents } from "./desk.js";
 import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
+import { jiraPriorities } from "./board.js";
 import { githubAccounts, searchPulls } from "./pulls.js";
 import { checkProject as readProject } from "./project-check.js";
 
@@ -189,6 +190,13 @@ export class Setup {
     this.solo = board?.solo === true;
     // Whether stories offer Move to Done (on unless turned off; saved only when off).
     this.moveToDone = board?.moveToDone !== false;
+    // Priority (#122): whether the stories are ordered and marked by it, both off unless set; a
+    // Project's comes from the single-select field named here, picked from those a Check finds.
+    // `priorityLevels`: the board's levels as a Check found them (Jira's, or the Project's fields').
+    this.byPriority = board?.byPriority === true;
+    this.showPriority = board?.showPriority === true;
+    this.priorityField = saved.project?.priorityField ?? null;
+    this.priorityLevels = null;
     const columns = board ? loadedColumns(this.profile) : [];
     this.columns = columns.length && saved.jira ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
     this.projectColumns = columns.length && saved.project && !saved.jira ? { key: projectKey(saved.project), list: columns } : null;
@@ -264,12 +272,14 @@ export class Setup {
     cx.spawn(async (cx) => {
       try {
         const cfg = { ...parsed, ...signIn, ...(this.profile?.demo ? { demo: true } : {}) };
-        const [r, config] = await Promise.all([
+        const [r, config, levels] = await Promise.all([
           jira(cfg, "get", `/rest/agile/1.0/board/${parsed.board}`),
           jira(cfg, "get", `/rest/agile/1.0/board/${parsed.board}/configuration`).catch(() => null),
+          jiraPriorities(cfg).catch(() => null),
         ]);
         const list = (config?.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
         if (list.length) this.columns = { ...parsed, list };
+        this.priorityLevels = { kind: "jira", ...parsed, list: (levels ?? []).map((l) => l.name) };
         this.result("jira", true, `Signed in. Board “${r.body?.name}” (${r.body?.type ?? "board"}${r.body?.location?.projectKey ? `, ${r.body.location.projectKey}` : ""}).`, cx);
       } catch (e) {
         this.result("jira", false, String(e?.message ?? e), cx);
@@ -318,6 +328,7 @@ export class Setup {
         if (r.project) {
           const key = projectKey(parsed);
           this.projectFound = { key, ...r.project };
+          this.priorityLevels = { kind: "project", key, selects: r.project.selects ?? [] };
           for (const repo of r.project.repos) this.addPrefix(repo);
           if (r.project.options.length) this.projectColumns = { key, list: r.project.options.map((o) => ({ name: o.name, statuses: [o.id] })) };
         }
@@ -395,7 +406,7 @@ export class Setup {
     const prefixRows = project ? this.prefixList() : [];
     const badPrefix = prefixRows.find((r) => r.error);
     const prefixes = prefixRows.filter((r) => r.own).map((r) => `${r.key}=${r.own}`).join(", ");
-    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(this.profile?.demo ? { demo: true } : {}) };
+    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(this.byPriority ? { byPriority: true } : {}), ...(this.showPriority ? { showPriority: true } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
     const error = onJira && url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
       : onJira && parsed && missing ? ["jira", missing]
       : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
@@ -411,7 +422,7 @@ export class Setup {
         name,
         folder,
         jira: onJira && parsed ? { url, ...parsed, keychain, ...(signIn.tokenCommand ? signIn : {}), ...boardParts } : null,
-        project: project ? { url: projectUrl, ...project, ...(prefixes ? { prefixes } : {}), ...boardParts } : null,
+        project: project ? { url: projectUrl, ...project, ...(prefixes ? { prefixes } : {}), ...(this.priorityField ? { priorityField: this.priorityField } : {}), ...boardParts } : null,
         github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
@@ -647,6 +658,35 @@ export class Setup {
         : "Check the Project to list its repos and the key prefix each gives its issues."),
     ];
 
+    // The Board page's priority settings (#122): where a Project's comes from (one of its single-select
+    // fields, as a Check lists them), the levels the board has, and whether the list orders and marks
+    // stories by it. Both off: the board's order, nothing shown.
+    const priorityPart = () => {
+      const found = this.priorityLevels;
+      const selects = !onJira && found?.kind === "project" && project && found.key === projectKey(project) ? found.selects : null;
+      const jiraLevels = onJira && found?.kind === "jira" && parsed && found.site === parsed.site && found.board === parsed.board ? found.list : null;
+      const named = selects?.find((f) => f.name === this.priorityField) ?? null;
+      const levels = onJira ? jiraLevels : named?.levels ?? null;
+      // Said only while it's asked for: with nothing to go by, ordering and marks do nothing.
+      const none = (this.byPriority || this.showPriority) && (onJira ? Boolean(jiraLevels) && !jiraLevels.length : !this.priorityField);
+      const fieldPick = onJira ? null : selects?.length || this.priorityField
+        ? field("Priority field", choice("setup-priority-field", [
+          { label: "None", value: null, on: !this.priorityField, tip: "Its tickets have no priority" },
+          ...[...new Set([...(selects ?? []).map((f) => f.name), ...[this.priorityField].filter(Boolean)])].map((n) => ({ label: n, value: n, on: this.priorityField === n })),
+        ], (v) => { this.priorityField = v; }), "The Project's single-select field that holds a ticket's priority: its options, top to bottom, are the levels, highest first.")
+        : hint(selects ? "This Project has no single-select field besides Status, so its tickets have no priority. Add one on GitHub (Priority, say) and check again." : "Check the Project to choose the field its tickets' priority is in.");
+      return [
+        group("Priority"),
+        fieldPick,
+        levels?.length ? hint(`Its levels, highest first: ${levels.join(", ")}.`) : onJira && !jiraLevels ? hint("Check the connection to see the site's priority levels.") : null,
+        none ? hint(onJira ? "Jira gave no priority levels for this site, so there's nothing to order or show." : "Without a priority field there's nothing to order or show.") : null,
+        toggle("setup-by-priority", "Order stories by priority", this.byPriority, (_e, cx) => { this.byPriority = !this.byPriority; cx.notify(); },
+          this.byPriority ? "In each group, the highest priority first, then the board's order; tickets with none come last. What needs you still comes first." : "Off: stories keep the board's order (what needs you first)."),
+        toggle("setup-show-priority", "Show priority", this.showPriority, (_e, cx) => { this.showPriority = !this.showPriority; cx.notify(); },
+          this.showPriority ? "A small mark after each ticket's key: up for the levels above the middle, the highest in amber, down for those below; the middle level shows none." : "Off: no priority marks on the rows."),
+      ];
+    };
+
     const pages = {
       general: () => [
         page("General", "A piece of work with its own folder, and maybe a board: every space opened in its folder belongs to it, and each story you start becomes a space of its own."),
@@ -702,6 +742,7 @@ export class Setup {
           this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
         toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
           this.moveToDone ? "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
+        ...priorityPart(),
       ],
 
       github: () => [

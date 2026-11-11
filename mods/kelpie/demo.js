@@ -52,6 +52,9 @@ function fields(f, i, { withParent = true } = {}) {
     status: jiraStatus(statusNamed(f, MOVED[i.key] ?? i.status)),
     labels: i.labels ?? [],
   };
+  // Its priority by the fixture's level name (fixture `priorities`, highest first); none when unset.
+  const level = (f.priorities ?? []).find((l) => l.name === i.priority);
+  if (level) out.priority = { id: level.id, name: level.name };
   // Yours are assigned to the fixture's own name; others name someone, or no one. A parent embedded in
   // a subtask names no one, as in Jira.
   const who = i.assignee ?? (i.mine ? f.profile.meName : null);
@@ -120,6 +123,8 @@ export async function demoJira(args) {
   if (/\/board\/\d+\/configuration$/.test(path)) return ok({ columnConfig: { columns: f.board.columns.map((c) => ({ name: c.name, statuses: c.statuses.map((s) => ({ id: s.id })) })) } });
   if (/\/board\/\d+\/sprint\?state=active$/.test(path)) return ok({ values: f.sprints });
   if (/\/board\/\d+$/.test(path)) return ok({ id: f.profile.board, name: f.board.name, type: "scrum" });
+  // The site's priority levels, highest first, as Jira Cloud lists them.
+  if (path === "/rest/api/3/priority") return ok((f.priorities ?? []).map((l) => ({ id: l.id, name: l.name })));
   const m = /\/issue\/([^/?]+)(\/transitions)?/.exec(path);
   const i = m && issueById(f).get(decodeURIComponent(m[1]));
   if (!i) return { site: f.profile.site, code: 404, body: { errorMessages: ["Issue does not exist in the demo."] } };
@@ -158,7 +163,7 @@ const columnOf = (f, name) => {
 };
 const login = (name) => String(name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-function ghIssue(f, i) {
+function ghIssue(f, i, withPriority = null) {
   const repo = f.project.repo;
   const column = columnOf(f, MOVED[i.key] ?? i.status);
   const closed = column === f.board.columns.length - 1;
@@ -172,8 +177,18 @@ function ghIssue(f, i) {
     labels: { nodes: (i.labels ?? []).map((name) => ({ name, color: f.project.labels?.[name] ?? "ededed" })) },
     parent: parent ? { id: nodeId(parent.key), number: numberOf(parent.key), repository: { nameWithOwner: repo } } : null,
     closedByPullRequestsReferences: { nodes: f.pulls.filter((p) => p.closes === i.key).map((p) => ({ url: prUrl(f, p) })) },
-    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name } }] },
+    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name },
+      ...(withPriority ? { priority: priorityValue(f, i) } : {}) }] },
   };
+}
+// The Project's priority field (fixture project.priority, a single-select field) as GitHub answers it
+// when asked for by that name: its options are the fixture's levels, `prio-<id>`. Asked by another
+// name, the Project has no such field.
+const priorityOptions = (f) => (f.priorities ?? []).map((l) => ({ id: `prio-${l.id}`, name: l.name }));
+const askedPriority = (f, v) => (v.withPriority === "true" && f.project.priority && v.priority === f.project.priority ? v.priority : null);
+function priorityValue(f, i) {
+  const o = priorityOptions(f).find((x) => x.name === i.priority);
+  return o ? { optionId: o.id, name: o.name } : null;
 }
 // The variables of a gh graphql call: -f/-F name=value, `name[]` gathered into a list.
 function variables(args) {
@@ -194,11 +209,11 @@ export async function demoProject(args) {
   const op = /^query\s+(\w+)/.exec(v.query ?? "")?.[1];
   if (op === "KelpieStories") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
-    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };
+    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i, askedPriority(f, v)), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c, askedPriority(f, v))) } })) } };
   }
   if (op === "KelpieSubIssues") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
-    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ghIssue(f, i)) } };
+    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ghIssue(f, i, askedPriority(f, v))) } };
   }
   // Its slots k0, k1… (`u<n>` set), each a repo and an issue number.
   if (op === "KelpieKept") {
@@ -216,11 +231,12 @@ export async function demoProject(args) {
   const project = {
     id: PROJECT_ID, title: f.project.title, url: `https://github.com/${op === "KelpieProjectOrg" ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
     field: { id: "PVTSSF_demo", options: f.board.columns.map((c, n) => ({ id: `opt-${n}`, name: c.name })) },
+    ...(v.withPriority === "true" ? { priorityField: askedPriority(f, v) ? { id: "PVTSSF_prio", options: priorityOptions(f) } : null } : {}),
     fields: { nodes: [{}, field] },
     items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter((i) => i.mine).map((i) => ({
       id: `PVTI_${i.key}`, type: "ISSUE", isArchived: false,
       fieldValues: { nodes: iteration ? [{}, { iterationId: iteration.id, field: { id: field.id } }] : [] },
-      content: ghIssue(f, i),
+      content: ghIssue(f, i, askedPriority(f, v)),
     })) },
   };
   return { data: op === "KelpieProjectOrg" ? { organization: { projectV2: project } } : { user: { projectV2: project } } };
@@ -394,14 +410,17 @@ export function demoAsks(f, terminalOf = () => null, project = false) {
 
 // The demo profile's board: the fixture's Jira board, or (`board` "project", kelpie.demo-github) the
 // same issues as a GitHub Project. One profile either way, as two would open spaces of the same names.
-// The fixture's profile `solo` (true) makes it a board the person works alone on.
+// The fixture's profile `solo` (true) makes it a board the person works alone on; its `byPriority` and
+// `showPriority` (true) order and mark the stories by priority. The Project's priority field is the
+// fixture's project.priority, so turning those on in the profile dialog is enough there too.
 export function demoBoard(f, board = "jira") {
   const p = f.profile;
+  const prio = { ...(p.byPriority ? { byPriority: true } : {}), ...(p.showPriority ? { showPriority: true } : {}) };
   if (board === "project") {
     const number = 1;
-    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}) } };
+    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...prio, ...(f.project?.priority ? { priorityField: f.project.priority } : {}) } };
   }
-  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}) }, project: null };
+  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...prio }, project: null };
 }
 
 export async function setupDemo(board = "jira") {
