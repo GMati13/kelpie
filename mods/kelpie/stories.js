@@ -19,7 +19,7 @@ import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { boardSite, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
-import { approvePull, gh, pullBody, searchPulls } from "./pulls.js";
+import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { agentState, decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
@@ -1017,6 +1017,7 @@ const AGENT = { blocked: ["Needs you", "working"], working: ["Working", "accent"
 const CACHE = {};
 const BUSY = new Set();
 const STARTED = {};
+const AGAIN = new Set(); // profile keys asked to load again while their load ran (Source.load)
 const DATA = STORIES; // { [profile id]: { key, data, at, error } }
 const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, repo } }
 const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } }); };
@@ -1024,7 +1025,46 @@ const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
 const ARTIFACTS = "kelpie.artifacts.sessions";
-const FULL_EVERY = 60 * 1000; // an agent finishing reloads Jira and GitHub at most this often
+const FULL_EVERY = 30 * 1000; // an agent finishing reloads Jira and GitHub at most this often
+const QUICK_EVERY = 20 * 1000; // while something is in flight, its pull requests are read again this often
+// Pull requests read again here (quickPulls()) by url, { pr, at }: newer than what a load that began
+// before brings, as the search lags behind a merge or new checks. A merge read here stays until a
+// load shows it; a closed one leaves the lists. 10 minutes at most.
+const FRESH = {};
+const FRESH_FOR = 10 * 60 * 1000;
+const freshNow = (url) => { const f = FRESH[url]; return f && Date.now() - f.at < FRESH_FOR ? f : null; };
+function withFresh(data) {
+  if (!data?.prs || !Object.keys(FRESH).some(freshNow)) return data;
+  const swap = (list, open) => (list ?? []).flatMap((p) => {
+    const f = freshNow(p.url);
+    // A review keeps the shape the load gives it (no `merged`), so an unchanged read changes nothing.
+    return !f ? [p] : f.pr.closed || (open && f.pr.merged) ? [] : [open ? { ...f.pr, merged: p.merged } : f.pr];
+  });
+  return { ...data, prs: swap(data.prs, false), reviews: swap(data.reviews, true) };
+}
+// A fresh load's answer, the load having begun at `began`: what was read again before it began is
+// forgotten (the load is as new), but a merge it doesn't show yet; what was read since stays put in.
+// Exported for the tests.
+export function settlePulls(data, began) {
+  for (const [url, f] of Object.entries(FRESH)) {
+    const was = (data?.prs ?? []).find((p) => p.url === url);
+    if (!freshNow(url) || (f.at < began && !(f.pr.merged && was && !was.merged))) delete FRESH[url];
+  }
+  return withFresh(data);
+}
+// Puts a change into a profile's loaded stories: the shared copy every view reads, and the list's own.
+// Written only when it changes something, as every copy draws again on a write (the quick read runs
+// every 20 s while something is in flight).
+function patchLoaded(profile, fn) {
+  const all = shared(DATA) ?? {}, e = all[profile?.id];
+  const next = e?.data ? fn(e.data) : null;
+  if (next && next !== e.data && JSON.stringify(next) !== JSON.stringify(e.data)) setShared(DATA, { ...all, [profile.id]: { ...e, data: next } });
+  for (const [k, c] of Object.entries(CACHE)) {
+    let id = null;
+    try { id = JSON.parse(k)[0]; } catch {}
+    if (c?.data && id === profile?.id) CACHE[k] = { ...c, data: fn(c.data) };
+  }
+}
 const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; return e && e.key === ctx.key ? e : null; };
 
 // Only what the views use, so the shared copy stays small.
@@ -1032,7 +1072,7 @@ const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statu
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
-const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
+const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
   author: p.author ? { login: p.author.login } : null, repository: { name: p.repository?.name }, commits: { nodes: [{ commit: { statusCheckRollup: { state: checksOf(p) } } }] } });
 const session = (x) => ({ id: x.id, title: x.title, cwd: x.cwd, updated: x.updated, running: x.running, first: x.first, ...(x.config ? { config: x.config } : {}) });
@@ -1443,7 +1483,38 @@ const RENAMED = new Set();
 // the story view) keeps its own.
 const DESCRIPTIONS = {}; // key -> { blocks, at, loading, error }
 const MOVES = {}; // key -> { list: [{ id, name, to, category }], at, loading, error }: where its status can go
-const MOVED = {}; // key -> { status, category, at }: a status just set here, shown until the stories catch up
+const MOVED = {}; // key -> { status, category, id, at }: a status just set here, shown until the stories catch up
+const MOVED_FOR = 10 * 60 * 1000; // a move the board's answers still don't show is kept this long at most
+const movedNow = (key) => { const m = MOVED[key]; return m && Date.now() - m.at < MOVED_FOR ? m : null; };
+// The loaded stories with the moves made here put in: the list's groups, order, progress and Next
+// follow a move at once, not only its chip, and don't wait for a load (whose search lags).
+function withMoved(data) {
+  if (!data?.parents || !Object.keys(MOVED).some(movedNow)) return data;
+  const fix = (i) => {
+    const m = movedNow(i.key);
+    if (!m || i.fields?.status?.name === m.status) return i;
+    return { ...i, fields: { ...i.fields, status: { id: m.id ?? i.fields?.status?.id ?? null, name: m.status, statusCategory: { key: m.category ?? null } } } };
+  };
+  return { ...data, parents: data.parents.map(fix), children: (data.children ?? []).map(fix) };
+}
+// A fresh load's answer: a move it shows is settled and forgotten; one it doesn't show yet (Jira's
+// search lags behind a move) stays put into it, so the list doesn't fall back to the old status.
+// Exported for the tests.
+export function settleMoved(data) {
+  const issues = [...(data?.parents ?? []), ...(data?.children ?? [])];
+  for (const key of Object.keys(MOVED)) {
+    if (!movedNow(key) || issues.some((i) => i.key === key && i.fields?.status?.name === MOVED[key].status)) delete MOVED[key];
+  }
+  return withMoved(data);
+}
+// A ticket moved here (its chip, Move to Done): noted, and put into the profile's loaded stories, the
+// shared copy every view reads and the list's own. `o` is the option moved to; its status id is a
+// Project option's own id, a Jira transition's `toId`. Exported for the tests.
+export function noteMoved(profile, key, o, board) {
+  MOVED[key] = { status: o.to, category: o.category ?? null, id: (board?.kind === "project" ? o.id : o.toId) ?? null, at: Date.now() };
+  delete MOVES[key];
+  patchLoaded(profile, withMoved);
+}
 const DESC_EVERY = 5 * 60 * 1000;
 // Descriptions read like an article ("calm reader"): body text at 14 on a 24px line, no wider than
 // about 64 characters, in a centred column with room on every side; the opening paragraph (usually
@@ -2023,6 +2094,7 @@ export class Stories extends Source {
     this.cache = CACHE;
     this.busy = BUSY;
     this.started = STARTED;
+    this.again = AGAIN;
     this.extra = EXTRA; // story key -> { groups, local, at, loading, error }
     this.shots = SHOTS;
     this.file = PICKED.file; // story key -> chosen file id
@@ -2082,6 +2154,7 @@ export class Stories extends Source {
   }
 
   async fetch({ space, setup, key }) {
+    const began = Date.now();
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -2106,12 +2179,48 @@ export class Stories extends Source {
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
-    return {
+    return settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: reviews.map(pull),
       prs: [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
-    };
+    }, began));
+  }
+
+  // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
+  // away and in one small question, not the searches of a whole load; what they say now is put into
+  // the loaded stories at once (FRESH). Asked for while one runs, it reads again once that ends.
+  quickPulls(cx) {
+    const ctx = this.context();
+    if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
+    if (this.quickBusy) { this.quickAgain = true; return; }
+    this.quickAgain = false;
+    const data = this.cache[ctx.key]?.data;
+    const ids = [...(data?.prs ?? []).filter((p) => !p.merged), ...(data?.reviews ?? [])].map((p) => p.id).filter(Boolean);
+    if (!ids.length) return;
+    this.quickBusy = true;
+    cx.spawn(async (cx) => {
+      try {
+        const at = Date.now();
+        const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null });
+        for (const n of found) FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at };
+        if (found.length) patchLoaded(ctx.profile, withFresh);
+      } catch {
+        // the next load or read brings it
+      } finally {
+        this.quickBusy = false;
+        cx.notify();
+      }
+    });
+  }
+
+  // Something of the profile in flight, so its pull requests are worth reading every QUICK_EVERY:
+  // checks running on one of yours, or one of its agents working (it may merge or push any moment).
+  inFlight(ctx) {
+    const data = this.cache[ctx.key]?.data;
+    if ((data?.prs ?? []).some((p) => !p.merged && ["PENDING", "EXPECTED"].includes(checksOf(p)))) return true;
+    const mine = new Set(spacesOf(ctx.profile).map((s) => s.id));
+    return agents().some((a) => a.status === "working" && mine.has(a.space));
   }
 
   // The details only read what the list loads: no timer of their own, but for one that draws again
@@ -2140,6 +2249,7 @@ export class Stories extends Source {
       const e = sharedData(ctx);
       if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
       if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
+      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx);
       return super.state(cx);
     }
     const ctx = this.context();
@@ -2147,10 +2257,10 @@ export class Stories extends Source {
     return { ...ctx, data: e?.data ?? null, error: e?.error ?? null, at: e?.at ?? 0, loading: !e };
   }
 
-  load(cx) {
+  load(cx, opts) {
     if (!this.loader) return;
     this.fullAt = Date.now();
-    super.load(cx);
+    super.load(cx, opts);
   }
 
   // An agent finishing its turn may have pushed or opened a pull request, so Jira and GitHub load
@@ -2158,11 +2268,12 @@ export class Stories extends Source {
   // when the minute is up.
   loadAfterAgent(cx) {
     if (!this.loader) return;
+    this.quickPulls(cx);
     const wait = FULL_EVERY - (Date.now() - (this.fullAt ?? 0));
-    if (wait <= 0) return this.load(cx);
+    if (wait <= 0) return this.load(cx, { again: true });
     if (this.trailing) return;
     this.trailing = true;
-    cx.timer.after(wait, (cx) => { this.trailing = false; this.load(cx); });
+    cx.timer.after(wait, (cx) => { this.trailing = false; this.load(cx, { again: true }); });
   }
 
   // Pauses agents (by key) off the render: their sessions are read first, which takes a moment.
@@ -2252,7 +2363,7 @@ export class Stories extends Source {
   // no Status there, so its chip is only the lozenge.
   statusChip(t, st, key, status, category, id, cx) {
     const moved = MOVED[key];
-    const shown = moved && moved.status !== status && Date.now() - moved.at < 60 * 1000 ? moved : { status, category };
+    const shown = moved && moved.status !== status && Date.now() - moved.at < MOVED_FOR ? moved : { status, category };
     // Moving (its own move, or Move to Done on it now): the working mark in the lozenge's place. Held
     // by a run on its story (waiting its turn in Move to Done, or a clean-up): the lozenge alone.
     const busy = ticketBusy(key);
@@ -2300,8 +2411,7 @@ export class Stories extends Source {
     cx.spawn(async (cx) => {
       try {
         await moveStatus(boardOf(st.setup), key, x, st.data);
-        MOVED[key] = { status: x.to, category: x.category, at: Date.now() };
-        delete MOVES[key];
+        noteMoved(st.profile, key, x, boardOf(st.setup));
         say(`${key} moved to ${x.to}.`);
         setShared(REFRESH, Date.now());
       } catch (e) {
@@ -3776,6 +3886,7 @@ export class StoryList extends Stories {
   init(cx) {
     this.loader = true;
     Source.prototype.init.call(this, cx);
+    cx.timer.every(QUICK_EVERY, (cx) => { if (this.inFlight(this.context())) this.quickPulls(cx); });
   }
 
   // A fresh load from Jira and GitHub (not the sessions alone, nor the copy kept from before a
@@ -4521,8 +4632,8 @@ function askCleanUp(profile, it) {
 // itself last, once every subtask is done; tickets already done are left alone. A ticket's status is
 // the one shown, so a move made a moment ago counts (MOVED).
 const shownDone = (t) => {
-  const m = MOVED[t.key];
-  return (m && Date.now() - m.at < 60 * 1000 ? m.category : t.category) === "done";
+  const m = movedNow(t.key);
+  return (m ? m.category : t.category) === "done";
 };
 // What it would move: { mine: your subtasks not done, others: others' not done, story: whether the
 // story moves too (not done, and no one else's subtask open) }; null for what isn't a board's ticket
@@ -4597,8 +4708,7 @@ async function movingToDone(s, it, plan, clean, at) {
     try {
       const o = await doneOption(board, t.key, data);
       await moveStatus(board, t.key, o, data);
-      MOVED[t.key] = { status: o.to, category: o.category ?? "done", at: Date.now() };
-      delete MOVES[t.key];
+      noteMoved(s.st.profile, t.key, { ...o, category: o.category ?? "done" }, board);
       moved.push(t.key);
     } catch (e) {
       failed.push({ key: t.key, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
