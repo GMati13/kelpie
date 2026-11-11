@@ -44,6 +44,22 @@ class Changes(unittest.TestCase):
         [found] = self.changes("ABC-1")
         self.assertEqual(found["files"], [])
 
+    def test_unpushed_commits_are_counted_only_when_asked(self):
+        d = self.repo("ABC-1", "api")
+        [found] = self.changes("ABC-1")
+        self.assertNotIn("unpushed", found)
+        [found] = self.changes("--unpushed", "ABC-1")
+        self.assertEqual((found["key"], found["unpushed"]), ("ABC-1", 1), "no remote: every commit")
+        remote = os.path.join(self.root, "remote.git")
+        git(self.root, "init", "-q", "--bare", remote)
+        git(d, "remote", "add", "origin", remote)
+        git(d, "push", "-q", "origin", "HEAD:refs/heads/work")
+        self.assertEqual(self.changes("--unpushed", "ABC-1")[0]["unpushed"], 0, "on a remote branch")
+        write(os.path.join(d, "more.txt"), "more\n")
+        git(d, "add", ".")
+        git(d, "commit", "-q", "-m", "second")
+        self.assertEqual(self.changes("--unpushed", "ABC-1")[0]["unpushed"], 1, "the one past it")
+
     def test_a_repo_whose_branch_names_the_key(self):
         d = self.repo("web", branch="feature/ABC-1-login")
         write(os.path.join(d, "README.md"), "changed\n")

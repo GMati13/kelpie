@@ -1,6 +1,6 @@
 """Uncommitted changes in the repos working on some ticket keys, as JSON on stdout.
 
-    python3 -I changes.py <folder> <key> [key ...]     (or python3 -I -c "<this file>" ...)
+    python3 -I changes.py <folder> [--unpushed] <key> [key ...]     (or python3 -I -c "<this file>" ...)
 
 A repo counts for a key in two ways:
   - it sits in a ticket folder, a folder named exactly after the key up to two levels under <folder>
@@ -11,6 +11,8 @@ A repo counts for a key in two ways:
 Reads .git/HEAD directly, so hundreds of repos cost next to nothing; git only runs in the ones that
 match. Every matching repo is listed, with or without changes; "ticket" is its ticket folder, if any:
     [{"repo", "path", "branch", "key", "ticket", "files": [{"path", "add", "del", "status", "patch"}]}]
+With --unpushed, each also says "unpushed": how many commits its HEAD has that no remote branch holds
+(all of them in a repo with no remote), as removing the folder would lose those too.
 """
 
 import json
@@ -94,6 +96,12 @@ def changes(repo):
     return sorted(files.values(), key=lambda f: f["path"])
 
 
+def unpushed(repo):
+    """Commits on HEAD that no remote-tracking branch has: 0 for a repo with nothing committed yet."""
+    out = git(repo, "rev-list", "--count", "HEAD", "--not", "--remotes").strip()
+    return int(out) if out.isdigit() else 0
+
+
 def is_repo(path):
     return os.path.isdir(path) and os.path.exists(os.path.join(path, ".git"))
 
@@ -120,6 +128,9 @@ def ticket_folders(folder, keys):
 def main():
     folder = os.path.realpath(sys.argv[1])
     keys = sys.argv[2:]
+    ahead = bool(keys) and keys[0] == "--unpushed"
+    if ahead:
+        keys = keys[1:]
     out, seen = [], set()
 
     def add(repo, key, ticket):
@@ -127,7 +138,10 @@ def main():
         if real in seen:
             return
         seen.add(real)
-        out.append({"repo": os.path.basename(repo), "path": repo, "branch": branch_of(repo), "key": key, "ticket": ticket, "files": changes(repo)})
+        entry = {"repo": os.path.basename(repo), "path": repo, "branch": branch_of(repo), "key": key, "ticket": ticket, "files": changes(repo)}
+        if ahead:
+            entry["unpushed"] = unpushed(repo)
+        out.append(entry)
 
     # Ticket folders first: what's in them is the ticket's, whatever the branch is called.
     for key, ticket in ticket_folders(folder, keys):
