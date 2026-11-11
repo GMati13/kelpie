@@ -23,7 +23,11 @@ describe("demoJira: what Kelpie asks Jira", () => {
       [["To Do", ["10000"]], ["In Progress", ["3"]], ["Review", ["10101"]], ["QA", ["10102"]], ["Done", ["10001"]]]);
   });
   test("the active sprints, and the board (scrum)", async () => {
-    assert.deepEqual((await demoJira(["get", "/rest/agile/1.0/board/7/sprint?state=active"])).body.values, [{ id: 24, name: "Trips Sprint 24" }]);
+    const [sprint, ...more] = (await demoJira(["get", "/rest/agile/1.0/board/7/sprint?state=active"])).body.values;
+    assert.deepEqual([sprint.id, sprint.name, more], [24, "Trips Sprint 24", []]);
+    // Its dates are relative in the fixture ("-7d", "+3d"), as Jira's ISO dates here.
+    assert.ok(Math.abs(Date.parse(sprint.startDate) - (Date.now() - 7 * 864e5)) < 60e3, sprint.startDate);
+    assert.ok(Math.abs(Date.parse(sprint.endDate) - (Date.now() + 3 * 864e5)) < 60e3, sprint.endDate);
     assert.equal((await demoJira(["get", "/rest/agile/1.0/board/7"])).body.type, "scrum");
   });
   test("searches: yours, a story's subtasks, nothing else", async () => {

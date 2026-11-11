@@ -68,7 +68,7 @@ trap 'rm -f "$body" "$headers"' EXIT
 
 case "$1" in
   search)
-    request=$(jq -nc --arg jql "$2" --arg page "$3" '{jql: $jql, maxResults: 100, fields: ["summary", "status", "assignee", "issuetype", "priority", "parent", "labels"]}
+    request=$(jq -nc --arg jql "$2" --arg page "$3" '{jql: $jql, maxResults: 100, fields: ["summary", "status", "assignee", "issuetype", "priority", "parent", "labels", "timeestimate", "timeoriginalestimate"]}
       + (if $page == "" then {} else {nextPageToken: $page} end)')
     set -- -X POST "$site/rest/api/3/search/jql" --data "$request" ;;
   get)

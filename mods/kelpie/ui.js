@@ -266,12 +266,14 @@ export function empty(t, text, { fill = false } = {}) {
 export const DIALOG = { pad: INSET, gap: 8, section: 16 };
 
 // A list's group heading, inside a list padded 8 (rows pad 8 more): its label, and its count at the right.
-// `trail`: an element after the count, on the heading's own line (a fold chevron).
-export function groupHeader(t, label, n, trail = null) {
+// `trail`: an element after the count, on the heading's own line (a fold chevron). `aside`: one
+// before the count (To do's and In progress's time estimates, stories.js).
+export function groupHeader(t, label, n, trail = null, aside = null) {
   return decor("groupDecor", t, h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
     .child(skinFont(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.muted), "label").child(skinText(label, "label")))
+    .when(Boolean(aside), (el) => el.child(aside))
     .when(n != null, (el) => el.child(skinFont(div().flex_none().text_color(t.dim), "count").child(skinText(String(n), "count"))))
-    .when(Boolean(trail), (el) => el.child(div().flex_none().ml(6).child(trail))), { label, count: n, trail });
+    .when(Boolean(trail), (el) => el.child(div().flex_none().ml(6).child(trail))), { label, count: n, trail, aside });
 }
 
 // What an agent is doing, not where it lives: a tab you named, else its own session title, else

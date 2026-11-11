@@ -168,6 +168,8 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["project.handover", { project: { handover: "QA" } }, (p) => p.project.handover === "QA" && p.project.prefixes === "acme/web=WEB", "gh"],
     ["project.solo", { project: { solo: true } }, (p) => p.project.solo === true, "gh"],
     ["project.moveToDone", { project: { moveToDone: false } }, (p) => p.project.moveToDone === false, "gh"],
+    ["jira.hoursPerDay", { jira: { hoursPerDay: 7.5 } }, (p) => p.jira.hoursPerDay === 7.5 && p.jira.keychain === "jira-acme"],
+    ["project.hoursPerDay", { project: { hoursPerDay: 5 } }, (p) => p.project.hoursPerDay === 5, "gh"],
     ["removing the Project", { project: null }, (p) => p.project === null, "gh"],
   ]) {
     test(`${what}`, async () => {
@@ -200,6 +202,9 @@ describe("apply-profile: refused outright", () => {
     // "false" would read as true: working alone is a yes or no.
     ["a string for solo", { jira: { solo: "false" } }, /jira\.solo: true or false/],
     ["a string for moveToDone", { project: { moveToDone: "false" } }, /project\.moveToDone: true or false/, "gh"],
+    // Hours a day weigh To do against the sprint (#90): a number of hours a day can hold.
+    ["a string for hoursPerDay", { jira: { hoursPerDay: "6" } }, /jira\.hoursPerDay: a number of hours/],
+    ["more hours than a day has", { project: { hoursPerDay: 30 } }, /project\.hoursPerDay: a number of hours/, "gh"],
     ["a list for a section", { commands: ["rm"] }, /an object/],
     ["a lookalike board", { jira: { url: "https://evil.com/x.atlassian.net/jira/boards/1" } }, /jira\.url/],
     ["a token command without email", { jira: { tokenCommand: "op read x", email: null } }, /jira\.email/],

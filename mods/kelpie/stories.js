@@ -22,6 +22,7 @@ import { boardSite, description as boardDescription, doneOption, loadBoard, look
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
+import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
@@ -428,6 +429,9 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
       key: c.key, title: c.fields?.summary ?? "", type: c.fields?.issuetype?.name, tags: tagsOf(c.fields, usualSub), status: c.fields?.status?.name,
       category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: mine.has(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
+      // Its time estimate (seconds, estimates.js) and whether its work is still to do: not done, not at
+      // or past the handover column (To do's and In progress's sums count only that).
+      estimate: estimateOf(c.fields), unfinished: !past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id),
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
     });
     const own = children.filter((c) => mine.has(c.key));
@@ -437,6 +441,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     const gone = kept.has(key) && !mine.has(key) && !own.length;
     return {
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
+      estimate: estimateOf(f), unfinished: !past(f?.status?.statusCategory?.key, f?.status?.id),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
@@ -1134,6 +1139,8 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+  // Its time estimates, when it has them (estimates.js estimateOf()), in seconds.
+  ...Object.fromEntries(["timeestimate", "timeoriginalestimate"].filter((k) => estimateOf({ [k]: i.fields?.[k] }) != null).map((k) => [k, i.fields[k]])),
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
@@ -4284,7 +4291,11 @@ export class StoryList extends Stories {
     const going = items.filter((x) => !sunk(x.it, x.n) && underWay(x.it));
     const toDo = items.filter((x) => !sunk(x.it, x.n) && !underWay(x.it));
     const rows = (list) => list.map(({ it }) => this.row(t, it, it.key === shown?.key, cx, st));
-    const group = (label, n) => groupHeader(t, label, n);
+    const group = (label, n, sum = null) => groupHeader(t, label, n, null, sum);
+    // To do's and In progress's work by their time estimates, To do's weighed against the sprint's
+    // time left (estimates.js): beside their counts, muted, To do's amber when it's more than fits.
+    const sums = sprintSums(toDo.map((x) => x.it), going.map((x) => x.it), st.data.sprints, hoursPerDay(boardOf(st.setup)));
+    const sumOf = (id, s) => (s ? skinFont(div().id(id).flex_none().mr(8).text_color(s.over ? t.working : t.dim), "count").tooltip(s.tip).child(skinText(s.text, "count")) : null);
     // `badge`: a chip after the title (an approved pull request's).
     // `lead`: what goes before the title instead of the skin's mark (a pull request's state, an avatar).
     const plain = (id, on, color, title, line, onClick, square, badge = null, lead = null) => h_flex().id(id).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
@@ -4427,7 +4438,7 @@ export class StoryList extends Stories {
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
-        .when(going.length > 0, (el) => el.child(group("In progress", going.length)).children(rows(going)))
+        .when(going.length > 0, (el) => el.child(group("In progress", going.length, sumOf("stories-sum-going", sums.going))).children(rows(going)))
         .when(always || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))
           .when(reviews.length === 0, (x) => x.child(empty(t, noPulls ?? "Nothing waiting for your review.")))
           .children(grouped(reviews, (r) => r.review, (r) => plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
@@ -4435,7 +4446,7 @@ export class StoryList extends Stories {
         .when(Boolean(owner && noPulls) || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
           .when(minePrs.length === 0, (x) => x.child(empty(t, noPulls ?? "No open pull requests of yours.")))
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
-        .child(group("To do", toDo.length))
+        .child(group("To do", toDo.length, sumOf("stories-sum-todo", sums.toDo)))
         .children(toDo.length ? rows(toDo) : [empty(t, noneToDo(st.data, items))])
         .when(handed.length > 0, (el) => el.child(group(words.heading, handed.length)).children(rows(handed)))
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))

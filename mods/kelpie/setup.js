@@ -15,6 +15,7 @@ import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
+import { DEFAULT_HOURS } from "./estimates.js";
 import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
@@ -189,6 +190,9 @@ export class Setup {
     this.solo = board?.solo === true;
     // Whether stories offer Move to Done (on unless turned off; saved only when off).
     this.moveToDone = board?.moveToDone !== false;
+    // Hours a working day has for tickets, which To do's time estimates are weighed against (a
+    // number; empty: DEFAULT_HOURS, not saved).
+    this.hoursPerDay = field(typeof board?.hoursPerDay === "number" ? String(board.hoursPerDay) : "", String(DEFAULT_HOURS));
     const columns = board ? loadedColumns(this.profile) : [];
     this.columns = columns.length && saved.jira ? { site: saved.jira.site, board: saved.jira.board, list: columns } : null;
     this.projectColumns = columns.length && saved.project && !saved.jira ? { key: projectKey(saved.project), list: columns } : null;
@@ -395,11 +399,15 @@ export class Setup {
     const prefixRows = project ? this.prefixList() : [];
     const badPrefix = prefixRows.find((r) => r.error);
     const prefixes = prefixRows.filter((r) => r.own).map((r) => `${r.key}=${r.own}`).join(", ");
-    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(this.profile?.demo ? { demo: true } : {}) };
+    const hoursText = this.hoursPerDay.value().trim();
+    const hours = hoursText ? Number(hoursText.replace(",", ".")) : null;
+    const badHours = hoursText && !(Number.isFinite(hours) && hours > 0 && hours <= 24);
+    const boardParts = { ...(prompt && prompt !== DEFAULT_PROMPT ? { prompt } : {}), ...(orchestrator ? { orchestrator } : {}), ...(this.handover ? { handover: this.handover } : {}), ...(this.solo ? { solo: true } : {}), ...(this.moveToDone ? {} : { moveToDone: false }), ...(hours && !badHours ? { hoursPerDay: hours } : {}), ...(this.profile?.demo ? { demo: true } : {}) };
     const error = onJira && url && !parsed ? ["jira", "That isn't a Jira Cloud board URL: https://<name>.atlassian.net/…/boards/<number>."]
       : onJira && parsed && missing ? ["jira", missing]
       : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
       : badPrefix ? ["project", `The key prefix of ${badPrefix.repo}: ${badPrefix.error}`]
+      : badHours ? [onJira ? "jira" : "project", "Hours a day: a number of hours, more than 0 and at most 24."]
       : home && !/^https?:\/\//.test(home) ? ["web", "Start it with https://."]
       : !name ? ["name", "Give it a name."]
       : !folder ? ["name", "Choose its folder: spaces in it belong to it."]
@@ -702,6 +710,8 @@ export class Setup {
           this.solo ? `Nobody else has the stories past your part, so the list doesn't say they wait on others: they're under "${sunkWords({ cfg: { solo: true } }).heading}".` : "Off: the stories past your part are listed as waiting on others."),
         toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
           this.moveToDone ? "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
+        field("Hours a day", row(div().w(160).flex_none().child(input(this.hoursPerDay)), div().flex_1()),
+          `The hours of a working day you spend on tickets. To do's time estimates are weighed against the working time left in the sprint: its working days left (Monday to Friday, today included) × these hours. Empty: ${DEFAULT_HOURS}.`),
       ],
 
       github: () => [

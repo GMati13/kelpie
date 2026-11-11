@@ -3,7 +3,7 @@
 // belongs to the profile whose folder it is in (the deepest one). Each profile has:
 //   name     what it's called
 //   folder   where its agents start and whose Claude sessions show
-//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone }: a Jira
+//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone, hoursPerDay }: a Jira
 //            Cloud board URL pasted in setup, the Keychain item whose account is the Jira email and
 //            password the API token (macOS), or instead a shell command that prints the token, with the
 //            email beside it (any system; jira.sh keeps the token in pipes), the task
@@ -12,11 +12,13 @@
 //            column from which your part of a ticket is done (none: handoverFrom() picks one), and
 //            `solo` (true/false) when the person works alone on it: the stories past that column then
 //            wait on them, not on others, and the list says so (sunkWords); `moveToDone` false hides
-//            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise
-//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone }: a GitHub
+//            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise;
+//            `hoursPerDay` (a number) the hours a working day has for tickets, which To do's estimates
+//            are weighed against (estimates.js; none: DEFAULT_HOURS)
+//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone, hoursPerDay }: a GitHub
 //            Project as the board instead of Jira (a profile has one or the other): its address
 //            (parseProject()), the ticket key prefix per repo (parsePrefixes(); none: the repo's
-//            name, defaultPrefix()), the same prompts, handover column, solo and moveToDone as Jira's. Read as the
+//            name, defaultPrefix()), the same prompts, handover column, solo, moveToDone and hoursPerDay as Jira's. Read as the
 //            github section's account, as pull requests are
 //   github   { owner, account }: an organisation or user whose pull requests show; `account`, optional,
 //            the GitHub account (a login gh is signed in to) Kelpie's own gh calls act as, named to its
@@ -35,6 +37,7 @@
 
 import { appHome, exec, hc, notify, openOverlay, panes, setShared, shared, spaces, run } from "herdr";
 import { GITHUB_LOGIN, MOD, githubEnv, modFile } from "./ui.js";
+import { DEFAULT_HOURS } from "./estimates.js";
 
 const PROFILES = "kelpie.profiles";
 const OLD = "kelpie.spaces";
@@ -765,7 +768,10 @@ export function buildProfile(id, set) {
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
       const flag = (key === "jira" || key === "project") && (k === "solo" || k === "moveToDone"); // true/false only, never a string
-      const ok = v === null || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
+      // Hours a day of ticket work (estimates.js), a number only: more than 0, at most 24.
+      const hours = (key === "jira" || key === "project") && k === "hoursPerDay";
+      if (hours && v !== null && !(typeof v === "number" && v > 0 && v <= 24)) throw new Error(`${key}.${k}: a number of hours, more than 0 and at most 24, or null for the default (${DEFAULT_HOURS}).`);
+      const ok = v === null || hours || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: ${flag ? "true or false" : `a string${key === "notify" ? " or true/false" : ""}`}, or null to remove it.`);
       if (v === null) delete section[k]; else section[k] = typeof v === "string" ? v.trim() : v;
     }
@@ -803,7 +809,7 @@ export function buildProfile(id, set) {
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
-// folder, owner, handover, solo, moveToDone, notify) applies at once.
+// folder, owner, handover, solo, moveToDone, hoursPerDay, notify) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 // Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what

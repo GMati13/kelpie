@@ -32,7 +32,7 @@ describe("configure-profile", () => {
   });
   test("says the board's own switches are saved at once, and carried over when the board changes", () => {
     const carry = bullet("  - **One board.**");
-    for (const k of ["handover", "solo", "moveToDone"]) {
+    for (const k of ["handover", "solo", "moveToDone", "hoursPerDay"]) {
       for (const section of ["jira", "project"]) assert.ok(!CONFIRM_KEYS[section].includes(k), `${section}.${k} applies at once`);
       assert.ok(rest.includes(`\`${k}\``), `${k} in the settings saved at once`);
       assert.ok(carry.includes(`\`${k}\``), `${k} carried over to the new board`);
