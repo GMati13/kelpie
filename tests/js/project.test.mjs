@@ -21,12 +21,12 @@ const OLD_IT = { id: "it-old", title: "Sprint 4", startDate: day(-30), duration:
 const NEXT_IT = { id: "it-next", title: "Sprint 6", startDate: day(11), duration: 14 };
 
 // An issue as the queries ask for it. `option`: its Status in this Project (undefined: not on it).
-function ghIssue(repo, number, { title, state = "OPEN", closedAt = null, assignee = null, parent = null, option, closes = [], subs } = {}) {
+function ghIssue(repo, number, { title, state = "OPEN", closedAt = null, assignee = null, parent = null, option, closes = [], subs, labels = [] } = {}) {
   const items = [{ id: "PVTI_elsewhere", project: { id: "PVT_other" }, fieldValueByName: { optionId: "x1", name: "Elsewhere" } }];
   if (option !== undefined) items.unshift({ id: `PVTI_${number}`, project: { id: PID }, fieldValueByName: option ? { optionId: option, name: OPTIONS.find((o) => o.id === option).name } : null });
   return {
     id: `I_${repo.replace(/\W/g, "_")}_${number}`, number, title: title ?? `${repo}#${number}`, url: `https://github.com/${repo}/issues/${number}`, state, closedAt,
-    repository: { nameWithOwner: repo }, assignees: { nodes: assignee ? [assignee] : [] },
+    repository: { nameWithOwner: repo }, assignees: { nodes: assignee ? [assignee] : [] }, labels: { nodes: labels },
     parent: parent ? { id: parent.id, number: parent.number, repository: parent.repository } : null,
     closedByPullRequestsReferences: { nodes: closes.map((url) => ({ url })) }, projectItems: { nodes: items },
     ...(subs ? { subIssues: { nodes: subs } } : {}),
@@ -77,7 +77,8 @@ const ME = { login: "alex", name: "Alex Morgan", avatarUrl: "https://avatars.git
 // A story on acme/web with three sub-issues: one of yours in the current iteration, one off the
 // Project and closed, one done on it; and a story of yours from an older iteration.
 function sprintBoard() {
-  const story = ghIssue("acme/web", 10, { title: "Offline mode", assignee: { login: "priya", name: "Priya Nair", avatarUrl: null }, option: "o2" });
+  const story = ghIssue("acme/web", 10, { title: "Offline mode", assignee: { login: "priya", name: "Priya Nair", avatarUrl: null }, option: "o2",
+    labels: [{ name: "bug", color: "d73a4a" }, { name: "mobile", color: "0e8a16" }] });
   const a = ghIssue("acme/web", 11, { title: "Cache trips", assignee: ME, parent: story, option: "o2", closes: ["https://github.com/acme/web/pull/5"] });
   const b = ghIssue("acme/web", 12, { title: "Banner", parent: story, state: "CLOSED", closedAt: new Date().toISOString() });
   const c = ghIssue("acme/web", 13, { title: "Icons", assignee: { login: "tomas", name: "", avatarUrl: null }, parent: story, option: "o4", state: "CLOSED", closedAt: new Date().toISOString() });
@@ -101,11 +102,12 @@ describe("loading a GitHub Project", () => {
     const [story] = d.parents;
     assert.deepEqual(story, {
       key: "WEB-10", url: "https://github.com/acme/web/issues/10", item: "PVTI_10",
-      fields: { summary: "Offline mode", issuetype: { name: "Issue", subtask: false }, status: { id: "o2", name: "In Progress", statusCategory: { key: "indeterminate" } }, parent: null,
+      fields: { summary: "Offline mode", issuetype: { name: "Issue", subtask: false, madeUp: true }, status: { id: "o2", name: "In Progress", statusCategory: { key: "indeterminate" } }, parent: null,
+        labels: [{ name: "bug", color: "d73a4a" }, { name: "mobile", color: "0e8a16" }],
         assignee: { displayName: "Priya Nair", avatarUrls: { "48x48": null } } },
     });
     const [a, b, c] = d.children;
-    assert.deepEqual(a.fields.issuetype, { name: "Sub-issue", subtask: true });
+    assert.deepEqual(a.fields.issuetype, { name: "Sub-issue", subtask: true, madeUp: true });
     assert.deepEqual(a.fields.parent, { key: "WEB-10" });
     assert.equal(a.item, "PVTI_11");
     assert.deepEqual(a.fields.assignee, { displayName: "Alex Morgan", avatarUrls: { "48x48": ME.avatarUrl } });

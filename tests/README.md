@@ -80,6 +80,8 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
 - `mock.repoPath(path)`: the mods count as installed in `appHome()/mods`, so `modFile()` paths map to the
   repo's `mods/` (used by `readTextFile` and `realExec`).
 - `mock.sharedValue(key)`: a shared value without recording a call.
+- `mock.reads`: how many times a render read each host value (`spaces`, `agents`, `panes`, `terminals`,
+  `focused`, `shared:<key>`); set it to `{}` before the render to count.
 - `nextCommand()` and `watchFolder()` never resolve, so a mod's command loop just waits.
 
 ### `gpui-kit` and `gpui-base`
@@ -161,6 +163,11 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
   details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
   links.
+- `labels.test.mjs`: what kind of work a ticket is (#53): labels kept clean and small (`labelsOf()`: control
+  characters, length, a colour only as six hex digits), the tags a row shows (`tagsOf()`: the usual type
+  hidden, a bug first and once on either board), colours readable on dark and light themes (`legible()`,
+  `tagColor()`), and the demo's tags on the list's rows, the title row and subtask rows, on Jira and on a
+  GitHub Project.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.
@@ -175,6 +182,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   around it. `tests/shell/`: jira.sh and install.sh. `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally, in a fake HOME).
+- `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
+  footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
+  `spaceProfiles()` reads each list once.
 - `views-*.test.mjs`: what the views draw, as snapshots (next section).
 
 ## Snapshots: what the views draw

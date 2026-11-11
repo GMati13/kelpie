@@ -45,10 +45,11 @@ const LAST = "kelpie.profile.last"; // { profile id: space id, or null when show
 export const shownSpace = () => spaces().find((s) => s.active) ?? null;
 
 // Where a space is now: its focused terminal's folder, else its first terminal's, else where it began.
-export function liveFolder(space) {
+// `list`: panes() already read, when asking for many spaces at once.
+export function liveFolder(space, list = null) {
   if (!space) return null;
   const tabs = new Set(space.tabs.map((t) => t.id));
-  const mine = panes().filter((p) => tabs.has(p.tab) && p.cwd);
+  const mine = (list ?? panes()).filter((p) => tabs.has(p.tab) && p.cwd);
   return mine.find((p) => p.focused)?.cwd ?? mine[0]?.cwd ?? space.folder ?? null;
 }
 
@@ -81,12 +82,28 @@ const inside = (folder, root) => Boolean(folder && root) && (trimSlash(folder) =
 // Where that's in no profile's, where it is now (an agent's `cd` mustn't move a story's space to
 // another profile).
 export function profileOf(space) {
-  if (!space) return null;
-  const owner = (shared(OWNED) ?? {})[space.id];
-  const all = profiles();
+  return space ? ownerOf(space, ownership()) : null;
+}
+
+// What profileOf() goes by, read once: every host read converts the whole value, and herdr-core
+// lists every space of every window (dozens, with many agents running), so reading it all again
+// for each space made a sidebar render grow with the square of the spaces open, past the time
+// Herdr gives a render (#104). The panes are read only once a space needs its live folder.
+function ownership() {
+  let list = null;
+  return { owned: shared(OWNED) ?? {}, all: profiles(), panes: () => (list ??= panes()) };
+}
+function ownerOf(space, { owned, all, panes: paneList }) {
+  const owner = owned[space.id];
   if (owner) { const p = all.find((x) => x.id === owner); if (p) return p; }
   const deepest = (folder) => all.filter((p) => inside(folder, p.folder)).sort((a, b) => b.folder.length - a.folder.length)[0] ?? null;
-  return (space.folder ? deepest(space.folder) : null) ?? deepest(liveFolder(space));
+  return (space.folder ? deepest(space.folder) : null) ?? deepest(liveFolder(space, paneList()));
+}
+
+// Each space's profile (space id -> profile or null), from one read of each host list.
+export function spaceProfiles(list = spaces()) {
+  const own = ownership();
+  return new Map(list.map((s) => [s.id, ownerOf(s, own)]));
 }
 
 // The profile the sidebar shows: the shown space's. A profile picked in the menu (one with no space
@@ -274,7 +291,11 @@ export async function claudeFolders() {
 }
 
 // The spaces of a profile.
-export const spacesOf = (profile) => (profile ? spaces().filter((s) => profileOf(s)?.id === profile.id) : []);
+export function spacesOf(profile) {
+  if (!profile) return [];
+  const list = spaces(), of = spaceProfiles(list);
+  return list.filter((s) => of.get(s.id)?.id === profile.id);
+}
 
 // The setup that applies to a space: its profile's.
 export function savedSetup(space) {
