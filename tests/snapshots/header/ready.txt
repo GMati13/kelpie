@@ -11,14 +11,25 @@ div
           "Dark mode for the dashboard"
         div #story-need [fg=done font="DM Sans"] tip="Approved, checks pass or none · ready to merge"
           "Approved, checks pass or none · ready to merge"
-        div
-        h_flex #story-tags
-          div #story-tags-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: frontend"
-            "frontend"
-          div #story-tags-1 [bg=accent/24 fg=accent font="DM Sans"] tip="Label: design"
-            "design"
-          div #story-tags-more [fg=dim] tip="Label: accessibility"
-            "+1"
+        h_flex #story-tags-zone {size_change}
+          div
+            div #story-tags-zoom {size_change}
+            h_flex
+              div #story-tags-m0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: frontend"
+                "frontend"
+              div #story-tags-m1 [bg=accent/24 fg=accent font="DM Sans"] {size_change} tip="Label: design"
+                "design"
+              div #story-tags-m2 [bg=ansi5/24 fg=ansi5 font="DM Sans"] {size_change} tip="Label: accessibility"
+                "accessibility"
+              div #story-tags-mmore [fg=dim] {size_change} tip="Label: frontend\nLabel: frontend"
+                "+2"
+          h_flex #story-tags
+            div #story-tags-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: frontend"
+              "frontend"
+            div #story-tags-1 [bg=accent/24 fg=accent font="DM Sans"] tip="Label: design"
+              "design"
+            div #story-tags-more [fg=dim] tip="Label: accessibility"
+              "+1"
         div #story-assignee
           div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
             "TR"

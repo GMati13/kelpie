@@ -11,12 +11,21 @@ div
           "Pay with Apple Pay at checkout"
         div #story-need [fg=blocked font="DM Sans"] tip="Checks failing on ACME-152 (payments#97)"
           "Checks failing on ACME-152 (payments#97)"
-        div
-        h_flex #story-tags
-          div #story-tags-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: payments"
-            "payments"
-          div #story-tags-1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] tip="Label: ios"
-            "ios"
+        h_flex #story-tags-zone {size_change}
+          div
+            div #story-tags-zoom {size_change}
+            h_flex
+              div #story-tags-m0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] {size_change} tip="Label: payments"
+                "payments"
+              div #story-tags-m1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] {size_change} tip="Label: ios"
+                "ios"
+              div #story-tags-mmore [fg=dim] {size_change} tip="Label: payments\nLabel: payments"
+                "+2"
+          h_flex #story-tags
+            div #story-tags-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: payments"
+              "payments"
+            div #story-tags-1 [bg=ansi3/24 fg=ansi3 font="DM Sans"] tip="Label: ios"
+              "ios"
         div #story-assignee
           div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
             "PN"

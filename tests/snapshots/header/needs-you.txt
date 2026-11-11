@@ -11,10 +11,17 @@ div
           "Offline mode for saved trips"
         div #story-need [fg=working font="DM Sans"] tip="ACME-143's agent needs you"
           "ACME-143's agent needs you"
-        div
-        h_flex #story-tags
-          div #story-tags-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
-            "mobile"
+        h_flex #story-tags-zone {size_change}
+          div
+            div #story-tags-zoom {size_change}
+            h_flex
+              div #story-tags-m0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: mobile"
+                "mobile"
+              div #story-tags-mmore [fg=dim] {size_change} tip="Label: mobile\nLabel: mobile"
+                "+2"
+          h_flex #story-tags
+            div #story-tags-0 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: mobile"
+              "mobile"
         div #story-assignee
           div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
             "PN"

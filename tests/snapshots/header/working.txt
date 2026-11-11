@@ -11,12 +11,21 @@ div
           "Fix the flaky login test"
         div #story-need [fg=accent font="DM Sans"] tip="Agent working · PR in review"
           "Agent working · PR in review"
-        div
-        h_flex #story-tags
-          div #story-tags-0 [bg=blocked/24 fg=blocked font="DM Sans"] tip="Type: Bug"
-            "Bug"
-          div #story-tags-1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: ci"
-            "ci"
+        h_flex #story-tags-zone {size_change}
+          div
+            div #story-tags-zoom {size_change}
+            h_flex
+              div #story-tags-m0 [bg=blocked/24 fg=blocked font="DM Sans"] {size_change} tip="Type: Bug"
+                "Bug"
+              div #story-tags-m1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] {size_change} tip="Label: ci"
+                "ci"
+              div #story-tags-mmore [fg=dim] {size_change} tip="Type: Bug\nType: Bug"
+                "+2"
+          h_flex #story-tags
+            div #story-tags-0 [bg=blocked/24 fg=blocked font="DM Sans"] tip="Type: Bug"
+              "Bug"
+            div #story-tags-1 [bg=ansi2/24 fg=ansi2 font="DM Sans"] tip="Label: ci"
+              "ci"
         div #story-assignee
           div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
             "AM"

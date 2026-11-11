@@ -45,10 +45,21 @@ describe("tagsOf: what a row shows", () => {
     assert.deepEqual(tagsOf(story("Issue", []), "Issue"), []);
     assert.deepEqual(tagsOf(story("Sub-issue", ["ci"]), "Sub-issue").map((x) => x.name), ["ci"]);
   });
+  test("Kelpie's own Issue/Sub-issue never shows, even on a story that is a sub-issue among issues", () => {
+    const made = (name, labels = []) => ({ issuetype: { name, madeUp: true }, labels });
+    assert.deepEqual(tagsOf(made("Sub-issue", ["ci"]), "Issue").map((x) => x.name), ["ci"]);
+    assert.deepEqual(tagsOf(made("Issue"), "Sub-issue"), []);
+  });
   test("a bug always shows, first, once: Jira's Bug type and a bug label are one tag", () => {
     assert.deepEqual(tagsOf(story("Bug", []), "Bug").map((x) => x.name), ["Bug"], "even when most tickets are bugs");
     assert.deepEqual(tagsOf(story("Bug", ["bug", "ci"]), "Story").map((x) => x.name), ["Bug", "ci"]);
     assert.deepEqual(tagsOf(story("Issue", [{ name: "ci" }, { name: "type: bug", color: "d73a4a" }]), "Issue").map((x) => [x.name, x.bug]), [["type: bug", true], ["ci", false]]);
+    assert.deepEqual(tagsOf(story("Story", ["kind/bug"]), "Story").map((x) => x.bug), [true], "a grouped name");
+    assert.deepEqual(tagsOf(story("Story", ["Defect", "ci"]), "Story").map((x) => x.bug), [true, false]);
+  });
+  test("a label that only has the word in it isn't a bug, and isn't dropped beside a Bug type", () => {
+    assert.deepEqual(tagsOf(story("Story", ["not-a-bug", "incident-review"]), "Story").map((x) => x.bug), [false, false]);
+    assert.deepEqual(tagsOf(story("Bug", ["bug-bash"]), "Story").map((x) => x.name), ["Bug", "bug-bash"]);
   });
 });
 
@@ -129,6 +140,31 @@ describe("the demo's labels", () => {
       assert.ok(cut.some(([m, a]) => m === "w" && a[0] === 40) && cut.some(([m]) => m === "truncate"), "with an ellipsis, at 60 - (4 + 16)");
       assert.deepEqual(tagsIn(measure(zoom, 30), "tags-ACME-171"), ["+3"], "too narrow to read one: only the count");
     }
+  });
+
+  // Herdr reports sizes in whatever order: a row measured before its zoom probe still fits right.
+  test("the fit doesn't depend on which size Herdr reports first", async () => {
+    setupDemoWorld({ stories: jira });
+    const view = new StoryList();
+    const { cx } = await draw(view);
+    const zoom = 1.2, el = view.render(cx);
+    const at = (id, width) => handlers(el, "on_size_change").find((h) => h.id === id).fn({ width: width * zoom, height: 18 }, cx);
+    // The tags before the zoom probe, the room after it: kept with different zooms, they'd disagree.
+    at("tags-ACME-171-m0", 56); at("tags-ACME-171-m1", 46); at("tags-ACME-171-m2", 80); at("tags-ACME-171-mmore", 16);
+    at("tags-ACME-171-zoom", 100);
+    at("tags-ACME-171-zone", 130);
+    assert.deepEqual(tagsIn(view.render(cx), "tags-ACME-171"), ["frontend", "design", "+1"]);
+  });
+
+  test("the story's title row fits its tags to the room left before the assignee", async () => {
+    setupDemoWorld({ stories: jira, shown: "ACME-171" });
+    const view = new Stories();
+    const { cx } = await draw(view);
+    const el = view.render(cx);
+    const at = (id, width) => handlers(el, "on_size_change").find((h) => h.id === id).fn({ width, height: 15 }, cx);
+    at("story-tags-zoom", 100); at("story-tags-m0", 56); at("story-tags-m1", 46); at("story-tags-m2", 80); at("story-tags-mmore", 16);
+    at("story-tags-zone", 60);
+    assert.deepEqual(tagsIn(view.render(cx), "story-tags"), ["frontend", "+2"]);
   });
 
   test("fitTags: whole tags by the room, then a cut one, then only the count", () => {

@@ -14,5 +14,5 @@ h_flex #story-ACME-122 [hover(bg=hover)] {click hover} tip="Agent working · 1 s
       h_flex #b-pr-ACME-122 [fg=muted] tip="Every pull request merged"
         div
           svg own:git-merged [fg=ansi4]
-    h_flex #b-subs-ACME-122 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+    h_flex #b-subs-ACME-122 [opacity=0.6] tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
       div [bg=done]

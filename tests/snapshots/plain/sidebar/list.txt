@@ -404,7 +404,7 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-129 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-        h_flex #b-subs-ACME-129 tip="Your subtasks: 0 of 1 past testing · 1 in testing\nAll: 2 subtasks · 2 in progress"
+        h_flex #b-subs-ACME-129 [opacity=0.6] tip="Your subtasks: 0 of 1 past testing · 1 in testing\nAll: 2 subtasks · 2 in progress"
           div [bg=ansi4/73]
       h_flex #actions-ACME-129
         div #finish-ACME-129 {down:left click}
@@ -423,7 +423,7 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-122 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-        h_flex #b-subs-ACME-122 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+        h_flex #b-subs-ACME-122 [opacity=0.6] tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
           div [bg=done]
       h_flex #actions-ACME-122
         div #clean-ACME-122 {down:left click}
@@ -442,7 +442,7 @@ v_flex [fg=foreground]
           h_flex #b-paused-ACME-116 [fg=muted] tip="Paused: Resume picks it up"
             div
               svg own:pause [fg=dim]
-        h_flex #b-subs-ACME-116 tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
+        h_flex #b-subs-ACME-116 [opacity=0.6] tip="Your subtasks: 1 of 1 past testing\nAll: 1 subtask · 1 done"
           div [bg=done]
       h_flex #actions-ACME-116
         div #clean-ACME-116 {down:left click}

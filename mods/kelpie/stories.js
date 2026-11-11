@@ -637,17 +637,20 @@ export function labelsOf(f) { // exported for the tests
 // The type most of a level's tickets have: the one that says nothing on a row.
 function usualType(list) {
   const n = new Map();
-  for (const i of list ?? []) { const k = i.fields?.issuetype?.name; if (k) n.set(k, (n.get(k) ?? 0) + 1); }
+  for (const i of list ?? []) { const k = i.fields?.issuetype?.madeUp ? null : i.fields?.issuetype?.name; if (k) n.set(k, (n.get(k) ?? 0) + 1); }
   return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 }
 
 // A ticket's tags: its type when that says something (a bug always, else any but the level's usual
 // one; a GitHub Project's made-up Issue/Sub-issue then never shows), then its labels. A bug reads as a
 // bug on every board: Jira's Bug type and a label named like it are one tag, first, in the theme's red.
-const BUGGY = /\b(bugs?|defects?|incidents?)\b/i;
+// The whole name is the word, or the word after a group ("type: bug", "kind/bug"): "not-a-bug" or
+// "bug-bash" aren't bugs.
+const BUGGY = /^(?:[a-z]+\s*[:/]\s*)?(?:bugs?|defects?|incidents?)$/i;
 export function tagsOf(f, usual = null) { // exported for the tests
   const out = [];
-  const type = tagName(f?.issuetype?.name) || null;
+  // Kelpie's own Issue/Sub-issue for a GitHub Project's issues (project.js) is no type of the board's.
+  const type = f?.issuetype?.madeUp ? null : tagName(f?.issuetype?.name) || null;
   if (type && (BUGGY.test(type) || type !== usual)) out.push({ name: type, from: "type", bug: BUGGY.test(type) });
   for (const l of labelsOf(f)) {
     const bug = BUGGY.test(l.name);
@@ -992,8 +995,8 @@ const sharedData = (ctx) => { const e = (shared(DATA) ?? {})[ctx.profile?.id]; r
 
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
-const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
-  ...(labelsOf(i.fields).length ? { labels: labelsOf(i.fields) } : {}),
+const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+  ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -2437,43 +2440,39 @@ export class Stories extends Source {
           .children(badges)
           // What kind of work it is, at the line's end in whole words: the marks before it keep their
           // places down the list.
-          .when(Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it))))
-        // Where your subtasks stand, as a thin line under it.
-        .when(Boolean(subs), (el) => el.child(subs)))
+          .when(Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
+        // Where your subtasks stand, as a thin line under it; muted with the key line on a sunk row.
+        .when(Boolean(subs), (el) => el.child(quiet ? subs.opacity(0.6) : subs)))
       .when(acts.length > 0, (el) => el.relative().child(this.rowActions(it, acts))),
       { selected: on, state, story: it, now: new Date() });
   }
 
-  // A list row's tags, as many as fit the key line's room (fitTags()), at its end. The room and each tag's
-  // width are measured as drawn (the room by the zone itself, the tags by hidden copies of them, both
-  // divided by the zoom from a 100-wide probe) and kept on this copy (`this.tagFit`); until they're known
-  // the first two show, shrinking, so nothing ever runs past the row.
-  fittedTags(t, it) {
-    const id = `tags-${it.key}`, tags = it.tags;
-    const m = (this.tagFit ??= { zoom: 1, room: {}, w: {}, more: 0 });
-    const keep = (put) => (size, cx) => { if (put(size)) cx.notify(); };
-    const near = (a, b) => a !== undefined && Math.abs(a - b) < 0.5;
+  // A line's tags, as many as fit the room it leaves them (fitTags()), at its end: a list row's key line
+  // and the story's title row. The room and each tag's width are measured as drawn (the room by the
+  // zone itself, the tags and "+n" by hidden copies) and kept raw on this copy (`this.tagFit`); they're
+  // turned into the layout's units at render with the zoom then known (a 100-wide probe), so which size
+  // Herdr reports first doesn't matter. Until they're known the first two show, shrinking, so nothing
+  // ever runs past the line.
+  fittedTags(t, tags, id, at) {
+    const m = (this.tagFit ??= { zoom: 100, room: {}, w: {}, more: 0 });
+    const keep = (put) => (size, cx) => { if (put(size.width)) cx.notify(); };
+    const raw = (get, set) => keep((w) => { const was = get(); if (was !== undefined && Math.abs(was - w) < 0.5) return false; set(w); return true; });
+    const z = m.zoom / 100 || 1;
     const widths = tags.map((x) => m.w[`${x.from}:${x.name}`]);
-    const room = m.room[it.key];
-    const known = room !== undefined && m.more > 0 && widths.every((w) => w !== undefined);
-    const fit = known ? fitTags(widths, room, m.more) : null;
+    const known = m.room[at] !== undefined && m.more > 0 && widths.every((w) => w !== undefined);
+    // "+n" was measured as "+2"; a count of two digits ("+10") takes a third more.
+    const more = m.more / z * (String(tags.length).length + 1) / 2;
+    const fit = known ? fitTags(widths.map((w) => w / z), m.room[at] / z, more) : null;
     const shown = fit ? tags.slice(0, fit.n) : tags.slice(0, 2);
     const rest = tags.slice(shown.length);
     const probes = div().absolute().top(0).left(0).invisible()
-      .child(div().id(`${id}-zoom`).w(100).h(0).on_size_change(keep((size) => { const z = size.width / 100; if (!z || Math.abs(m.zoom - z) < 0.001) return false; m.zoom = z; return true; })))
+      .child(div().id(`${id}-zoom`).w(100).h(0).on_size_change(raw(() => m.zoom, (w) => { if (w) m.zoom = w; })))
       .child(h_flex().gap(TAG_GAP)
-        .children(tags.map((x, i) => tagChip(t, x, `${id}-m${i}`, { whole: true }).on_size_change(keep((size) => {
-          const k = `${x.from}:${x.name}`, w = size.width / m.zoom;
-          if (near(m.w[k], w)) return false;
-          m.w[k] = w; return true;
-        }))))
-        .child(tagMore(t, [tags[0], tags[0]], `${id}-mmore`).on_size_change(keep((size) => {
-          const w = size.width / m.zoom;
-          if (near(m.more, w)) return false;
-          m.more = w; return true;
-        }))));
+        .children(tags.map((x, i) => tagChip(t, x, `${id}-m${i}`, { whole: true })
+          .on_size_change(raw(() => m.w[`${x.from}:${x.name}`], (w) => { m.w[`${x.from}:${x.name}`] = w; }))))
+        .child(tagMore(t, [tags[0], tags[0]], `${id}-mmore`).on_size_change(raw(() => m.more, (w) => { m.more = w; }))));
     return h_flex().id(`${id}-zone`).relative().flex_1().min_w(0).h(15).gap(TAG_GAP).items_center().justify_end().overflow_hidden()
-      .on_size_change(keep((size) => { const w = size.width / m.zoom; if (near(m.room[it.key], w)) return false; m.room[it.key] = w; return true; }))
+      .on_size_change(raw(() => m.room[at], (w) => { m.room[at] = w; }))
       .child(probes)
       .child(h_flex().id(id).flex_shrink(1).min_w(0).gap(TAG_GAP).items_center()
         .children(shown.map((x, i) => tagChip(t, x, `${id}-${i}`, fit ? (fit.cut !== null && i === 0 ? { w: fit.cut } : { whole: true }) : {})))
@@ -2534,9 +2533,9 @@ export class Stories extends Source {
           .tooltip(line ? `${it.title}\n${line}` : it.title).child(it.title))
         .child(skinFont(div().id("story-need").min_w(0).flex_shrink(40).truncate().font_medium()
           .text_color(sunk(it, n) ? t.dim : color === "dim" ? t.muted : t[color]), "meta", SMALL).tooltip(line).child(skinText(line, "meta")))
-        .child(div().flex_1())
-        // What kind of work it is: gives way after the need line, before the title.
-        .when(Boolean(it.tags?.length), (el) => el.child(tagRow(t, it.tags, "story-tags", 2, { whole: true })))
+        // What kind of work it is, in the room left before the assignee: as many whole tags as fit
+        // (fittedTags()), so they give way before the title and never push the status off the line.
+        .child(it.tags?.length ? this.fittedTags(t, it.tags, "story-tags", `head:${it.key}`) : div().flex_1())
         .when(Boolean(subMeter), (el) => el.child(div().flex_none().child(subMeter)))
         .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.mine, it.avatar)))
         .when(Boolean(it.status), (el) => el.child(it.review || it.pr ? div().flex_none().child(lozenge(t, it.status, it.category))

@@ -102,12 +102,12 @@ describe("loading a GitHub Project", () => {
     const [story] = d.parents;
     assert.deepEqual(story, {
       key: "WEB-10", url: "https://github.com/acme/web/issues/10", item: "PVTI_10",
-      fields: { summary: "Offline mode", issuetype: { name: "Issue", subtask: false }, status: { id: "o2", name: "In Progress", statusCategory: { key: "indeterminate" } }, parent: null,
+      fields: { summary: "Offline mode", issuetype: { name: "Issue", subtask: false, madeUp: true }, status: { id: "o2", name: "In Progress", statusCategory: { key: "indeterminate" } }, parent: null,
         labels: [{ name: "bug", color: "d73a4a" }, { name: "mobile", color: "0e8a16" }],
         assignee: { displayName: "Priya Nair", avatarUrls: { "48x48": null } } },
     });
     const [a, b, c] = d.children;
-    assert.deepEqual(a.fields.issuetype, { name: "Sub-issue", subtask: true });
+    assert.deepEqual(a.fields.issuetype, { name: "Sub-issue", subtask: true, madeUp: true });
     assert.deepEqual(a.fields.parent, { key: "WEB-10" });
     assert.equal(a.item, "PVTI_11");
     assert.deepEqual(a.fields.assignee, { displayName: "Alex Morgan", avatarUrls: { "48x48": ME.avatarUrl } });

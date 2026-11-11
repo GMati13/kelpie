@@ -186,7 +186,8 @@ export async function loadProject(board, keep = {}) {
       key, url: i.url, item: own?.id ?? null,
       fields: {
         summary: i.title ?? "",
-        issuetype: { name: i.parent ? "Sub-issue" : "Issue", subtask: Boolean(i.parent) },
+        // GitHub's issues have no type of the board's: this one is Kelpie's own, never shown as a tag.
+        issuetype: { name: i.parent ? "Sub-issue" : "Issue", subtask: Boolean(i.parent), madeUp: true },
         status: index >= 0
           ? { id: option, name: options[index].name, statusCategory: { key: projectCategory(index, options.length, closed, options[index].name) } }
           : { id: null, name: own ? "No status" : closed ? "Closed" : "Open", statusCategory: { key: projectCategory(-1, options.length, closed) } },
