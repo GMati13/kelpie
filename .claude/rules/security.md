@@ -24,7 +24,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Other people's code.** Never run it. A review agent starts outside the checkout (in the profile's folder) and reviews by reading. No default prompt asks to run, build, install or test a pull request.
 
-**Background agents.** Claude run without a terminal (What next?) runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is. Plan mode lets through only tools marked read only: in the plugin, only tools that change nothing of the person's work get that mark (`get_profile`, `save_status`, which only reads a saved answer, `get_next`, and `suggest_next`, which only changes what Kelpie suggests).
+**Background agents.** Claude run without a terminal (What next?) gets its task on stdin, never as an argument (`ps` shows arguments to every user): `feedClaude()` writes it into a private `mktemp -d` folder, which `stdin.sh` opens as Claude's input and removes before Claude starts. It runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is. Plan mode lets through only tools marked read only: in the plugin, only tools that change nothing of the person's work get that mark (`get_profile`, `save_status`, which only reads a saved answer, `get_next`, and `suggest_next`, which only changes what Kelpie suggests).
 
 **Files.** Never delete, overwrite or write through a symlink to a file the person owns; installs and copies skip and report what's in the way. Deletions are guarded by an exact, tested path check (`removeDemo()`, `resetBrowser()`). Temp files and folders: `mktemp` / `mktemp -d` (private), never fixed names in `/tmp`. Caches holding prompts or titles are private.
 
@@ -45,5 +45,4 @@ Where the code doesn't meet these rules yet (fix them with tests, then remove th
 - Screenshot mark-up (`FLATTEN_SCRIPT`, `mods/kelpie-artifacts/markup.js`) writes into a fixed folder, `${TMPDIR:-/tmp}/herdr-markup` (shared `/tmp` on Linux), made with default permissions: its files get `mktemp` names, but another user could own the folder first. Thumbnails (`session.js`) add `.png` to a `mktemp` name, a name `mktemp` didn't reserve.
 - `~/.cache/kelpie/sessions.json` (sessions.py) and the Web panel's folders (`~/.local/share/kelpie/web/<profile>/`, main.js) are created with the default permissions, not private.
 - Inside a profile section, a key is refused as a secret only by its name (`SECRET` in config.js: token, password, secret), so `github.pat` passes; sections don't have their own list of allowed keys.
-- What next? passes its whole prompt as a command-line argument (`claude -p <task>` in `brew()`), visible to other users in `ps`.
 - `.claude/settings.json` allows every `gh api` call, including ones that write.
