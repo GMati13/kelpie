@@ -7,6 +7,9 @@ import { render } from "../lib/snapshot.mjs";
 import { Stories, StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
+import { Setup } from "../../mods/kelpie/setup.js";
+import { fakeCx } from "../lib/views.mjs";
+import { texts } from "gpui-kit";
 
 let stories;
 before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); });
@@ -60,4 +63,31 @@ test("pull requests that didn't load say to refresh, as a sentence", async () =>
   setupDemoWorld({ stories: failed, shown: "ACME-142" });
   const out = render((await draw(new StoryBody())).el, skinTheme());
   assert.match(out, /"Pull requests didn't load: Refresh to try again\."/);
+});
+
+// The profile dialog on a page, its words as one text.
+const profilePage = (focus) => {
+  setupDemoWorld({ stories, props: { role: "setup", profile: DEMO, focus, overlay: "overlay-1" } });
+  const d = new Setup(), cx = fakeCx();
+  d.init(cx);
+  return texts(d.render(cx)).join("\n");
+};
+
+// The Prompts page says what What next? does now: in the background, its picks handed in through the
+// plugin (it once said a Claude on the Desk answered with a JSON block), and where Start orchestrator is.
+test("the Prompts page describes What next? and the orchestrator as they work", () => {
+  const words = profilePage("prompts");
+  assert.match(words, /in the background, reading only, with no tab of its own/);
+  assert.match(words, /through its Claude Code plugin/);
+  assert.doesNotMatch(words, /JSON/);
+  assert.doesNotMatch(words, /a Claude on the Desk that suggests/);
+  assert.match(words, /When set, a story's More menu offers Start orchestrator/);
+});
+
+// Move to Done's switch names the stories it shows on by what they are for a team too, not "built",
+// which is the word for someone who works alone.
+test("the Board page's Move to Done hint doesn't say built", () => {
+  const words = profilePage("jira");
+  assert.match(words, /on each story past your part in the list/);
+  assert.doesNotMatch(words, /each built story/);
 });
