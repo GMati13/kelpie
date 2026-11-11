@@ -498,3 +498,19 @@ test("a run more than a day old opens nothing", async () => {
   view.render(cx);
   assert.ok(!view.queueOpen);
 });
+
+test("a run whose picks are all gone since opens nothing; another profile's fold doesn't count", async () => {
+  setupDemoWorld({ stories });
+  // Every pick dropped since the run: the queue still holds what needs you, but no picks.
+  putShared("kelpie.next.suggested", { [DEMO]: { at: NOW - 60e3, items: [] } });
+  let { view, cx } = await drawnAt(NOW - 120e3);
+  putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW - 30e3 } });
+  view.render(cx);
+  assert.ok(!view.queueOpen, "no picks left to show");
+  // A fold of another profile's queue after the run began.
+  putShared("kelpie.next.suggested", PICKS);
+  ({ view, cx } = await drawnAt(NOW - 120e3));
+  view.queueFolded = { other: NOW - 10e3 };
+  view.render(cx);
+  assert.ok(view.queueOpen, "opens: the fold was another profile's");
+});

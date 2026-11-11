@@ -4040,14 +4040,15 @@ export class StoryList extends Stories {
   // the next time that profile shows. Not for picks that came before this copy was drawn (a reload),
   // nor when the person folded the queue after asking: their fold wins. A queue of one has nothing
   // to open, so the run counts as seen.
-  picksArrived(profile, many) {
-    const born = (this.queueBorn ??= Date.now());
+  picksArrived(profile, many, picks) {
+    const born = this.queueBorn ?? 0;
     const run = (shared(PICKS_ASKED) ?? {})[profile?.id];
     const seen = (this.queueSeen ??= {});
     if (!run || run.at <= (seen[profile.id] ?? 0)) return false;
     seen[profile.id] = run.at;
-    // Picks last a day (SUGGEST_FOR): a run older than that has nothing left to show.
-    return many && run.done >= born && Date.now() - run.done < PICKED_FOR && !((this.queueFolded ?? 0) > run.at);
+    // Picks last a day (SUGGEST_FOR): a run older than that has nothing left to show, as has one
+    // whose picks were all dropped or set aside since.
+    return many && picks > 0 && run.done >= born && Date.now() - run.done < SUGGEST_FOR && !((this.queueFolded?.[profile.id] ?? 0) > run.at);
   }
 
   // Next: one card, the whole queue's. A header line ("Next", how many items, Claude's picks as a ✨
@@ -4069,7 +4070,7 @@ export class StoryList extends Stories {
     const scroll = () => this.listScrolls?.get(st.profile?.id ?? null).box;
     // Picks the person asked for (a What next? run of theirs) open the queue once (#124). Already
     // open, it stays where the person has it, as does the list.
-    if (this.picksArrived(st.profile, many) && !this.queueOpen) {
+    if (this.picksArrived(st.profile, many, picks) && !this.queueOpen) {
       this.queueOpen = true;
       const box = scroll();
       box?.scroll_to_item(0);
@@ -4084,7 +4085,7 @@ export class StoryList extends Stories {
     const toggle = (_e, cx) => {
       this.queueOpen = !this.queueOpen;
       if (this.queueOpen) scroll()?.scroll_to_item(0);
-      else this.queueFolded = Date.now();
+      else this.queueFolded = { ...this.queueFolded, [st.profile?.id]: Date.now() };
       cx.notify();
     };
     const open = Boolean(this.queueOpen);
@@ -5155,10 +5156,12 @@ const setBrewing = (profile, at) => setShared(BREWING, { ...(shared(BREWING) ?? 
 // A run the person started that handed picks in: { [profile id]: { at: its start, done: when it
 // ended } }, so every copy showing that profile opens Next's queue once (picksArrived()).
 const PICKS_ASKED = "kelpie.next.picked";
-const PICKED_FOR = 24 * 3600 * 1000;
 // Whether any of the profile's picks shows, not set aside as it arrived (applyPicks()): only then is
 // there something for the opened queue to show.
 const picksShow = (profile) => ((shared(SUGGESTED) ?? {})[profile.id]?.items ?? []).some((x) => !x.aside);
+// Every pick handed in was already in hand (under way, needing you, finished…): said, as the queue
+// has nothing new to open on.
+const ALL_ASIDE = { title: "Nothing new to suggest", body: "Everything Claude suggested is already under way or waiting on you.", level: "info", timeout: 6000 };
 const setPicked = (profile, at) => setShared(PICKS_ASKED, { ...(shared(PICKS_ASKED) ?? {}), [profile.id]: { at, done: Date.now() } });
 
 // Asks Claude for picks: `claude -p` on the profile's account, in its folder, no session saved,
@@ -5183,6 +5186,7 @@ export async function brew(profile, task) {
       const { kept } = await applyPicks(profile, await demoSuggest());
       if (!kept.length) notify({ title: "No suggestions this time", body: "The demo's fixture has no picks.", level: "info", timeout: 6000 });
       else if (picksShow(profile)) setPicked(profile, started);
+      else notify(ALL_ASIDE);
       return;
     }
     if (!(await hasPlugin(profile))) { await askPlugin(profile, "what-next"); return; }
@@ -5199,6 +5203,7 @@ export async function brew(profile, task) {
     if (!got || got.at < started) throw new Error(`Claude finished without handing its suggestions to Kelpie. ${String(out.result ?? "").trim().split("\n").pop()}`.trim());
     if (!got.items?.length) notify({ title: "No suggestions this time", body: "Claude found nothing worth suggesting.", level: "info", timeout: 6000 });
     else if (picksShow(profile)) setPicked(profile, started);
+    else notify(ALL_ASIDE);
   } catch (e) {
     notify({ title: "What next? didn't work", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 });
   } finally {
