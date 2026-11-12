@@ -115,7 +115,7 @@ TOOLS = [
             "claude) given as an object is merged into the saved one; a key or section set to null is removed. "
             "A profile has one board, jira or project (a GitHub Project), not both: set the other to null. "
             "Values are strings, except jira.board and project.number (numbers, filled in from the address) and "
-            "notify.pulls and either board's solo and moveToDone (true/false). An id that doesn't "
+            "notify.pulls and either board's solo, moveToDone, byPriority and showPriority (true/false). An id that doesn't "
             "exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token "
             "or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick "
             "the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the "
