@@ -707,6 +707,19 @@ export async function installPlugin(id, scope = null) {
 // only, no secrets, and the same checks as the dialog's Save.
 const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
 const SECRET = /token$|^token|password|secret/i;
+// The keys each section takes, and nothing else: refusing a secret by its name alone let one under
+// another name through (`github.pat`). Every key here is a setting the profile dialog has (`wrapUp`
+// is the clean-up command's old name, still read); a new setting joins its section's list.
+export const SECTION_KEYS = {
+  jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator", "handover", "solo", "moveToDone"],
+  project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator", "handover", "solo", "moveToDone"],
+  github: ["owner", "account", "reviewPrompt", "mergePrompt", "approvalPrompt"],
+  commands: ["leftovers", "cleanUp", "wrapUp", "status"],
+  prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
+  notify: ["pulls"],
+  claude: ["config"],
+  web: ["home"],
+};
 // A change to a profile from outside the dialog (an agent's request, a `herdr-app do` command): saved
 // at once, or, when it touches what needs the person's yes (CONFIRM_KEYS), held for the confirm dialog.
 // Every check runs first, so a change that would fail never waits. Returns the request's result.
@@ -764,6 +777,7 @@ export function buildProfile(id, set) {
     const section = { ...(next[key] ?? {}) };
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
+      if (!SECTION_KEYS[key].includes(k)) throw new Error(`${key}.${k}: not a setting of ${key} (${SECTION_KEYS[key].join(", ")}).`);
       const flag = (key === "jira" || key === "project") && (k === "solo" || k === "moveToDone"); // true/false only, never a string
       const ok = v === null || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: ${flag ? "true or false" : `a string${key === "notify" ? " or true/false" : ""}`}, or null to remove it.`);
@@ -968,11 +982,16 @@ function sendError(r) {
   return why || `the send ended with code ${r.code}`;
 }
 
+// A ticket key, as Jira makes them and a GitHub Project's keys are (`PREFIX`-<number>).
+const KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+
 // Runs one of a profile's commands (commands.leftovers, commands.cleanUp, commands.status) for a ticket key, in the
 // profile's folder, through the user's shell. It gets `seconds` to finish, then it and whatever it
 // started are stopped. Resolves to { code, out } (its output and errors together, trimmed; code 143
-// when stopped); throws when it couldn't run.
+// when stopped); throws when it couldn't run, and before anything runs when `key` isn't a ticket key,
+// as `{key}` goes into the command as it is, for the person's shell to read (security.md).
 export async function runCommand(profile, command, key, seconds, on = null) {
+  if (!KEY.test(String(key ?? ""))) throw new Error("That isn't a ticket key, so the command didn't run.");
   const line = command.replace(/\{key\}/g, key);
   // Job control puts the command in a process group of its own, so the timer stops all of it; the
   // shell's own job notices are dropped (the command's errors still come, on stdout).
