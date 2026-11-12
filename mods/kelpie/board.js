@@ -18,11 +18,24 @@
 //   links     { [pull request url]: key }: the pull requests that close an issue (GitHub's link)
 //   repos     { [PREFIX]: "owner/repo" }: which repo a key's issue is in
 //   project   { id, statusField, title, url }: what a Status move needs
+//
+// Either board's load also gives `priorities` while the profile uses priority (config.js
+// priorityOf()): the levels [{ id, name }], highest first, as the board orders them (Jira's site list,
+// a Project field's options), never guessed from names; each issue's `fields.priority` is { id, name }.
+// A Linear team (boardOf() kind "linear", linear.js) answers them too, its issues dressed the same
+// way (Linear's identifiers are the keys, its workflow states the columns, its active cycle the
+// sprint, or the board as one without cycles). What its load gives, beyond Jira's:
+//   site      "https://linear.app/<workspace>"
+//   columns   the team's states in Linear's board order, { name, statuses: [state id], category }
+//   issues    { key, url (the issue's page), fields: as a Project's }
+//   linear    { team: id, key }
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
-import { issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
+import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
+import { priorityOf } from "./config.js";
+import { linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
 
 const PAGES = 5; // up to 500 tickets a search
 // Whose tickets the stories' search finds: the person's own, or on a board worked alone everyone's
@@ -53,6 +66,10 @@ async function search(cfg, jql) {
 
 // A key as Jira makes them, checked before one goes into a search (security.md).
 const KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+// Whether an issue the board gave has a ticket key, and its parent too when it names one. Keys go
+// into searches, folder names and `{key}` commands, and what Jira answers can't be trusted, so an
+// issue without one is left out of the load (security.md).
+const keyed = (i) => KEY.test(i?.key ?? "") && (!i.fields?.parent || KEY.test(i.fields.parent.key ?? ""));
 
 // The stories and subtasks a search finds by key: `key in (…) OR parent in (…)` (with `and`, only
 // the keys' own issues that match it too). A key Jira doesn't know (a ticket deleted or moved since)
@@ -74,9 +91,10 @@ async function byKeys(cfg, keys, and = null) {
 // request; stories.js hereKeys()) that the search by assignee left out, as they're someone else's now
 // (or out of the sprint): { parents, children, mine } to add to the load. Only keys of the board's
 // projects (this load's, or `keep.projects`, the last load's) are asked for; a subtask's key brings
-// its story. `mine`: those of them Jira gives as the person's own (`assignee = currentUser()`), or
-// all of them on a board worked alone (`cfg.solo`), where every ticket is the person's.
-async function keptJira(cfg, keep, have) {
+// its story. `mine`: those of them assigned to the person: by their assignee's account id when Jira
+// named the signed-in account (`account`, jira.sh), else asked (`assignee = currentUser()`), a
+// search more (#40); on a board worked alone (`cfg.solo`) all of them, as every ticket is the person's.
+async function keptJira(cfg, keep, have, account = "") {
   const projects = new Set([...(keep.projects ?? []), ...[...have].map((k) => k.split("-")[0])]);
   const asked = [...new Set(keep.keys ?? [])].filter((k) => KEY.test(k) && !have.has(k) && projects.has(k.split("-")[0]));
   if (!asked.length) return { parents: [], children: [], mine: [] };
@@ -89,8 +107,20 @@ async function keptJira(cfg, keep, have) {
   const stories = new Set(parents.map((i) => i.key));
   const children = all.filter((i) => i.fields?.issuetype?.subtask && stories.has(i.fields?.parent?.key));
   const keys = [...parents, ...children].map((i) => i.key);
-  const own = cfg.solo === true ? new Set(keys) : keys.length ? new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key)) : new Set();
+  const own = !keys.length ? new Set()
+    : cfg.solo === true ? new Set(keys)
+    : account ? new Set([...parents, ...children].filter((i) => i.fields?.assignee?.accountId === account).map((i) => i.key))
+    : new Set((await byKeys(cfg, keys, "assignee = currentUser()")).map((i) => i.key));
   return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => own.has(i.key)) };
+}
+
+// The site's priority levels, highest first, as Jira orders them: [{ id, name }]. Jira's search gives
+// each issue its priority's id and name, never its place, so the order comes from here. Jira Cloud
+// answers this as a list; its paged form (`values`) is read too.
+export async function jiraPriorities(cfg) {
+  const body = (await jira(cfg, "get", "/rest/api/3/priority")).body;
+  const list = Array.isArray(body) ? body : Array.isArray(body?.values) ? body.values : [];
+  return list.filter((x) => x?.id != null && x?.name).map((x) => ({ id: String(x.id), name: String(x.name) }));
 }
 
 // The board's current work as it answers it: { site, columns, sprints, mine, parents, children, solo },
@@ -102,31 +132,49 @@ async function keptJira(cfg, keep, have) {
 // constants, never built from a value), and every issue it finds is in `mine`.
 export async function loadBoard(board, keep = {}) {
   if (board.kind === "project") return loadProject(board, keep);
+  if (board.kind === "linear") return loadLinear(board, keep);
   const cfg = board.cfg;
   // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
-  const [config, active] = await Promise.all([
+  // The priority levels only while the profile orders or marks by them.
+  const usePriority = priorityOf({ jira: cfg });
+  const [config, active, priorities] = await Promise.all([
     jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}/configuration`),
     activeSprints(cfg),
+    // Not loading them leaves the board's order and no marks, never the stories unloaded.
+    usePriority.order || usePriority.show ? jiraPriorities(cfg).catch(() => null) : null,
   ]);
   const columns = (config.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
   // A scrum board's active sprints, or a Kanban board's open work (sprint.js boardScope).
   const { sprints, jql: scope } = boardScope(active, config);
   const solo = cfg.solo === true;
-  const mine = scope ? await search(cfg, `${scope}${solo ? WHOSE.all : WHOSE.mine} ORDER BY Rank`) : [];
+  const mine = scope ? (await search(cfg, `${scope}${solo ? WHOSE.all : WHOSE.mine} ORDER BY Rank`)).filter(keyed) : [];
   const parents = new Map();
   for (const i of mine) {
     const p = i.fields?.issuetype?.subtask ? i.fields.parent : i;
     if (p && !parents.has(p.key)) parents.set(p.key, { key: p.key, fields: p.fields });
   }
   // The children and, in the same search, the parents themselves: a subtask's embedded parent
-  // carries no assignee, so a story's own fields come from here when it answers.
+  // carries no assignee, so a story's own fields come from here when it answers. The kept stories
+  // are asked beside it, not after (#40: each question is a round trip to Jira), for every key this
+  // load doesn't have yet as far as it knows; one the children turn out to hold is left out after.
   const keys = [...parents.keys()].join(", ");
-  const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
+  const known = new Set([...parents.keys(), ...mine.map((i) => i.key)]);
+  const [found, more] = await Promise.all([
+    parents.size ? search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`).then((r) => r.filter(keyed)) : [],
+    keptJira(cfg, keep, known, config.account ?? ""),
+  ]);
   for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
   const children = found.filter((i) => !parents.has(i.key));
-  const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]));
+  const have = new Set([...parents.keys(), ...children.map((i) => i.key)]);
+  const keptParents = more.parents.filter((i) => !have.has(i.key));
+  const stories = new Set(keptParents.map((i) => i.key));
+  const kept = {
+    parents: keptParents,
+    children: more.children.filter((i) => !have.has(i.key) && stories.has(i.fields?.parent?.key)),
+    mine: more.mine.filter((i) => !have.has(i.key) && (stories.has(i.key) || stories.has(i.fields?.parent?.key))),
+  };
   // Worked alone, a story's subtasks found beside it are the person's too, whoever has them.
-  return { site: active.site, columns, sprints, mine: [...mine, ...(solo ? children : []), ...kept.mine], ...(solo ? { solo: true } : {}), parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
+  return { site: active.site, columns, sprints, mine: [...mine, ...(solo ? children : []), ...kept.mine], ...(solo ? { solo: true } : {}), parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key), ...(priorities ? { priorities } : {}) };
 }
 
 // The board's own address (a link to it is one an agent may offer, stories.js askLink()), from what
@@ -143,6 +191,7 @@ export function ticketUrl(board, data, key) {
     const repo = m && data?.repos?.[m[1]];
     return repo ? `https://github.com/${repo}/issues/${m[2]}` : null;
   }
+  if (board?.kind === "linear") return linearUrl(board, data, key);
   const site = boardSite(board, data);
   return site ? `${site}/browse/${key}` : null;
 }
@@ -151,12 +200,14 @@ export function ticketUrl(board, data, key) {
 // loaded, where a Project's issue is found (issues.js); Jira asks by key alone.
 export async function description(board, key, data) {
   if (board.kind === "project") return issueDescription(board, data, key);
+  if (board.kind === "linear") return linearDescription(board, key);
   return adfBlocks((await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description);
 }
 
 // A ticket's summary, its parent's key and its description as text (the review prompt's).
 export async function ticketText(board, key, data) {
   if (board.kind === "project") return issueText(board, data, key);
+  if (board.kind === "linear") return linearText(board, key);
   const f = (await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,parent`)).body?.fields ?? {};
   return { summary: f.summary ?? "", parent: f.parent?.key ?? null, text: adfText(adfBlocks(f.description)) };
 }
@@ -167,6 +218,7 @@ export async function ticketText(board, key, data) {
 export async function lookUp(board, key, data) {
   if (!board) return null;
   if (board.kind === "project") return issueLookUp(board, data, key);
+  if (board.kind === "linear") return linearLookUp(board, key);
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${key}?fields=summary,parent,issuetype`).catch(() => null);
   if (!r?.body?.key) return null;
   const parent = r.body.fields?.issuetype?.subtask ? r.body.fields?.parent : null;
@@ -179,7 +231,9 @@ export const movable = (board, key, data) => board?.kind !== "project" || Boolea
 
 // Where a ticket can be moved: [{ id, name, to, category }], `to` the status it lands in. A Project's
 // are its Status options (the loaded columns) but the one it's in; none for an issue off the Project.
+// A Linear issue's are its team's states, the same way.
 export async function statusOptions(board, key, data) {
+  if (board.kind === "linear") return linearOptions(data, key);
   if (board.kind === "project") {
     if (!movable(board, key, data)) return [];
     const columns = data?.columns ?? [], now = loadedIssue(data, key)?.fields?.status?.id;
@@ -208,5 +262,21 @@ export async function doneOption(board, key, data) {
 // Moves a ticket by one of statusOptions(), on the person's own click.
 export async function moveStatus(board, key, option, data) {
   if (board.kind === "project") return setStatus(board, data, key, option);
+  if (board.kind === "linear") return linearMove(board, data, key, option);
   await jira(board.cfg, "transition", key, option.id);
+}
+
+// Whether a board's tickets can be left open once done, and so be closed from Kelpie: a GitHub
+// Project's (a Status move to its done column leaves the issue open); a Jira ticket's done status is
+// its being closed.
+export const closesTickets = (board) => board?.kind === "project";
+
+// How many tickets a close request takes at once, so a view can say which are being closed now.
+export { CLOSE_SLOTS as CLOSE_BATCH } from "./issues.js";
+
+// Closes done tickets on their board, as completed, on the person's own click (Close in the Done
+// group): [{ key, ok, why }], `each` hearing each batch's results as they come (issues.js closeIssues()).
+export async function closeTickets(board, keys, data, each) {
+  if (!closesTickets(board)) throw new Error("its board closes a ticket by moving it to done");
+  return closeIssues(board, data, keys, each);
 }

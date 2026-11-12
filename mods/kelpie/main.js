@@ -10,14 +10,16 @@
 
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
-import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
+import { appHome, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
+import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
+import { toggleDebug } from "./debug.js";
+import { CONTROL, MOD, ROW, modFile, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
-import { goDesk } from "./desk.js";
+import { deskAgents, deskNow, deskShown, goDesk, pauseDesk, pauseDeskByKey, showDeskView } from "./desk.js";
 import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, syncSkin } from "./skins/index.js";
 
@@ -37,7 +39,8 @@ const POLL = 5000;
 
 // CPU as a share of all cores, memory in use as a share of all of it: on macOS active, wired and
 // compressed pages; on Linux what /proc/meminfo doesn't count as available.
-const STATS = `if [ "$(uname)" = Darwin ]; then
+// Exported for the tests, which run it for real (CI runs them on macOS and Linux).
+export const STATS = `if [ "$(uname)" = Darwin ]; then
 ps -A -o %cpu= | awk -v n="$(sysctl -n hw.ncpu)" '{s+=$1} END {printf "%d ", s/n}'
 vm_stat | awk -v total="$(sysctl -n hw.memsize)" '/page size of/ {ps=$8} /Pages active/ {a=$3} /Pages wired/ {w=$4} /occupied by compressor/ {c=$5} END {printf "%d", (a+w+c)*ps*100/total}'
 else
@@ -162,30 +165,40 @@ function sidebar(state) {
 }
 
 // The toolbar's Claude and Terminal (and their keys): in a story, the story's own; elsewhere a tab in
-// the shown space's folder.
+// the shown space's folder, told the profile and the space's story when it's one's (placed(), ui.js).
 function newClaude(work = storyNow(), space = spaces().find((s) => s.active)) {
   if (work?.story) return work.claude();
-  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: claudeArgv(shownProfile()) });
+  if (isDesk(space)) showDeskView(shownProfile(), "agent"); // the new tab, not the Desk's screenshots
+  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: placed(claudeArgv(shownProfile()), shownProfile(), storyKeyOf(space)) });
 }
 function newTerminal(work = storyNow(), space = spaces().find((s) => s.active)) {
   if (work?.story) return work.terminal();
-  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: shellArgv(shownProfile()) });
+  if (isDesk(space)) showDeskView(shownProfile(), "agent");
+  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: placed(shellArgv(shownProfile()), shownProfile(), storyKeyOf(space)) });
 }
 
 // Closing a tab (its ✕, cmd-w): the last tab of a space closes the space, so that asks first, in words
 // that say what happens; any other tab closes at once. A story's space is paused by default (its
-// agents' sessions kept as paused, as the header's Pause does), or just closed.
+// agents' sessions kept as paused, as the header's Pause does), or just closed. So is the Desk while
+// an agent runs in it (its sessions offered again when it opens).
 function closeTab(id) {
   const space = spaces().find((s) => s.tabs.some((c) => c.id === id));
   if (!space || space.tabs.length > 1) return run("tab.close", { id });
   const key = storyKeyOf(space);
   const close = { name: "tab.close", args: { id, confirmed: true } };
+  const desk = isDesk(space) && deskAgents(shownProfile()).length > 0;
   openOverlay({ mod: MOD, kind: "dialog", width: 440, height: 170, props: key
     ? { role: "confirm", title: `Leave ${key}?`, yes: "Pause", command: { name: `${MOD}.pause-story-${key}` }, alt: { label: "Close", command: close },
       detail: "Pause keeps its agents' sessions, to Resume from the story list. Close just closes its space." }
+    : desk ? { role: "confirm", title: "Leave the Desk?", yes: "Pause", command: { name: `${MOD}.pause-desk` }, alt: { label: "Close", command: close },
+      detail: "Pause keeps its agents' sessions, to resume when the Desk opens again. Close just closes it." }
     : { role: "confirm", title: `Close ${space.name}?`, yes: "Close", command: close,
       detail: isDesk(space) ? "It's the Desk's last tab, so the Desk closes with it. It opens again from the sidebar or ⌥⌘D." : "It's the space's last tab, so the space closes with it." } });
 }
+
+// ⌥⌘P on the Desk, pressed once where it asks first: { what, at } (desk.js pauseDeskByKey). The
+// command loop runs in the one shown toolbar copy, so a module value is enough here.
+const deskArmed = { what: null, at: 0 };
 
 // The toolbar's open menu (ui.js menuButton keeps it here: the toolbar is a function, not a view).
 const toolbarMenu = {};
@@ -246,7 +259,7 @@ function track(role) {
 }
 
 
-function toolbar() {
+function toolbar(cx) {
   syncHub();
   track("toolbar");
   const t = skinTheme();
@@ -258,6 +271,9 @@ function toolbar() {
   // On a story's space the key goes without saying: "ABC-1 terminal" shows as "Terminal", a tab named
   // just the key as "Agent". Only what's drawn changes, never the tab's name.
   const work = storyNow();
+  // The Desk shown (no story over it): its tabs, then Screenshots, as a story space's.
+  const desk = !work?.story && !profileElsewhere() && cx ? deskNow(cx) : null;
+  const views = work ?? desk; // whose view the view buttons switch
   const label = (name) => {
     const key = work?.story?.key;
     if (!key || (name !== key && !name.startsWith(`${key} `))) return name;
@@ -324,10 +340,10 @@ function toolbar() {
   // In a story's space: its tabs, then the story's other views. A story previewed from the list (not
   // open) has no tabs yet: its Overview, and Changes and Screenshots only when they hold something.
   const view = (id, label, n) => {
-    const on = work?.view === id;
+    const on = views?.view === id;
     return decor("controlDecor", t, h_flex().id(`view-${id}`).h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected).text_color(t.foreground)).when(!on, (el) => el.text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)))
-      .on_mouse_down("left", stop).on_click(() => work.show(id))
+      .on_mouse_down("left", stop).on_click(() => views.show(id))
       .child(skinFont(div(), "tab").child(skinText(label, "tab"))).when(typeof n === "number" && n > 0, (el) => el.child(skinFont(div().text_color(t.dim), "count", SMALL).child(skinText(String(n), "count")))),
     { kind: "view", id: `view-${id}`, label, on });
   };
@@ -341,7 +357,7 @@ function toolbar() {
   const has = (n) => typeof n === "number" && n > 0;
   const changes = !work?.preview || has(work?.prs) || has(work?.files);
   const shots = !work?.preview || has(work?.shots);
-  const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!work || work.view === "agent") }));
+  const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!views || views.view === "agent") }));
   // The sidebar hidden (cmd-b): a button to bring it back, after room for the window buttons when the
   // tab bar is the top block (no story header above it).
   const sideOff = sideHidden(root);
@@ -353,10 +369,12 @@ function toolbar() {
       // A drag that leaves the bar, or is let go between tabs, ends without moving anything.
       .on_hover((on, cx) => { if (!on && tabDrag.id) { tabDragEnd(); cx.notify(); } })
       .on_mouse_up("left", (_e, cx) => { if (tabDrag.id) { tabDragEnd(); cx.notify(); } })
-      .children(shownTabs.map((c) => (work ? tab(c).on_click(() => { run("tab.select", { id: c.id }); work.show("agent"); }) : tab(c))))
+      .children(shownTabs.map((c) => (views ? tab(c).on_click(() => { run("tab.select", { id: c.id }); views.show("agent"); }) : tab(c))))
       // Outside a story: a Claude agent with no task, or a shell, as a new tab in the shown space's folder.
       .when(!work?.story && Boolean(space) && !profileElsewhere(), (el) => el
-        .child(create("A Claude agent with no task, in this space's folder", "A shell in this space's folder")))
+        .child(create("A Claude agent with no task, in this space's folder", "A shell in this space's folder"))
+        .when(Boolean(desk), (x) => x.child(div().w(1).h(16).mx(4).flex_none().bg(t.border))
+          .child(view("shots", "Screenshots", desk.shots))))
       .when(Boolean(work?.story), (el) => el
         // A pull request shown on its own (a review, one of yours with no ticket) has no Overview.
         .when(work.preview && !work.review, (x) => x.child(view("start", "Overview")))
@@ -402,11 +420,16 @@ export const profileDir = () => (shownProfile()?.id ?? "none").replace(/[^A-Za-z
 // The start page and kittyfix's path reach the loop's shell as arguments ("$1", "$2"), never as
 // script (only the profile's folder name is, made of letters, digits, - and _): `command` is what
 // browserLoop runs, `args` what its shell gets after the script. Exported for the tests.
+// The folders hold the profile's cookies and sign-ins, so they're the person's alone: made under
+// umask 077 (in a subshell, so the browser's own files, downloads say, keep the usual mode) and
+// tightened when an older Kelpie made them with the default permissions.
 export const browserCommand = (url, python) => {
-  const dir = `$HOME/.local/share/kelpie/web/${profileDir()}`;
+  const web = "$HOME/.local/share/kelpie/web";
+  const dir = `${web}/${profileDir()}`;
   const env = `env XDG_RUNTIME_DIR="${dir}/run" TERMINAL_BROWSER_APPDATA="${dir}/data" XDG_DATA_HOME="${dir}/share" `;
   const fix = python ? 'python3 "$1" -- ' : "";
-  const command = `mkdir -p "${dir}/run" "${dir}/data" "${dir}/share" && ${fix}${env}terminal-browser \${2:+"$2"}`;
+  const folders = `"${dir}/run" "${dir}/data" "${dir}/share"`;
+  const command = `(umask 077 && mkdir -p ${folders}) && chmod 700 "${web}" "${dir}" ${folders} && ${fix}${env}terminal-browser \${2:+"$2"}`;
   return { command, args: [python ? modFile("kittyfix.py") : "", url || ""] };
 };
 
@@ -550,7 +573,10 @@ export async function watchPlaying() {
   playingBusy = true;
   try {
     let folders = [];
-    const pids = playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout);
+    // No browser running in any slot: nothing of it can play, so pmset isn't asked (every 3 s, for
+    // everyone who never opens Web).
+    const browsers = terminals().some((x) => isSlot(x.name) && x.state === "live");
+    const pids = browsers ? playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout) : [];
     if (pids.length) folders = playingFolders((await exec("ps", ["eww", "-o", "command=", "-p", pids.join(",")]).catch(() => null))?.stdout);
     // The demo has no browser: its fixture says whether it plays.
     for (const p of profiles()) if (isDemo(p) && demoPlaying()) folders.push(p.id.replace(/[^A-Za-z0-9_-]/g, "-"));
@@ -591,7 +617,13 @@ function syncPanel(baseline = false) {
 
 let lastCommand = {}; // { c, at }: the last key command this copy ran
 
-async function command(c) {
+// A command's work left running on its own; what goes wrong is logged as the loop logs it.
+function detach(c, work) {
+  Promise.resolve(work).catch((e) => console.log(`kelpie ${c}: ${e}`));
+}
+
+// Exported for the tests.
+export async function command(c) {
   if (["files", "changes", "artifacts", "web"].includes(c)) return togglePanel(c);
   if (c === "refresh") return setShared(REFRESH, Date.now());
   if (c === "close") { const tab = focused()?.tab; return tab && closeTab(tab); }
@@ -629,17 +661,31 @@ async function command(c) {
   if (c === "get-next") return getNextRequest();
   if (c === "add-next") return addNextRequest();
   if (c === "suggest-next") return suggestNextRequest();
-  if (c.startsWith("pause-story-")) return pauseStoryByKey(c.slice("pause-story-".length));
-  if (c.startsWith("clean-story-")) return cleanStoryByKey(c.slice("clean-story-".length));
-  if (c === "clean-all") return cleanAll();
+  // get-story, where-<terminal>: where an agent runs and what Kelpie holds about a story (the plugin's
+  // get_story tool and its SessionStart hook; stories.js).
+  if (c === "get-story") return getStoryRequest();
+  if (c.startsWith("where-")) return whereRequest(c.slice("where-".length));
+  // These run for long (a clean-up up to 25 s a key, Clean up all every finished story in turn):
+  // not awaited, as the command loop handles one command at a time and every key would wait on them.
+  if (c.startsWith("pause-story-")) return detach(c, pauseStoryByKey(c.slice("pause-story-".length)));
+  // pause-desk: the Desk's agents paused and the Desk closed (its close dialog's and Pause dialog's Pause).
+  if (c === "pause-desk") return detach(c, pauseDesk());
+  if (c.startsWith("clean-story-")) return detach(c, cleanStoryByKey(c.slice("clean-story-".length)));
+  if (c === "clean-all") return detach(c, cleanAll());
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
   if (c === "what-next") return whatNext();
+  // debug-loads: the load record (debug.js) written to shared state, or no longer.
+  if (c === "debug-loads") return toggleDebug();
   // demo: the demo profile and its spaces, from mods/kelpie/demo/demo.json (demo.js); demo-remove undoes it.
   // demo-github: the same profile with its board a GitHub Project of the same issues (demo puts Jira back).
   if (c === "demo-github") return setupDemo("project").catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo-remove") return removeDemo().catch((e) => notify({ title: "The demo wasn't removed", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   if (c === "demo") return setupDemo().catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
   const work = storyNow();
+  // ⌥⌘P on the Desk (not a story previewed over it): its focused agent, else the whole Desk.
+  if (c === "pause" && !work?.story && isDesk(spaces().find((s) => s.active))) return pauseDeskByKey(shownProfile(), deskArmed);
+  // On the Desk, the view keys switch between its terminals and its screenshots.
+  if (!work?.story && c.startsWith("view-") && deskShown()) return showDeskView(shownProfile(), c.slice("view-".length));
   if (!work?.story) return;
   if (c === "start") return work.start();
   if (c === "pause") return work.pause();
@@ -756,10 +802,15 @@ export default class Quiet extends View {
     });
   }
 
+  // Every Kelpie view draws here, its host reads kept for the render (host.js).
   render(cx) {
+    return rendering(() => this.draw(cx));
+  }
+
+  draw(cx) {
     if (this.work) return this.work.render(cx);
     const role = props()?.role ?? "sidebar";
-    if (!STATS_ROLES.includes(role)) return (ROLES[role] ?? sidebar)();
+    if (!STATS_ROLES.includes(role)) return role === "toolbar" ? toolbar(cx) : (ROLES[role] ?? sidebar)();
     // The footer is always shown, so it keeps the Kelpie layout in step with the shown space too (the
     // tab bar does as well, but it can be hidden: then nothing else would bring it back).
     // It also follows the shown space for the rest (syncTracking): a hidden copy would miss a close.

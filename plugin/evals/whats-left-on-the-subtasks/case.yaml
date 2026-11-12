@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: whats-left-on-the-subtasks
+expected_outcome: |
+  A plain Claude in a story's tab, asked "what's left on the subtasks?", calls get_story without a key and lists ACME-142's open subtasks from it (ACME-143 in progress with its pull request in review and its agent waiting, ACME-144 to do), noting ACME-145 is done, without asking which story is meant.

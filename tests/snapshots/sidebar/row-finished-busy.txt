@@ -1,4 +1,4 @@
-h_flex #story-ACME-122 [hover(bg=hover)] {click hover} tip="Agent working · 1 subtask · 1 done"
+h_flex #story-ACME-122 [hover(bg=hover)] {click hover} tip="Agent working · 1 subtask · 1 done\nHanded over 2h ago"
   div
     div
       svg chrome:spinner [fg=accent] ~spin

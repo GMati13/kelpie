@@ -33,6 +33,21 @@ const WEB = { id: "root", children: [{ id: "panel", hidden: true, children: [{ i
 beforeEach(() => {
   mock.reset();
   mock.state.layout = WEB;
+  mock.state.terminals = [{ name: "web", state: "live", address: "w1" }]; // a profile's browser runs in the slot
+});
+
+test("with no browser running in any slot, pmset isn't asked (the check runs every 3 s)", async () => {
+  mock.state.shared.set("kelpie.web.playing", ["dotfiles"]);
+  mock.on.exec = (cmd) => (cmd === "pmset" ? { code: 0, stdout: PMSET, stderr: "" } : cmd === "ps" ? { code: 0, stdout: PS, stderr: "" } : undefined);
+  for (const terminals of [[], [{ name: "web", state: "exited" }], [{ name: "zsh", state: "live" }]]) {
+    mock.state.terminals = terminals;
+    await watchPlaying();
+  }
+  assert.equal(mock.of("exec").length, 0);
+  assert.deepEqual(mock.state.shared.get("kelpie.web.playing"), [], "a browser that stopped while it played no longer shows its bars");
+  mock.state.terminals = [{ name: "web-2", state: "live" }];
+  await watchPlaying();
+  assert.deepEqual(mock.state.shared.get("kelpie.web.playing"), ["dotfiles"], "a browser in any slot is looked at");
 });
 
 test("the playing profiles are noted in shared state, once, and cleared when the sound stops", async () => {
