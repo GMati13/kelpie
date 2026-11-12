@@ -3,7 +3,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, askFor, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
 import { sunkWords } from "../../mods/kelpie/config.js";
 import { prState } from "../../mods/kelpie/ui.js";
 import { COLUMNS, DEMO_PROFILE, DEMO_PROJECT_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
@@ -276,6 +276,20 @@ describe("progress: where a story's subtasks are", () => {
     assert.equal(finished(it("doing", [pr("ABC-9 a", { merged: true })])), true);
     assert.equal(finished(it("doing", [pr("ABC-9 a", { merged: true, number: 1 }), pr("ABC-9 b", { number: 2 })])), false);
     assert.equal(finished(it("doing", [])), false);
+  });
+});
+
+describe("askFor: what a pull request's button asks its agent", () => {
+  test("changes requested comes before failing checks, as in need() and the marks", () => {
+    const both = pr("AB-2: x", { checks: "FAILURE", review: "CHANGES_REQUESTED" });
+    assert.equal(askFor(both), "comments");
+    // The header's main action is need()'s kind, and only pull requests asking for it get the button:
+    // one in both states once left the header with no main action.
+    const [it] = build(data({ parents: [issue("AB-1", "doing")], children: [issue("AB-2", "doing", "AB-1")], mine: ["AB-2"], prs: [both] }), new Map());
+    assert.match(need(it)[1], /^Changes requested/);
+    assert.equal(askFor(pr("AB-2: x", { checks: "FAILURE" })), "fix");
+    assert.equal(askFor(pr("AB-2: x", { checks: "SUCCESS", review: "APPROVED" })), "merge");
+    assert.equal(askFor(pr("AB-2: x", { checks: "FAILURE", review: "CHANGES_REQUESTED", merged: true })), null);
   });
 });
 

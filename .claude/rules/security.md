@@ -42,4 +42,4 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 Where the code doesn't meet these rules yet (fix them with tests, then remove the line):
 
-- Add to chat (`pasteToChat()`, `mods/kelpie-artifacts/main.js`) pastes a file path into an agent's terminal with `terminal.paste`, without `sendToClaude()`'s check that the terminal really runs Claude. It presses no Enter, so nothing runs by itself.
+- Add to chat (`pasteToChat()`, `mods/kelpie-artifacts/main.js`) pastes a file path, and the note typed with it, into an agent's terminal with `terminal.paste`, without `sendToClaude()`'s check that the terminal really runs Claude. It presses no Enter, and the note is one line with no control characters (`cleanNote()`), so nothing runs by itself.

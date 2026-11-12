@@ -150,6 +150,15 @@
       "mine": true
     },
     {
+      "key": "ACME-166",
+      "assignee": "Priya Nair",
+      "summary": "Share a trip with a link",
+      "labels": ["frontend"],
+      "type": "Story",
+      "status": "In Review",
+      "description": "Travellers want to show a trip to someone who has no account. Give each trip a link that opens it read-only, without signing in.\n\n## Acceptance\n\n- The link works for 14 days, then says it has expired\n- Whoever opens it sees the trip but can't change it"
+    },
+    {
       "key": "ACME-171",
       "assignee": "Tomás Ruiz",
       "summary": "Dark mode for the dashboard",

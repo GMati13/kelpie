@@ -65,12 +65,16 @@ function markLaunch(key, entry) {
   const all = Object.fromEntries(Object.entries(shared(LAUNCHING) ?? {}).filter(([k, e]) => k !== key && now - e.at < LAUNCH_FOR));
   setShared(LAUNCHING, entry ? { ...all, [key]: entry } : all);
 }
-async function once(key, fn) {
-  if (cleaningNow(key)) return;
+// Whether once() would hold a launch on this key now: one starting or just started, or a clean-up.
+function launchHeld(key) {
+  if (cleaningNow(key)) return true;
   const was = (shared(LAUNCHING) ?? {})[key];
   const now = Date.now();
-  if (was && now - was.at < LAUNCH_FOR && (!was.done || now - was.done < HOLD)) return;
-  const at = now;
+  return Boolean(was && now - was.at < LAUNCH_FOR && (!was.done || now - was.done < HOLD));
+}
+async function once(key, fn) {
+  if (launchHeld(key)) return;
+  const at = Date.now();
   markLaunch(key, { at, done: null });
   let ok = false;
   try { const r = await fn(); ok = true; return r; } finally { markLaunch(key, ok ? { at, done: Date.now() } : null); }
@@ -198,15 +202,20 @@ function savePaused(profile, key, list) {
   setShared(PAUSED, all);
 }
 
-// The Claude session an agent runs (ui.js), with the config folder it lives in.
-const sessionOf = (a) => claudeSession(a.address);
+// The Claude session an agent runs (ui.js), with the config folder it lives in. A demo profile's
+// agents are demo/agent.sh, which keeps no session file: each gets a `demo-` id of its own, which
+// resumeArgv() starts as the stand-in again, so Pause and Resume can be tried in the demo.
+let demoPauses = 0;
+const sessionOf = (a, profile) => (profile?.demo
+  ? Promise.resolve({ sessionId: `demo-paused-${Date.now()}-${demoPauses++}`, cwd: profile.folder, config: null })
+  : claudeSession(a.address));
 
 // Keeps each agent's session in the paused list, under its key (a session already there isn't
 // added twice). Returns the ones kept and the keys that couldn't be (no Claude session found).
 async function keepSessions(profile, list) {
   const kept = [], failed = [];
   for (const x of list) {
-    const rec = await sessionOf(x.agent).catch(() => null);
+    const rec = await sessionOf(x.agent, profile).catch(() => null);
     if (!rec) { failed.push(x.key); continue; }
     const others = (pausedIn(profile)[x.key] ?? []).filter((p) => p.sessionId !== rec.sessionId);
     savePaused(profile, x.key, [...others, { sessionId: rec.sessionId, cwd: rec.cwd, name: x.agent.tab_name, at: Date.now(), ...(rec.config ? { config: rec.config } : {}) }]);
@@ -391,7 +400,9 @@ const storyKeys = (it) => [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a
 // What a pull request's buttons ask its agent; the messages are the profile's (config.js askText).
 const ASK = { fix: "Fix checks", comments: "Address comments", merge: "Merge" };
 const askOf = (profile, kind, ps) => askText(profile, kind, { prs: ps.map((p) => p.url).join(" and ") });
-const askFor = (p) => (p.merged ? null : failing(p) ? "fix" : p.reviewDecision === "CHANGES_REQUESTED" ? "comments" : ready(p) ? "merge" : null);
+// Changes requested comes before failing checks, as in need() and the marks (prState()): a pull
+// request in both once had no header action, as the header looks for need()'s kind.
+const askFor = (p) => (p.merged ? null : p.reviewDecision === "CHANGES_REQUESTED" ? "comments" : failing(p) ? "fix" : ready(p) ? "merge" : null);
 
 // Stories from what Jira and GitHub said, with the live and paused agents on their keys, in the
 // board's order. Each pull request carries the key it attached by (`key`). `handover` is the profile's
@@ -1624,6 +1635,7 @@ const RENAMED = new Set();
 // again after the stories reload once it's a few minutes old, or on Refresh. Each copy (the header,
 // the story view) keeps its own.
 const DESCRIPTIONS = {}; // key -> { blocks, at, loading, error }
+const TICKETS = {}; // "<profile>:<key>" -> { found: { key, summary, story } | null, at, loading }: a review's ticket the list doesn't hold
 const MOVES = {}; // key -> { list: [{ id, name, to, category }], at, loading, error }: where its status can go
 const MOVED = {}; // key -> { status, category, id, at }: a status just set here, shown until the stories catch up
 const MOVED_FOR = 10 * 60 * 1000; // a move the board's answers still don't show is kept this long at most
@@ -1997,7 +2009,10 @@ export function openTerminal(profile, it) {
 function openClaude(profile, it) {
   if (lonePr(it)) return;
   const name = `${it.key} claude`;
-  once(it.key, () => launch(profile, it, { name, argv: claudeArgv(profile) }));
+  // Only the press that makes the space goes through once(), as the Terminal's: with a space, each
+  // press is a tab of its own (once() held a second press for a few seconds and dropped it).
+  if (!it.space) return once(it.key, () => launch(profile, it, { name, argv: claudeArgv(profile) }));
+  return launch(profile, it, { name, argv: claudeArgv(profile) });
 }
 
 // Merge: the task (config.js mergeTask) asking an agent to check a story's open pull requests of
@@ -2120,20 +2135,22 @@ const reviewTab = (p) => spaces().flatMap((s) => s.tabs).find((c) => c.name === 
 // the profile's folder, from the repository's clone at the folder's top or one level down, at the
 // pull request's latest commit (detached: no branch is made, a fork's works too). Started again, the
 // worktree moves to the latest commit, unless it has changes of its own (then it's left as it is).
-// Prints "ok:<folder>", "dirty:<folder>" or "error:<why>".
+// Prints "ok:<folder>", "dirty:<folder>" or "error:<why>", always on one line: git's message can be
+// several, and only the last line is read (a fetch's ended "and the repository exists.", losing why).
 const REVIEW_CHECKOUT = `root=$1 repo=$2 n=$3
+fail() { printf 'error:%s\\n' "$(printf '%s' "$1" | tr '\\n' ' ')"; exit 0; }
 clone=
 for d in "$root/$repo" "$root"/*/"$repo"; do if [ -e "$d/.git" ]; then clone=$d; break; fi; done
-[ -n "$clone" ] || { echo "error:no clone of $repo in $root"; exit 0; }
-out=$(git -C "$clone" fetch --quiet origin "pull/$n/head" 2>&1) || { echo "error:couldn't fetch it: $out"; exit 0; }
+[ -n "$clone" ] || fail "no clone of $repo in $root"
+out=$(git -C "$clone" fetch --quiet origin "pull/$n/head" 2>&1) || fail "couldn't fetch it: $out"
 sha=$(git -C "$clone" rev-parse FETCH_HEAD)
 wt="$root/worktrees/review-$repo-$n"
 if [ -e "$wt/.git" ]; then
   if [ -n "$(git -C "$wt" status --porcelain --untracked-files=no)" ]; then echo "dirty:$wt"; exit 0; fi
-  out=$(git -C "$wt" checkout --quiet --detach "$sha" 2>&1) || { echo "error:$out"; exit 0; }
+  out=$(git -C "$wt" checkout --quiet --detach "$sha" 2>&1) || fail "$out"
 else
   mkdir -p "$root/worktrees"
-  out=$(git -C "$clone" worktree add --quiet --detach "$wt" "$sha" 2>&1) || { echo "error:$out"; exit 0; }
+  out=$(git -C "$clone" worktree add --quiet --detach "$wt" "$sha" 2>&1) || fail "$out"
 fi
 echo "ok:$wt"`;
 async function checkoutReview(profile, p) {
@@ -2143,7 +2160,9 @@ async function checkoutReview(profile, p) {
   const [kind, ...rest] = line.split(":");
   const said = rest.join(":");
   if (kind === "ok") return { folder: said, note: null };
-  if (kind === "dirty") return { folder: said, note: `${prName(p)}'s worktree has changes of its own: left at the commit it was on.` };
+  // Left at an older commit, it isn't the code under review any more: the agent reads it from GitHub,
+  // as the review prompt says the folder holds the latest commit.
+  if (kind === "dirty") return { folder: null, note: `${prName(p)}'s worktree has changes of its own, so it was left as it is: its agent reads the pull request from GitHub.` };
   return { folder: null, note: `Couldn't check ${prName(p)} out (${said || "no answer"}): its agent reads it from GitHub.` };
 }
 
@@ -2721,6 +2740,10 @@ export class Stories extends Source {
     const sub = it.subs.find((s) => s.key === key);
     const agent = sub?.agent ?? (key === it.key ? it.agent : null) ?? (sub && !sub.paused && !sub.last ? it.agent : null);
     const about = { profile: st.profile, keys: key };
+    // A launch on the story still starting (or just started) would hold this one: say so rather
+    // than "Asked" for a request that went nowhere.
+    // (A clean-up holding it says so itself.)
+    if (!agent && launchHeld(it.key)) { if (busyOf(it.key)?.kind !== "clean") say(about, `${it.key}'s agent is still starting: try again in a few seconds.`); cx.notify(); return; }
     if (agent) {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
       sendToClaude(agent.address, told).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
@@ -3113,6 +3136,7 @@ export class Stories extends Source {
     const c = CHECKS[checksOf(p)], r = REVIEW[p.reviewDecision];
     const demo = Boolean(st.setup.github?.demo) || isDemo(st.profile);
     const about = this.description(t, st, `pr:${p.url}`, cx, { id: "pr-desc", fold: true, load: async () => markdownBlocks(await pullBody(p, { demo, account: st.setup?.github?.account })) });
+    const ticket = it.review ? this.reviewTicket(t, st, p, cx) : null;
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       .when(Boolean(note), (el) => el.child(note))
       .child(h_flex().flex_none().gap(6).items_center().text_size(SMALL).text_color(t.muted)
@@ -3122,7 +3146,58 @@ export class Stories extends Source {
         .when(!p.isDraft && Boolean(r), (el) => el.child(chip(t, r[0], t[r[1]]))))
       .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(it.review ? "Start review opens a Claude agent on it, in the Reviews space."
         : "It names no ticket, so its agents work on the Desk."))
-      .when(Boolean(about), (el) => el.child(this.scrollBox(div().id(`pr-desc-view-${it.key}`), `${st.profile?.id}:${it.key}`).flex_1().min_h(0).overflow_y_scrollbar().child(about)));
+      .when(Boolean(about || ticket), (el) => el.child(this.scrollBox(div().id(`pr-desc-view-${it.key}`), `${st.profile?.id}:${it.key}`).flex_1().min_h(0).overflow_y_scrollbar()
+        .when(Boolean(about), (x) => x.child(about)).when(Boolean(ticket), (x) => x.child(ticket))));
+  }
+
+  // The ticket a review's title names (the one Start review gives its agent), under the pull
+  // request's description: "Ticket", its key (opening its page), its summary, its story when it's a
+  // subtask, then its description folded as a story's is. Only on a profile with a board; the summary
+  // comes from what the list loaded, else the board is asked once (lookUp(), a teammate's ticket).
+  reviewTicket(t, st, p, cx) {
+    const board = boardOf(st.setup);
+    const key = board && st.data ? prKey(p, st.data, projectsOf(st.data)) : null;
+    if (!key) return null;
+    const found = this.ticketOf(st, board, key, cx);
+    const url = ticketUrl(board, st.data, key);
+    const where = board.kind === "project" ? "Open on GitHub" : `Open in ${board.name}`;
+    const line = (id, label, k, words, link) => h_flex().id(id).flex_none().w_full().min_w(0).gap(8).items_center().text_size(SMALL)
+      .child(div().flex_none().font_semibold().text_color(t.muted).child(label))
+      .child(skinFont(div(), "numbers").id(`${id}-key`).flex_none().text_color(link ? t.accent : t.dim)
+        .when(Boolean(link), (el) => el.cursor_pointer().hover((x) => x.text_color(t.foreground)).tooltip(`${where}: ${k}`).on_click(() => open(link))).child(k))
+      .when(Boolean(words), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.foreground).tooltip(words).child(words)));
+    const story = found?.story;
+    const head = v_flex().w_full().min_w(0).max_w(DOC.width).gap(6).pt(16).border_t_1().border_color(t.border)
+      .child(line("review-ticket", "Ticket", key, found?.summary ?? "", url))
+      .when(Boolean(story), (el) => el.child(line("review-ticket-story", "Story", story.key, story.summary, ticketUrl(board, st.data, story.key))));
+    const about = this.description(t, st, key, cx, { id: "review-ticket-desc", fold: true });
+    return v_flex().id("review-ticket-section").flex_none().w_full().min_w(0)
+      .child(h_flex().flex_none().w_full().justify_center().px(40).child(head))
+      .when(Boolean(about), (el) => el.child(about));
+  }
+
+  // A ticket's summary and story ({ key, summary, story }, story null unless it's a subtask): from the
+  // list's data when loaded there, else looked up on the board once (null when it doesn't know it).
+  ticketOf(st, board, key, cx) {
+    // The stories and their subtasks carry the fields (`mine` only names keys).
+    const issues = [...(st.data?.parents ?? []), ...(st.data?.children ?? [])];
+    const loaded = issues.find((i) => i.key === key && i.fields);
+    if (loaded) {
+      const parent = loaded.fields.issuetype?.subtask ? loaded.fields.parent?.key : null;
+      const of = parent && issues.find((i) => i.key === parent);
+      return { key, summary: loaded.fields.summary ?? "", story: parent ? { key: parent, summary: of?.fields?.summary ?? "" } : null };
+    }
+    const id = `${st.profile?.id}:${key}`;
+    const was = TICKETS[id];
+    if (!was || (!was.loading && was.at < st.at && Date.now() - was.at > DESC_EVERY)) {
+      TICKETS[id] = { ...(was ?? {}), loading: true, at: was?.at ?? 0 };
+      cx.spawn(async (cx) => {
+        const found = await lookUp(board, key, st.data).catch(() => null);
+        TICKETS[id] = { found, at: Date.now() };
+        cx.notify();
+      });
+    }
+    return TICKETS[id].found ?? null;
   }
 
   detail(t, st, it, cx, note = null) {
@@ -5725,4 +5800,4 @@ export function showNotified(id) {
 
 // Exported for the tests only (tests/js/stories.test.mjs, next.test.mjs, diff.test.mjs, demo.test.mjs):
 // the logic the views rely on, pinned there. Nothing in the mods imports these.
-export { agentsByKey, applyPicks, build, changeSquares, diffRows, fileStatus, finished, issue, keyIn, lastSessions, need, needQueue, needQueueOf, nextIn, ordered, patchHash, progress, projectsOf, pull, pullsOf, sunk, syntaxOf, syntaxSpans, wordChanges };
+export { agentsByKey, applyPicks, askFor, build, changeSquares, diffRows, fileStatus, finished, issue, keyIn, lastSessions, need, needQueue, needQueueOf, nextIn, ordered, patchHash, progress, projectsOf, pull, pullsOf, sunk, syntaxOf, syntaxSpans, wordChanges };
