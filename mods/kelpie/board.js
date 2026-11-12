@@ -21,7 +21,7 @@
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
-import { closeIssue, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
+import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
 
 const PAGES = 5; // up to 500 tickets a search
@@ -207,8 +207,12 @@ export async function moveStatus(board, key, option, data) {
 // its being closed.
 export const closesTickets = (board) => board?.kind === "project";
 
-// Closes a done ticket on its board, as completed, on the person's own click (Close in the Done group).
-export async function closeTicket(board, key, data) {
+// How many tickets a close request takes at once, so a view can say which are being closed now.
+export { CLOSE_SLOTS as CLOSE_BATCH } from "./issues.js";
+
+// Closes done tickets on their board, as completed, on the person's own click (Close in the Done
+// group): [{ key, ok, why }], `each` hearing each batch's results as they come (issues.js closeIssues()).
+export async function closeTickets(board, keys, data, each) {
   if (!closesTickets(board)) throw new Error("its board closes a ticket by moving it to done");
-  return closeIssue(board, data, key);
+  return closeIssues(board, data, keys, each);
 }
