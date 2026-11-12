@@ -213,6 +213,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   scroll position).
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
   patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
+- `kanban.test.mjs`: a Jira board without sprints (Kanban, or team-managed with sprints off): `activeSprints()`
+  falling back to the board, `boardScope()`'s filter JQL, a load on a fake jira.sh. `signin.test.mjs`: Jira
+  sign-in through a token command, `jira()` to the real jira.sh with a fake curl, and the profile dialog's
+  sign-in on Linux (no Keychain). `platform.test.mjs`: opening links and folders per system (macOS, Linux,
+  Windows), and the shell lines that ask the machine (the footer's CPU and memory, `STAT_MTIME`,
+  `CLAUDE_TMP`, the full name) run for real, so CI's Linux job runs them on Linux.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
   gives and Check my shell, avatar.sh, stdin.sh (What next?'s task on stdin), install.sh with the icon and art copies, e2e-demo.sh's guards, and the
   Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
