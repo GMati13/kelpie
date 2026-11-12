@@ -102,7 +102,7 @@ v_flex [fg=foreground]
         "In progress"
       div [fg=dim]
         "8"
-    h_flex #story-ACME-142 [hover(bg=hover)] {click hover} tip="ACME-143's agent needs you"
+    h_flex #story-ACME-142 [hover(bg=hover)] {click hover} tip="ACME-143's agent needs you\nLast worked on 25m ago"
       div
         div
           div [bg=working/40] ~loop(opacity)
@@ -135,7 +135,7 @@ v_flex [fg=foreground]
         h_flex #b-subs-ACME-142 tip="Your subtasks: 0 of 2 past QA · 1 in progress · 1 to do\nAll: 3 subtasks · 1 in review · 1 to do · 1 done"
           div [bg=working/73]
           div [bg=dim/73]
-    h_flex #story-ACME-151 [hover(bg=hover)] {click hover} tip="Checks failing on ACME-152 (payments#97)"
+    h_flex #story-ACME-151 [hover(bg=hover)] {click hover} tip="Checks failing on ACME-152 (payments#97)\nLast worked on 1h ago"
       div
         div
           svg own:circle-x [fg=blocked]
@@ -166,7 +166,7 @@ v_flex [fg=foreground]
         h_flex #b-subs-ACME-151 tip="Your subtasks: 0 of 2 past QA · 1 in progress · 1 to do\nAll: 2 subtasks · 1 in review · 1 to do"
           div [bg=working/73]
           div [bg=dim/73]
-    h_flex #story-ACME-160 [hover(bg=hover)] {click hover} tip="Changes requested on ACME-161 (search#233)"
+    h_flex #story-ACME-160 [hover(bg=hover)] {click hover} tip="Changes requested on ACME-161 (search#233)\nLast worked on 3h ago"
       div
         div
           svg own:message-square [fg=working]
@@ -195,7 +195,7 @@ v_flex [fg=foreground]
                 "search"
         h_flex #b-subs-ACME-160 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 1 subtask · 1 in review"
           div [bg=working/73]
-    h_flex #story-ACME-171 [hover(bg=hover)] {click hover} tip="Approved, checks pass or none · ready to merge"
+    h_flex #story-ACME-171 [hover(bg=hover)] {click hover} tip="Approved, checks pass or none · ready to merge\nLast worked on 2h ago"
       div
         div
           svg chrome:circle-check [fg=done]
@@ -236,7 +236,7 @@ v_flex [fg=foreground]
           Popup.new "merge-ACME-171-menu"
             div #merge-ACME-171-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
               svg own:git-merge
-    h_flex #story-ACME-175 [hover(bg=hover)] {click hover} tip="Agent working · PR in review"
+    h_flex #story-ACME-175 [hover(bg=hover)] {click hover} tip="Agent working · PR in review\nLast worked on 8m ago"
       div
         div
           svg chrome:spinner [fg=accent] ~spin
@@ -267,7 +267,7 @@ v_flex [fg=foreground]
                 "Bug"
               div #tags-ACME-175-1 [bg=ansi2/24 fg=ansi2] tip="Label: ci"
                 "ci"
-    h_flex #story-ACME-138 [hover(bg=hover)] {click hover} tip="Paused · 1 subtask · 1 in progress"
+    h_flex #story-ACME-138 [hover(bg=hover)] {click hover} tip="Paused · 1 subtask · 1 in progress\nLast worked on 3h ago"
       div
         div
           svg own:pause [fg=dim]
@@ -282,19 +282,7 @@ v_flex [fg=foreground]
               svg own:pause [fg=dim]
         h_flex #b-subs-ACME-138 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 1 subtask · 1 in progress"
           div [bg=working/73]
-    h_flex #story-ACME-184 [hover(bg=hover)] {click hover} tip="2 subtasks · 2 in progress"
-      div
-        div
-          div [bg=dim]
-      v_flex
-        div
-          "Show times in each stop's time zone"
-        h_flex
-          div [fg=dim]
-            "ACME-184"
-        h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 2 subtasks · 2 in progress"
-          div [bg=working/73]
-    h_flex #story-ACME-190 [hover(bg=hover)] {click hover} tip="Reassigned to Jordan Blake · clean up once you're done with it"
+    h_flex #story-ACME-190 [hover(bg=hover)] {click hover} tip="Reassigned to Jordan Blake · clean up once you're done with it\nLast worked on 1d ago"
       div
         div
           div [border=muted]
@@ -311,6 +299,18 @@ v_flex [fg=foreground]
         div #clean-ACME-190 {down:left click}
           div #clean-ACME-190 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-190: closes its space, forgets its paused session"
             svg own:brush-cleaning
+    h_flex #story-ACME-184 [hover(bg=hover)] {click hover} tip="2 subtasks · 2 in progress"
+      div
+        div
+          div [bg=dim]
+      v_flex
+        div
+          "Show times in each stop's time zone"
+        h_flex
+          div [fg=dim]
+            "ACME-184"
+        h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 2 subtasks · 2 in progress"
+          div [bg=working/73]
     h_flex
       div [fg=muted]
         "Reviews for you"

@@ -195,7 +195,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   hidden, a bug first and once on either board), colours readable on dark and light themes (`legible()`,
   `tagColor()`), and the demo's tags on the list's rows, the title row and subtask rows, on Jira and on a
   GitHub Project.
-- `order-by-time.test.mjs`: the groups worked through by time (#141): when a ticket moved (`movedOf()`:
+- `order-by-time.test.mjs`: the groups worked through by time (#141): In progress by last activity
+  (`activityOf()`: what was noted, pull requests, sessions, paused agents, only loaded keys; `noteActivity()`:
+  an agent's turn, the story shown, once a minute at most; the order moving only when the list loads),
+  when a ticket moved (`movedOf()`:
   Jira's dates, exact only for a done ticket; a Project's Status value's time, asked in the constant
   query; bad or future dates none), Built / Waiting on others by handover (your subtasks past the
   handover column, the latest of them), the Done group by when done (`byDone()`), unknown times last in
