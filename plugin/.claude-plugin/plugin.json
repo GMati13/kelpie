@@ -1,7 +1,7 @@
 {
   "name": "kelpie",
-  "description": "Connects Claude to Kelpie, your Herdr layout of stories, pull requests and agents: Claude can show you where a story on your board (Jira or a GitHub Project) says something, read and add to your Next queue, and set up your Kelpie profiles with you. Needs Kelpie running in Herdr.",
-  "version": "0.6.1",
+  "description": "Connects Claude to Kelpie, your Herdr layout of stories, pull requests and agents: Claude can show you where a story on your board (Jira or a GitHub Project) says something, read and add to your Next queue, find which agent is working on something and take you to it, and set up your Kelpie profiles with you. Needs Kelpie running in Herdr.",
+  "version": "0.7.0",
   "author": {
     "name": "Kelpie"
   },

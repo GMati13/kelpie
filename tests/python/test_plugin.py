@@ -26,6 +26,8 @@ case "$2" in
   kelpie.get-next) name=next-get ;;
   kelpie.add-next) name=next-add ;;
   kelpie.suggest-next) name=next-suggest ;;
+  kelpie.find-agents) name=agents-find ;;
+  kelpie.show-agent) name=agent-show ;;
   kelpie.get-story) name=story-get ;;
   kelpie.where-*) name="where-${2#kelpie.where-}" ;;
   *) name="" ;;
@@ -41,6 +43,10 @@ case "$FAKE_ANSWER" in
       next-get) answer '{"ok": true, "profile": "Acme", "items": [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}]}' ;;
       next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
       next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
+    esac ;;
+  agents) case "$name" in
+      agents-find) answer '{"ok": true, "agents": [{"id": "w1:t3", "tab": "ACME-172", "space": "ACME-171", "profile": "Acme", "state": "idle", "changed": [{"path": "/acme/web/tokens.ts"}]}]}' ;;
+      agent-show) answer '{"ok": true, "shown": {"tab": "ACME-172", "space": "ACME-171", "profile": "Acme", "state": "idle"}}' ;;
     esac ;;
   story) answer '{"ok": true, "where": {"profile": {"id": "acme", "name": "Acme"}, "place": "story", "key": "ACME-1"}, "story": {"key": "ACME-1", "status": "In Progress"}}' ;;
   desk) answer '{"ok": true, "where": {"profile": {"id": "acme", "name": "Acme"}, "place": "desk"}}' ;;
@@ -100,7 +106,7 @@ class Server(unittest.TestCase):
             self.assertEqual(init["result"]["serverInfo"]["version"], json.load(f)["version"])
         self.assertIn("tools", init["result"]["capabilities"])
         tools = {t["name"]: t for t in listed["result"]["tools"]}
-        self.assertEqual(sorted(tools), ["add_to_next", "get_next", "get_profile", "get_story", "open_profile_page", "save_profile", "save_status", "show_passage", "suggest_next"])
+        self.assertEqual(sorted(tools), ["add_to_next", "find_agents", "get_next", "get_profile", "get_story", "open_profile_page", "save_profile", "save_status", "show_agent", "show_passage", "suggest_next"])
         self.assertTrue(tools["get_story"]["annotations"]["readOnlyHint"])
         self.assertEqual(tools["show_passage"]["inputSchema"]["required"], ["key", "quote"])
         self.assertEqual(tools["save_profile"]["inputSchema"]["required"], ["id", "set"])
@@ -110,6 +116,10 @@ class Server(unittest.TestCase):
         self.assertTrue(tools["get_next"]["annotations"]["readOnlyHint"])
         self.assertFalse(tools["add_to_next"]["annotations"]["readOnlyHint"])
         self.assertEqual(tools["add_to_next"]["inputSchema"]["required"], ["action"])
+        # find_agents changes nothing; show_agent changes what's shown, so it isn't marked read only.
+        self.assertTrue(tools["find_agents"]["annotations"]["readOnlyHint"])
+        self.assertFalse(tools["show_agent"]["annotations"]["readOnlyHint"])
+        self.assertEqual(tools["show_agent"]["inputSchema"]["required"], ["id"])
 
     def test_the_evals_stand_in_has_the_tools_as_the_server_lists_them(self):
         # The evals answer every Kelpie tool from plugin/evals/mocks/kelpie/, whose _tools.json is
@@ -352,6 +362,44 @@ class Server(unittest.TestCase):
         self.assertFalse(failed)
         self.assertTrue(text.startswith("Next, in Kelpie's profile Acme: 1 item(s), in order.\n"))
         self.assertEqual(json.loads(text.split("\n", 1)[1]), [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}])
+
+    def test_find_agents_sends_the_filters_with_the_agents_terminal_and_returns_the_list(self):
+        text, failed = self.call({"file": " web/tokens.ts\n", "key": "acme-172", "folder": "/acme", "words": "dark", "here": True},
+                                 tool="find_agents", answer="agents", env={"HC_TERMINAL_ID": "t11n"})
+        self.assertFalse(failed)
+        self.assertEqual(self.calls(), ["do kelpie.find-agents"])
+        self.assertEqual(self.last(), {"terminal": "t11n", "file": "web/tokens.ts", "folder": "/acme", "key": "acme-172", "words": "dark", "here": True})
+        self.assertTrue(text.startswith("1 agent(s) match.\n"))
+        self.assertEqual(json.loads(text.split("\n", 1)[1])[0]["id"], "w1:t3")
+
+    def test_find_agents_with_no_filters_asks_for_every_agent(self):
+        self.call({"here": "yes"}, tool="find_agents", answer="agents")
+        self.assertEqual(self.last(), {}, "only a real true narrows it to the profile")
+
+    def test_find_agents_refuses_bad_keys_and_relative_folders_before_anything_runs(self):
+        for args in ({"key": "ACME-1; rm"}, {"folder": "web"}, {"folder": "~/acme"}):
+            text, failed = self.call(args, tool="find_agents", answer="agents")
+            self.assertTrue(failed, args)
+        self.assertEqual(self.calls(), [])
+
+    def test_show_agent_sends_the_id_and_says_what_was_shown(self):
+        text, failed = self.call({"id": "w1:t3"}, tool="show_agent", answer="agents")
+        self.assertFalse(failed)
+        self.assertEqual(self.calls(), ["do kelpie.show-agent"])
+        self.assertEqual(self.last(), {"id": "w1:t3"})
+        self.assertEqual(text, "Shown in Kelpie: the agent in tab ACME-172 of the space ACME-171, in the profile Acme (idle).")
+
+    def test_show_agent_refuses_ids_that_arent_an_agents_before_anything_runs(self):
+        # Kelpie checks the id against Herdr's own list too: nothing of it goes into a command.
+        for args in ({}, {"id": ""}, {"id": "t1; rm -rf ~"}, {"id": "$(id)"}, {"id": 7}, {"id": "x" * 101}):
+            text, failed = self.call(args, tool="show_agent", answer="agents")
+            self.assertTrue(failed, args)
+        self.assertEqual(self.calls(), [])
+
+    def test_kelpies_refusal_to_show_an_agent_is_an_error(self):
+        text, failed = self.call({"id": "w1:t3"}, tool="show_agent", answer="refuse")
+        self.assertTrue(failed)
+        self.assertTrue(text.startswith("Kelpie didn't show it: "))
 
     def test_kelpies_refusal_of_a_next_request_is_an_error(self):
         text, failed = self.call({"action": "Read my plan"}, tool="add_to_next", answer="refuse")

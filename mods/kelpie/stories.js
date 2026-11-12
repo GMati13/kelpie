@@ -28,7 +28,7 @@ import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { askMessage, askPicker, askWho, chosenWho, fileAbout, openClaudes } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
-import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
+import { demoAgentWork, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
@@ -2152,6 +2152,120 @@ export function suggestNextRequest() {
     if (!Array.isArray(req?.items)) throw new Error("items: a list of picks.");
     const { kept, dropped } = await applyPicks(profile, req.items.slice(0, PICKS_IN));
     return { ok: true, profile: profile.name, kept: kept.map((k) => `${k.idea ? "idea" : k.key.replace(/^pr:/, "")}: ${k.action}${k.aside ? ` (set aside: ${k.aside})` : ""}`), dropped };
+  });
+}
+
+// Agents for the plugin's find_agents and show_agent: every agent Herdr lists, as Kelpie knows it
+// (its tab, space, profile, story and state), with what its session is about (agent-work.py: the
+// message that started it, the files it changed), so an agent asked "who is editing this?" answers
+// from here, not from Claude's or Herdr's own files. Read only; only the sessions of the first
+// AGENTS_IN agents left after the key and folder filters are read, the asking agent's profile's
+// (else the shown one's) first: herdr-core lists every Herdr window's agents, and with 64 open the
+// demo's fell past a cut of 40 and a file they had changed found nobody. All 66 read in 1.7 s, under
+// the plugin's 5 s wait. Ids are Herdr's agent addresses: show_agent takes only one of those, so
+// nothing from a request goes into a command.
+const AGENTS_IN = 100;
+const CHANGED_SHOWN = 5; // files listed per agent when no file was asked about
+const trimEnd = (f) => String(f).replace(/(.)\/+$/, "$1");
+const within = (folder, root) => Boolean(folder && root) && (trimEnd(folder) === trimEnd(root) || trimEnd(folder).startsWith(`${trimEnd(root)}/`));
+// A file asked about: the same path, or a relative one ending a changed file's path at a folder's edge.
+const sameFile = (path, asked) => path === asked || (!asked.startsWith("/") && path.endsWith(`/${asked.replace(/^\.\//, "")}`));
+const summaryOf = (data, key) => (key ? [...(data?.parents ?? []), ...(data?.children ?? [])].find((x) => x.key === key)?.fields?.summary ?? null : null);
+const parentOf = (data, key) => (data?.children ?? []).find((x) => x.key === key)?.fields?.parent?.key ?? null;
+
+// What each agent's Claude session is about (by address): { title, first, files: [{ path, at }] }.
+// A demo profile's from its fixture; the rest from their sessions (claudeSession: the terminal's
+// own Claude process's record), read by agent-work.py where the agent runs, one run per machine.
+async function agentWork(list) {
+  const out = new Map();
+  const real = [];
+  await Promise.all(list.map(async ({ a, profile }) => {
+    if (isDemo(profile)) { const w = await demoAgentWork(profile.folder, a.tab_name).catch(() => null); if (w) out.set(a.address, w); return; }
+    const rec = await claudeSession(a.address).catch(() => null);
+    if (rec?.sessionId) real.push({ a, id: String(rec.sessionId), config: rec.config ?? "" });
+  }));
+  if (!real.length) return out;
+  const code = await readTextFile(modFile("agent-work.py")).catch(() => null);
+  if (!code) return out;
+  const machines = new Map();
+  for (const r of real) {
+    const on = r.a.address.includes("/") ? r.a.address.split("/")[0] : "";
+    machines.set(on, [...(machines.get(on) ?? []), r]);
+  }
+  await Promise.all([...machines].map(async ([on, rs]) => {
+    const run = await exec("python3", ["-I", "-c", code, ...rs.flatMap((r) => [r.config, r.id])], on ? { on } : {}).catch(() => null);
+    let found = {};
+    try { found = run?.code === 0 ? JSON.parse(run.stdout || "{}") : {}; } catch { /* nothing read */ }
+    for (const r of rs) if (found[r.id]) out.set(r.a.address, found[r.id]);
+  }));
+  return out;
+}
+
+// kelpie.find-agents (the plugin's find_agents): the agents Kelpie knows, every profile's (or, with
+// `here`, the asking agent's profile's, else the shown one's), each { id, tab, space, profile, key,
+// story, ticket, state, folder, title, first, changed, you }, filtered by `key` (its own or its
+// story's), `folder` (it works in it, or under it, or the folder is in its), `file` (its session
+// changed it) and `words` (all found in its names, title, ticket or first message).
+export function findAgentsRequest() {
+  return answerRequest("agents-find", async (req) => {
+    const key = passageText(req?.key, 40).toUpperCase();
+    const folder = passageText(req?.folder, 1000), file = passageText(req?.file, 1000);
+    const words = passageText(req?.words, 200).toLowerCase().split(" ").filter(Boolean);
+    if (key && !/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
+    if (folder && !folder.startsWith("/")) throw new Error("folder: a full path, starting with /.");
+    const asking = requestProfile(req);
+    const only = req?.here === true ? asking : null;
+    const all = spaces(), byId = new Map(all.map((s) => [s.id, s])), of = spaceProfiles(all), paneList = panes();
+    const data = shared(DATA) ?? {};
+    let list = agents().filter((a) => byId.has(a.space)).map((a) => {
+      const space = byId.get(a.space), profile = of.get(space.id) ?? null;
+      const d = data[profile?.id]?.data;
+      const storyKey = hasBoard(profile) ? keyOf(space.name) : null;
+      const own = keyOf(a.tab_name) ?? storyKey;
+      return { a, space, profile, d, key: own, story: storyKey ?? parentOf(d, own) ?? own,
+        folder: paneList.find((p) => p.id === a.pane)?.cwd ?? space.folder ?? null };
+    });
+    if (only) list = list.filter((x) => x.profile?.id === only.id);
+    if (key) list = list.filter((x) => x.key === key || x.story === key);
+    if (folder) list = list.filter((x) => within(x.folder, folder) || within(folder, x.folder));
+    if (asking) list = [...list.filter((x) => x.profile?.id === asking.id), ...list.filter((x) => x.profile?.id !== asking.id)];
+    const more = Math.max(0, list.length - AGENTS_IN);
+    list = list.slice(0, AGENTS_IN);
+    const work = await agentWork(list);
+    let found = list.map((x) => {
+      const w = work.get(x.a.address) ?? {};
+      const files = Array.isArray(w.files) ? w.files.filter((f) => typeof f?.path === "string") : [];
+      return { ...x, title: sessionTitle(x.a.title) ?? w.title ?? null, first: typeof w.first === "string" ? w.first : null, ticket: summaryOf(x.d, x.key) ?? summaryOf(x.d, x.story), files };
+    });
+    if (file) found = found.filter((x) => x.files.some((f) => sameFile(f.path, file)));
+    if (words.length) found = found.filter((x) => { const hay = [x.a.tab_name, x.space.name, x.title, x.first, x.ticket, x.key].filter(Boolean).join(" ").toLowerCase(); return words.every((w) => hay.includes(w)); });
+    const agentsOut = found.map((x) => Object.fromEntries(Object.entries({
+      id: x.a.address, tab: x.a.tab_name, space: x.space.name, profile: x.profile?.name ?? null, key: x.key, story: x.story !== x.key ? x.story : null,
+      ticket: x.ticket, state: agentWords(x.a.status), folder: x.folder, title: x.title, first: x.first,
+      changed: (file ? x.files.filter((f) => sameFile(f.path, file)) : x.files.slice(0, CHANGED_SHOWN)).map((f) => ({ path: f.path, ...(f.at ? { at: f.at } : {}) })),
+      you: typeof req?.terminal === "string" && req.terminal === x.a.address,
+    }).filter(([, v]) => v !== null && v !== false && !(Array.isArray(v) && !v.length))));
+    return { ok: true, agents: agentsOut, ...(more ? { more } : {}), ...(only ? { profile: only.name } : {}) };
+  });
+}
+
+// kelpie.show-agent (the plugin's show_agent): shows an agent's pane, its space selected (and so its
+// profile, no other profile picked over it, no story preview covering its terminals). Only an
+// agent Herdr lists counts: the id is compared, never run. It only changes what's shown, so nothing
+// waits for a yes.
+export function showAgentRequest() {
+  return answerRequest("agent-show", (req) => {
+    const id = typeof req?.id === "string" ? req.id.slice(0, 100) : "";
+    const a = id ? agents().find((x) => x.address === id) : null;
+    const space = a ? spaces().find((s) => s.id === a.space) : null;
+    if (!a || !space || !a.pane) throw new Error(`No agent ${passageText(id, 60) || "was named"} in Kelpie's lists now: find_agents gives the ids of the agents running.`);
+    const profile = spaceProfiles().get(space.id) ?? null;
+    chooseProfile(null);
+    if (profile) setPreview(profile, null);
+    if ((shared(VIEW) ?? {})[space.id] && shared(VIEW)[space.id] !== "agent") setShared(VIEW, { ...shared(VIEW), [space.id]: "agent" });
+    run("space.select", { id: space.id });
+    run("pane.focus", { pane: a.pane });
+    return { ok: true, shown: { tab: a.tab_name, space: space.name, profile: profile?.name ?? null, state: agentWords(a.status) } };
   });
 }
 

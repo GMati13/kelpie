@@ -155,6 +155,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   and the details' folded "Comments · n", opened to the newest three with Show all, none without any.
 - `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
   agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.
+- `find-agents.test.mjs`: the plugin's agent requests (`kelpie.find-agents`, `show-agent`): every agent
+  with its story, state, folder and work (the demo's from the fixture's `work`, a real one's from its session
+  through agent-work.py), each filter, and that only an agent in Herdr's own list is shown.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
   `patchHash`'s stable values.
@@ -255,7 +258,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files, a branch's commits since the default branch), sessions.py (titles, keys, accounts, the index
-  read incrementally and kept private, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
+  read incrementally and kept private, in a fake HOME), agent-work.py (a session's first message and changed files, only the
+  person's Claude folders read), plugin/server.py (its tools, with a fake `herdr-app`).
 - `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
   the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
   placeholders, so the agents' guide keeps up with the profile's settings.

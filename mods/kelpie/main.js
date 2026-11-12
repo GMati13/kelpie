@@ -15,7 +15,7 @@ import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, 
 import { toggleDebug } from "./debug.js";
 import { CONTROL, MOD, ROW, modFile, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -666,6 +666,10 @@ export async function command(c) {
   if (c === "get-next") return getNextRequest();
   if (c === "add-next") return addNextRequest();
   if (c === "suggest-next") return suggestNextRequest();
+  // find-agents, show-agent: the agents Kelpie knows, filtered, and one of them shown (the plugin's
+  // find_agents and show_agent; stories.js).
+  if (c === "find-agents") return findAgentsRequest();
+  if (c === "show-agent") return showAgentRequest();
   // get-story, where-<terminal>: where an agent runs and what Kelpie holds about a story (the plugin's
   // get_story tool and its SessionStart hook; stories.js).
   if (c === "get-story") return getStoryRequest();
