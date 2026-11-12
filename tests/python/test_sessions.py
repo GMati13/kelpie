@@ -167,6 +167,40 @@ class Sessions(unittest.TestCase):
         self.assertEqual(self.run_it(), [])
         self.assertEqual(set(self.index()), {kept})
 
+    # The index holds prompts and titles: the person's alone.
+    def cache(self, *name):
+        return os.path.join(self.home, ".cache", "kelpie", *name)
+
+    def mode(self, path):
+        return oct(os.stat(path).st_mode & 0o777)
+
+    def test_the_index_and_its_folder_are_made_private(self):
+        self.session("a", line(type="ai-title", aiTitle="T"))
+        self.run_it()
+        self.assertEqual(self.mode(self.cache()), "0o700")
+        self.assertEqual(self.mode(self.cache("sessions.json")), "0o600")
+        self.assertEqual(os.listdir(self.cache()), ["sessions.json"], "no temp file left behind")
+
+    def test_an_index_an_older_kelpie_left_readable_is_tightened_on_its_next_write(self):
+        os.makedirs(self.cache())
+        self.save_index({})
+        os.chmod(self.cache(), 0o755)
+        os.chmod(self.cache("sessions.json"), 0o644)
+        self.session("a", line(type="ai-title", aiTitle="T"))
+        self.run_it()
+        self.assertEqual(self.mode(self.cache()), "0o700")
+        self.assertEqual(self.mode(self.cache("sessions.json")), "0o600")
+
+    def test_a_link_in_the_indexs_place_is_replaced_never_written_through(self):
+        target = write(os.path.join(self.home, "theirs.json"), "{}")
+        os.makedirs(self.cache())
+        os.symlink(target, self.cache("sessions.json"))
+        self.session("a", line(type="ai-title", aiTitle="T"))
+        self.run_it()
+        self.assertFalse(os.path.islink(self.cache("sessions.json")))
+        with open(target) as f:
+            self.assertEqual(f.read(), "{}")
+
 
 if __name__ == "__main__":
     unittest.main()

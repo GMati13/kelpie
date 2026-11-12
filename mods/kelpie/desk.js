@@ -7,8 +7,9 @@
 
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { agents, layout, openOverlay, run, setShared, shared, spaces } from "herdr";
-import { agentMark, agentWords, ago, agentLabels, chrome, groupHeader, icon, menuButton, own, resumeArgv, sideHidden, toggleSide } from "./ui.js";
+import { openOverlay } from "herdr";
+import { agents, layout, run, setShared, shared, spaces } from "./host.js";
+import { agentMark, agentWords, ago, agentLabels, chrome, groupHeader, icon, menuButton, own, resumeArgv, sideHidden, stop, toggleSide } from "./ui.js";
 import { claudeArgv, deskOf, openDesk, shellArgv, shownProfile } from "./config.js";
 
 const ASK = "kelpie.desk.ask"; // { profile, at }: ⌥⌘D on a closed Desk, for the sidebar to open its menu
@@ -37,9 +38,9 @@ export const deskAgents = (profile) => {
 };
 
 // Drawn as the sidebar's other sections are ("Working on" in workside.js): a group heading (its
-// agents counted) with its icons after the rule, then one-line rows: its agents. The heading names
-// the Desk, so it has a row of its own only while it has no agent: "Open the Desk" while closed,
-// else its tabs, to show it. `host` keeps the sessions menu open (a view); `on`: the Desk is what's shown
+// agents counted, then its plain terminals; a click on it shows the Desk) with its icons after the
+// rule, then one-line rows: its agents. The heading names the Desk, so it has a row of its own only
+// while it has no agent: "Open the Desk" while closed, else its tabs, to show it. `host` keeps the sessions menu open (a view); `on`: the Desk is what's shown
 // (not a story previewed over it); `sessions`: earlier sessions to offer, newest first (null: no menu).
 export function deskRows(t, host, profile, { on = false, sessions = null } = {}) {
   const desk = deskOf(profile);
@@ -58,8 +59,27 @@ export function deskRows(t, host, profile, { on = false, sessions = null } = {})
     ...earlier.map((s) => ({ label: s.title || "Untitled session", hint: `${ago(s.updated)} ago`, tip: s.cwd,
       action: () => { openDesk(profile, { folder: s.cwd, argv: resumeArgv(s.id, s.config, profile?.github?.account) }); } })),
   ], { tip: "Earlier sessions with no ticket", iconPath: chrome("clock"), width: 320 }) : null;
+  // Its plain terminals stay off the list (the sidebar is about agents), but the heading says they're
+  // there, while it has agents (without, its own row counts its tabs): a mark and a count after the
+  // agents', a click showing the Desk on the terminal, or on the one picked when there are several.
+  const plain = desk && here.length ? desk.tabs.filter((c) => !here.some((a) => a.tab === c.id)) : [];
+  const showTab = (c) => { openDesk(profile); run("tab.select", { id: c.id }); };
+  const termTip = `${plain.length} terminal${plain.length === 1 ? "" : "s"} on the Desk (${plain.map((c) => c.name).join(", ")})`;
+  const termMark = (id, onClick, open = false) => h_flex().id(id).flex_none().h(18).px(4).gap(4).items_center().rounded(6).cursor_pointer()
+    .text_color(open ? t.foreground : t.dim).when(open, (el) => el.bg(t.selected)).hover((el) => el.bg(t.hover))
+    .tooltip(plain.length === 1 ? `${termTip}: click to show it` : `${termTip}: click to pick one`).on_click(onClick)
+    .child(icon(chrome("terminal"), 12)).child(String(plain.length));
+  const terms = !plain.length ? null : div().id("desk-terminals-wrap").flex_none().on_mouse_down("left", stop).on_click(stop)
+    .child(plain.length === 1 ? termMark("desk-terminals", () => showTab(plain[0]))
+      : menuButton(host, t, "desk-terminals", "", [{ header: "Terminals on the Desk" }, ...plain.map((c) => ({ label: c.name, action: () => showTab(c) }))],
+        { anchor: "top_left", width: 220, trigger: (toggle, open) => termMark("desk-terminals", toggle, open) }));
+  // The heading's name (and its empty part) goes to the Desk itself, as ⌥⌘D does: as it was last
+  // seen, its last focused tab, without picking one of its agents (#133).
   const head = h_flex().flex_none().items_end().gap(4)
-    .child(div().flex_1().min_w(0).child(groupHeader(t, "Desk", here.length || null)))
+    .child(div().id("desk-head").flex_1().min_w(0).cursor_pointer()
+      .tooltip(desk ? "Show the Desk ⌥⌘D" : "Open the Desk ⌥⌘D")
+      .on_click(() => { goDesk(profile); })
+      .child(groupHeader(t, "Desk", here.length || null, terms)))
     .child(h_flex().flex_none().mb(1).gap(2).items_center()
       .when(Boolean(menu), (el) => el.child(menu))
       .child(menuButton(host, t, "desk-new", "", newRows(profile), { tip: "New Claude or terminal on the Desk", iconPath: chrome("plus"), width: 220 })));

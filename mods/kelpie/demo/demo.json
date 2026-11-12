@@ -150,6 +150,15 @@
       "mine": true
     },
     {
+      "key": "ACME-166",
+      "assignee": "Priya Nair",
+      "summary": "Share a trip with a link",
+      "labels": ["frontend"],
+      "type": "Story",
+      "status": "In Review",
+      "description": "Travellers want to show a trip to someone who has no account. Give each trip a link that opens it read-only, without signing in.\n\n## Acceptance\n\n- The link works for 14 days, then says it has expired\n- Whoever opens it sees the trip but can't change it"
+    },
+    {
       "key": "ACME-171",
       "assignee": "Tomás Ruiz",
       "summary": "Dark mode for the dashboard",
@@ -296,6 +305,7 @@
     },
     {
       "key": "ACME-118",
+      "open": true,
       "assignee": "Priya Nair",
       "summary": "Show prices in the traveller's currency",
       "type": "Story",
@@ -304,6 +314,7 @@
     },
     {
       "key": "ACME-119",
+      "open": true,
       "summary": "Convert prices in the price service",
       "parent": "ACME-118",
       "status": "Done",
@@ -827,6 +838,16 @@
             "",
             "\\033[0m● Most of it is the map library (1.1 MB) loaded on every page. Loading it only on the trip map would take the first load down to about 700 KB.",
             ""
+          ]
+        },
+        {
+          "name": "Terminal",
+          "screen": [
+            "\\033[32m~/acme\\033[0m $ npx vite-bundle-visualizer",
+            "",
+            "  Generated stats.html (2.04 MB total, map library 1.10 MB)",
+            "",
+            "\\033[32m~/acme\\033[0m $ "
           ]
         }
       ]
