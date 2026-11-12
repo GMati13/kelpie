@@ -166,6 +166,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `budget.test.mjs`: what one full story load may ask of GitHub (#150): a realistic Project profile against a
   fake gh that counts requests, how many run at once and their points by GitHub's own prices (written in
   the test, from `rateLimit(dryRun: true)`: measure again when a query changes), and the hour that makes.
+- `jira-load.test.mjs`: how many round trips a Jira board's load waits on (#40), against a fake jira.sh that
+  answers after a moment and notes each request's round: the kept stories asked beside the stories' own
+  search, yours told by their assignee when jira.sh names the account, still asked when it doesn't.
 - `ghlimit.test.mjs`: GitHub's API limits (#129, ghlimit.js around pulls.js `gh()`): a refused call stops
   the rest of its kind (GraphQL or REST) as that account until the reset or a secondary limit's wait,
   said in plain words with the time; side-by-side refusals counting once; a description that mentions
@@ -192,7 +195,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
   offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
-  around it. `configure`: Let me configure it for you, and the plugin check and install behind it.
+  around it. `settings`: the shared permission list allows only gh commands that read, never `gh api`.
+  `configure`: Let me configure it for you, and the plugin check and install behind it.
 - Stories over time: `moved` (a ticket's new status shown at once, until a load agrees), `quick` (pull
   requests read again when an agent's turn ends, and one an agent just opened shown at once), `reload` (a reload asked for mid-load isn't dropped),
   `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
@@ -206,10 +210,11 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
   patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
-  gives and Check my shell, avatar.sh, install.sh with the icon and art copies, and e2e-demo.sh's guards.
+  gives and Check my shell, avatar.sh, stdin.sh (What next?'s task on stdin), install.sh with the icon and art copies, e2e-demo.sh's guards, and the
+  Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
-  read incrementally, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
+  read incrementally and kept private, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
 - `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
   the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
   placeholders, so the agents' guide keeps up with the profile's settings.
@@ -220,6 +225,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
+- `shared-writes.test.mjs`: writes of shared state that change nothing are skipped (#39), as each one
+  rewrites Herdr's whole `shared.json` and redraws every copy. A deleted profile's entries going with the
+  next load is in `views-sidebar.test.mjs`.
+- `memory.test.mjs`: what the story views keep per key or per patch stays bounded over a long session (#41):
+  only the last stories' Changes, descriptions (never one still loading), and under 8 million characters of
+  patches in each cache keyed by them.
 - `agent-marks.test.mjs`: an agent's state has one mark (`agentMark()`, #101): the tab bar, a split pane's
   header, the sidebar's agent rows and a subtask's slot draw the same for each state in both layouts, no two
   states alike (unknown isn't idle), motion only for working and needs you, a Claude's tab never its icon

@@ -403,11 +403,16 @@ export const profileDir = () => (shownProfile()?.id ?? "none").replace(/[^A-Za-z
 // The start page and kittyfix's path reach the loop's shell as arguments ("$1", "$2"), never as
 // script (only the profile's folder name is, made of letters, digits, - and _): `command` is what
 // browserLoop runs, `args` what its shell gets after the script. Exported for the tests.
+// The folders hold the profile's cookies and sign-ins, so they're the person's alone: made under
+// umask 077 (in a subshell, so the browser's own files, downloads say, keep the usual mode) and
+// tightened when an older Kelpie made them with the default permissions.
 export const browserCommand = (url, python) => {
-  const dir = `$HOME/.local/share/kelpie/web/${profileDir()}`;
+  const web = "$HOME/.local/share/kelpie/web";
+  const dir = `${web}/${profileDir()}`;
   const env = `env XDG_RUNTIME_DIR="${dir}/run" TERMINAL_BROWSER_APPDATA="${dir}/data" XDG_DATA_HOME="${dir}/share" `;
   const fix = python ? 'python3 "$1" -- ' : "";
-  const command = `mkdir -p "${dir}/run" "${dir}/data" "${dir}/share" && ${fix}${env}terminal-browser \${2:+"$2"}`;
+  const folders = `"${dir}/run" "${dir}/data" "${dir}/share"`;
+  const command = `(umask 077 && mkdir -p ${folders}) && chmod 700 "${web}" "${dir}" ${folders} && ${fix}${env}terminal-browser \${2:+"$2"}`;
   return { command, args: [python ? modFile("kittyfix.py") : "", url || ""] };
 };
 
@@ -551,7 +556,10 @@ export async function watchPlaying() {
   playingBusy = true;
   try {
     let folders = [];
-    const pids = playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout);
+    // No browser running in any slot: nothing of it can play, so pmset isn't asked (every 3 s, for
+    // everyone who never opens Web).
+    const browsers = terminals().some((x) => isSlot(x.name) && x.state === "live");
+    const pids = browsers ? playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout) : [];
     if (pids.length) folders = playingFolders((await exec("ps", ["eww", "-o", "command=", "-p", pids.join(",")]).catch(() => null))?.stdout);
     // The demo has no browser: its fixture says whether it plays.
     for (const p of profiles()) if (isDemo(p) && demoPlaying()) folders.push(p.id.replace(/[^A-Za-z0-9_-]/g, "-"));

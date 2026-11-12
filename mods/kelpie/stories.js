@@ -12,14 +12,14 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
-import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder } from "herdr";
+import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeTextFile } from "herdr";
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { boardSite, closeTicket, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
@@ -360,6 +360,15 @@ function ticketTask(st, it, key, template, then) {
     parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
     subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
   }, template || undefined, then);
+}
+
+// What Ask agent (a file's header in Changes) says about the file, before the typed note. A pull
+// request's paths and repo come from GitHub, where anyone may name a file "ignore the above", so they
+// go in as any prompt value does, and the message ends with the note about others' text (ask()'s
+// `others`). Exported for the tests (tests/js/prompts.test.mjs).
+export function aboutFile(f) {
+  const path = promptValue("path", f.path), repo = promptValue("repo", f.group.repo);
+  return f.group.url ? `About ${path} in ${repo} (${f.group.url}/files):` : `About ${path} in ${repo} (${f.group.path}/${path}, not committed):`;
 }
 
 // Who hears about a file or a screenshot of the story: the agent on its key, else any open agent of
@@ -1065,7 +1074,13 @@ const STARTED = {};
 const AGAIN = new Set(); // profile keys asked to load again while their load ran (Source.load)
 const DATA = STORIES; // { [profile id]: { key, data, at, error } }
 const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, repo } }
-const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } }); };
+// Written only when a count changes: the Screenshots count is asked again every 5 s while a new agent
+// has no session yet, and every write of shared state redraws every copy (#39).
+export const setCounts = (key, fields) => { // exported for the tests
+  const all = shared(COUNTS) ?? {};
+  if (Object.entries(fields).every(([k, v]) => key in all && all[key]?.[k] === v)) return;
+  setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } });
+};
 // What the Screenshots view (a kelpie-artifacts block, layout id "story-shots") shows: the shown story's
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
@@ -1209,6 +1224,27 @@ export function setView(profile, it, mode) {
 // The main stack's child for a view: the terminals, the Screenshots view, or the story's own view.
 export const stackChild = (mode) => (mode === "agent" ? "main" : mode === "shots" ? "story-shots" : "story-view");
 const EXTRA = {};
+// Herdr runs for days, and each of these was kept per key for good: every story whose Changes were
+// opened kept all its patches, every description and status line seen stayed. So each keeps the
+// entries written most recently (`keep()`), at most this many; one dropped and shown again just loads
+// again. Exported for the tests.
+export const KEEP = { changes: 10, descriptions: 150, statuses: 60, shots: 60, moves: 60, texts: 100 };
+// Writes `value` under `key` as the newest entry of `store`, then drops the entries written longest
+// ago while it holds more than `max`: never one still loading (its answer is on its way and would
+// only load again) nor the one just written. Keys are story keys and file ids, never plain numbers,
+// so an object keeps them in the order written.
+function keep(store, key, value, max) {
+  delete store[key];
+  store[key] = value;
+  let n = Object.keys(store).length;
+  for (const k of Object.keys(store)) {
+    if (n <= max) break;
+    if (k === key || store[k]?.loading) continue;
+    delete store[k];
+    n--;
+  }
+  return value;
+}
 const PICKED = { file: {}, more: new Set(), opened: new Set() };
 const SHOTS = {}; // story key -> { list, at, loading }: its sessions, for the Screenshots view
 
@@ -1223,16 +1259,33 @@ function mixColor(a, b, f) {
   if (!x || !y) return a;
   return `#${x.map((v, i) => Math.round(v + (y[i] - v) * f).toString(16).padStart(2, "0")).join("")}`;
 }
+// A cache keyed by whole patches, kept under `keep` characters of them, the oldest going first: a
+// count alone (4000 patches, once) let a long session hold hundreds of MB of patches long gone.
+class ByText {
+  constructor(keep) { this.map = new Map(); this.size = 0; this.keep = keep; }
+  has(text) { return this.map.has(text); }
+  get(text) { return this.map.get(text); }
+  set(text, value) {
+    if (!this.map.has(text)) {
+      for (const old of this.map.keys()) {
+        if (this.size + text.length <= this.keep) break;
+        this.map.delete(old); this.size -= old.length;
+      }
+      this.size += text.length;
+    }
+    this.map.set(text, value);
+    return value;
+  }
+}
+// How many characters of patches each cache keyed by them holds. Exported for the tests.
+export const patchCaches = () => ({ hashes: HASHES.size, statuses: FILE_STATUS.size, diffs: DIFFS.size });
 // Hashing a whole patch is slow in the mod's engine (a lockfile's is hundreds of KB, and the view
 // asks for each file's several times a frame), so each patch's hash is kept once worked out.
-const HASHES = new Map();
+const HASHES = new ByText(8e6);
 function patchHash(text) {
   const known = HASHES.get(text);
   if (known !== undefined) return known;
-  const h = fnv(text);
-  if (HASHES.size > 4000) HASHES.clear();
-  HASHES.set(text, h);
-  return h;
+  return HASHES.set(text, fnv(text));
 }
 function fnv(text) {
   let h = 0x811c9dc5; // FNV-1a: short, and enough to tell two versions of a patch apart
@@ -1244,11 +1297,10 @@ const hashed = (text) => HASHES.has(text);
 
 // What happened to a file, from GitHub's status or the local diff's own lines: added, removed,
 // renamed or modified (copied and changed count as added and modified).
-const FILE_STATUS = new Map();
+const FILE_STATUS = new ByText(8e6);
 function fileStatus(status, patch) {
   const p = patch ?? "";
-  let by = FILE_STATUS.get(p);
-  if (!by) { if (FILE_STATUS.size > 4000) FILE_STATUS.clear(); FILE_STATUS.set(p, (by = {})); }
+  const by = FILE_STATUS.get(p) ?? FILE_STATUS.set(p, {});
   return (by[status] ??= statusOf(status, p));
 }
 function statusOf(status, patch) {
@@ -1275,9 +1327,8 @@ function changeSquares(add, del) {
 // Parsed once per patch, as the view redraws often. Every patch of the story shown stays parsed (up to
 // DIFFS_KEEP characters of patches, the oldest going first): parsing a big pull request takes longer
 // than Herdr gives a render, so it's spread over several (PARSE_FOR) and none is parsed twice.
-const DIFFS = new Map(); // patch -> rows
 const DIFFS_KEEP = 8e6;
-let diffsSize = 0;
+const DIFFS = new ByText(DIFFS_KEEP); // patch -> rows
 // Runs of removed then added lines still to be marked, by the rows they're in: marking what changed
 // in a line is a token LCS per pair tried, by far the slowest part of reading a patch, and a file of
 // long changed lines took longer than a whole render, so it's done apart, a removed line at a time,
@@ -1356,11 +1407,7 @@ function readPatch(patch) {
   // The lines after the last hunk, to the end of the file: how many is known once the file is read.
   if (gap && !whole && !cut) rows.push({ kind: "hunk", gap, trailing: true, skipped: null, from: n, at: null, delta: n - o, context: "" });
   if (!rows.some((r) => r.kind !== "note" || r.text)) rows.splice(0, rows.length, { kind: "note", text: "No lines changed: renamed, or only its mode changed." });
-  for (const old of DIFFS.keys()) {
-    if (diffsSize + patch.length <= DIFFS_KEEP) break;
-    DIFFS.delete(old); diffsSize -= old.length;
-  }
-  DIFFS.set(patch, rows); diffsSize += patch.length;
+  DIFFS.set(patch, rows);
   if (runs.length) UNMARKED.set(rows, runs);
   return rows;
 }
@@ -1509,11 +1556,15 @@ function knownKeys() {
   return keys;
 }
 
+// The shared keys kept by profile id, whose deleted profiles' entries pruneShared() drops (a function,
+// as some are declared further down). Paused agents stay out: a session paused there is still on disk.
+const byProfile = () => [DATA, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, DONE_CLEAN];
+
 // After each fresh load (the list's), what shared state keeps of what's gone goes: views of closed
 // spaces, ticks and counts of keys no profile lists, the profile's paused agents on keys it no longer
-// lists, and what was seen of deleted profiles' pull requests. Paused agents are only dropped from a
-// load that saw a sprint and every pull request, so a gap between sprints or GitHub failing for a
-// moment loses nothing.
+// lists, and what's kept of deleted profiles (their stories copy, notes, picks, asks, what was seen of
+// their pull requests…). Paused agents are only dropped from a load that saw a sprint and every pull
+// request, so a gap between sprints or GitHub failing for a moment loses nothing.
 function pruneShared(profile, data) {
   const write = (key, all, kept) => { if (Object.keys(kept).length !== Object.keys(all).length) setShared(key, kept); };
   const keep = (key, test) => { const all = shared(key) ?? {}; write(key, all, Object.fromEntries(Object.entries(all).filter(test))); };
@@ -1522,12 +1573,10 @@ function pruneShared(profile, data) {
   const keys = knownKeys();
   keep(VIEWED, ([, key]) => keys.has(key));
   keep(COUNTS, ([key]) => keys.has(key));
+  // Everything kept by profile goes with a deleted profile: its stories copy alone is ~80 KB or
+  // more, and every write of shared state writes the whole file (#39).
   const ids = new Set(profiles().map((p) => p.id));
-  keep(PR_SEEN, ([id]) => ids.has(id));
-  keep(PR_FOLDS, ([id]) => ids.has(id));
-  keep(DONE_OPEN, ([id]) => ids.has(id));
-  keep(DONE_CLEAN, ([id]) => ids.has(id));
-  keep(PICKS_ASKED, ([id]) => ids.has(id));
+  for (const key of byProfile()) keep(key, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile), null, { all: true }).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};
@@ -2528,12 +2577,12 @@ export class Stories extends Source {
   transitionsOf(st, key, cx) {
     const m = MOVES[key];
     if (m && (m.loading || Date.now() - m.at < (m.error ? 5000 : 60 * 1000))) return m;
-    MOVES[key] = { loading: true, at: 0 };
+    keep(MOVES, key, { loading: true, at: 0 }, KEEP.moves);
     cx.spawn(async (cx) => {
       try {
-        MOVES[key] = { list: await statusOptions(boardOf(st.setup), key, st.data), at: Date.now() };
+        keep(MOVES, key, { list: await statusOptions(boardOf(st.setup), key, st.data), at: Date.now() }, KEEP.moves);
       } catch (e) {
-        MOVES[key] = { error: String(e?.message ?? e), at: Date.now() };
+        keep(MOVES, key, { error: String(e?.message ?? e), at: Date.now() }, KEEP.moves);
       }
       cx.notify();
     });
@@ -2621,17 +2670,20 @@ export class Stories extends Source {
 
   // Sends a request to the agent on a key: typed into the open one, else as the first message of
   // its paused session or latest session brought back, else of a new agent. An agent waiting for an
-  // answer gets nothing typed into it: what it asked comes first.
-  ask(st, it, key, text, cx) {
+  // answer gets nothing typed into it: what it asked comes first. With `others` (the request names
+  // something others wrote, a pull request's file), it ends with the note about others' text; a new
+  // agent's ticket prompt already does.
+  ask(st, it, key, text, cx, others = false) {
     clearPoint(st.profile, it.key);
+    const told = others ? `${text}\n\n${OTHERS}` : text;
     const sub = it.subs.find((s) => s.key === key);
     const agent = sub?.agent ?? (key === it.key ? it.agent : null) ?? (sub && !sub.paused && !sub.last ? it.agent : null);
     const about = { profile: st.profile, keys: key };
     if (agent) {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
-      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
-    } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, text));
-    else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, text));
+      sendToClaude(agent.address, told).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
+    } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, told));
+    else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, told));
     // A new agent knows nothing yet: the ticket prompt comes first.
     else once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, null, text) }));
     say(about, `Asked ${key}'s agent: ${text.length > 70 ? text.slice(0, 70) + "…" : text}`);
@@ -3209,10 +3261,16 @@ export class Stories extends Source {
       : b.items.map((item, n) => ({ ...b, start: (b.start ?? 1) + n, items: [item], hl: b.hl && (!found.exact || lit(item)), next: n > 0 }))));
     const said = !d.blocks ? (d.error ? "The description didn't load" : "Loading the description…")
       : !found ? "Couldn't find this passage in the description" : found.exact ? "Here in the description" : "Closest match in the description";
-    const bar = h_flex().id("passage-bar").flex_none().w_full().gap(10).items_center().px(8).py(6).rounded(7).bg(tint(t.accent, "14"))
-      .child(div().flex_none().text_size(SMALL).font_semibold().text_color(found ? t.accent : t.dim).child(said))
-      .child(div().flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.muted).tooltip(`“${hl.quote}”`).child(hl.note || (found?.exact ? "" : `“${hl.quote}”`)))
-      .child(textButton(t, "passage-back", "Back to the story", (_e, cx) => { setShared(PASSAGE, null); cx.notify(); }));
+    // The bar sits on the reading column (as wide and as indented as the rows below, its text on
+    // theirs), so on a wide screen it stays right above the passage; the note wraps under the
+    // status rather than being cut off.
+    const note = hl.note || (found?.exact ? "" : `“${hl.quote}”`);
+    const bar = h_flex().flex_none().w_full().justify_center().px(28)
+      .child(v_flex().id("passage-bar").w_full().min_w(0).max_w(DOC.width + 24).gap(2).px(12).py(6).rounded(7).bg(tint(t.accent, "14"))
+        .child(h_flex().w_full().min_w(0).gap(10).items_center()
+          .child(div().id("passage-said").flex_1().min_w(0).text_size(SMALL).font_semibold().text_color(found ? t.accent : t.dim).tooltip(`“${hl.quote}”`).child(said))
+          .child(textButton(t, "passage-back", "Back to the story", (_e, cx) => { setShared(PASSAGE, null); cx.notify(); })))
+        .when(Boolean(note), (el) => el.child(div().id("passage-note").w_full().min_w(0).text_size(SMALL).text_color(t.muted).tooltip(`“${hl.quote}”`).child(note))));
     const item = (i) => {
       const b = blocks[i];
       const block = blocksView(t, `rd-${i}`, [b], 14, i === 0);
@@ -3294,15 +3352,15 @@ export class Stories extends Source {
     const was = this.statuses[id];
     const refresh = shared(REFRESH);
     if (!was || (!was.loading && (Date.now() - was.at > STATUS_EVERY || was.seen !== refresh))) {
-      this.statuses[id] = { ...(was ?? {}), loading: true, at: was?.at ?? 0, seen: refresh };
+      keep(this.statuses, id, { ...(was ?? {}), loading: true, at: was?.at ?? 0, seen: refresh }, KEEP.statuses);
       cx.spawn(async (cx) => {
         try {
           const r = await runCommand(st.profile, command, it.key, STATUS_SECONDS, st.space?.machine);
           const first = r.out.split("\n").find((l) => l.trim()) ?? "";
-          this.statuses[id] = r.code === 0 ? { line: first, full: r.out, at: Date.now(), seen: refresh }
-            : { error: r.code === 143 ? "It took too long." : `It failed (${r.code})${r.out ? `: ${r.out}` : ""}`, at: Date.now(), seen: refresh };
+          keep(this.statuses, id, r.code === 0 ? { line: first, full: r.out, at: Date.now(), seen: refresh }
+            : { error: r.code === 143 ? "It took too long." : `It failed (${r.code})${r.out ? `: ${r.out}` : ""}`, at: Date.now(), seen: refresh }, KEEP.statuses);
         } catch (e) {
-          this.statuses[id] = { error: String(e?.message ?? e), at: Date.now(), seen: refresh };
+          keep(this.statuses, id, { error: String(e?.message ?? e), at: Date.now(), seen: refresh }, KEEP.statuses);
         }
         cx.notify();
       });
@@ -3320,12 +3378,12 @@ export class Stories extends Source {
     const d = this.descs[key];
     const stale = (x) => x.at < st.at && (Date.now() - x.at > DESC_EVERY || (shared(REFRESH) ?? 0) > x.at);
     if (d && (d.loading || !stale(d))) return d;
-    this.descs[key] = { ...(d ?? {}), loading: true, at: d?.at ?? 0 };
+    keep(this.descs, key, { ...(d ?? {}), loading: true, at: d?.at ?? 0 }, KEEP.descriptions);
     cx.spawn(async (cx) => {
       try {
-        this.descs[key] = { blocks: await load(), at: Date.now() };
+        keep(this.descs, key, { blocks: await load(), at: Date.now() }, KEEP.descriptions);
       } catch (e) {
-        this.descs[key] = { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() };
+        keep(this.descs, key, { ...(d ?? {}), error: String(e?.message ?? e), at: Date.now() }, KEEP.descriptions);
       }
       cx.notify();
     });
@@ -3366,7 +3424,7 @@ export class Stories extends Source {
   // Changes of a story (and how many screenshots), loaded when first asked for and again after each reload.
   loadExtra(st, it, cx) {
     const before = this.extra[it.key];
-    this.extra[it.key] = { ...(before ?? {}), loading: true, at: before?.at ?? 0 };
+    keep(this.extra, it.key, { ...(before ?? {}), loading: true, at: before?.at ?? 0 }, KEEP.changes);
     const keys = [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a) => a.indexOf(k) === i);
     const on = st.space?.machine ? { on: st.space.machine } : {};
     const demo = isDemo(st.profile);
@@ -3397,10 +3455,10 @@ export class Stories extends Source {
             files: (prLists[i] ?? []).map((f) => ({ id: `${prName(p)}:${f.filename}`, path: f.filename, from: f.previous_filename ?? null, add: f.additions, del: f.deletions, status: fileStatus(f.status, f.patch), sha: f.status === "removed" ? null : f.sha, patch: f.patch ?? "(no diff to show: a binary file, or too large for GitHub to inline)" })) })),
         ];
         const shots = lonePr(it) ? 0 : await countShots(sessions.map((s) => s.id), st.space?.machine ?? null).catch(() => undefined);
-        this.extra[it.key] = { groups, local, at: Date.now() };
+        keep(this.extra, it.key, { groups, local, at: Date.now() }, KEEP.changes);
         setCounts(it.key, { files: groups.reduce((n, g) => n + g.files.length, 0), shots, repo: (local.find((r) => r.files.length) ?? local[0])?.path ?? null });
       } catch (e) {
-        this.extra[it.key] = { ...(before ?? {}), error: String(e?.message ?? e), at: Date.now() };
+        keep(this.extra, it.key, { ...(before ?? {}), error: String(e?.message ?? e), at: Date.now() }, KEEP.changes);
       }
       cx.notify();
     });
@@ -3436,10 +3494,10 @@ export class Stories extends Source {
     const live = allAgents(it).map((a) => a.address).sort().join(" ");
     const unseen = Boolean(e?.list) && allAgents(it).some((a) => !e.list.some((s) => s.terminal === a.address));
     if (!e || (!e.loading && (e.at < st.at || e.live !== live || (unseen && Date.now() - e.at > 5000)))) {
-      this.shots[it.key] = { ...(e ?? {}), loading: true, at: e?.at ?? 0, live };
+      keep(this.shots, it.key, { ...(e ?? {}), loading: true, at: e?.at ?? 0, live }, KEEP.shots);
       cx.spawn(async (cx) => {
         const list = await this.storySessions(st, it, storyKeys(it)).catch(() => e?.list ?? []);
-        this.shots[it.key] = { list, at: Date.now(), live };
+        keep(this.shots, it.key, { list, at: Date.now(), live }, KEEP.shots);
         const shots = await countShots(list.map((s) => s.id), st.space?.machine ?? null).catch(() => undefined);
         if (shots !== undefined) setCounts(it.key, { shots });
         cx.notify();
@@ -3913,7 +3971,7 @@ export class Stories extends Source {
     DIFF.version++;
     if (DIFF.text[key]?.lines) return;
     if (DIFF.text[key]?.loading) return;
-    DIFF.text[key] = { loading: true };
+    keep(DIFF.text, key, { loading: true }, KEEP.texts);
     cx.spawn(async (cx) => {
       try {
         let text;
@@ -3929,9 +3987,9 @@ export class Stories extends Source {
           text = r.stdout;
         }
         if (text === null || text === undefined) throw new Error("it couldn't be read");
-        DIFF.text[key] = { lines: text.replace(/\n$/, "").split("\n").map((l) => l.replace(/\t/g, "    ")) };
+        keep(DIFF.text, key, { lines: text.replace(/\n$/, "").split("\n").map((l) => l.replace(/\t/g, "    ")) }, KEEP.texts);
       } catch (e) {
-        DIFF.text[key] = { error: String(e?.message ?? e) };
+        keep(DIFF.text, key, { error: String(e?.message ?? e) }, KEEP.texts);
       }
       DIFF.version++;
       cx.notify();
@@ -4001,10 +4059,10 @@ export class Stories extends Source {
     if (it.space || lonePr(it) || !begun(it) || (shared(COUNTS) ?? {})[it.key]?.shots !== undefined) return;
     const e = this.shots[it.key];
     if (e && (e.loading || e.at >= st.at)) return;
-    this.shots[it.key] = { ...(e ?? {}), loading: true, at: e?.at ?? 0 };
+    keep(this.shots, it.key, { ...(e ?? {}), loading: true, at: e?.at ?? 0 }, KEEP.shots);
     cx.spawn(async () => {
       const list = await this.storySessions(st, it, storyKeys(it)).catch(() => e?.list ?? []);
-      this.shots[it.key] = { list, at: Date.now() };
+      keep(this.shots, it.key, { list, at: Date.now() }, KEEP.shots);
       const shots = await countShots(list.map((s) => s.id), null).catch(() => undefined);
       setCounts(it.key, { shots: shots ?? 0 });
     });
@@ -4518,9 +4576,7 @@ export class StoryView extends Stories {
   // (`this.askBarH`) tells a press on it from one on the list under it.
   askBar(t, st, it, all) {
     const f = this.sending?.startsWith("diff:") ? all.find((x) => `diff:${x.id}` === this.sending) : null;
-    const rows = this.sendBar(t, st, it, f ? this.sending : "", f?.group.key ?? it.key, f ? (f.group.url
-      ? `About ${f.path} in ${f.group.repo} (${f.group.url}/files):`
-      : `About ${f.path} in ${f.group.repo} (${f.group.path}/${f.path}, not committed):`) : "");
+    const rows = this.sendBar(t, st, it, f ? this.sending : "", f?.group.key ?? it.key, f ? aboutFile(f) : "", Boolean(f?.group.url));
     if (!rows.length) return [];
     return [v_flex().id("ask-bar").absolute().top(0).left(0).right(0).px(10).py(8).gap(6).bg(t.background).border_b_1().border_color(t.border)
       .on_size_change((size) => { this.askBarH = size.height; })
@@ -4533,11 +4589,12 @@ export class StoryView extends Stories {
   }
 
   // The note's row, while open for target `id`: what's sent is `about` (the file), then
-  // the note. What the latest send led to shows under it.
-  sendBar(t, st, it, id, key, about) {
+  // the note, and with `others` the note about others' text (ask()). What the latest send led to
+  // shows under it.
+  sendBar(t, st, it, id, key, about, others = false) {
     const rows = [];
     if (this.sending === id) {
-      this.target = { id, st, it, key, about };
+      this.target = { id, st, it, key, about, others };
       rows.push(h_flex().id("send-note").flex_none().gap(8).items_center()
         .on_key_down((e, cx) => { if (e.key === "escape") { this.sending = null; cx.notify(); cx.stop_propagation(); } })
         .child(div().flex_1().min_w(0).child(Input.new(this.note).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
@@ -4553,7 +4610,7 @@ export class StoryView extends Stories {
     if (!x || this.sending !== x.id) return;
     const note = this.note.value().trim();
     this.sentAt = Date.now();
-    this.ask(x.st, x.it, sendKey(x.it, x.key), note ? `${x.about}\n${note}` : x.about, cx);
+    this.ask(x.st, x.it, sendKey(x.it, x.key), note ? `${x.about}\n${note}` : x.about, cx, x.others);
     this.note.set_value("");
     this.sending = null;
     cx.notify();
@@ -5123,12 +5180,15 @@ function askClose(st, list) {
     closeStories: { profile: st.profile.id, keys: list.map((it) => it.key) }, detail, items } });
 }
 
-// Close's dialog button: closes what closePlan() says of each story, as it stands now, one issue after
-// another, each story under its busy mark (and Close all under `close:<profile>`). One that fails (no
-// permission on its repo, an issue gone) doesn't stop the rest; the note names each with why, to close
-// by hand. The closed issues show at once, then the stories load once. Returns { closed, failed:
-// [{ key, why }] }, null when nothing could run.
-export async function closeStories({ profile, keys = [] }) {
+// Close's dialog button: closes what closePlan() says of each story, as it stands now, a few issues a
+// request (board.js closeTickets()), each story under its busy mark until its own are done (and Close
+// all under `close:<profile>`). As each batch ends, its issues show closed at once (the rows lose their
+// Close, Close all's count drops) and `onStep` hears how far it got ({ total, closed, failed: { key:
+// why }, on: the keys being closed now }), so the dialog marks each issue as it goes: a run of 30 is a
+// minute's work, too long to sit silent. One that fails (no permission on its repo, an issue gone)
+// doesn't stop the rest; the note names each with why, to close by hand. Then the stories load once.
+// Returns { closed, failed: [{ key, why }] }, null when nothing could run.
+export async function closeStories({ profile, keys = [], onStep = () => {} }) {
   const s = storyItems();
   if (s?.st.profile.id !== profile) { say({ profile }, "Nothing was closed: that profile isn't shown any more."); return null; }
   const board = boardOf(s.st.setup);
@@ -5137,36 +5197,47 @@ export async function closeStories({ profile, keys = [] }) {
   if (!list.length) { say({ profile, keys }, "Nothing was closed: those stories have no issue still open."); return null; }
   const group = list.length > 1 ? `close:${profile}` : null;
   const total = list.reduce((n, it) => n + closePlan(it).close.length, 0);
-  const atAll = group ? takeBusy(group, { kind: "close", keys: [], step: "Closing on GitHub…" }, total * CLOSE_EACH + BUSY_MARGIN) : null;
+  const atAll = group ? takeBusy(group, { kind: "close", keys: [], step: `Closing on GitHub… 0 of ${total}` }, total * CLOSE_EACH + BUSY_MARGIN) : null;
   if (group && !atAll) { say({ profile }, "Close all is already running."); return null; }
-  const closed = [], failed = [], skipped = [];
-  try {
-    for (const it of list) {
-      const plan = closePlan(it);
-      const at = takeBusy(it.key, { kind: "close", keys: plan.close.map((x) => x.key), step: `Closing on GitHub… 1 of ${plan.close.length}` },
-        plan.close.length * CLOSE_EACH + BUSY_MARGIN);
-      if (!at) { skipped.push(it.key); continue; }
-      try {
-        for (const [i, x] of plan.close.entries()) {
-          stepBusy(it.key, at, { step: `Closing on GitHub… ${i + 1} of ${plan.close.length}` });
-          if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length + 1} of ${total}` });
-          try {
-            await closeTicket(board, x.key, s.st.data);
-            closed.push(x.key);
-          } catch (e) {
-            failed.push({ key: x.key, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
-          }
-        }
-      } finally { endBusy(it.key, at); }
-    }
-  } finally { if (group) endBusy(group, atAll); }
-  // Closed shows at once (the row loses its Close), then the stories load once.
-  if (closed.length) {
-    const gone = new Set(closed);
-    const mark = (list) => (list ?? []).map((i) => (gone.has(i.key) ? { ...i, closed: true } : i));
-    patchLoaded(s.st.profile, (d) => ({ ...d, parents: mark(d.parents), children: mark(d.children) }));
-    setShared(REFRESH, Date.now());
+  // Each story's mark, taken before anything runs; a story already busy is left as it is.
+  const runs = [], skipped = [];
+  for (const it of list) {
+    const issues = closePlan(it).close.map((x) => x.key);
+    const at = takeBusy(it.key, { kind: "close", keys: issues, step: `Closing on GitHub… 0 of ${issues.length}` }, issues.length * CLOSE_EACH + BUSY_MARGIN);
+    if (at) runs.push({ it, issues, at }); else skipped.push(it.key);
   }
+  const closed = [], failed = [];
+  const settled = (k) => closed.includes(k) || failed.some((f) => f.key === k);
+  const step = (on = []) => onStep({ total: runs.reduce((n, r) => n + r.issues.length, 0), closed: [...closed], failed: Object.fromEntries(failed.map((f) => [f.key, f.why])), on });
+  const all = runs.flatMap((r) => r.issues);
+  let next = 0;
+  try {
+    step(all.slice(0, CLOSE_BATCH));
+    await closeTickets(board, all, s.st.data, (results) => {
+      next += results.length;
+      for (const x of results) if (x.ok) closed.push(x.key); else failed.push({ key: x.key, why: x.why });
+      // Closed shows at once: the rows lose their Close and Close all's count drops as it goes.
+      const gone = new Set(results.filter((x) => x.ok).map((x) => x.key));
+      if (gone.size) {
+        const mark = (l) => (l ?? []).map((i) => (gone.has(i.key) ? { ...i, closed: true } : i));
+        patchLoaded(s.st.profile, (d) => ({ ...d, parents: mark(d.parents), children: mark(d.children) }));
+      }
+      for (const r of runs) {
+        const done = r.issues.filter(settled).length;
+        if (done === r.issues.length) endBusy(r.it.key, r.at);
+        else stepBusy(r.it.key, r.at, { step: `Closing on GitHub… ${done + 1} of ${r.issues.length}` });
+      }
+      if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length} of ${all.length}` });
+      step(all.slice(next, next + CLOSE_BATCH));
+    });
+  } catch (e) {
+    // Nothing ran (the board can't close tickets): every issue not settled yet is named with why.
+    for (const k of all) if (!settled(k)) failed.push({ key: k, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
+  } finally {
+    for (const r of runs) endBusy(r.it.key, r.at);
+    if (group) endBusy(group, atAll);
+  }
+  if (closed.length) setShared(REFRESH, Date.now());
   const text = `${closed.length ? `Closed ${keyList(closed)} on GitHub.` : "Nothing was closed."}${failed.length
     ? ` Couldn't close ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: close ${failed.length === 1 ? "it" : "them"} by hand on GitHub.` : ""}${skipped.length
     ? ` ${keyList(skipped)} ${skipped.length === 1 ? "was" : "were"} busy, so left as ${skipped.length === 1 ? "it was" : "they were"}.` : ""}`;
@@ -5364,6 +5435,25 @@ export function whatNext() {
   const s = storyItems();
   if (s) startSuggest(s.st, s.items, s.reviews);
 }
+// Runs argv with `text` as its input (Herdr's exec() takes none): mktemp -d makes a folder only the
+// person can read, the text goes into its `task`, and stdin.sh opens that as the program's input and
+// removes the folder before the program starts. A run that never got as far as stdin.sh removes it
+// here instead. Exported for the tests.
+export async function feedClaude(argv, text, options) {
+  const made = await exec("mktemp", ["-d"]);
+  const dir = String(made?.stdout ?? "").trim();
+  if (made?.code !== 0 || !/^\/[^\n]+$/.test(dir)) throw new Error("Kelpie couldn't make a private folder to hand Claude its task.");
+  let handed = false;
+  try {
+    await writeTextFile(`${dir}/task`, text, null);
+    const r = await exec("sh", [modFile("stdin.sh"), dir, ...argv], options);
+    handed = true;
+    return r;
+  } finally {
+    // Only the one file and then the folder, empty: never a recursive delete.
+    if (!handed) await exec("rm", ["-f", "--", `${dir}/task`]).then(() => exec("rmdir", ["--", dir])).catch(() => {});
+  }
+}
 export async function brew(profile, task) {
   const started = Date.now();
   setBrewing(profile, started);
@@ -5378,8 +5468,11 @@ export async function brew(profile, task) {
     // no editing tools. Reading through the person's own access (plugins, MCP, tools) still works, and
     // so does suggest_next, marked read only: it changes only what Kelpie suggests. KELPIE_PROFILE
     // tells the plugin which profile the picks are for, as this Claude runs in no terminal of Herdr's.
-    const [cmd, ...args] = ["env", `KELPIE_PROFILE=${profile.id}`, ...claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task)];
-    const r = await exec(cmd, args, { cwd: profile.folder, timeout: BREW_FOR });
+    // The task (the snapshot: stories, pull requests, others' titles) goes in on stdin, never as an
+    // argument, which `ps` shows every user of the machine: written into a private folder of its own,
+    // which stdin.sh opens as Claude's input and removes before Claude starts (feedClaude()).
+    const argv = ["env", `KELPIE_PROFILE=${profile.id}`, ...claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p")];
+    const r = await feedClaude(argv, task, { cwd: profile.folder, timeout: BREW_FOR });
     let out = null;
     try { out = JSON.parse(r.stdout); } catch { /* not JSON: said below */ }
     if (!out || out.is_error) throw new Error(String(out?.result ?? r.stderr ?? "").trim().split("\n").pop() || `Claude stopped (code ${r.code}).`);
