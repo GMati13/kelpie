@@ -31,7 +31,7 @@ import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
 import { COMMENTS_MAX, closeIssues, commentAuthor, issueComments, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
-import { linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
+import { linearComments, linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
 
 const PAGES = 5; // up to 500 tickets a search
 
@@ -184,6 +184,7 @@ export async function description(board, key, data) {
 // description (only http(s) links). Asked when shown, by StoryBody, never sent to an agent.
 export async function comments(board, key, data) {
   if (board.kind === "project") return issueComments(board, data, key);
+  if (board.kind === "linear") return linearComments(board, key, (c) => ({ id: String(c.id ?? ""), author: commentAuthor(c.author), avatar: c.avatar ?? null, at: c.at, blocks: c.blocks }));
   // The key goes into the path: checked first (security.md).
   if (!KEY.test(key ?? "")) throw new Error(`${key} isn't a ticket key.`);
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${key}/comment?orderBy=-created&maxResults=${COMMENTS_MAX}`);

@@ -150,7 +150,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   runs), the status chip (no menu off the Project; the new status shown at once), the demo's answers.
 - `comments.test.mjs`: a ticket's comments on either board (`board.js comments()`): Jira's newest asked
   for and shown newest last, authors' names cleaned, keys checked before jira.sh runs; a Project's one
-  constant query with its values as variables, only http(s) links; both demos' answers from the fixture;
+  constant query with its values as variables, only http(s) links; a Linear team's (its constant query,
+  oldest first whatever order Linear sends); both demos' answers from the fixture;
   and the details' folded "Comments · n", opened to the newest three with Show all, none without any.
 - `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
   agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.

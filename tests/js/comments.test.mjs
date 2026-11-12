@@ -91,6 +91,31 @@ describe("a GitHub Project issue's comments", () => {
   });
 });
 
+describe("a Linear issue's comments", () => {
+  beforeEach(() => mock.reset());
+  const board = boardOf({ linear: { url: "https://linear.app/acme/team/ENG/active", workspace: "acme", team: "ENG", keychain: "linear-acme" } });
+  const linearCalls = () => mock.of("exec").filter(([c, a]) => c === "sh" && String(a?.[0]).endsWith("/linear.sh"));
+  test("one constant query by key; oldest first whatever order Linear sends; Markdown kept", async () => {
+    mock.on.exec = () => ({ code: 0, stderr: "", stdout: JSON.stringify({ code: 200, body: { data: { issue: { comments: { nodes: [
+      { id: "c2", createdAt: "2026-11-10T09:00:00Z", body: "Second, with `code`", user: { name: "Sam Lee", displayName: "sam", avatarUrl: null } },
+      { id: "c1", createdAt: "2026-11-09T09:00:00Z", body: "First", user: null },
+    ] } } } } }) });
+    const c = await comments(board, "ENG-12");
+    const [call] = linearCalls();
+    const request = JSON.parse(call[1].at(-1));
+    assert.match(request.query, /^query KelpieLinearComments\(\$id: String!\)/);
+    assert.deepEqual(request.variables, { id: "ENG-12" });
+    assert.doesNotMatch(request.query, /ENG/, "the key is a variable, never in the query's text");
+    assert.deepEqual(c.list.map((x) => [x.id, x.author]), [["c1", "Someone"], ["c2", "Sam Lee"]]);
+    assert.equal(c.total, 2);
+    assert.ok(c.list[1].blocks[0].runs.some((r) => r.code && r.text === "code"));
+  });
+  test("anything that isn't a key asks nothing", async () => {
+    for (const key of ["ENG-1/x", "eng-1", "", null]) await assert.rejects(comments(board, key), String(key));
+    assert.deepEqual(linearCalls(), []);
+  });
+});
+
 describe("the comments in a story's details", () => {
   let stories;
   const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
