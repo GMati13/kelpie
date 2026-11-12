@@ -4,7 +4,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 ## What can't be trusted
 
-- Jira: issue keys, summaries, descriptions, statuses (anyone on the board writes them).
+- Jira and Linear: issue keys, summaries, descriptions, statuses (anyone on the board writes them).
 - GitHub: pull request titles, bodies, authors, branch and repo names, file paths, diffs, and the code of a pull request (anyone can open one and request a review).
 - Claude session titles and prompts, file names in screenshot folders, web pages in the Web panel.
 - Profile settings written by an agent (`kelpie.apply-profile`): an agent can be misled by what it read.
@@ -14,7 +14,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Commands.** Never build shell code out of a value. A `sh -c` script takes values as `"$1"`, `"$2"`…, quoted. Prefer `exec(program, [args])` without a shell. A value that could start with `-` goes after `--` or is validated. Check a ticket key against `^[A-Z][A-Z0-9_]*-\d+$` before it goes into a command or a path.
 
-**The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command.
+**The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command. A Linear API key is kept the same way (`linear.sh`): curl's stdin only, sent to `https://api.linear.app/graphql` alone, refused with a quote, backslash or line break.
 
 **Agents changing profiles.** Each section takes only its own keys (`SECTION_KEYS` in config.js), so a secret can't slip in under a name `SECRET` doesn't catch; a new setting joins its section's list. What can run a command, steer agents or move the sign-in (`CONFIRM_KEYS` in config.js) waits for the person's click in Kelpie, through a dialog button, never a command an agent could run itself. A new setting of that kind joins `CONFIRM_KEYS`.
 

@@ -18,11 +18,20 @@
 //   links     { [pull request url]: key }: the pull requests that close an issue (GitHub's link)
 //   repos     { [PREFIX]: "owner/repo" }: which repo a key's issue is in
 //   project   { id, statusField, title, url }: what a Status move needs
+//
+// A Linear team (boardOf() kind "linear", linear.js) answers them too, its issues dressed the same
+// way (Linear's identifiers are the keys, its workflow states the columns, its active cycle the
+// sprint, or the board as one without cycles). What its load gives, beyond Jira's:
+//   site      "https://linear.app/<workspace>"
+//   columns   the team's states in Linear's board order, { name, statuses: [state id], category }
+//   issues    { key, url (the issue's page), fields: as a Project's }
+//   linear    { team: id, key }
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
 import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
+import { linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
 
 const PAGES = 5; // up to 500 tickets a search
 
@@ -103,6 +112,7 @@ async function keptJira(cfg, keep, have, account = "") {
 // `keep` names that the board no longer gives as yours (keptJira(), project.js), each with its subtasks.
 export async function loadBoard(board, keep = {}) {
   if (board.kind === "project") return loadProject(board, keep);
+  if (board.kind === "linear") return loadLinear(board, keep);
   const cfg = board.cfg;
   // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
   const [config, active] = await Promise.all([
@@ -155,6 +165,7 @@ export function ticketUrl(board, data, key) {
     const repo = m && data?.repos?.[m[1]];
     return repo ? `https://github.com/${repo}/issues/${m[2]}` : null;
   }
+  if (board?.kind === "linear") return linearUrl(board, data, key);
   const site = boardSite(board, data);
   return site ? `${site}/browse/${key}` : null;
 }
@@ -163,12 +174,14 @@ export function ticketUrl(board, data, key) {
 // loaded, where a Project's issue is found (issues.js); Jira asks by key alone.
 export async function description(board, key, data) {
   if (board.kind === "project") return issueDescription(board, data, key);
+  if (board.kind === "linear") return linearDescription(board, key);
   return adfBlocks((await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description);
 }
 
 // A ticket's summary, its parent's key and its description as text (the review prompt's).
 export async function ticketText(board, key, data) {
   if (board.kind === "project") return issueText(board, data, key);
+  if (board.kind === "linear") return linearText(board, key);
   const f = (await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,parent`)).body?.fields ?? {};
   return { summary: f.summary ?? "", parent: f.parent?.key ?? null, text: adfText(adfBlocks(f.description)) };
 }
@@ -179,6 +192,7 @@ export async function ticketText(board, key, data) {
 export async function lookUp(board, key, data) {
   if (!board) return null;
   if (board.kind === "project") return issueLookUp(board, data, key);
+  if (board.kind === "linear") return linearLookUp(board, key);
   const r = await jira(board.cfg, "get", `/rest/api/3/issue/${key}?fields=summary,parent,issuetype`).catch(() => null);
   if (!r?.body?.key) return null;
   const parent = r.body.fields?.issuetype?.subtask ? r.body.fields?.parent : null;
@@ -191,7 +205,9 @@ export const movable = (board, key, data) => board?.kind !== "project" || Boolea
 
 // Where a ticket can be moved: [{ id, name, to, category }], `to` the status it lands in. A Project's
 // are its Status options (the loaded columns) but the one it's in; none for an issue off the Project.
+// A Linear issue's are its team's states, the same way.
 export async function statusOptions(board, key, data) {
+  if (board.kind === "linear") return linearOptions(data, key);
   if (board.kind === "project") {
     if (!movable(board, key, data)) return [];
     const columns = data?.columns ?? [], now = loadedIssue(data, key)?.fields?.status?.id;
@@ -220,6 +236,7 @@ export async function doneOption(board, key, data) {
 // Moves a ticket by one of statusOptions(), on the person's own click.
 export async function moveStatus(board, key, option, data) {
   if (board.kind === "project") return setStatus(board, data, key, option);
+  if (board.kind === "linear") return linearMove(board, data, key, option);
   await jira(board.cfg, "transition", key, option.id);
 }
 
