@@ -48,6 +48,17 @@ test("searchPulls: your own latest review comes as viewerReview", async () => {
   assert.ok(prs.every((p) => !("viewerLatestReview" in p)));
 });
 
+// Changes leaves a branch's commits to the pull request on that branch (#13), so every search asks for it.
+test("searchPulls: open and merged pull requests come with their branch", async () => {
+  mock.on.exec = () => ({ code: 0, stderr: "", stdout: JSON.stringify({ data: { search: { nodes: [{ number: 1, url: "https://github.com/acme/web/pull/1", repository: { name: "web" }, headRefName: "ABC-1-x" }] } } }) });
+  for (const q of ["is:pr is:open", "is:pr is:merged"]) {
+    mock.calls.length = 0;
+    const [pr] = await searchPulls(q, { light: /merged/.test(q) });
+    assert.equal(pr.headRefName, "ABC-1-x");
+    assert.ok(mock.of("exec").some(([, args]) => args.some((a) => /\bheadRefName\b/.test(String(a)))), `${q} asks for it`);
+  }
+});
+
 test("pullBody: reads the description through the API, for a github.com pull request only", async () => {
   mock.on.exec = () => ({ code: 0, stderr: "", stdout: "## What\nIt does this.\n" });
   assert.equal(await pullBody(PR), "## What\nIt does this.");
@@ -67,7 +78,7 @@ test("the profile's GitHub account goes to gh.sh for searches, approvals and des
 test("githubAccounts: the accounts gh status lists as signed in, once each", async () => {
   mock.on.exec = () => ({ code: 0, stdout: "", stderr: "github.com\n  ✓ Logged in to github.com account work-me (keyring)\n  - Active account: true\n  ✓ Logged in to github.com account side-me (keyring)\n  - Active account: false\n" });
   assert.deepEqual(await githubAccounts(), ["work-me", "side-me"]);
-  assert.deepEqual(mock.of("exec")[0].slice(0, 2), ["gh", ["auth", "status", "--hostname", "github.com"]]);
+  assert.deepEqual(mock.of("exec")[0].slice(0, 2), ["env", ["-u", "KELPIE_GH_ACCOUNT", "gh", "auth", "status", "--hostname", "github.com"]]);
 });
 
 test("github.account: only a GitHub name is kept, and an agent setting it waits for the person's yes", () => {

@@ -33,7 +33,7 @@ The Kelpie plugin gives you the tools for this: `get_profile` reads what's saved
 | GitHub | Optional. An owner (organisation or user): the sidebar lists the person's open pull requests and the ones waiting on their review, attached to stories by the ticket key in their titles. Optionally the GitHub account Kelpie acts as for it, for people signed in to more than one. |
 | Web | The Web panel's start page. Each profile has its own browser, with its own sign-ins. |
 | Prompts | The first message each kind of agent gets: on a ticket, an orchestrator, a review, a merge, an approval request, What next?. Each has a default. |
-| Messages | What the pull request and review buttons (Fix checks, Merge, Approve…) send to an agent that's already working. Each has a default. |
+| Messages | What the pull request and review buttons (Fix checks, Merge, Approve…) send to an agent that's already working, and Ask Claude's suggestions (Explain this, Fix this…). Each has a default. |
 | Story commands | Optional shell commands for a story: a leftovers check and a clean-up for finished stories, a status line for stories in progress. |
 
 The **Desk** is the profile's space for work without a ticket; that's usually where you are.
@@ -44,7 +44,7 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 - `save_profile` takes `id` and `set`, only what changes:
   - Top-level keys: `name`, `folder`, `jira`, `project`, `github`, `commands`, `prompts`, `notify`, `claude`, `web`; nothing else.
   - `name` and `folder` replace the old value. A section given as an object is **merged**: keys you leave out stay. A key set to `null` is removed; a section set to `null` is removed whole (disconnecting Jira, say).
-  - Values are strings, except `jira.board` and `project.number` (numbers), `notify.pulls` and either board's `solo` and `moveToDone` (true/false) and `null`s. Keys that look like secrets are refused.
+  - Values are strings, except `jira.board` and `project.number` (numbers), `notify.pulls` and either board's `solo` and `moveToDone` (true/false) and `null`s. Each section takes only its own settings, the ones this guide names; any other key is refused, and so is one that looks like a secret.
   - `jira.url` must be a Jira Cloud board (`https://<name>.atlassian.net/…/boards/<n>`): `jira.site` and `jira.board` are filled in from it. A Jira section needs `keychain`, or `tokenCommand` with `email`; the email takes no quotes, backslashes or spaces. `project.url` must be a GitHub Project's address (`https://github.com/users/<login>/projects/<n>` or `https://github.com/orgs/<org>/projects/<n>`; a view after it is fine): `project.owner`, `project.ownerType` and `project.number` are filled in from it, so send the address alone. `project.prefixes` is `owner/repo=PREFIX`, several separated by commas. A `github` section needs `owner`. `web.home` starts with `https://` or `http://`.
   - **One board.** A profile has `jira` or `project`, never both: a change that leaves both is refused. To move from one to the other, set the old one to `null` in the same change, and carry over what the person wants to keep (`prompt`, `orchestrator`, `handover`, `solo`, `moveToDone`) into the new section, as the profile dialog does.
   - A prompt or message equal to its default needn't be saved: `null` goes back to the default.
@@ -56,7 +56,7 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 
 | Scope | Covers |
 |---|---|
-| `all` | Everything, in the order below |
+| `all` | Everything, in the order below, the agents' prompts and messages included |
 | `general` | Name, folder |
 | `agents` | The accounts agents run on: Claude account |
 | `claude` | Claude account only |
@@ -66,14 +66,14 @@ The **Desk** is the profile's space for work without a ticket; that's usually wh
 | `handover` | Your part on the board (the handover column) only, whichever board it is |
 | `github` | Owner, GitHub account, pull request notifications |
 | `web` | Start page |
-| `prompts` | The prompts |
-| `messages` | The button messages |
+| `prompts` | The prompts, gone through with the person (section 7) |
+| `messages` | The button messages (section 8) |
 | `commands` | Leftovers check, clean-up, status |
 | `leftovers` / `cleanUp` / `status` | That story command only |
 
 ## Setting up, from A to Z
 
-For `all`, go in this order, skipping what the person doesn't use. Ask early where this work's tickets live (a Jira board, a GitHub Project, or neither) and whether they use GitHub for its pull requests: a profile has one board at most, and without one the sidebar lists the profile's spaces and agents instead of stories.
+For `all`, go in this order, skipping what the person doesn't use. It ends with the prompts and messages (7 and 8): don't stop once the connections and commands are set, as those are where agents learn how this person works. Ask early where this work's tickets live (a Jira board, a GitHub Project, or neither) and whether they use GitHub for its pull requests: a profile has one board at most, and without one the sidebar lists the profile's spaces and agents instead of stories.
 
 ### 1. General
 
@@ -124,9 +124,11 @@ For work tracked as GitHub issues on a GitHub Project (a Project on github.com).
 ### 4. GitHub
 
 - **Owner** (`github.owner`): the organisation (or user) whose repositories hold the work; with a GitHub Project as the board, usually the Project's own owner. Find it through your own GitHub access if you have it (their organisations, where their pull requests are), else ask. Kelpie reads GitHub through the GitHub CLI signed in as the person (`gh auth login`, in a terminal of theirs); the GitHub page's Check button (`open_profile_page` with `github`) says whether it finds their pull requests.
-- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret. Kelpie's own lists use it at once, but the `gh` its agents and terminals run uses it only once the person's shell setup has the small `gh()` function Kelpie gives for it (agents and terminals start with `KELPIE_GH_ACCOUNT` set; the function reads it). After it's saved, open the GitHub page (`open_profile_page` with `github`): it shows the lines to copy and a Check my shell button that says whether it works. The shell setup is the person's own: add it there only if they ask you to, and then have them press Check my shell. Without it, `gh` in their agents acts as whichever account gh has active, which can be someone else. Two things worth telling them:
-  - The function reaches agents started after it was added. A Claude already running, or a session resumed since, may still run its commands through the shell setup it read before, so start a new one to pick it up.
-  - It helps to keep their main account the one gh has active (`gh auth switch --user <login>`, in a terminal of theirs; each account signed in with `gh auth login`, all in gh's own config). Then anything the function doesn't reach still acts as their main account. A second gh config folder (`GH_CONFIG_DIR`) doesn't keep accounts apart: gh keeps one active sign-in per host for every folder, so signing in there can replace the main one.
+- **GitHub account** (`github.account`, optional): which of the GitHub accounts the person's GitHub CLI is signed in to Kelpie uses for this profile: whose pull requests show, and who approves from the review header. Ask only when they have more than one (a work and a personal account, say): without it Kelpie follows the CLI's active account, which another sign-in on the machine can switch, and then their pull requests seem to vanish. Ask which account this work is under; the GitHub page lists the signed-in accounts to pick from. It's a GitHub login name, nothing secret. Kelpie's own lists use it at once. For the `gh` in its agents and terminals to act as it too, the person's shell setup needs one line at its end, which puts Kelpie's own `gh` first in `PATH` (agents and terminals start with `KELPIE_GH_ACCOUNT` and `KELPIE_GH_BIN` set; that `gh` asks for the account's token on each run). Because it's on `PATH`, it also reaches programs started there that run `gh` themselves (scripts, Makefiles, a team's own tools), and gh's sign-in status there names that account. After it's saved, open the GitHub page (`open_profile_page` with `github`): it shows the line to copy and a Check my shell button, which tries `gh` both in the shell and in a program started from it, and says what's wrong if either acts as someone else. The shell setup is the person's own: add the line there only if they ask you to, and then have them press Check my shell. Without it, `gh` in their agents acts as whichever account gh has active, which can be someone else. Things worth telling them:
+  - If they added the `gh()` shell function Kelpie gave before, the line replaces it: the function reached only the `gh` typed in the shell, so programs that run `gh` still acted as the active account.
+  - The line goes last, after anything else in their setup that changes `PATH`, so nothing puts gh's own folder before it again. A `GH_TOKEN` their setup exports wins over any account, so Kelpie leaves it alone; Check my shell says so.
+  - The line reaches agents started after it was added. A Claude already running, or a session resumed since, may still run its commands through the shell setup it read before, so start a new one to pick it up.
+  - It helps to keep their main account the one gh has active (`gh auth switch --user <login>`, in a terminal of theirs; each account signed in with `gh auth login`, all in gh's own config). Then anything the line doesn't reach still acts as their main account. A second gh config folder (`GH_CONFIG_DIR`) doesn't keep accounts apart: gh keeps one active sign-in per host for every folder, so signing in there can replace the main one.
 - **Notifications** (`notify.pulls`, default true): a notification when one of their pull requests starts failing checks, gets changes requested, or becomes ready to merge.
 
 ### 5. Web
@@ -158,7 +160,18 @@ First look at how the folder is laid out: clones, worktrees, folders per ticket 
 
 ### 7. Prompts
 
-Change one only when the person wants agents to work differently: a slash command or skill they use for tickets, their merge or deploy steps, who approves. The profile dialog's Prompts page shows each default (`open_profile_page` with `prompts`). A line whose placeholders all come out empty is left out.
+The prompts are what each kind of agent is told first, and the defaults are written for anyone, so they often don't fit: the merge default asks for a merge and deploy plan across repositories, with how to deploy and roll back, which is noise for one repo with nothing to deploy and still misses what the person's own merge needs. Most people never find out they can change them, so for `all` and the `prompts` scope, go through them with the person rather than waiting to be asked. On any other scope, leave them alone unless the person brings them up.
+
+1. **Ask how they work**, a few plain questions, one at a time, each with likely answers to pick from. Start by saying in a line what the round covers (starting tickets, merging, reviews, What next?), so the person knows how long it is and what they can skip. Only ask what bears on a prompt the profile uses (no merge or review questions without GitHub, no ticket questions without a board):
+   - How do they start on a ticket: a slash command or skill they use (`/ticket`, say), a routine (a branch per ticket, a plan first), or just "work on it"?
+   - How does a pull request get merged: one repository or several at once, a deploy afterwards or none, who approves (a teammate, nobody: they work alone), any release step?
+   - What should a review look at (their team's conventions, tests, security), beyond reading the change against its ticket?
+   - For What next?: what kind of work do they pick up (frontend, say), so unassigned tickets of that kind are pointed out?
+2. **Show the default, then a version that fits.** Read the defaults in [references/default-prompts.md](references/default-prompts.md); the profile dialog's Prompts page shows them too (`open_profile_page` with `prompts`). For each prompt their answers bear on (ticket, orchestrator, review, merge, approval, What next?), show the default briefly (its gist, or the lines that change) and propose a version that fits: drop what doesn't apply (no deploy and roll back steps for a single repository with nothing to deploy), add what they told you (their slash command, their release step). Keep the placeholders, and keep the default's safety lines: a review reads others' code without running it, and nothing is merged, posted or deployed until the person says so.
+3. **Skip what fits, and let them stop.** When a default already fits, say so in a line and move on; don't propose a change for its own sake. The person can stop at any point: "the rest are fine" ends the round. Offer the orchestrator prompt (no default, Start orchestrator appears once it's set) only when their stories have subtasks and they'd like one agent to run them.
+4. **Save only what differs from the default**, after they agree, in one `save_profile` change of its own: prompts wait for their yes in Kelpie, and nothing else in that change is saved meanwhile. A prompt they want back to the default is `null`.
+
+Every prompt says what to look at or do, never how to reach the board or GitHub: each agent uses its own access, and a prompt naming a tool or a script (`gh`, an API, Kelpie's own) is a prompt to rewrite. A line whose placeholders all come out empty is left out.
 
 | Key | When it's sent | Placeholders |
 |---|---|---|
@@ -169,11 +182,11 @@ Change one only when the person wants agents to work differently: a slash comman
 | `github.approvalPrompt` | Request approval, while a pull request isn't approved | as merge; `{prs}` only the unapproved |
 | `prompts.suggest` | What next? (the magic button under Next): a Claude in the background filling Next's queue | `{name} {snapshot} {board} {owner}`. It runs unattended; Kelpie adds how the picks come back (through its plugin) after this message, so the prompt needn't say it, and shouldn't ask for a JSON block or any other answer format |
 
-The ticket prompts live in the board's section (`jira` or `project`, whichever the profile has), so they're kept only while a board is set; `github.*` ones only while GitHub is. For `prompts.suggest`, ask what kind of work the person picks up (frontend, say) and add it, so unassigned tickets of that kind are pointed out. Like every prompt, say what to look at or do, never how to reach the board or GitHub: each agent uses its own access.
+The ticket prompts live in the board's section (`jira` or `project`, whichever the profile has), so they're kept only while a board is set; `github.*` ones only while GitHub is.
 
 ### 8. Messages
 
-Sent to an agent already working on a pull request when a button is pressed (`prompts.<id>`; the Messages page shows the defaults). `{prs}` is the pull request's link, several joined by "and".
+Sent to an agent already working on a pull request when a button is pressed (`prompts.<id>`; the Messages page shows the defaults, and so does [references/default-prompts.md](references/default-prompts.md)). `{prs}` is the pull request's link, several joined by "and". For `all` and the `messages` scope, go through them as the prompts above, only lighter: they're short, so ask only where the person's way differs (how they merge, what a posted review looks like) and save only what changes.
 
 | Id | Button |
 |---|---|
@@ -185,6 +198,10 @@ Sent to an agent already working on a pull request when a button is pressed (`pr
 | `changes` | Request changes (on a review) |
 | `idea` | One of What next?'s improvement ideas: starts a Claude on the Desk. `{idea}` the brief, `{where}` the file or area, `{why}` why it pays off |
 | `picked` | Run all in Next: added after the ticket prompt for each of Claude's picks it starts. `{action}` what Claude suggests, `{why}` why now |
+| `explain` | Ask Claude's "Explain this" suggestion. Kelpie puts what's asked about (a file, its pull request or repo) before it, so no placeholders |
+| `check` | Ask Claude's "Review this change", the same way |
+| `fixit` | Ask Claude's "Fix this", the same way |
+| `test` | Ask Claude's "Write a test for it", the same way |
 
 `prompts.configure` is the message that started you (`{name} {id} {scope} {about} {home}`); leave it alone unless asked.
 

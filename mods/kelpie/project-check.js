@@ -24,8 +24,10 @@ export const CHECK_ORG = `query KelpieCheckOrg($owner: String!, $number: Int!) {
 // `active` after; with `active` unknown, gh auth switch with no account goes back when two are signed
 // in, and asks which when there are more.
 const REFRESH = "gh auth refresh -h github.com -s project";
+// A named account that isn't a GitHub login gets no command at all, as it would go into it.
 export function scopeCommand(account, active = null) {
   if (!account || account === active) return REFRESH;
+  if (!GITHUB_LOGIN.test(account)) return null;
   const back = active && GITHUB_LOGIN.test(active) ? ` -u ${active}` : "";
   return `gh auth switch -h github.com -u ${account}\n${REFRESH}\ngh auth switch -h github.com${back}`;
 }

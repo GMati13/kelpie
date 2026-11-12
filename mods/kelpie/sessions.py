@@ -16,7 +16,9 @@ import glob
 import json
 import os
 import re
+import stat
 import sys
+import tempfile
 
 HOME = os.path.expanduser("~")
 CACHE = os.path.join(HOME, ".cache", "kelpie", "sessions.json")
@@ -166,12 +168,32 @@ def main():
             if isinstance(e, dict) and "offset" in e and (path in listed or os.path.exists(path))}
     kept.update(fresh)
     if kept != cache:
-        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-        tmp = f"{CACHE}.{os.getpid()}.tmp"  # callers running at once don't share a temp file
-        with open(tmp, "w") as f:
-            json.dump(kept, f)
-        os.replace(tmp, CACHE)
+        save(kept)
     json.dump(out, sys.stdout)
+
+
+def save(index):
+    """Writes the index privately: it holds prompts and titles. Its folder is made (or kept) the
+    person's alone, and the file is a fresh mkstemp file (0600, a name of its own, so callers running
+    at once don't share one) put in place by os.replace, which replaces a link there rather than
+    writing through it."""
+    folder = os.path.dirname(CACHE)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    st = os.lstat(folder)
+    # One made before (with the default permissions) is tightened, but only a real folder of ours.
+    if stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and stat.S_IMODE(st.st_mode) & 0o077:
+        os.chmod(folder, 0o700)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix="sessions.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(index, f)
+        os.replace(tmp, CACHE)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 main()

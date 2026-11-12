@@ -11,7 +11,7 @@
 // (skins/quiet-pages/fonts/, loaded on Herdr's next start). Art from skins/quiet-pages/build.py.
 
 import { div, image, svg } from "gpui-kit";
-import { agents, run } from "herdr";
+import { agents, run } from "../host.js";
 import base from "./base.js";
 import { alpha, artImage, bands, byHour } from "./common.js";
 

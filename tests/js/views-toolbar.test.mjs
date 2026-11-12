@@ -65,9 +65,9 @@ test("a review previewed: Changes alone, no +", () => {
   snap("toolbar/review", el);
 });
 
-test("the Desk: its tabs and + (no story)", () => {
+test("the Desk: its tabs, + and Screenshots (no story)", () => {
   const { el } = toolbar({ space: "Desk" });
-  assert.deepEqual(ids(el, "view-"), []);
+  assert.deepEqual(ids(el, "view-"), ["#view-shots"]);
   snap("toolbar/desk", el);
 });
 
