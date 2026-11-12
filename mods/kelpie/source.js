@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, setShared, shared, spaces } from "herdr";
+import { run, setShared, shared, spaces } from "./host.js";
 import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
 import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
 
@@ -25,8 +25,15 @@ export class Source {
 
   init(cx) {
     this.seen = shared(REFRESH);
-    this.load(cx);
-    cx.timer.every(this.every, (cx) => this.load(cx));
+    if (this.wanted()) this.load(cx); else this.skipped = true;
+    cx.timer.every(this.every, (cx) => { if (this.wanted()) this.load(cx); else this.skipped = true; });
+  }
+
+  // Whether its loads are worth making now. A source its view doesn't draw (the sidebar's sessions
+  // while the profile shown has a board, whose list loads its own) skips the timer's: each would run
+  // its script and redraw the view for nothing. Drawn again, it loads at once (state()).
+  wanted() {
+    return true;
   }
 
   // The shown space, its setup, and a key that changes when either (or a source's own option) does.
@@ -84,8 +91,8 @@ export class Source {
   state(cx) {
     const ctx = this.context();
     const r = shared(REFRESH);
-    if (r !== this.seen) { this.seen = r; this.load(cx, { again: true }); }
-    else if (!this.cache[ctx.key] || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) this.load(cx);
+    if (r !== this.seen) { this.seen = r; this.skipped = false; this.load(cx, { again: true }); }
+    else if (!this.cache[ctx.key] || this.skipped || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) { this.skipped = false; this.load(cx); }
     return { ...ctx, ...(this.cache[ctx.key] ?? { data: null, error: null, at: 0 }), loading: this.busy.has(ctx.key) };
   }
 }
