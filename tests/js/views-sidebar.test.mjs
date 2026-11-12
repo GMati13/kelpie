@@ -180,6 +180,13 @@ test("the Desk closed, and open without an agent", async () => {
   snap("sidebar/desk-no-agent", deskRows(t, {}, profileById(DEMO)));
 });
 
+// Paused (desk.js pauseDesk, #16): the closed Desk's row says so, and its menu offers them first.
+test("the Desk closed with paused agents, its menu open", async () => {
+  setupDemoWorld({ stories, spaces: [] });
+  putShared("kelpie.desk.paused", { [DEMO]: [{ sessionId: "demo-d1", cwd: "/demo", name: "Claude", at: NOW - 40 * 60e3 }, { sessionId: "demo-d2", cwd: "/demo", name: "Idea: tidy the docs", at: NOW - 5 * 60e3 }] });
+  snap("sidebar/desk-paused", deskRows(skinTheme(), { menu: "desk-open" }, profileById(DEMO)));
+});
+
 // The Desk's heading goes to the Desk itself, without picking one of its agents (#133): its plain
 // terminals counted after its agents, a click there showing the Desk on that terminal (a menu of
 // them when there are several); its + and clock menus still open their own menus.

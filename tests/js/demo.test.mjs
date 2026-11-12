@@ -198,6 +198,8 @@ describe("demo.json holds together", () => {
       assert.ok(issues.has(key), key);
       for (const x of list) if (x.id) assert.match(x.id, /^demo-/);
     }
+    assert.ok(FIXTURE.deskPaused?.length, "the Desk has a paused agent to show");
+    for (const x of FIXTURE.deskPaused) assert.match(x.id, /^demo-/);
   });
   test("every suggestion is a key, a pull request link or an idea, with an action", () => {
     for (const s of FIXTURE.suggest) {

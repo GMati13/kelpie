@@ -271,7 +271,7 @@ describe("What next? runs read only, and hands its picks in through the plugin",
     await brew(profile, "the task");
     const [cmd, args, options] = run();
     assert.equal(cmd, "env");
-    assert.deepEqual(args.slice(0, 2), ["KELPIE_PROFILE=w", "claude"]);
+    assert.deepEqual(args.slice(0, 4), ["KELPIE_PROFILE=w", "env", "KELPIE_GH_ACCOUNT=", "claude"]);
     assert.equal(args[args.indexOf("--permission-mode") + 1], "plan");
     const tools = args.slice(args.indexOf("--disallowedTools") + 1, args.indexOf("--disallowedTools") + 4);
     assert.deepEqual(tools, ["Edit", "Write", "NotebookEdit"]);
@@ -317,7 +317,7 @@ describe("What next? runs read only, and hands its picks in through the plugin",
     world({ handIn: handed });
     await brew(profile, "t");
     const [, args] = run();
-    assert.deepEqual(args.slice(0, 4), ["KELPIE_PROFILE=w", "env", "CLAUDE_CONFIG_DIR=/home/me/.claude-work", "claude"]);
+    assert.deepEqual(args.slice(0, 5), ["KELPIE_PROFILE=w", "env", "CLAUDE_CONFIG_DIR=/home/me/.claude-work", "KELPIE_GH_ACCOUNT=", "claude"]);
     assert.equal(args[args.indexOf("--permission-mode") + 1], "plan");
   });
   test("without the plugin on the account: no Claude runs, a dialog says what installs it", async () => {

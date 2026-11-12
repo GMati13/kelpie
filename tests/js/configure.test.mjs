@@ -66,7 +66,7 @@ describe("configureOnDesk", () => {
     assert.equal(space.task, 'Configure my Kelpie profile "Work" (id work). Scope: status (Story commands: status only).');
     assert.equal(space.tab, "Configure status");
     // Told it's the profile's and in no story (the Desk), then on the profile's account.
-    assert.deepEqual(space.argv, ["env", "KELPIE_PROFILE=work", "KELPIE_STORY=", "env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "claude"]);
+    assert.deepEqual(space.argv, ["env", "KELPIE_PROFILE=work", "KELPIE_STORY=", "env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "KELPIE_GH_ACCOUNT=", "claude"]);
     assert.equal(dialogs().length, 0);
   });
   test("without it: nothing starts; a dialog says it's needed, with what installs it from this clone", async () => {
@@ -101,7 +101,7 @@ describe("configureOnDesk", () => {
     assert.deepEqual([env, plugin, sh, flag, name], ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", "sh"]);
     assert.equal(source, REPO.replace(/\/$/, ""));
     assert.equal(task, 'Configure my Kelpie profile "Work" (id work). Scope: status (Story commands: status only).');
-    assert.deepEqual(claude, ["env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "claude"]);
+    assert.deepEqual(claude, ["env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "KELPIE_GH_ACCOUNT=", "claude"]);
     assert.ok(!script.includes(home) && !script.includes(source) && !script.includes("Configure my"), "no value is written into the script");
     assert.match(script, /"\$@" plugin marketplace add "\$root"; if "\$@" plugin install "\$PLUGIN"; then/);
   });

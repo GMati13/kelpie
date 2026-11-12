@@ -193,6 +193,20 @@ describe("jira.sh: the token travels only through curl's stdin", () => {
   }
 });
 
+describe("jira.sh: a trace turned on from outside", () => {
+  // bash (macOS's sh) takes xtrace from an exported SHELLOPTS; dash ignores it.
+  test("never prints the token, from a token command or the Keychain", () => {
+    for (const shell of ["sh", "bash"]) {
+      for (const args of [[...byCommand(), SITE, "", "get", "/rest/api/3/myself"], [SITE, "jira-item", "get", "/rest/api/3/myself"]]) {
+        const f = fakes();
+        const r = sh(shell, [JIRA, ...args], { env: { PATH: f.path, FAKE_TOKEN: TOKEN, FAKE_ACCT: EMAIL, SHELLOPTS: "xtrace", PS4: "+ " } });
+        assert.match(r.stdout, /"code":200/, r.stderr);
+        assert.ok(!(r.stdout + r.stderr).includes(TOKEN), `${shell} traced the token`);
+      }
+    }
+  });
+});
+
 describe("jira.sh: the token command's errors", () => {
   test("a failing token command's stderr isn't passed on", () => {
     const f = fakes();

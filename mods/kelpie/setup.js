@@ -30,25 +30,35 @@ import { checkProject as readProject } from "./project-check.js";
 const securityArg = (s) => `"${s.replace(/["\\]/g, "\\$&")}"`;
 const formatText = (s) => s.replace(/\\/g, "\\\\").replace(/%/g, "%%");
 const singleQuoted = (s) => s.replace(/'/g, "'\\''");
-const storeCommand = (item, email) =>
+// None with a line break or other control character in either: it would end `security -i`'s command
+// and start one of its own. Exported for the tests.
+export const storeCommand = (item, email) => /[\x00-\x1f\x7f]/.test(`${item}${email}`) ? null :
   `read -rs "t?Jira token: " && printf '${singleQuoted(formatText(`add-generic-password -U -s ${securityArg(item)} -a ${securityArg(email)} -w `))}%s\\n' "$t" | security -i; unset t; echo`;
 
-// The shell function that makes gh act as a profile's GitHub account in its agents and terminals:
-// Kelpie starts them with KELPIE_GH_ACCOUNT (githubEnv in ui.js), and this, in the person's own shell
-// setup, asks gh for that account's token for each run (Kelpie can't put it there: a function doesn't
-// reach programs, and shell startup puts gh's own folder first in PATH). `gh auth …` and shells
-// without the variable run gh as it is. The README's "Several accounts" shows the same lines (a test
-// checks they match). zsh and bash; fish needs its own.
-export const GH_FUNCTION = `gh() {
-  if [ -n "$KELPIE_GH_ACCOUNT" ] && [ "$1" != auth ]; then
-    local t
-    t=$(command gh auth token --hostname github.com --user "$KELPIE_GH_ACCOUNT") \\
-      || { echo "gh isn't signed in as $KELPIE_GH_ACCOUNT: gh auth login" >&2; return 1; }
-    GH_TOKEN=$t command gh "$@"
-  else
-    command gh "$@"
-  fi
-}`;
+// The line that makes gh act as a profile's GitHub account in its agents and terminals, and in every
+// program started there: Kelpie starts them with KELPIE_GH_ACCOUNT and KELPIE_GH_BIN (githubEnv in
+// ui.js), and this, at the end of the person's own shell setup, puts Kelpie's gh (bin/gh) first in
+// PATH (Kelpie can't: shell startup puts gh's own folder first again): only an absolute folder with no
+// colon, as a relative one would run whatever the folder a shell is in holds. Shells without the
+// variable are left as they are. A gh() shell function, given here before, reached only gh typed in
+// the shell (#103). The README's "Several accounts" shows the same lines (a test checks they match). zsh and bash.
+export const GH_SHELL_LINE = `# Kelpie: gh acts as the profile's GitHub account, for programs that run it too
+case \${KELPIE_GH_BIN:-} in *:*) ;; /*) PATH="$KELPIE_GH_BIN:$PATH" ;; esac`;
+
+// What Check my shell says, from gh-shell-check.sh's lines (`shell=`, the shell's own gh; `program=`,
+// gh run by a program started from it; `token=1`, GH_TOKEN set by the shell setup): [ok, words].
+// Exported for the tests.
+export function shellVerdict(out, account) {
+  const got = (k) => [...String(out ?? "").matchAll(new RegExp(`^${k}=(.*)$`, "gm"))].pop()?.[1]?.trim() ?? "";
+  const shell = got("shell"), program = got("program");
+  // GitHub logins don't care about case: a profile saved as "octocat" is GitHub's "OctoCat".
+  const is = (login) => Boolean(login) && login.toLowerCase() === String(account).toLowerCase();
+  if (is(program) && is(shell)) return [true, `Set up: gh in this profile's agents and terminals, and in the programs they start, acts as ${account}.`];
+  if (got("token") === "1") return [false, `Your shell setup sets GH_TOKEN, which gh uses before any account, so Kelpie leaves it alone. Take it out of your shell setup to have gh act as ${account} here.`];
+  if (is(shell)) return [false, `Only gh typed in your shell acts as ${account}: programs that run gh ${program ? `act as ${program}` : "don't get an answer"}. Put the line below at the end of your shell setup (it replaces the gh() function given before), then check again.`];
+  if (program || shell) return [false, `gh here acts as ${program || shell}, not ${account}. Put the line below at the end of your shell setup, after anything else that changes PATH, then check again.`];
+  return [false, `gh didn't answer. Is the line below in your shell setup, and gh signed in to ${account}? (gh auth login)`];
+}
 
 const TAB_W = 200;
 // The dialog's card in the window it fills (config.js openProfile()): at most `w` wide and `h` tall,
@@ -346,18 +356,16 @@ export class Setup {
     });
   }
 
-  // Starts the person's shell as an agent's starts, with the account named, and asks GitHub whom its
-  // gh acts as (gh-shell-check.sh): whether GH_FUNCTION is in their setup and the account signed in.
+  // Starts the person's shell as an agent's starts, with the account named, and asks GitHub whom gh
+  // acts as there and in a program started from it (gh-shell-check.sh), as a program's gh is the one
+  // that fails: whether GH_SHELL_LINE is in their setup, last, and the account signed in.
   checkShell(cx) {
     const account = this.githubAccount;
     if (!account) return;
     this.result("github-shell", null, "Starting your shell and asking GitHub…", cx);
     cx.spawn(async (cx) => {
       const r = await exec("sh", [modFile("gh-shell-check.sh"), account]).catch(() => ({ code: 1, stdout: "" }));
-      const login = (r.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
-      if (login === account) return this.result("github-shell", true, `Set up: gh in this profile's agents and terminals acts as ${account}.`, cx);
-      if (login) return this.result("github-shell", false, `Your shell's gh acts as ${login}, not ${account}. Add the function below to your shell setup, then check again.`, cx);
-      this.result("github-shell", false, `Your shell's gh didn't answer. Is the function below in your shell setup, and gh signed in to ${account}? (gh auth login)`, cx);
+      this.result("github-shell", ...shellVerdict(r.stdout, account), cx);
     });
   }
 
@@ -624,8 +632,8 @@ export class Setup {
       this.mac && !tokenCommand && v_flex().pt(DIALOG.section)
         .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a zsh terminal (the Mac's default shell) and paste it at the prompt:"))
         .child(h_flex().p(8).gap(8).items_center().rounded(8).bg(t.background).border_1().border_color(t.border)
-          .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email)))
-          .child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email))))),
+          .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email) ?? "The Keychain item and the email have to be on one line."))
+          .when(Boolean(storeCommand(item, email)), (el) => el.child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email)))))),
       h_flex().pt(DIALOG.section).gap(DIALOG.gap).items_center()
         .child(textButton(t, "setup-jira-check", "Check connection", (_e, cx) => this.checkJira(cx), { tip: "Signs in and reads the board" })),
       check("jira"),
@@ -717,12 +725,12 @@ export class Setup {
           ...ghAccounts.map((a) => ({ label: a, value: a, on: this.githubAccount === a })),
         ], (v) => { this.githubAccount = v; delete this.checks["github-shell"]; }), "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change: keep your main account active (gh auth switch), and pick the others here."),
         this.githubAccount && v_flex().pt(DIALOG.section)
-          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Add this to your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it), and the gh they run acts as that account. Agents started before it, and sessions resumed since, may still run without it: start a new one.`))
+          .child(div().pb(6).text_size(SMALL).text_color(t.dim).child(`For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=${this.githubAccount}. Put this at the end of your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it), and gh there acts as that account, also when a program they start runs it. Agents started before it, and sessions resumed since, may still run without it: start a new one.`))
           .child(h_flex().p(8).gap(8).items_start().rounded(8).bg(t.background).border_1().border_color(t.border)
-            .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(GH_FUNCTION.split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
-            .child(textButton(t, "setup-gh-copy", "Copy", (_e, cx) => cx.write_to_clipboard(GH_FUNCTION))))
+            .child(v_flex().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).children(GH_SHELL_LINE.split("\n").map((l) => div().child(l.replace(/^ +/, (s) => "\u00a0".repeat(s.length)) || "\u00a0"))))
+            .child(textButton(t, "setup-gh-copy", "Copy", (_e, cx) => cx.write_to_clipboard(GH_SHELL_LINE))))
           .child(h_flex().pt(DIALOG.gap).gap(DIALOG.gap).items_center()
-            .child(textButton(t, "setup-gh-shell-check", "Check my shell", (_e, cx) => this.checkShell(cx), { tip: "Starts your shell as an agent's starts and asks GitHub who its gh is" })))
+            .child(textButton(t, "setup-gh-shell-check", "Check my shell", (_e, cx) => this.checkShell(cx), { tip: "Starts your shell as an agent's starts and asks GitHub who gh is there, and in a program started from it" })))
           .child(check("github-shell") ?? div()),
         toggle("setup-notify-pulls", "Notify about pull requests", this.notifyPulls, (_e, cx) => { this.notifyPulls = !this.notifyPulls; cx.notify(); },
           "When one of yours starts failing its checks, gets changes requested, or becomes ready to merge. Agents that need you notify anyway."),

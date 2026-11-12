@@ -78,7 +78,7 @@ test("the profile's GitHub account goes to gh.sh for searches, approvals and des
 test("githubAccounts: the accounts gh status lists as signed in, once each", async () => {
   mock.on.exec = () => ({ code: 0, stdout: "", stderr: "github.com\n  ✓ Logged in to github.com account work-me (keyring)\n  - Active account: true\n  ✓ Logged in to github.com account side-me (keyring)\n  - Active account: false\n" });
   assert.deepEqual(await githubAccounts(), ["work-me", "side-me"]);
-  assert.deepEqual(mock.of("exec")[0].slice(0, 2), ["gh", ["auth", "status", "--hostname", "github.com"]]);
+  assert.deepEqual(mock.of("exec")[0].slice(0, 2), ["env", ["-u", "KELPIE_GH_ACCOUNT", "gh", "auth", "status", "--hostname", "github.com"]]);
 });
 
 test("github.account: only a GitHub name is kept, and an agent setting it waits for the person's yes", () => {

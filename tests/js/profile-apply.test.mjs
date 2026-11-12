@@ -255,6 +255,12 @@ describe("apply-profile: refused outright", () => {
     assert.equal(p.jira, null);
     assert.equal(buildProfile("gh", { project: { number: 7 } }).project.number, 4, "a number as an integer is taken, then the address decides");
   });
+  test("a Keychain item's name is one line: it goes into the command the Board page gives to copy", () => {
+    for (const bad of ["jira-acme\ndump-keychain -d", "jira\racme", "a\tb", "a\u0000b"]) {
+      assert.throws(() => buildProfile("work", { jira: { keychain: bad } }), /jira\.keychain/, JSON.stringify(bad));
+    }
+    assert.doesNotThrow(() => buildProfile("work", { jira: { keychain: "jira acme (work)" } }));
+  });
   test("every section lists its own keys, and only top-level settings have a list", () => {
     assert.deepEqual(Object.keys(SECTION_KEYS).sort(), APPLY.filter((k) => k !== "name" && k !== "folder").sort());
     // What waits for a yes is a setting its section takes.

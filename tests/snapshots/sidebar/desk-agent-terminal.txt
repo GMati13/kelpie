@@ -14,6 +14,8 @@ h_flex
         div
           div [bg=dim/f2] ×32 … [bg=dim/1a]
   h_flex
+    div #desk-pause [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Pause the Desk ⌥⌘P: keeps its agents' sessions, to resume when it opens again"
+      svg own:pause
     Popup.new "desk-new-menu"
       div #desk-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal on the Desk"
         svg chrome:plus
