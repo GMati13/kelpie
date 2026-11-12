@@ -480,7 +480,7 @@ v_flex #work-side-list-demo
     div [font="DM Sans" fg=muted]
       "TO DO"
     div [font="DM Mono" fg=dim]
-      "1"
+      "3"
     div
       div
         div [bg=#7fb3aef2] ×32 … [bg=#7fb3ae1a]
@@ -495,6 +495,41 @@ v_flex #work-side-list-demo
         div [font="DM Mono" fg=dim]
           "ACME-180"
       h_flex #b-subs-ACME-180 tip="Your subtasks: 0 of 1 past QA · 1 to do\nAll: 2 subtasks · 2 to do"
+        div [bg=dim/73]
+  h_flex #story-ACME-176 [hover(bg=hover)] {click hover} tip="1 subtask · 1 to do"
+    div
+      div
+        div [bg=dim]
+    v_flex
+      div [font="DM Sans"]
+        "Group bookings by city"
+      h_flex
+        div [font="DM Mono" fg=dim]
+          "ACME-176"
+      h_flex #b-subs-ACME-176 tip="Your subtasks: 0 of 1 past QA · 1 to do\nAll: 1 subtask · 1 to do"
+        div [bg=dim/73]
+  h_flex #story-ACME-178 [hover(bg=hover)] {click hover} tip="1 subtask · 1 to do"
+    div
+      div
+        div [bg=dim]
+    v_flex
+      div [font="DM Sans"]
+        "Refund a cancelled booking"
+      h_flex
+        div [font="DM Mono" fg=dim]
+          "ACME-178"
+        h_flex #tags-ACME-178-zone {size_change}
+          div
+            div #tags-ACME-178-zoom {size_change}
+            h_flex
+              div #tags-ACME-178-m0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] {size_change} tip="Label: payments"
+                "payments"
+              div #tags-ACME-178-mmore [fg=dim] {size_change} tip="Label: payments\nLabel: payments"
+                "+2"
+          h_flex #tags-ACME-178
+            div #tags-ACME-178-0 [bg=ansi4/24 fg=ansi4 font="DM Sans"] tip="Label: payments"
+              "payments"
+      h_flex #b-subs-ACME-178 tip="Your subtasks: 0 of 1 past QA · 1 to do\nAll: 1 subtask · 1 to do"
         div [bg=dim/73]
   div
     div [font="DM Sans" fg=muted]

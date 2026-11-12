@@ -280,6 +280,41 @@
       "status": "To Do"
     },
     {
+      "key": "ACME-176",
+      "priority": "Low",
+      "assignee": "Sam Okafor",
+      "summary": "Group bookings by city",
+      "type": "Story",
+      "status": "To Do",
+      "description": "A long trip's bookings read better grouped by the city they're in, in the order the trip visits them."
+    },
+    {
+      "key": "ACME-177",
+      "priority": "Low",
+      "summary": "City headings in the trip view",
+      "parent": "ACME-176",
+      "status": "To Do",
+      "mine": true
+    },
+    {
+      "key": "ACME-178",
+      "priority": "Highest",
+      "assignee": "Lena Vogel",
+      "summary": "Refund a cancelled booking",
+      "labels": ["payments"],
+      "type": "Story",
+      "status": "To Do",
+      "description": "A booking the hotel cancels is refunded automatically: today support refunds each one by hand."
+    },
+    {
+      "key": "ACME-179",
+      "priority": "Highest",
+      "summary": "Refund through the payment provider",
+      "parent": "ACME-178",
+      "status": "To Do",
+      "mine": true
+    },
+    {
       "key": "ACME-129",
       "priority": "Medium",
       "assignee": "Sam Okafor",

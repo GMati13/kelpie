@@ -320,7 +320,7 @@ describe("the demo's stories, as the list builds them", () => {
     const list = ordered(build(d, new Map(), {}, new Map(), null));
     assert.deepEqual(list.map((x) => [x.it.key, x.n[0], sunk(x.it, x.n)]), [
       ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
-      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false],
+      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false], ["ACME-176", 6, false], ["ACME-178", 6, false],
       ["ACME-129", 6, true],
     ]);
   });
@@ -399,7 +399,7 @@ describe("underWay: the sidebar's In progress and To do", () => {
       assert.ok(it, "the fixture's story in progress with nothing here");
       assert.equal(it.space, null);
       assert.equal(underWay(it), true);
-      assert.deepEqual(list.filter((x) => !sunk(x.it, x.n) && !underWay(x.it)).map((x) => x.it.key), ["ACME-180"], "only the story nobody started is to do");
+      assert.deepEqual(list.filter((x) => !sunk(x.it, x.n) && !underWay(x.it)).map((x) => x.it.key), ["ACME-180", "ACME-176", "ACME-178"], "only the stories nobody started are to do");
     });
   }
 });

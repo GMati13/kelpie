@@ -10,7 +10,7 @@ import { boardOf, buildProfile, needsYes, priorityOf, saveProfile } from "../../
 import { loadBoard } from "../../mods/kelpie/board.js";
 import { QUERIES } from "../../mods/kelpie/project.js";
 import { selectsOf } from "../../mods/kelpie/project-check.js";
-import { build, ordered, priorityLook, priorityRanks, suggestSnapshot } from "../../mods/kelpie/stories.js";
+import { build, ordered, priorityLook, priorityRanks, suggestSnapshot, sunk, underWay } from "../../mods/kelpie/stories.js";
 import { DEMO_PROFILE, DEMO_PROJECT_PROFILE, data, demoData, issue } from "../lib/stories.mjs";
 
 beforeEach(() => mock.reset());
@@ -131,6 +131,14 @@ describe("the demo's Jira board", () => {
     const it = items.find((x) => x.key === "ACME-151");
     assert.deepEqual(it.priority, { name: "Highest", rank: 0, of: 5 });
     assert.deepEqual(it.subs.find((s) => s.key === "ACME-152").priority, { name: "High", rank: 1, of: 5 }, "subtasks keep their own");
+  });
+  test("To do in priority order with ordering on (ACME-178 Highest, 180 High, 176 Low), else the board's", async () => {
+    const toDo = async (byPriority) => {
+      const d = await demoData({ ...DEMO_PROFILE, jira: { ...DEMO_PROFILE.jira, byPriority } });
+      return ordered(build(d, new Map()), byPriority).filter((x) => !sunk(x.it, x.n) && !underWay(x.it)).map((x) => x.it.key);
+    };
+    assert.deepEqual(await toDo(false), ["ACME-180", "ACME-176", "ACME-178"]);
+    assert.deepEqual(await toDo(true), ["ACME-178", "ACME-180", "ACME-176"]);
   });
   test("What next?'s snapshot names the levels and each ticket's priority", async () => {
     const profile = { ...DEMO_PROFILE, jira: { ...DEMO_PROFILE.jira, showPriority: true } };
