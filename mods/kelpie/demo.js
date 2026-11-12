@@ -16,7 +16,7 @@
 import { exec, readTextFile } from "herdr";
 import { agents, run, setShared, shared, spaces } from "./host.js";
 import { modFile } from "./ui.js";
-import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
+import { DESK_NAME, DESK_PAUSED, profileById, saveProfile, spacesOf } from "./config.js";
 
 export const DEMO_ID = "demo";
 export const isDemo = (x) => Boolean(x?.demo);
@@ -264,7 +264,7 @@ const pullId = (p) => `demo-pr-${p.repo}-${p.number}`;
 function asPull(f, raw) {
   const p = later(raw);
   return {
-    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
+    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(), ...(p.branch ? { headRefName: p.branch } : {}),
     reviewDecision: APPROVED.has(prUrl(f, p)) ? "APPROVED" : p.review ?? null, viewerReview: APPROVED.has(prUrl(f, p)) ? "APPROVED" : null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };
@@ -319,7 +319,7 @@ export async function demoPullFiles(url) {
 // A file's whole text, when the fixture has it: a pull request's (by its url), else uncommitted work's.
 export async function demoBlob(url, path) {
   const f = await demoFixture();
-  const files = url ? f.pulls.find((x) => prUrl(f, x) === url)?.files : (f.local ?? []).flatMap((r) => r.files);
+  const files = url ? f.pulls.find((x) => prUrl(f, x) === url)?.files : (f.local ?? []).flatMap((r) => [...r.files, ...(r.committed?.files ?? [])]);
   const file = files?.find((x) => x.path === path);
   if (typeof file?.text !== "string") throw new Error("the demo has only this file's diff");
   return file.text;
@@ -330,12 +330,14 @@ export async function demoBlob(url, path) {
 const homeOf = async () => (await exec("sh", ["-c", 'printf %s "$HOME"'])).stdout;
 const expand = (path, home) => String(path ?? "").replace(/^~(?=\/|$)/, home);
 
-// changes.py for a demo profile: uncommitted work in the story's ticket folders.
+// changes.py --committed for a demo profile: uncommitted work in the story's ticket folders, and what
+// their branches committed (`committed`: {base, commits, files}) with no pull request yet.
 export async function demoLocal(folder, keys) {
   const f = await demoFixture();
+  const files = (list) => (list ?? []).map((x) => ({ path: x.path, status: x.status ?? "modified", patch: x.patch, ...counted(x.patch) }));
   return (f.local ?? []).filter((r) => keys.includes(r.key)).map((r) => ({
-    repo: r.repo, path: `${folder}/${r.key}/${r.repo}`, branch: r.branch ?? r.key, key: r.key, ticket: true,
-    files: r.files.map((x) => ({ path: x.path, status: x.status ?? "modified", patch: x.patch, ...counted(x.patch) })),
+    repo: r.repo, path: `${folder}/${r.key}/${r.repo}`, branch: r.branch ?? r.key, key: r.key, ticket: true, files: files(r.files),
+    head: null, committed: r.committed ? { base: r.committed.base ?? "origin/main", commits: r.committed.commits ?? 1, files: files(r.committed.files) } : null,
   }));
 }
 // sessions.py for a demo profile: earlier Claude sessions, newest first.
@@ -449,6 +451,8 @@ export async function setupDemo(board = "jira") {
   const paused = {};
   for (const [key, list] of Object.entries(f.paused ?? {})) paused[key] = list.map((x, n) => ({ sessionId: x.id ?? `demo-paused-${key}-${n}`, cwd: folder, name: x.name ?? key, at: when(x.at ?? "-3h") }));
   setShared("kelpie.paused", { ...(shared("kelpie.paused") ?? {}), [DEMO_ID]: paused });
+  // The Desk's paused agents (desk.js), offered in its + menu: `deskPaused`, a list like a key's.
+  setShared(DESK_PAUSED, { ...(shared(DESK_PAUSED) ?? {}), [DEMO_ID]: (f.deskPaused ?? []).map((x, n) => ({ sessionId: x.id ?? `demo-desk-${n}`, cwd: folder, name: x.name ?? "Claude", at: when(x.at ?? "-1h") })) });
   setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address, board === "project") });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
   setShared(DEMO_AT, Date.now());
@@ -457,7 +461,7 @@ export async function setupDemo(board = "jira") {
 // kelpie.demo-remove: undoes kelpie.demo. Closes the demo profile's spaces (ending their stand-in
 // agents), deletes the profile and what's kept for it in shared state, and removes its folder, only
 // when that's inside ~/.local/share/kelpie/demo (an edited fixture could name any folder).
-const BY_PROFILE = ["kelpie.paused", "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.next.picked", "kelpie.profile.last", "kelpie.notify.prs"];
+const BY_PROFILE = ["kelpie.paused", DESK_PAUSED, "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.next.picked", "kelpie.profile.last", "kelpie.notify.prs"];
 export async function removeDemo() {
   const p = profileById(DEMO_ID);
   for (const s of p ? spacesOf(p) : []) run("space.close", { id: s.id, confirmed: true });
