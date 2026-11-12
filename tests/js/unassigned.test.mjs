@@ -166,6 +166,10 @@ describe("the sidebar's Unassigned section", async () => {
     const ids = ["unassigned-ACME-202", "unassigned-story-ACME-204", "unassigned-ACME-205", "unassigned-ACME-207"];
     for (const id of ids) assert.ok(byId(open, id), id);
     assert.equal(byId(open, "unassigned-ACME-131"), null, "a subtask of your story stays in its details");
+    // Jordan has ACME-195: only the heading over ACME-196, nobody's, never a row of its own.
+    assert.ok(byId(open, "unassigned-story-ACME-195"));
+    assert.ok(byId(open, "unassigned-ACME-196"));
+    assert.equal(byId(open, "unassigned-ACME-195"), null, "someone's story isn't work nobody has");
     assert.equal(byId(open, "unassigned-ACME-203"), null, "a story nobody has shows its subtasks in its details");
     assert.ok(texts(byId(open, "unassigned-ACME-202")).includes("Unassigned"));
     matchSnapshot("sidebar/unassigned", render(v_flex().children(["stories-unassigned", ...ids].map((id) => byId(open, id))), skinTheme()));
