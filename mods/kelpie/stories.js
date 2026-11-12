@@ -1067,7 +1067,13 @@ const STARTED = {};
 const AGAIN = new Set(); // profile keys asked to load again while their load ran (Source.load)
 const DATA = STORIES; // { [profile id]: { key, data, at, error } }
 const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, repo } }
-const setCounts = (key, fields) => { const all = shared(COUNTS) ?? {}; setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } }); };
+// Written only when a count changes: the Screenshots count is asked again every 5 s while a new agent
+// has no session yet, and every write of shared state redraws every copy (#39).
+export const setCounts = (key, fields) => { // exported for the tests
+  const all = shared(COUNTS) ?? {};
+  if (Object.entries(fields).every(([k, v]) => key in all && all[key]?.[k] === v)) return;
+  setShared(COUNTS, { ...all, [key]: { ...(all[key] ?? {}), ...fields } });
+};
 // What the Screenshots view (a kelpie-artifacts block, layout id "story-shots") shows: the shown story's
 // Claude sessions, { key, ids, keys: { [id]: subtask key }, terminals: { [id]: agent terminal }, on,
 // started }. Only `key` until they're known (mods/kelpie-artifacts/main.js reads it).
@@ -1543,11 +1549,15 @@ function knownKeys() {
   return keys;
 }
 
+// The shared keys kept by profile id, whose deleted profiles' entries pruneShared() drops (a function,
+// as some are declared further down). Paused agents stay out: a session paused there is still on disk.
+const byProfile = () => [DATA, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, DONE_CLEAN];
+
 // After each fresh load (the list's), what shared state keeps of what's gone goes: views of closed
 // spaces, ticks and counts of keys no profile lists, the profile's paused agents on keys it no longer
-// lists, and what was seen of deleted profiles' pull requests. Paused agents are only dropped from a
-// load that saw a sprint and every pull request, so a gap between sprints or GitHub failing for a
-// moment loses nothing.
+// lists, and what's kept of deleted profiles (their stories copy, notes, picks, asks, what was seen of
+// their pull requests…). Paused agents are only dropped from a load that saw a sprint and every pull
+// request, so a gap between sprints or GitHub failing for a moment loses nothing.
 function pruneShared(profile, data) {
   const write = (key, all, kept) => { if (Object.keys(kept).length !== Object.keys(all).length) setShared(key, kept); };
   const keep = (key, test) => { const all = shared(key) ?? {}; write(key, all, Object.fromEntries(Object.entries(all).filter(test))); };
@@ -1556,12 +1566,10 @@ function pruneShared(profile, data) {
   const keys = knownKeys();
   keep(VIEWED, ([, key]) => keys.has(key));
   keep(COUNTS, ([key]) => keys.has(key));
+  // Everything kept by profile goes with a deleted profile: its stories copy alone is ~80 KB or
+  // more, and every write of shared state writes the whole file (#39).
   const ids = new Set(profiles().map((p) => p.id));
-  keep(PR_SEEN, ([id]) => ids.has(id));
-  keep(PR_FOLDS, ([id]) => ids.has(id));
-  keep(DONE_OPEN, ([id]) => ids.has(id));
-  keep(DONE_CLEAN, ([id]) => ids.has(id));
-  keep(PICKS_ASKED, ([id]) => ids.has(id));
+  for (const key of byProfile()) keep(key, ([id]) => ids.has(id));
   if (!data.sprints?.length || data.prError) return;
   const listed = new Set(build(data, new Map(), {}, storySpaces(profile), null, { all: true }).flatMap(storyKeys));
   const all = shared(PAUSED) ?? {};

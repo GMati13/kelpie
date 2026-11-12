@@ -224,6 +224,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
+- `shared-writes.test.mjs`: writes of shared state that change nothing are skipped (#39), as each one
+  rewrites Herdr's whole `shared.json` and redraws every copy. A deleted profile's entries going with the
+  next load is in `views-sidebar.test.mjs`.
 - `memory.test.mjs`: what the story views keep per key or per patch stays bounded over a long session (#41):
   only the last stories' Changes, descriptions (never one still loading), and under 8 million characters of
   patches in each cache keyed by them.
