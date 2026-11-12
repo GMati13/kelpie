@@ -362,8 +362,13 @@ function toolbar(cx) {
   // tab bar is the top block (no story header above it).
   const sideOff = sideHidden(root);
   const topmost = !find(root, "story-head") || Boolean(find(root, "story-head")?.hidden);
-  return decor("blockDecor", t, h_flex().size_full().min_w(0).gap(4).items_center().text_size(TEXT)
-    .when(sideOff && topmost, (el) => el.pl(buttonsRoom()))
+  // Only a column's top row moves the window (its block has `window_drag`): under a story's title row
+  // the tab bar keeps every press, so a drag on it, or one meant for the details' divider just above
+  // it, never throws the window. Its side padding is drawn here, not by the block, so no edge of the
+  // block is left to drag by.
+  return decor("blockDecor", t, h_flex().size_full().min_w(0).px(4).gap(4).items_center().text_size(TEXT)
+    .when(!topmost, (el) => el.on_mouse_down("left", stop))
+    .when(sideOff && topmost, (el) => el.pl(4 + buttonsRoom()))
     .when(sideOff, (el) => el.child(iconButton(t, "side-show", chrome("sidebar"), toggleSide, "Show the sidebar ⌘B")))
     .child(h_flex().id("tab-list").flex_1().min_w(0).h_full().gap(2).items_center().overflow_x_scrollbar()
       // A drag that leaves the bar, or is let go between tabs, ends without moving anything.

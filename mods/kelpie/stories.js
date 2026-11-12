@@ -2976,7 +2976,7 @@ export class Stories extends Source {
     return this.menuButton(t, id, "", rows, null, {
       width: 260, anchor: "top_right",
       trigger: (toggle, open) => div().id(`${id}-more`).flex_none().p(2).rounded(6).cursor_pointer().when(open, (el) => el.bg(t.selected))
-        .hover((el) => el.bg(t.hover)).tooltip("Change the status").on_click(toggle).child(lozenge(t, shown.status, shown.category)),
+        .hover((el) => el.bg(t.hover)).tooltip("Change the status").on_mouse_down("left", stop).on_click(toggle).child(lozenge(t, shown.status, shown.category)),
     });
   }
 
@@ -3274,7 +3274,7 @@ export class Stories extends Source {
     return h_flex().flex_none().w_full().gap(8).items_center().min_w(0).overflow_hidden()
       .child(h_flex().id("story-head-text").flex_1().min_w(0).overflow_hidden().gap(8).items_center()
         .child(skinFont(div().id("story-key").flex_none().text_color(t.accent), "key", SMALL).cursor_pointer().tooltip(where.tip)
-          .on_click(() => open(where.url)).child(skinText(where.label, "key")))
+          .on_mouse_down("left", stop).on_click(() => open(where.url)).child(skinText(where.label, "key")))
         // Its priority beside its key, as on its row in the list (#122), while Show priority is on.
         .when(!lone && priorityOf(st.setup).show && Boolean(priorityLook(it.priority)), (el) => el.child(priorityMark(t, "story-prio", it.priority)))
         // The progress line gives way first, then the title truncates (its tip carries both); the
