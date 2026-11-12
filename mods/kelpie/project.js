@@ -37,15 +37,17 @@ const ISSUE = `id number title url state closedAt updatedAt repository { nameWit
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { url } }
   projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name updatedAt } }
     priority: fieldValueByName(name: $priority) @include(if: $withPriority) { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } } } }`;
-// The Project: its Status options, its iteration fields and a page of your items in its order. The
-// filter is a constant: `@me` is the account gh runs as, Jira's currentUser().
+// The Project: its Status options, its iteration fields and a page of its items in its order. The
+// filter is one of two constants (`FILTERS`): your items (`@me` is the account gh runs as, Jira's
+// currentUser()), or on a board worked alone (`solo`) every issue, whoever it's assigned to.
 // The priority field (the profile's project.priorityField, a single-select field) is asked only when
 // one is named: `$priority` its name, `$withPriority` whether to ask (config.js priorityOf()).
-const PROJECT = `id title url
+const FILTERS = Object.freeze({ mine: "assignee:@me is:issue", all: "is:issue" });
+const projectFields = (filter) => `id title url
   field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
   priorityField: field(name: $priority) @include(if: $withPriority) { ... on ProjectV2SingleSelectField { id options { id name } } }
   fields(first: 50) { nodes { ... on ProjectV2IterationField { id name configuration { iterations { id title startDate duration } } } } }
-  items(first: 100, after: $cursor, query: "assignee:@me is:issue", orderBy: { field: POSITION, direction: ASC }) {
+  items(first: 100, after: $cursor, query: "${filter}", orderBy: { field: POSITION, direction: ASC }) {
     pageInfo { hasNextPage endCursor }
     nodes { id type isArchived
       fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2IterationField { id } } } } }
@@ -60,8 +62,11 @@ export const KEPT_SLOTS = 25;
 const PRIORITY_VARS = `$priority: String = "", $withPriority: Boolean = false`;
 const slots = Array.from({ length: KEPT_SLOTS }, (_, n) => n);
 export const QUERIES = Object.freeze({
-  user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
-  org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
+  user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.mine)} } } }`,
+  org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.mine)} } } }`,
+  // The same for a board worked alone: every issue of the Project, assigned or not.
+  userAll: `query KelpieProjectUserAll($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.all)} } } }`,
+  orgAll: `query KelpieProjectOrgAll($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.all)} } } }`,
   // The stories, with only their sub-issues' ids: GitHub charges a nested connection for every item
   // it could hold, so the sub-issues' own fields asked here (50 slots × each one's connections) cost
   // 125 points for 61 stories, a load. They're asked flat instead (`subs`), about 4 points per 100.
@@ -97,7 +102,8 @@ function target(cfg) {
   if (!owner || owner.length > 39 || !(cfg?.demo ? DEMO_LOGIN : GITHUB_LOGIN).test(owner)) throw new Error("The profile's GitHub Project has no valid owner: set its address again in the profile.");
   const number = Number(cfg?.number);
   if (!Number.isInteger(number) || number < 1) throw new Error("The profile's GitHub Project has no valid number: set its address again in the profile.");
-  return { owner, number, query: cfg.ownerType === "org" ? QUERIES.org : QUERIES.user };
+  const org = cfg.ownerType === "org", solo = cfg.solo === true;
+  return { owner, number, solo, query: solo ? (org ? QUERIES.orgAll : QUERIES.userAll) : org ? QUERIES.org : QUERIES.user };
 }
 
 // Days since 1970 of a "YYYY-MM-DD", and of today where the person is.
@@ -136,9 +142,12 @@ async function keptProject(board, keep, have, repos) {
   return { ids, viewer };
 }
 
-// The board's raw load, as board.js's header describes it.
+// The board's raw load, as board.js's header describes it. On a board worked alone (`solo`) every
+// issue in scope is the person's, whoever it's assigned to: the items come without the assignee
+// filter, and all of them, their stories and sub-issues are in `mine`. Past PAGES pages the rest is
+// left out and the answer says so (`cut`: how many items were read), as a whole board can be more.
 export async function loadProject(board, keep = {}) {
-  const { owner, number, query } = target(board.cfg);
+  const { owner, number, solo, query } = target(board.cfg);
   // The priority field, only while the profile orders or marks by it; its name goes as a variable,
   // like every other value.
   const use = priorityOf({ project: board.cfg });
@@ -146,7 +155,7 @@ export async function loadProject(board, keep = {}) {
   const withPriority = priorityName ? ["-f", `priority=${priorityName}`, "-F", "withPriority=true"] : [];
   let project = null;
   const items = [];
-  let cursor = null;
+  let cursor = null, cut = false;
   for (let page = 0; page < PAGES; page++) {
     const data = await ask(board, ["-f", `owner=${owner}`, "-F", `number=${number}`, ...(cursor ? ["-f", `cursor=${cursor}`] : []), ...withPriority, "-f", `query=${query}`]);
     const p = (board.cfg.ownerType === "org" ? data.organization : data.user)?.projectV2;
@@ -155,6 +164,7 @@ export async function loadProject(board, keep = {}) {
     items.push(...(p.items?.nodes ?? []));
     const next = p.items?.pageInfo;
     if (!next?.hasNextPage || !next.endCursor) break;
+    if (page === PAGES - 1) { cut = true; break; }
     cursor = next.endCursor;
   }
   const options = project.field?.options ?? [];
@@ -272,17 +282,22 @@ export async function loadProject(board, keep = {}) {
       }
     }
   };
-  add(stories);
+  // Worked alone, every story and sub-issue added is the person's, whoever has it.
+  const counted = new Set(mine.map((i) => i.key));
+  const allMine = (_raw, dressed) => { if (solo && !counted.has(dressed.key)) { counted.add(dressed.key); mine.push(dressed); } };
+  add(stories, allMine);
   // Then the stories `keep` names that your items left out (reassigned since, or out of the
   // iteration), after the board's own; the issues of them assigned to the account gh runs as are yours.
   const kept = await keptProject(board, keep, seen, { ...(keep.repos ?? {}), ...repos });
   const fresh = kept.ids.filter((id) => !ids.includes(id));
   const before = parents.length;
   if (fresh.length) add(await storiesOf(fresh), (raw, dressed) => {
+    if (solo) return allMine(raw, dressed);
     if (kept.viewer && (raw.assignees?.nodes ?? []).some((n) => n?.login === kept.viewer)) mine.push(dressed);
   });
   return {
     site: "https://github.com", columns, sprints, mine, parents, children, links, repos, kept: parents.slice(before).map((i) => i.key),
+    ...(solo ? { solo: true } : {}), ...(cut ? { cut: items.length } : {}),
     project: { id: project.id, statusField: project.field?.id ?? null, title: project.title ?? "", url: project.url ?? "" },
     ...(levels ? { priorities: levels } : {}),
   };
