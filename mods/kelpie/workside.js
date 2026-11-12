@@ -178,7 +178,8 @@ export class SpacePicker {
 export class WorkSide {
   constructor() {
     this.stories = new StoryList();
-    this.sessions = new Sessions();
+    // Drawn only for a profile without a board (plain()): a board's list loads the sessions itself.
+    this.sessions = new Sessions(() => !hasBoard(shownProfile()));
     // The Desk's menus keep what's open here (menuButton() writes `host.menu`).
     this.deskMenus = {};
   }
