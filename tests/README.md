@@ -195,6 +195,11 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   hidden, a bug first and once on either board), colours readable on dark and light themes (`legible()`,
   `tagColor()`), and the demo's tags on the list's rows, the title row and subtask rows, on Jira and on a
   GitHub Project.
+- `priority.test.mjs`: working by priority (#122): a ticket's level ranked by the board's own levels
+  (`priorityRanks()`), To do ordered by it only while `byPriority` is on (what needs you first, by urgency then
+  priority, In progress and sunk stories untouched, none last, equal ones in the board's order), the row marks (`priorityLook()`, only with `showPriority`), the
+  settings (true/false, saved at once), the demo's Jira levels and a Project's priority field (its name
+  only a GraphQL variable, not asked for while unused), Check's single-select fields, What next?'s snapshot.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,
   `handoverFrom`, prompt filling (`jiraTask`, `fillLines`, `mergeTask`, `approvalTask`, `askText`), and
   `claudeArgv`/`shellArgv`/`resumeArgv` per account and for the demo.

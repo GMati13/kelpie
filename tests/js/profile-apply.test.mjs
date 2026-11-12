@@ -268,7 +268,7 @@ describe("apply-profile: refused outright", () => {
     for (const a of ASK_PROMPTS) assert.ok(SECTION_KEYS.prompts.includes(a.id), `prompts.${a.id}`);
   });
   test("every known key of every section is taken", () => {
-    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB" };
+    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB" };
     for (const [section, keys] of Object.entries(SECTION_KEYS)) for (const k of keys) {
       const id = section === "project" ? "gh" : "work";
       assert.doesNotThrow(() => buildProfile(id, { [section]: { [k]: value[`${section}.${k}`] ?? "x" } }), `${section}.${k}`);

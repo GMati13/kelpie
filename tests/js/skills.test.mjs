@@ -35,11 +35,18 @@ describe("configure-profile", () => {
   });
   test("says the board's own switches are saved at once, and carried over when the board changes", () => {
     const carry = bullet("  - **One board.**");
-    for (const k of ["handover", "solo", "moveToDone"]) {
+    for (const k of ["handover", "solo", "moveToDone", "byPriority", "showPriority"]) {
       for (const section of ["jira", "project"]) assert.ok(!CONFIRM_KEYS[section].includes(k), `${section}.${k} applies at once`);
       assert.ok(rest.includes(`\`${k}\``), `${k} in the settings saved at once`);
       assert.ok(carry.includes(`\`${k}\``), `${k} carried over to the new board`);
     }
+  });
+  test("says a Project's priority field is saved at once and where its levels come from", () => {
+    assert.ok(!CONFIRM_KEYS.project.includes("priorityField"), "project.priorityField applies at once");
+    assert.ok(rest.includes("`project.priorityField`"), "priorityField in the settings saved at once");
+    const field = bullet("- **Priority field**");
+    assert.match(field, /single-select field/);
+    assert.match(field, /highest first/);
   });
   test("says what working alone changes: Built, and no Request approval (worksAlone() in config.js)", () => {
     const solo = bullet("- **I work alone**");

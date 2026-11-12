@@ -19,6 +19,9 @@
 //   repos     { [PREFIX]: "owner/repo" }: which repo a key's issue is in
 //   project   { id, statusField, title, url }: what a Status move needs
 //
+// Either board's load also gives `priorities` while the profile uses priority (config.js
+// priorityOf()): the levels [{ id, name }], highest first, as the board orders them (Jira's site list,
+// a Project field's options), never guessed from names; each issue's `fields.priority` is { id, name }.
 // A Linear team (boardOf() kind "linear", linear.js) answers them too, its issues dressed the same
 // way (Linear's identifiers are the keys, its workflow states the columns, its active cycle the
 // sprint, or the board as one without cycles). What its load gives, beyond Jira's:
@@ -31,6 +34,7 @@ import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
 import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
+import { priorityOf } from "./config.js";
 import { linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
 
 const PAGES = 5; // up to 500 tickets a search
@@ -106,6 +110,15 @@ async function keptJira(cfg, keep, have, account = "") {
   return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => own.has(i.key)) };
 }
 
+// The site's priority levels, highest first, as Jira orders them: [{ id, name }]. Jira's search gives
+// each issue its priority's id and name, never its place, so the order comes from here. Jira Cloud
+// answers this as a list; its paged form (`values`) is read too.
+export async function jiraPriorities(cfg) {
+  const body = (await jira(cfg, "get", "/rest/api/3/priority")).body;
+  const list = Array.isArray(body) ? body : Array.isArray(body?.values) ? body.values : [];
+  return list.filter((x) => x?.id != null && x?.name).map((x) => ({ id: String(x.id), name: String(x.name) }));
+}
+
 // The board's current work as it answers it: { site, columns, sprints, mine, parents, children }, the
 // issues still as the board gave them (the list trims them). The stories are the parents of your
 // subtasks and your own issues, in the board's order, with all of their subtasks, then the stories
@@ -115,9 +128,13 @@ export async function loadBoard(board, keep = {}) {
   if (board.kind === "linear") return loadLinear(board, keep);
   const cfg = board.cfg;
   // The board's columns (each with the status ids it holds) place a ticket for the handover rule.
-  const [config, active] = await Promise.all([
+  // The priority levels only while the profile orders or marks by them.
+  const usePriority = priorityOf({ jira: cfg });
+  const [config, active, priorities] = await Promise.all([
     jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}/configuration`),
     activeSprints(cfg),
+    // Not loading them leaves the board's order and no marks, never the stories unloaded.
+    usePriority.order || usePriority.show ? jiraPriorities(cfg).catch(() => null) : null,
   ]);
   const columns = (config.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
   // A scrum board's active sprints, or a Kanban board's open work (sprint.js boardScope).
@@ -148,7 +165,7 @@ export async function loadBoard(board, keep = {}) {
     children: more.children.filter((i) => !have.has(i.key) && stories.has(i.fields?.parent?.key)),
     mine: more.mine.filter((i) => !have.has(i.key) && (stories.has(i.key) || stories.has(i.fields?.parent?.key))),
   };
-  return { site: active.site, columns, sprints, mine: [...mine, ...kept.mine], parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
+  return { site: active.site, columns, sprints, mine: [...mine, ...kept.mine], parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key), ...(priorities ? { priorities } : {}) };
 }
 
 // The board's own address (a link to it is one an agent may offer, stories.js askLink()), from what
