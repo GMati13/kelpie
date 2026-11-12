@@ -368,6 +368,27 @@
       "status": "In Progress"
     },
     {
+      "key": "ACME-195",
+      "assignee": "Jordan Blake",
+      "summary": "Share a trip with a link",
+      "type": "Story",
+      "status": "To Do",
+      "description": "Someone who plans a trip wants to show it to the people coming along. Make a link that opens the trip read only, and a way to turn the link off."
+    },
+    {
+      "key": "ACME-196",
+      "summary": "Read-only trip page for shared links",
+      "parent": "ACME-195",
+      "status": "To Do"
+    },
+    {
+      "key": "ACME-198",
+      "summary": "Remove the old onboarding feature flags",
+      "type": "Task",
+      "status": "To Do",
+      "description": "The new onboarding shipped to everyone a month ago. Remove its feature flags and the old screens behind them."
+    },
+    {
       "key": "ACME-122",
       "moved": "-2h",
       "priority": "Medium",

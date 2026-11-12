@@ -10,8 +10,9 @@
 //            template for agents started on a ticket (none: DEFAULT_PROMPT), an optional one for an agent
 //            that runs a whole story through its subtasks (none: no "Start orchestrator"), and the board
 //            column from which your part of a ticket is done (none: handoverFrom() picks one), and
-//            `solo` (true/false) when the person works alone on it: the stories past that column then
-//            wait on them, not on others, and the list says so (sunkWords); `moveToDone` false hides
+//            `solo` (true/false) when the person works alone on it: every ticket in scope is theirs,
+//            assigned or not (board.js loadBoard(), stories.js build()), and the stories past that
+//            column wait on them, not on others, and the list says so (sunkWords); `moveToDone` false hides
 //            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise;
 //            `byPriority` (true/false) orders To do's stories by their priority, and `showPriority`
 //            (true/false) marks rows with it (priorityOf()), both off unless set
