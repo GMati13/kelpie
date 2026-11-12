@@ -12,6 +12,9 @@
 # stdin: never on a command line, in the environment, a file or the output. One request per run; the
 # only write is transition, which changes nothing but the issue's status.
 
+# Never traced: bash, which is macOS's sh, takes xtrace from an exported SHELLOPTS, and a trace would
+# print the token.
+set +xv
 email=
 token=
 token_command=

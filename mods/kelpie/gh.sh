@@ -8,6 +8,9 @@
 # (ghlimit.js guarded()) reads for a refusal's Retry-After and takes off again; not when the call asks
 # for them itself, nor with --paginate, which would print them for every page.
 #   gh.sh <account or ""> <gh arguments…>
+# Never traced: bash, which is macOS's sh, takes xtrace from an exported SHELLOPTS, and a trace would
+# print the token.
+set +xv
 account=$1
 shift
 if [ "$1" = api ]; then
@@ -16,8 +19,10 @@ if [ "$1" = api ]; then
   if [ -n "$include" ]; then shift; set -- api "$include" "$@"; fi
 fi
 [ -n "$account" ] || exec gh "$@"
-# A GitHub login: letters, digits and single hyphens, not starting with one (so never an option).
-printf '%s' "$account" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9]|-[A-Za-z0-9])*$' || { echo "That isn't a GitHub account name: $account" >&2; exit 2; }
-token=$(gh auth token --hostname github.com --user "$account" 2>/dev/null) && [ -n "$token" ] \
-  || { echo "gh isn't signed in to the GitHub account $account. Sign in to it in a terminal: gh auth login" >&2; exit 1; }
+# A GitHub login: letters, digits and single hyphens, not at either end (so never an option). A case
+# pattern, not grep, which checks each line on its own and would pass "bob" with a second line.
+case $account in -*|*-|*--*|*[!A-Za-z0-9-]*) echo "That isn't a GitHub account name." >&2; exit 2 ;; esac
+# The token is only ever assigned: no command gets it as an argument.
+token=$(gh auth token --hostname github.com --user "$account" 2>/dev/null) || token=
+case $token in "") echo "gh isn't signed in to the GitHub account $account. Sign in to it in a terminal: gh auth login" >&2; exit 1 ;; esac
 GH_TOKEN=$token exec gh "$@"

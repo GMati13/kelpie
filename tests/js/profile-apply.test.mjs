@@ -242,6 +242,12 @@ describe("apply-profile: refused outright", () => {
     assert.equal(p.jira, null);
     assert.equal(buildProfile("gh", { project: { number: 7 } }).project.number, 4, "a number as an integer is taken, then the address decides");
   });
+  test("a Keychain item's name is one line: it goes into the command the Board page gives to copy", () => {
+    for (const bad of ["jira-acme\ndump-keychain -d", "jira\racme", "a\tb", "a\u0000b"]) {
+      assert.throws(() => buildProfile("work", { jira: { keychain: bad } }), /jira\.keychain/, JSON.stringify(bad));
+    }
+    assert.doesNotThrow(() => buildProfile("work", { jira: { keychain: "jira acme (work)" } }));
+  });
   test("tokenCommand is the one token-like key allowed (it goes pending)", () => {
     assert.doesNotThrow(() => buildProfile("work", { jira: { tokenCommand: "op read x", email: "me@example.com" } }));
   });

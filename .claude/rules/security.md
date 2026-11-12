@@ -16,6 +16,8 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command.
 
+**Accounts and tokens (GitHub's too).** Anything that touches an account, a sign-in or a token is held to the Jira sign-in's rules. A GitHub token is asked for by the account's name (`gh auth token --user`) and goes only into the one gh run's environment, never into an argument, a file, output or shared state. A script that holds a token turns tracing off first (`set +xv`: bash, which is macOS's sh, takes xtrace from an exported `SHELLOPTS`), and passes the token to no command, only assigning it. Account names, Keychain items and emails are checked whole: a `case` pattern or an anchored JS regex, never `grep`, which checks each line on its own. A command Kelpie gives the person to copy holds no value that isn't checked. A folder put into `PATH` is absolute, with no colon. Each of these has a test watched failing.
+
 **Agents changing profiles.** What can run a command, steer agents or move the sign-in (`CONFIRM_KEYS` in config.js) waits for the person's click in Kelpie, through a dialog button, never a command an agent could run itself. A new setting of that kind joins `CONFIRM_KEYS`.
 
 **Messages to agents.** Only through `sendToClaude()`, which checks the terminal's real foreground process. Never `hc(["send", …])` directly.

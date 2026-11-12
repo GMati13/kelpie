@@ -29,7 +29,9 @@ import { checkProject as readProject } from "./project-check.js";
 const securityArg = (s) => `"${s.replace(/["\\]/g, "\\$&")}"`;
 const formatText = (s) => s.replace(/\\/g, "\\\\").replace(/%/g, "%%");
 const singleQuoted = (s) => s.replace(/'/g, "'\\''");
-const storeCommand = (item, email) =>
+// None with a line break or other control character in either: it would end `security -i`'s command
+// and start one of its own. Exported for the tests.
+export const storeCommand = (item, email) => /[\x00-\x1f\x7f]/.test(`${item}${email}`) ? null :
   `read -rs "t?Jira token: " && printf '${singleQuoted(formatText(`add-generic-password -U -s ${securityArg(item)} -a ${securityArg(email)} -w `))}%s\\n' "$t" | security -i; unset t; echo`;
 
 // The line that makes gh act as a profile's GitHub account in its agents and terminals, and in every
@@ -625,8 +627,8 @@ export class Setup {
       this.mac && !tokenCommand && v_flex().pt(DIALOG.section)
         .child(div().pb(6).text_size(SMALL).text_color(t.dim).child("No token stored yet? Make one at id.atlassian.com → Security → API tokens, then run this in a zsh terminal (the Mac's default shell) and paste it at the prompt:"))
         .child(h_flex().p(8).gap(8).items_center().rounded(8).bg(t.background).border_1().border_color(t.border)
-          .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email)))
-          .child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email))))),
+          .child(div().flex_1().min_w(0).text_size(SMALL).text_color(t.muted).child(storeCommand(item, email) ?? "The Keychain item and the email have to be on one line."))
+          .when(Boolean(storeCommand(item, email)), (el) => el.child(textButton(t, "setup-copy", "Copy", (_e, cx) => cx.write_to_clipboard(storeCommand(item, email)))))),
       h_flex().pt(DIALOG.section).gap(DIALOG.gap).items_center()
         .child(textButton(t, "setup-jira-check", "Check connection", (_e, cx) => this.checkJira(cx), { tip: "Signs in and reads the board" })),
       check("jira"),

@@ -11,7 +11,7 @@ import { handlers, isElement, nodeOf, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryList } from "../../mods/kelpie/stories.js";
 import { CHANGE_FIT, Confirm, StoryPicker, lineDiff } from "../../mods/kelpie/dialogs.js";
-import { FIT, Setup } from "../../mods/kelpie/setup.js";
+import { FIT, Setup, storeCommand } from "../../mods/kelpie/setup.js";
 import { needsYes, openProfile, requestProfileChange } from "../../mods/kelpie/config.js";
 import Quiet from "../../mods/kelpie/main.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -466,4 +466,11 @@ test("Delete profile, on the General page, deletes the profile only on its secon
   assert.ok(texts(d.render(cx)).some((x) => x.startsWith("Delete ")), "it now says what it deletes");
   press(d.render(cx), "setup-remove", cx);
   assert.equal(mock.state.shared.get("kelpie.profiles")[DEMO], undefined);
+});
+
+test("the Keychain store command: none with a line break in the item or email, as it would start a command of its own", () => {
+  assert.match(storeCommand("jira-acme", "me@example.com"), /^read -rs .*security -i/);
+  for (const [item, email] of [["jira-acme\ndump-keychain -d", "me@example.com"], ["jira-acme", "me@example.com\ndump-keychain"], ["a\rb", "me@example.com"]]) {
+    assert.equal(storeCommand(item, email), null, JSON.stringify([item, email]));
+  }
 });

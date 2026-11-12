@@ -58,9 +58,19 @@ describe("gh.sh", () => {
     assert.equal(fakes.calls("gh").length, 1, "only the token was asked for");
   });
 
+  test("a trace turned on from outside never prints the token", () => {
+    // bash (macOS's sh) takes xtrace from an exported SHELLOPTS; dash ignores it.
+    const { fakes } = setup();
+    for (const shell of ["sh", "bash"]) {
+      const r = sh(shell, [GH, "work-me", "api", "user"], { env: { PATH: fakes.path, SHELLOPTS: "xtrace", PS4: "+ " } });
+      assert.equal(r.code, 0, r.stderr);
+      assert.ok(!r.stderr.includes(TOKEN) && !r.stdout.includes(TOKEN), `${shell} traced the token`);
+    }
+  });
+
   test("a name that isn't a GitHub login runs nothing", () => {
     const { fakes, run } = setup();
-    for (const bad of ["-u", "--user=x", "a b", "x;y", "a--b", "-"]) {
+    for (const bad of ["-u", "--user=x", "a b", "x;y", "a--b", "-", "a-", "work-me\nx", "x\nwork-me", "work-me\n"]) {
       assert.equal(run(bad, "api", "user").code, 2, bad);
     }
     assert.deepEqual(fakes.calls("gh"), []);
