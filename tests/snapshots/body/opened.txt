@@ -153,7 +153,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-143 {size_change}
                         Popup.new "sub-status-ACME-143-menu"
-                          div #sub-status-ACME-143-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-143-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "In progress"
                               div
@@ -275,7 +275,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-144 {size_change}
                         Popup.new "sub-status-ACME-144-menu"
-                          div #sub-status-ACME-144-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-144-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "To do"
                               div
@@ -297,7 +297,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-145 {size_change}
                         Popup.new "sub-status-ACME-145-menu"
-                          div #sub-status-ACME-145-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-145-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "Done"
                               div

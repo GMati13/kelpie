@@ -5,7 +5,7 @@ div
   v_flex [fg=foreground]
     h_flex
       h_flex #story-head-text
-        div #story-key [fg=accent font="DM Mono"] {click} tip="Open in Jira"
+        div #story-key [fg=accent font="DM Mono"] {down:left click} tip="Open in Jira"
           "ACME-171"
         div #story-title [font="Fraunces"] tip="Dark mode for the dashboard\nApproved, checks pass or none · ready to merge"
           "Dark mode for the dashboard"
@@ -34,7 +34,7 @@ div
           div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
             "TR"
         Popup.new "story-status-menu-menu"
-          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+          div #story-status-menu-more [hover(bg=hover)] {down:left click} tip="Change the status"
             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
               "In review"
               div
