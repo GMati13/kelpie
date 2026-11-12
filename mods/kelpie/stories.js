@@ -1846,9 +1846,12 @@ export function suggestNextRequest() {
 // (its tab, space, profile, story and state), with what its session is about (agent-work.py: the
 // message that started it, the files it changed), so an agent asked "who is editing this?" answers
 // from here, not from Claude's or Herdr's own files. Read only; only the sessions of the first
-// AGENTS_IN agents left after the key and folder filters are read. Ids are Herdr's agent addresses:
-// show_agent takes only one of those, so nothing from a request goes into a command.
-const AGENTS_IN = 40;
+// AGENTS_IN agents left after the key and folder filters are read, the asking agent's profile's
+// (else the shown one's) first: herdr-core lists every Herdr window's agents, and with 64 open the
+// demo's fell past a cut of 40 and a file they had changed found nobody. All 66 read in 1.7 s, under
+// the plugin's 5 s wait. Ids are Herdr's agent addresses: show_agent takes only one of those, so
+// nothing from a request goes into a command.
+const AGENTS_IN = 100;
 const CHANGED_SHOWN = 5; // files listed per agent when no file was asked about
 const trimEnd = (f) => String(f).replace(/(.)\/+$/, "$1");
 const within = (folder, root) => Boolean(folder && root) && (trimEnd(folder) === trimEnd(root) || trimEnd(folder).startsWith(`${trimEnd(root)}/`));
@@ -1897,7 +1900,8 @@ export function findAgentsRequest() {
     const words = passageText(req?.words, 200).toLowerCase().split(" ").filter(Boolean);
     if (key && !/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
     if (folder && !folder.startsWith("/")) throw new Error("folder: a full path, starting with /.");
-    const only = req?.here === true ? requestProfile(req) : null;
+    const asking = requestProfile(req);
+    const only = req?.here === true ? asking : null;
     const all = spaces(), byId = new Map(all.map((s) => [s.id, s])), of = spaceProfiles(all), paneList = panes();
     const data = shared(DATA) ?? {};
     let list = agents().filter((a) => byId.has(a.space)).map((a) => {
@@ -1911,6 +1915,7 @@ export function findAgentsRequest() {
     if (only) list = list.filter((x) => x.profile?.id === only.id);
     if (key) list = list.filter((x) => x.key === key || x.story === key);
     if (folder) list = list.filter((x) => within(x.folder, folder) || within(folder, x.folder));
+    if (asking) list = [...list.filter((x) => x.profile?.id === asking.id), ...list.filter((x) => x.profile?.id !== asking.id)];
     const more = Math.max(0, list.length - AGENTS_IN);
     list = list.slice(0, AGENTS_IN);
     const work = await agentWork(list);

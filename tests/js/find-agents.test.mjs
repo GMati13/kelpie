@@ -92,6 +92,17 @@ describe("kelpie.find-agents: the agents Kelpie knows", () => {
     assert.ok(!r.agents.some((x) => x.tab === "Elsewhere"));
   });
 
+  test("the shown profile's agents are read first, so a crowd of other windows' agents can't push them past the cut", async () => {
+    // herdr-core lists every Herdr window's agents; in a live run 64 were open and the demo's came last.
+    const crowd = Array.from({ length: 120 }, (_, i) => ({ address: `x${i}`, space: "sx", tab: "tx", pane: `px${i}`, tab_name: `Other ${i}`, status: "idle", title: "", program: { name: "Claude Code", agent: true } }));
+    world.agents.unshift(...crowd);
+    mock.state.agents = world.agents;
+    mock.state.spaces.unshift({ id: "sx", name: "Other", folder: "/other", tabs: [{ id: "tx", name: "Other" }] });
+    const r = await find({ file: "web/src/theme/tokens.ts" });
+    assert.deepEqual(r.agents.map((x) => x.tab).sort(), ["ACME-172", "Claude"]);
+    assert.ok(r.more > 0, "the rest are said to be left out");
+  });
+
   test("a real agent's work comes from its own Claude session, read by agent-work.py", async () => {
     setupDemoWorld({ stories, profile: { demo: false } });
     mock.state.appHome = home;
