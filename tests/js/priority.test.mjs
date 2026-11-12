@@ -52,7 +52,7 @@ describe("ordering by priority", () => {
   const going = (l) => keysOf(l).filter((k) => ["FF-1", "GG-1"].includes(k));
 
   test("off, the board's order stays (what needs you first)", () => {
-    assert.deepEqual(keysOf(list(false)), ["EE-1", "HH-1", "AA-1", "BB-1", "CC-1", "DD-1", "FF-1", "GG-1"]);
+    assert.deepEqual(keysOf(list(false)), ["EE-1", "HH-1", "FF-1", "GG-1", "AA-1", "BB-1", "CC-1", "DD-1"], "In progress before To do, as drawn; each in the board's order");
   });
   test("on, To do by priority, the highest first, tickets with none last", () => {
     assert.deepEqual(toDo(list(true)), ["BB-1", "DD-1", "AA-1", "CC-1"]);

@@ -448,7 +448,16 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     // reassigned, to the people its subtasks are assigned to, else the story's assignee.
     const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
     const gone = kept.has(key) && !mine.has(key) && !own.length;
+    // When its part was handed over (#141): the latest move of your subtasks past the handover column
+    // (or done), else the story's own, as `sunk` goes by them; and when it was done, the latest move of
+    // the story or any subtask. Null when the board doesn't say.
+    const latest = (list) => list.map((x) => movedOf(x.fields)).filter(Boolean).reduce((a, b) => (!a || b.at > a.at ? b : a), null);
+    const passed = (c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id);
+    const handed = own.length ? latest(own.filter(passed)) : passed(raw) ? latest([raw]) : null;
     return {
+      handed, doneAt: f?.status?.statusCategory?.key === "done" ? latest([raw, ...children]) : null,
+      // When it was last worked on, as of the last load (activityOf()): the latest of its and its subtasks'.
+      active: [key, ...children.map((c) => c.key)].map((k) => data.active?.[k]).filter((x) => Number.isFinite(x)).reduce((a, b) => Math.max(a, b), 0) || null,
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key,
       closed: typeof raw.closed === "boolean" ? raw.closed : null, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       priority: rankOf(f?.priority),
@@ -511,10 +520,20 @@ function reassignedWords(it) {
 // last 14 days'), as that's all the load holds.
 // One build gives both (#37: the list and its Done group each built every story again, every render):
 // `items` the list's, in its order, `done` the Done group's, `all` every story (the leftovers check's).
+// The Done group's order (#141): the most recently done first, those with no time after, as they were.
+export const byDone = (list) => // exported for the tests
+  list.map((it, i) => ({ it, i })).sort((a, b) => (b.it.doneAt?.at ?? -Infinity) - (a.it.doneAt?.at ?? -Infinity) || a.i - b.i).map((x) => x.it);
+// When a story's part was handed over, or it was done, in words for its row's tooltip (#141): "Handed
+// over 2h ago"; a time the board only guesses at (a Jira ticket's last change) says "about".
+function whenWords(what, m, now = Date.now()) {
+  if (!m) return null;
+  const a = ago(m.at, now);
+  return `${what} ${m.exact ? "" : "about "}${a === "now" ? "just now" : `${a} ago`}`;
+}
 function storyLists(data, profile, handover, byAgent = agentsByKey(profile)) {
   const left = leftStories(profile);
   const all = build(data, byAgent, pausedIn(profile), storySpaces(profile), handover, { left, all: true });
-  return { all, items: ordered(all.filter((it) => !settled(it, left)), priorityOf(profile).order), done: all.filter((it) => settled(it, left)).map((it) => ({ it, n: need(it) })) };
+  return { all, items: ordered(all.filter((it) => !settled(it, left)), priorityOf(profile).order), done: byDone(all.filter((it) => settled(it, left))).map((it) => ({ it, n: need(it) })) };
 }
 
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
@@ -861,6 +880,70 @@ const needQueueOf = (profile, items, reviews = []) => {
   return [...needs, ...clean, ...suggestedIn(profile, items, new Set(needs.map((x) => x.key)))];
 };
 
+// In progress by last activity (#141): when each ticket was last worked on, by profile, in shared
+// `kelpie.stories.active` ({ [profile id]: { [key]: at } }). Noted by the copy that follows what's
+// shown (syncTracking()): an agent's turn starting or ending (its state changing; its tab's key, else
+// its space's), and the person showing a story. At most once a minute per ticket, as every write of
+// shared state redraws every copy; the newest ACTIVE_KEEP per profile are kept.
+const ACTIVE = "kelpie.stories.active";
+const ACTIVE_EVERY = 60 * 1000;
+const ACTIVE_KEEP = 200;
+const TICKET_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+const SEEN_AGENTS = new Map(); // agent address -> its state when last seen (the tracking copy's)
+const SHOWN_ACTIVE = { id: null }; // "<profile>:<key>" last noted as shown
+export function noteActivity(ctx, now = Date.now()) { // exported for the tests
+  const notes = [];
+  const list = agents();
+  const owners = list.some((a) => SEEN_AGENTS.has(a.address) && SEEN_AGENTS.get(a.address) !== a.status) ? spaceProfiles() : null;
+  const names = owners ? new Map(spaces().map((x) => [x.id, x.name])) : null;
+  const live = new Set();
+  for (const a of list) {
+    live.add(a.address);
+    const was = SEEN_AGENTS.get(a.address);
+    SEEN_AGENTS.set(a.address, a.status);
+    // First seen (a start, a reload) says nothing about when it last worked.
+    if (was === undefined || was === a.status || !owners) continue;
+    const profile = owners.get(a.space), key = keyOf(a.tab_name) ?? keyOf(names.get(a.space));
+    if (profile && key) notes.push([profile.id, key]);
+  }
+  for (const k of [...SEEN_AGENTS.keys()]) if (!live.has(k)) SEEN_AGENTS.delete(k);
+  const own = ctx?.profile && ctx.space && profileOf(ctx.space)?.id === ctx.profile.id ? keyOf(ctx.space.name) : null;
+  const shown = ctx?.profile ? own ?? previewIn(ctx.profile) : null;
+  const id = shown && TICKET_KEY.test(shown) ? `${ctx.profile.id}:${shown}` : null;
+  if (id && id !== SHOWN_ACTIVE.id) notes.push([ctx.profile.id, shown]);
+  SHOWN_ACTIVE.id = id;
+  if (!notes.length) return;
+  const all = shared(ACTIVE) ?? {};
+  const next = { ...all };
+  let changed = false;
+  for (const [pid, key] of notes) {
+    if (!TICKET_KEY.test(key) || now - (next[pid]?.[key] ?? 0) < ACTIVE_EVERY) continue;
+    const mine = Object.entries({ ...(next[pid] ?? {}), [key]: now }).sort((a, b) => b[1] - a[1]).slice(0, ACTIVE_KEEP);
+    next[pid] = Object.fromEntries(mine);
+    changed = true;
+  }
+  if (changed) setShared(ACTIVE, next);
+}
+// Each ticket's last activity as of a load (#141), put into the loaded data as `active` so the list
+// reorders only when it loads (every 2 minutes, Refresh, Kelpie's own moves), never under the pointer
+// as an agent finishes a turn: what was noted (noteActivity()), a pull request of it changing (a push,
+// a review, a merge: its updatedAt), a session on it writing, a paused agent on it pausing. Only the
+// loaded tickets' keys. Exported for the tests.
+export function activityOf(profile, data, now = Date.now()) {
+  const keys = new Set([...(data.parents ?? []), ...(data.children ?? [])].map((i) => i.key));
+  const out = {};
+  const bump = (k, at) => {
+    const t = typeof at === "number" ? at : Date.parse(String(at ?? ""));
+    if (k && keys.has(k) && Number.isFinite(t) && t > 0 && t <= now + 5 * 60e3 && t > (out[k] ?? 0)) out[k] = t;
+  };
+  for (const [k, at] of Object.entries((shared(ACTIVE) ?? {})[profile?.id] ?? {})) bump(k, at);
+  const known = projectsOf(data);
+  for (const p of data.prs ?? []) bump(prKey(p, data, known), p.updatedAt);
+  for (const x of data.sessions ?? []) for (const k of new Set([...(x.first ?? []), keyIn(x.title, known)].filter(Boolean))) bump(k, x.updated);
+  for (const [k, list] of Object.entries(pausedIn(profile))) for (const x of Array.isArray(list) ? list : []) bump(k, x?.at);
+  return out;
+}
+
 // What agents asked of you (the plugin's add_to_next, addAsk()), by profile: a list of { id, at,
 // action, why, key, url, terminal, tab, rest }, `terminal` the asking agent's, when known. In the queue
 // each is { key: "ask:<id>", ask, it }, `it` its story while the list has it. It goes when it's clicked
@@ -1095,13 +1178,20 @@ const storyBlock = (role, it) => ({ role, now: new Date(), story: it ?? null, st
 function ordered(items, byPriority = false) {
   const group = (x) => (x.n[0] <= NEEDS_YOU ? 0 : sunk(x.it, x.n) ? 2 : 1);
   const toDo = (x) => group(x) === 1 && !underWay(x.it);
-  // Ordering on, To do goes after In progress within the rest (as the list draws them), so the sort
-  // stays consistent with only To do ranked.
-  const tier = (x) => group(x) * 2 + (byPriority && toDo(x) ? 1 : 0);
+  // To do goes after In progress within the rest (as the list draws them), so each is sorted its own
+  // way: In progress by last activity, To do by priority when that's on.
+  const tier = (x) => group(x) * 2 + (toDo(x) ? 1 : 0);
   const level = (x) => (byPriority && (group(x) === 0 || toDo(x)) ? x.it.priority?.rank ?? Infinity : 0);
   // What needs you, ordering on: by urgency (need()'s rank) first, then priority among equals.
   const urgency = (x) => (byPriority && group(x) === 0 ? x.n[0] : 0);
-  return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || urgency(a) - urgency(b) || (level(a) === level(b) ? 0 : level(a) < level(b) ? -1 : 1) || a.i - b.i);
+  // The sunk ones (Built / Waiting on others), always: the most recently handed over first, as what
+  // was just finished is what's checked next; those the board gives no time for after, in its order.
+  const handed = (x) => (group(x) === 2 ? -(x.it.handed?.at ?? -Infinity) : 0);
+  // In progress (#141): the most recently worked on first, as of the last load; never worked on here
+  // after, in the board's order.
+  const recent = (x) => (group(x) === 1 && !toDo(x) ? -(x.it.active ?? -Infinity) : 0);
+  return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || urgency(a) - urgency(b) || (level(a) === level(b) ? 0 : level(a) < level(b) ? -1 : 1)
+    || (handed(a) === handed(b) ? 0 : handed(a) < handed(b) ? -1 : 1) || (recent(a) === recent(b) ? 0 : recent(a) < recent(b) ? -1 : 1) || a.i - b.i);
 }
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
@@ -1223,12 +1313,24 @@ const priorityLevel = (p) => {
   const name = tagName(p?.name);
   return name ? { id: String(p?.id ?? name).slice(0, 40), name } : null;
 };
+// When a ticket last moved (#141), as kept: { at: ms, exact }. A Project's load says it (its Status
+// value's time); a Jira ticket's is its status category's change when it's done (exact), else when it
+// last changed at all (a column move within a category, In progress to In review, changes no category,
+// so that time is a guess). Strangers' text: only a date that parses, and not in the future, is kept.
+export function movedOf(f, now = Date.now()) { // exported for the tests
+  const pick = f?.moved && typeof f.moved === "object" ? f.moved
+    : f?.status?.statusCategory?.key === "done" && f?.statuscategorychangedate ? { at: f.statuscategorychangedate, exact: true }
+      : f?.updated ? { at: f.updated, exact: false } : null;
+  const at = typeof pick?.at === "number" ? pick.at : Date.parse(String(pick?.at ?? ""));
+  return Number.isFinite(at) && at > 0 && at <= now + 5 * 60e3 ? { at, exact: pick.exact === true } : null;
+}
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}),
   ...(typeof i.id === "string" ? { id: i.id } : {}), ...(typeof i.closed === "boolean" ? { closed: i.closed } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...((p) => (p ? { priority: p } : {}))(priorityLevel(i.fields?.priority)),
+  ...((m) => (m ? { moved: m } : {}))(movedOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefName ? { headRefName: p.headRefName } : {}), ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -1648,7 +1750,7 @@ function knownKeys() {
 
 // The shared keys kept by profile id, whose deleted profiles' entries pruneShared() drops (a function,
 // as some are declared further down). Paused agents stay out: a session paused there is still on disk.
-const byProfile = () => [DATA, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, DONE_CLEAN];
+const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, DONE_CLEAN];
 
 // After each fresh load (the list's), what shared state keeps of what's gone goes: views of closed
 // spaces, ticks and counts of keys no profile lists, the profile's paused agents on keys it no longer
@@ -1673,6 +1775,10 @@ function pruneShared(profile, data) {
   const mine = all[profile.id] ?? {};
   const kept = Object.fromEntries(Object.entries(mine).filter(([k]) => listed.has(k)));
   if (Object.keys(kept).length !== Object.keys(mine).length) setShared(PAUSED, { ...all, [profile.id]: kept });
+  // Last activity of tickets the profile no longer lists goes too.
+  const act = shared(ACTIVE) ?? {}, was = act[profile.id] ?? {};
+  const still = Object.fromEntries(Object.entries(was).filter(([k]) => listed.has(k)));
+  if (Object.keys(still).length !== Object.keys(was).length) setShared(ACTIVE, { ...act, [profile.id]: still });
 }
 
 // What a cleaned-up story leaves behind in shared state: its paused agents, its space's view, the
@@ -1713,7 +1819,8 @@ function withMoved(data) {
   const fix = (i) => {
     const m = movedNow(i.key);
     if (!m || i.fields?.status?.name === m.status) return i;
-    return { ...i, fields: { ...i.fields, status: { id: m.id ?? i.fields?.status?.id ?? null, name: m.status, statusCategory: { key: m.category ?? null } } } };
+    // Moved from Kelpie: it moved then (#141), so a story handed over this way goes to the top at once.
+    return { ...i, fields: { ...i.fields, status: { id: m.id ?? i.fields?.status?.id ?? null, name: m.status, statusCategory: { key: m.category ?? null } }, ...(m.at ? { moved: { at: m.at, exact: true } } : {}) } };
   };
   return { ...data, parents: data.parents.map(fix), children: (data.children ?? []).map(fix) };
 }
@@ -2595,7 +2702,7 @@ export class Stories extends Source {
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began, setup.profile?.id));
     const end = Date.now();
-    return { ...data, timing: { ...took, sort: end - sorted, total: end - began } };
+    return { ...data, active: activityOf(setup.profile, data), timing: { ...took, sort: end - sorted, total: end - began } };
   }
 
   // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
@@ -3016,7 +3123,7 @@ export class Stories extends Source {
     const buttons = acts.length - (tasks.length > 0 ? 1 : 0) + tasks.length;
     return decor("rowDecor", t, h_flex().id(`story-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
-      .on_click(() => selectStory(this.profile, it)).tooltip(line)
+      .on_click(() => selectStory(this.profile, it)).tooltip(quiet && it.handed ? `${line}\n${whenWords("Handed over", it.handed)}` : !quiet && it.active && underWay(it) ? `${line}\n${whenWords("Last worked on", { at: it.active, exact: true })}` : line)
       .when(Boolean(st), (el) => el.on_hover((over, cx) => {
         const was = this.hoverRow;
         // The row left may report after the row entered: only its own leaving clears it.
@@ -4693,7 +4800,7 @@ export class StoryList extends Stories {
         this.hoverRow = over ? it.key : was === it.key ? null : was;
         if (this.hoverRow !== was) cx.notify();
       })
-      .on_click(() => selectStory(st.profile, it)).tooltip(`Done on the board · ${progress(it)}. Show its details, pull requests and earlier sessions`)
+      .on_click(() => selectStory(st.profile, it)).tooltip(`${it.doneAt ? whenWords("Done", it.doneAt) : "Done on the board"} · ${progress(it)}. Show its details, pull requests and earlier sessions`)
       .child(div().flex_none().mt(1).child(sign ?? mark(t, "done", 16)))
       .child(v_flex().flex_1().min_w(0).gap(2)
         .child(skinFont(div(), "ui").truncate().font_medium().text_color(t.muted).child(it.title))
@@ -5032,6 +5139,7 @@ export function syncTracking(baseline = false) {
   keepProfileOnClose(baseline);
   settleAsks();
   const ctx = READER.context();
+  noteActivity(ctx);
   if (baseline) { lastSpace = ctx.space?.id ?? null; lastProfile = ctx.profile?.id ?? null; }
   // Another space shown ends a preview, unless the story's own space closed (its last tab did, say):
   // then that story stays shown, previewed, with what brings it back. Switching profiles keeps the
