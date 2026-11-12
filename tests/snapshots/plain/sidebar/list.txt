@@ -71,13 +71,20 @@ v_flex [fg=foreground]
             div [fg=accent]
               "Conjure more to do"
     h_flex
-      div
+      div #desk-head {click} tip="Show the Desk ⌥⌘D"
         h_flex
           div [fg=muted]
             "Desk"
           div [fg=dim]
             "1"
+          div
+            div #desk-terminals-wrap {down:left click}
+              h_flex #desk-terminals [fg=dim hover(bg=hover)] {click} tip="1 terminal on the Desk (Terminal): click to show it"
+                svg chrome:terminal
+                "1"
       h_flex
+        div #desk-pause [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Pause the Desk ⌥⌘P: keeps its agents' sessions, to resume when it opens again"
+          svg own:pause
         Popup.new "desk-sessions-menu"
           div #desk-sessions-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Earlier sessions with no ticket"
             svg chrome:clock
