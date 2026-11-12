@@ -143,3 +143,75 @@ test("a passage of a Markdown description (a GitHub issue's): found, marked and 
   assert.equal(findPassage(blocks, "Travellers open saved trips").index, 0, "bold marks are forgiven");
   assert.equal(findPassage(blocks, "the template's hint"), null, "an HTML comment isn't part of it");
 });
+
+// A passage in a ticket's comments (#73): looked for in the description and the comments alike,
+// marked where it is, and the answer says where.
+test("findInTicket: word for word first, the description before the comments, then the newest comment", async () => {
+  const { findInTicket } = await import("../../mods/kelpie/adf.js");
+  const md = (s) => ({ blocks: markdownBlocks(s) });
+  const desc = markdownBlocks("Trips open offline within 300 ms.");
+  const talk = [md("Keep the banner short."), md("Map tiles stay out of this story."), md("Map tiles stay out of this story, for now.")];
+  assert.equal(findInTicket(desc, talk, "within 300 ms").where, "description");
+  const c = findInTicket(desc, talk, "map tiles stay out of this story");
+  assert.deepEqual([c.where, c.n, c.found.exact], ["comment", 2, true], "the newest comment saying it");
+  assert.deepEqual([findInTicket(desc, talk, "the banner should be kept short").where, findInTicket(desc, talk, "the banner should be kept short").found.exact], ["comment", false], "closest match in a comment");
+  assert.equal(findInTicket(desc, talk, "refunds within a week"), null);
+  assert.equal(findInTicket(null, null, "anything"), null);
+  // The same words in both: the description wins.
+  assert.equal(findInTicket(desc, [md("Trips open offline within 300 ms.")], "trips open offline").where, "description");
+});
+
+test("a passage in a comment: the details show the comments, mark it and say whose it is", async () => {
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-142" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-142", quote: "keep it short: \"Saved 2h ago\"", note: "", at: Date.now() });
+  const { view, cx } = await draw(new StoryBody());
+  await cx.settle();
+  const el = view.render(cx);
+  assert.deepEqual(texts(byId(el, "passage-said")), ["Here in Priya Nair's comment, 2d ago"]);
+  const shown = render(el, skinTheme());
+  assert.match(shown, /"Comments · 4"/, "the comments are under the description");
+  assert.match(shown, /"Lena Fischer"/);
+  // The marked box (the passage's tint and edge) is around Priya's comment, its words lit.
+  const lines = shown.split("\n"), boxes = [];
+  lines.forEach((l, i) => {
+    if (!/\[bg=accent\/12 border=accent\]/.test(l)) return;
+    const pad = l.search(/\S/), end = lines.findIndex((x, j) => j > i && x.search(/\S/) <= pad);
+    boxes.push(lines.slice(i, end < 0 ? undefined : end).join("\n"));
+  });
+  assert.ok(boxes.length > 0, "a passage is marked");
+  assert.ok(boxes.every((r) => /Saved/.test(r) && /bg=accent\/40/.test(r)), "only the comment holding it, its words lit");
+});
+
+test("a passage in neither: the bar says it looked in the comments too", async () => {
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-142" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-142", quote: "refunds go out within a week", note: "", at: Date.now() });
+  const { view, cx } = await draw(new StoryBody());
+  await cx.settle();
+  assert.deepEqual(texts(byId(view.render(cx), "passage-said")), ["Couldn't find this passage in the description or its comments"]);
+});
+
+test("the request's answer says where the passage is: the description, a comment (whose), or neither", async () => {
+  // The answer waits on `sleep` at most (Herdr's exec doesn't block; the stub's real one would, for
+  // the whole wait): here it never ends, so the answer is the lookup's.
+  mock.on.exec = (c, a, o) => (c === "sleep" ? new Promise(() => {}) : mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } }));
+  request({ key: "ACME-142", quote: "Saved trips open instantly from the device" });
+  assert.deepEqual(await showPassageRequest(), { ok: true, found: "description", exact: true });
+  request({ key: "ACME-142", quote: "map tiles stay out of this story" });
+  const r = await showPassageRequest();
+  assert.deepEqual({ ...r, written: typeof r.written }, { ok: true, found: "comment", exact: true, author: "Lena Fischer", written: "string" });
+  // When the comment was written, not when Kelpie answered (answerRequest() stamps its own `at`).
+  assert.equal(result().author, "Lena Fischer", "and so does the result file");
+  assert.ok(Date.now() - Date.parse(result().written) > 12 * 3600e3, `written a day ago, not now: ${result().written}`);
+  request({ key: "ACME-142", quote: "refunds go out within a week" });
+  assert.deepEqual(await showPassageRequest(), { ok: true, found: "none" });
+});
+
+test("a description that didn't load says so, not that the passage isn't in it", async () => {
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-180", quote: "with confirmation numbers", note: "", at: Date.now() });
+  const view = new StoryBody();
+  view.descs = { "ACME-180": { error: "Jira answered 500.", at: Date.now() } };
+  view.threads = { "ACME-180": { total: 0, list: [], at: Date.now() } };
+  const { el } = await draw(view);
+  assert.deepEqual(texts(byId(el, "passage-said")), ["The description didn't load"]);
+});

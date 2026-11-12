@@ -3,7 +3,7 @@
     {
       "name": "show_passage",
       "title": "Show a passage in Kelpie",
-      "description": "Opens a story in Kelpie, the person's story view (a ticket on their Jira board or GitHub Project), with a passage of its description scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description (not a summary or paraphrase; a few sentences at most, '…' for words left out). `key` is the story's own key: a subtask's description isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says whether it found the passage; tell the person what happened.",
+      "description": "Opens a story in Kelpie, the person's story view (a ticket on their board), with a passage of its description or of one of its comments scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, where someone said or decided it, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description or one of its comments (not a summary or paraphrase; a few sentences at most, '…' for words left out): Kelpie looks in both. `key` is the story's own key: a subtask's isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says where it found the passage (the description, whose comment, a closest match, or nowhere); tell the person what happened.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -13,7 +13,7 @@
           },
           "quote": {
             "type": "string",
-            "description": "The passage, word for word from the description."
+            "description": "The passage, word for word from the description or a comment."
           },
           "note": {
             "type": "string",
