@@ -45,6 +45,10 @@ case "$FAKE_ANSWER" in
   story) answer '{"ok": true, "where": {"profile": {"id": "acme", "name": "Acme"}, "place": "story", "key": "ACME-1"}, "story": {"key": "ACME-1", "status": "In Progress"}}' ;;
   desk) answer '{"ok": true, "where": {"profile": {"id": "acme", "name": "Acme"}, "place": "desk"}}' ;;
   nowhere) answer '{"ok": true, "where": null}' ;;
+  indesc) answer '{"ok": true, "found": "description", "exact": true}' ;;
+  incomment) answer '{"ok": true, "found": "comment", "exact": true, "author": "Priya\\u0007 Nair", "written": "2026-11-10T09:00:00.000Z", "at": "2026-11-12T22:00:00.000Z"}' ;;
+  closest) answer '{"ok": true, "found": "comment", "exact": false, "author": "Lena Fischer", "written": null}' ;;
+  nowhere-passage) answer '{"ok": true, "found": "none"}' ;;
   odd) answer '["not", "an", "answer"]' ;;
   fail) echo "no Herdr window." >&2; exit 1 ;;
   silent) ;;
@@ -147,6 +151,22 @@ class Server(unittest.TestCase):
         self.assertEqual(self.calls(), ["do kelpie.show-passage"])
         with open(os.path.join(self.home, "last-request.json")) as f:
             self.assertEqual(json.load(f), {"key": "ABC-12", "quote": "Done when it works", "note": "The criteria"})
+
+    def test_the_answer_says_where_kelpie_found_the_passage(self):
+        # The description, a comment (whose: a name someone else wrote, cleaned and quoted as data), a
+        # closest match, or nowhere; an answer that doesn't say still says it was shown.
+        ask = {"key": "ABC-12", "quote": "keep it short"}
+        self.assertEqual(self.call(ask, answer="indesc"), ("Shown in Kelpie: ABC-12. The passage is marked in its description.", False))
+        text, failed = self.call(ask, answer="incomment")
+        self.assertFalse(failed)
+        self.assertEqual(text, 'Shown in Kelpie: ABC-12. The passage is marked in a comment by "Priya Nair" (written 2026-11-10T09:00:00.000Z).')
+        text, _ = self.call(ask, answer="closest")
+        self.assertIn('No word-for-word match: Kelpie marked the closest one, in a comment by "Lena Fischer".', text)
+        text, failed = self.call(ask, answer="nowhere-passage")
+        self.assertFalse(failed, "shown, with Kelpie saying it isn't there")
+        self.assertIn("didn't find the passage in its description or its comments", text)
+        text, _ = self.call(ask)
+        self.assertIn("where it finds it, in the description or a comment", text)
 
     def test_the_request_is_private(self):
         self.call({"key": "ABC-12", "quote": "Done when it works"})

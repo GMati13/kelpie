@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: passage-in-a-comment
+expected_outcome: |
+  Finds the answer in Priya Nair's comment ('Yes, but keep it short: "Saved 2h ago". No dates.'), which isn't in the description, calls show_passage for ACME-142 with a quote copied word for word from that comment and a short note, and tells the person it's in Priya's comment and was shown in Kelpie.
+context:
+  scaffold_script: place-files.sh
