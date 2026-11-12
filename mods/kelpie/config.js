@@ -18,6 +18,12 @@
 //            (parseProject()), the ticket key prefix per repo (parsePrefixes(); none: the repo's
 //            name, defaultPrefix()), the same prompts, handover column, solo and moveToDone as Jira's. Read as the
 //            github section's account, as pull requests are
+//   linear   { url, workspace, team, keychain, tokenCommand, prompt, orchestrator, handover, solo, moveToDone }: a
+//            Linear team as the board instead (one board a profile): its address (parseLinear(): the
+//            workspace and the team's key), the Keychain item whose password is a Linear personal API
+//            key (macOS), or a shell command printing it (linear.sh keeps it in pipes), and the same
+//            prompts, handover column, solo and moveToDone as Jira's. Read only from the profile for now:
+//            the profile dialog and agents' changes don't offer it yet
 //   github   { owner, account }: an organisation or user whose pull requests show; `account`, optional,
 //            the GitHub account (a login gh is signed in to) Kelpie's own gh calls act as, named to its
 //            agents and terminals as KELPIE_GH_ACCOUNT
@@ -333,7 +339,7 @@ export function sourcesOf(saved) {
 
 // What applies to a space: its profile's setup, with the live folder when it's in no profile.
 export function setupOf(space, profile = profileOf(space)) {
-  return { saved: Boolean(profile), profile, folder: profile?.folder || liveFolder(space), jira: profile?.jira ?? null, project: profile?.project ?? null, github: profile?.github ?? null, sources: sourcesOf(profile) };
+  return { saved: Boolean(profile), profile, folder: profile?.folder || liveFolder(space), jira: profile?.jira ?? null, project: profile?.project ?? null, linear: profile?.linear ?? null, github: profile?.github ?? null, sources: sourcesOf(profile) };
 }
 
 // A profile's board (or a setup's: both carry the same sections), what board.js asks: { kind, cfg,
@@ -344,6 +350,7 @@ export function setupOf(space, profile = profileOf(space)) {
 export function boardOf(p) {
   if (p?.jira) return { kind: "jira", cfg: p.jira, name: "Jira", prompt: p.jira.prompt, orchestrator: p.jira.orchestrator, handover: p.jira.handover };
   if (p?.project) return { kind: "project", cfg: p.project, name: "GitHub", prompt: p.project.prompt, orchestrator: p.project.orchestrator, handover: p.project.handover, account: p.github?.account ?? null };
+  if (p?.linear) return { kind: "linear", cfg: p.linear, name: "Linear", prompt: p.linear.prompt, orchestrator: p.linear.orchestrator, handover: p.linear.handover };
   return null;
 }
 export const hasBoard = (p) => Boolean(boardOf(p));
@@ -365,6 +372,16 @@ export function parseProject(url, { demo = false } = {}) {
   const m = /^https:\/\/github\.com\/(users|orgs)\/([A-Za-z0-9-]+)\/projects\/(\d+)(?:[/?#].*)?$/.exec((url ?? "").trim());
   if (!m || !(demo ? /^[A-Za-z0-9-]{1,39}$/ : GITHUB_LOGIN).test(m[2])) return null;
   return { owner: m[2], ownerType: m[1] === "orgs" ? "org" : "user", number: Number(m[3]) };
+}
+
+// A Linear team's address, as the browser shows it: https://linear.app/<workspace>/team/<KEY>/… (its
+// active cycle, its board, any view of it). linear.app only; the team's key is what its issues'
+// identifiers start with (ENG for ENG-123), so it must make keys every key finder takes (PREFIX).
+// The API key goes to Linear's API alone (linear.sh), whatever the address says.
+export function parseLinear(url) {
+  const m = /^https:\/\/linear\.app\/([a-z0-9][a-z0-9-]{0,63})\/team\/([A-Za-z0-9]+)(?:[/?#].*)?$/.exec((url ?? "").trim());
+  const team = m?.[2].toUpperCase();
+  return m && PREFIX.test(team) ? { workspace: m[1], team } : null;
 }
 
 // Ticket keys for a GitHub Project's issues: a prefix per repo and the issue's number, KELPIE-42 for
@@ -789,6 +806,7 @@ export function buildProfile(id, set) {
   if (!next.name || !next.folder) throw new Error(saved ? "name and folder can't be removed." : `No profile ${id}: a new one needs name and folder.`);
   // One board: the story list, Next and every prompt read one, so a second would quietly be ignored.
   if (next.jira && next.project) throw new Error("A profile has a Jira board or a GitHub Project, not both: remove one (set it to null).");
+  if (next.linear && (next.jira || next.project)) throw new Error("A profile has one board: it has a Linear team, so remove the other one (set it to null).");
   if (next.jira) {
     const parsed = parseBoard(next.jira.url, { demo: Boolean(next.demo) });
     if (!parsed) throw new Error("jira.url: a Jira Cloud board's address, https://<name>.atlassian.net/…/boards/<number>.");
@@ -807,6 +825,13 @@ export function buildProfile(id, set) {
     next.project = { ...next.project, ...parsed };
     // Prefixes make the ticket keys, which go into {key} commands and folder names.
     try { parsePrefixes(next.project.prefixes); } catch (e) { throw new Error(`project.prefixes: ${e.message}`); }
+  }
+  if (next.linear) {
+    // The workspace and the team come from the address, as Jira's site and board do.
+    const parsed = parseLinear(next.linear.url);
+    if (!parsed) throw new Error("linear.url: a Linear team's address, https://linear.app/<workspace>/team/<KEY>/….");
+    next.linear = { ...next.linear, ...parsed };
+    if (!next.demo && !next.linear.keychain && !next.linear.tokenCommand) throw new Error("linear: needs keychain, or tokenCommand.");
   }
   if (next.github && !next.github.owner) throw new Error("github.owner: needed while GitHub is set (null removes GitHub).");
   if (next.github?.account && !GITHUB_LOGIN.test(next.github.account)) throw new Error("github.account: a GitHub account name gh is signed in to (null for gh's active one).");

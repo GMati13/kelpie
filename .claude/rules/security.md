@@ -4,7 +4,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 ## What can't be trusted
 
-- Jira: issue keys, summaries, descriptions, statuses (anyone on the board writes them).
+- Jira and Linear: issue keys, summaries, descriptions, statuses (anyone on the board writes them).
 - GitHub: pull request titles, bodies, authors, branch and repo names, file paths, diffs, and the code of a pull request (anyone can open one and request a review).
 - Claude session titles and prompts, file names in screenshot folders, web pages in the Web panel.
 - Profile settings written by an agent (`kelpie.apply-profile`): an agent can be misled by what it read.
@@ -14,7 +14,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Commands.** Never build shell code out of a value. A `sh -c` script takes values as `"$1"`, `"$2"`…, quoted. Prefer `exec(program, [args])` without a shell. A value that could start with `-` goes after `--` or is validated. Check a ticket key against `^[A-Z][A-Z0-9_]*-\d+$` before it goes into a command or a path.
 
-**The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command.
+**The Jira sign-in.** The token never appears in a command's arguments, an environment variable, a file, a log, a notification, shared state or text sent to an agent. It goes to curl on stdin (`jira.sh`). Only `https://<name>.atlassian.net` gets it (`parseBoard()`, `jira.sh`). An email or token with a quote, backslash or line break is refused. Agents never handle secrets and never run a token command. A Linear API key is kept the same way (`linear.sh`): curl's stdin only, sent to `https://api.linear.app/graphql` alone, refused with a quote, backslash or line break.
 
 **Accounts and tokens (GitHub's too).** Anything that touches an account, a sign-in or a token is held to the Jira sign-in's rules. A GitHub token is asked for by the account's name (`gh auth token --user`) and goes only into the one gh run's environment, never into an argument, a file, output or shared state. A script that holds a token turns tracing off first (`set +xv`: bash, which is macOS's sh, takes xtrace from an exported `SHELLOPTS`), and passes the token to no command, only assigning it. Account names, Keychain items and emails are checked whole: a `case` pattern or an anchored JS regex, never `grep`, which checks each line on its own. A command Kelpie gives the person to copy holds no value that isn't checked. A folder put into `PATH` is absolute, with no colon. Each of these has a test watched failing.
 
