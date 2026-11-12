@@ -158,7 +158,7 @@ export async function loadBoard(board, keep = {}) {
   const children = found.filter((i) => !parents.has(i.key));
   const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]));
   const out = { site: active.site, columns, sprints, mine: [...mine, ...kept.mine], parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key) };
-  if (cfg.unassigned === true) out.unassigned = await unassignedJira(cfg, scope, new Set([...out.parents, ...out.children].map((i) => i.key)));
+  if (cfg.unassigned === true && cfg.solo !== true) out.unassigned = await unassignedJira(cfg, scope, new Set([...out.parents, ...out.children].map((i) => i.key)));
   return out;
 }
 

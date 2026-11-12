@@ -433,7 +433,8 @@ export function sunkWords(board) {
 export const worksAlone = (p) => Boolean(boardOf(p)?.cfg?.solo);
 // Whether the profile's list also shows the sprint's work nobody has (its board's `unassigned`, off
 // unless set): its own section at the list's end, loaded by a second, lighter question to the board.
-export const showsUnassigned = (p) => boardOf(p)?.cfg?.unassigned === true;
+// Not on a board worked alone (`solo`): every ticket in scope is the person's there, so none is left.
+export const showsUnassigned = (p) => boardOf(p)?.cfg?.unassigned === true && boardOf(p)?.cfg?.solo !== true;
 // A board's settings that are true or false, never a string.
 const BOARD_FLAGS = ["solo", "moveToDone", "unassigned"];
 

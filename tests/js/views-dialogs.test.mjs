@@ -380,6 +380,10 @@ test("Show unassigned work: the Board page's toggle, off by default, saves unass
   press(d.render(cx), "setup-unassigned", cx);
   assert.equal(d.draft().profile.jira.unassigned, undefined);
   assert.equal(profileDialog("jira", { jira: { ...demoProfile().jira, unassigned: true } }).d.unassigned, true, "a saved one opens on");
+  // Working alone, every ticket already shows as the person's: the hint says the section stays away.
+  press(d.render(cx), "setup-unassigned", cx);
+  press(d.render(cx), "setup-solo", cx);
+  assert.ok(texts(d.render(cx)).some((x) => x.startsWith("Working alone, every story in scope already shows")));
 });
 
 test("Move to Done: the Board page's toggle, on by default, saves moveToDone false only when off", () => {

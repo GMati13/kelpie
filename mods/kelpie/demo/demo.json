@@ -326,7 +326,7 @@
       "mine": true
     },
     {
-      "key": "ACME-195",
+      "key": "ACME-202",
       "summary": "Show the day's stops on a map",
       "labels": [
         "mobile"
@@ -336,13 +336,13 @@
       "description": "The day view lists its stops one under another. Add a map above the list with a pin per stop, numbered in the day's order, so travellers see at a glance how far apart they are."
     },
     {
-      "key": "ACME-196",
+      "key": "ACME-203",
       "summary": "Map tiles for offline trips",
-      "parent": "ACME-195",
+      "parent": "ACME-202",
       "status": "To Do"
     },
     {
-      "key": "ACME-198",
+      "key": "ACME-204",
       "assignee": "Lena Vogel",
       "summary": "An accessible date picker",
       "type": "Story",
@@ -350,24 +350,24 @@
       "description": "The booking form's date picker can't be used without a mouse and says nothing to a screen reader. Make it work with the keyboard alone and label every day."
     },
     {
-      "key": "ACME-199",
+      "key": "ACME-205",
       "summary": "Keyboard navigation in the date picker",
       "labels": [
         "accessibility"
       ],
-      "parent": "ACME-198",
+      "parent": "ACME-204",
       "status": "To Do",
       "description": "Arrow keys move a day, Page Up and Page Down a month, Home and End the week's first and last day, Enter picks."
     },
     {
-      "key": "ACME-200",
+      "key": "ACME-206",
       "assignee": "Lena Vogel",
       "summary": "Screen reader labels for each day",
-      "parent": "ACME-198",
+      "parent": "ACME-204",
       "status": "In Progress"
     },
     {
-      "key": "ACME-201",
+      "key": "ACME-207",
       "summary": "The trip total rounds each booking twice",
       "type": "Bug",
       "status": "To Do",

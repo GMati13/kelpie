@@ -705,7 +705,8 @@ export class Setup {
         toggle("setup-move-to-done", "Move to Done", this.moveToDone, (_e, cx) => { this.moveToDone = !this.moveToDone; cx.notify(); },
           this.moveToDone ? "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go." : "Off: tickets move only one at a time, from their status chips."),
         toggle("setup-unassigned", "Show unassigned work", this.unassigned, (_e, cx) => { this.unassigned = !this.unassigned; cx.notify(); },
-          this.unassigned ? "The sprint's stories and subtasks nobody has get a folded section of their own at the end of your list, so you can find something to pick up. You take one on the board." : "Off: the list shows only what's assigned to you."),
+          this.unassigned && this.solo ? "Working alone, every story in scope already shows as yours, so there's no section of unassigned work."
+            : this.unassigned ? "The sprint's stories and subtasks nobody has get a folded section of their own at the end of your list, so you can find something to pick up. You take one on the board." : "Off: the list shows only what's assigned to you."),
       ],
 
       github: () => [

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { v_flex } from "gpui-base";
-import { boardOf } from "../../mods/kelpie/config.js";
+import { boardOf, showsUnassigned } from "../../mods/kelpie/config.js";
 import { loadBoard, unassignedOf } from "../../mods/kelpie/board.js";
 import { QUERIES } from "../../mods/kelpie/project.js";
 import { Stories, StoryList, storyItems, unassignedIn } from "../../mods/kelpie/stories.js";
@@ -47,13 +47,20 @@ describe("the demo's load, Jira and a GitHub Project", () => {
       assert.equal(off.unassigned, undefined, "off: nothing asked, nothing kept");
       const on = await demoData(ON(profile));
       assert.deepEqual(own(on), own(off), "your stories are the same either way");
-      assert.deepEqual(keys(on.unassigned.parents), ["ACME-195", "ACME-198", "ACME-201"]);
-      assert.deepEqual(on.unassigned.parents.filter((p) => p.taken).map((p) => p.key), ["ACME-198"], "Lena has ACME-198: a heading");
+      assert.deepEqual(keys(on.unassigned.parents), ["ACME-202", "ACME-204", "ACME-207"]);
+      assert.deepEqual(on.unassigned.parents.filter((p) => p.taken).map((p) => p.key), ["ACME-204"], "Lena has ACME-204: a heading");
       assert.equal(on.unassigned.parents[1].fields.summary, "An accessible date picker");
       // ACME-131 nobody has either, but it's a subtask of ACME-129, one of your stories: there already.
-      assert.deepEqual(keys(on.unassigned.children), ["ACME-196", "ACME-199"]);
+      assert.deepEqual(keys(on.unassigned.children), ["ACME-203", "ACME-205"]);
       assert.ok(!keys(on.unassigned.children).includes("ACME-131"));
       assert.equal(on.unassigned.error, undefined);
+    });
+    test(`${name}: on a board worked alone, every ticket is already yours, so it isn't asked for`, async () => {
+      const solo = (p) => ({ ...p, ...(p.jira ? { jira: { ...p.jira, solo: true } } : {}), ...(p.project ? { project: { ...p.project, solo: true } } : {}) });
+      const alone = solo(ON(profile));
+      assert.equal(showsUnassigned(alone), false, "no section");
+      assert.equal(showsUnassigned(ON(profile)), true);
+      assert.equal((await demoData(alone)).unassigned, undefined, "no second question");
     });
   }
 });
@@ -122,12 +129,12 @@ describe("the sidebar's Unassigned section", async () => {
 
   test("unassignedIn: each marked, a heading's subs only its open ones nobody has", () => {
     const list = unassignedIn(on.data, null).map(({ it }) => it);
-    assert.deepEqual(list.map((it) => [it.key, Boolean(it.taken)]), [["ACME-195", false], ["ACME-198", true], ["ACME-201", false]]);
+    assert.deepEqual(list.map((it) => [it.key, Boolean(it.taken)]), [["ACME-202", false], ["ACME-204", true], ["ACME-207", false]]);
     assert.ok(list.every((it) => it.unassigned));
-    assert.deepEqual(list[1].subs.map((s) => s.key), ["ACME-199"]);
+    assert.deepEqual(list[1].subs.map((s) => s.key), ["ACME-205"]);
     // Finished work isn't there to pick up.
-    const done = { ...on.data, unassigned: { ...on.data.unassigned, parents: on.data.unassigned.parents.map((p) => (p.key === "ACME-201" ? { ...p, fields: { ...p.fields, status: { id: "x", name: "Done", statusCategory: { key: "done" } } } } : p)) } };
-    assert.deepEqual(unassignedIn(done, null).map(({ it }) => it.key), ["ACME-195", "ACME-198"]);
+    const done = { ...on.data, unassigned: { ...on.data.unassigned, parents: on.data.unassigned.parents.map((p) => (p.key === "ACME-207" ? { ...p, fields: { ...p.fields, status: { id: "x", name: "Done", statusCategory: { key: "done" } } } } : p)) } };
+    assert.deepEqual(unassignedIn(done, null).map(({ it }) => it.key), ["ACME-202", "ACME-204"]);
     assert.deepEqual(unassignedIn(off.data, null), [], "not loaded: nothing");
   });
 
@@ -140,7 +147,7 @@ describe("the sidebar's Unassigned section", async () => {
     assert.deepEqual(words.slice(0, plain.length), plain, "everything before it is as without it");
     assert.deepEqual(words.slice(plain.length).map((w) => w.toLowerCase()), ["unassigned", "3"], "then its heading, counting its rows (Quiet Pages sets headings in capitals)");
     assert.ok(byId(el, "stories-unassigned"));
-    assert.equal(byId(el, "unassigned-ACME-195"), null, "folded at first");
+    assert.equal(byId(el, "unassigned-ACME-202"), null, "folded at first");
     const s = storyItems();
     assert.ok(!s.items.some(({ it }) => it.unassigned), "not among your stories");
     // Turned off, the section goes even with the data still loaded.
@@ -154,30 +161,30 @@ describe("the sidebar's Unassigned section", async () => {
     handlers(el).find((h) => h.id === "stories-unassigned").fn({}, cx);
     assert.deepEqual(mock.state.shared.get("kelpie.unassigned.open"), { [DEMO]: true });
     const open = view.render(cx);
-    const ids = ["unassigned-ACME-195", "unassigned-story-ACME-198", "unassigned-ACME-199", "unassigned-ACME-201"];
+    const ids = ["unassigned-ACME-202", "unassigned-story-ACME-204", "unassigned-ACME-205", "unassigned-ACME-207"];
     for (const id of ids) assert.ok(byId(open, id), id);
     assert.equal(byId(open, "unassigned-ACME-131"), null, "a subtask of your story stays in its details");
-    assert.equal(byId(open, "unassigned-ACME-196"), null, "a story nobody has shows its subtasks in its details");
-    assert.ok(texts(byId(open, "unassigned-ACME-195")).includes("Unassigned"));
+    assert.equal(byId(open, "unassigned-ACME-203"), null, "a story nobody has shows its subtasks in its details");
+    assert.ok(texts(byId(open, "unassigned-ACME-202")).includes("Unassigned"));
     matchSnapshot("sidebar/unassigned", render(v_flex().children(["stories-unassigned", ...ids].map((id) => byId(open, id))), skinTheme()));
-    handlers(open).find((h) => h.id === "unassigned-ACME-199").fn({}, cx);
-    assert.equal(mock.state.shared.get("kelpie.stories.preview")[DEMO], "ACME-198", "a subtask previews its story");
-    handlers(open).find((h) => h.id === "unassigned-ACME-195").fn({}, cx);
-    assert.equal(mock.state.shared.get("kelpie.stories.preview")[DEMO], "ACME-195");
+    handlers(open).find((h) => h.id === "unassigned-ACME-205").fn({}, cx);
+    assert.equal(mock.state.shared.get("kelpie.stories.preview")[DEMO], "ACME-204", "a subtask previews its story");
+    handlers(open).find((h) => h.id === "unassigned-ACME-202").fn({}, cx);
+    assert.equal(mock.state.shared.get("kelpie.stories.preview")[DEMO], "ACME-202");
     // Folded again, the one shown keeps its row.
     handlers(view.render(cx)).find((h) => h.id === "stories-unassigned").fn({}, cx);
     const shut = view.render(cx);
-    assert.ok(byId(shut, "unassigned-ACME-195"));
-    assert.equal(byId(shut, "unassigned-ACME-201"), null);
+    assert.ok(byId(shut, "unassigned-ACME-202"));
+    assert.equal(byId(shut, "unassigned-ACME-207"), null);
   });
 
   test("previewed: its details, but nothing to start (it's taken on the board)", async () => {
     setupDemoWorld({ stories: on, profile: PROFILE });
-    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-195" });
+    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-202" });
     const { el } = await draw(new Stories());
     assert.ok(texts(el).includes("Show the day's stops on a map"));
     assert.equal(byId(el, "story-main"), null, "no filled Start work");
-    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-198" });
+    mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-204" });
     const head = (await draw(new Stories())).el;
     assert.equal(byId(head, "story-assignee"), null, "who has someone's story isn't loaded: no avatar saying nobody");
   });

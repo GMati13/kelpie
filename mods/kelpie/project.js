@@ -273,7 +273,7 @@ export async function loadProject(board, keep = {}) {
     site: "https://github.com", columns, sprints, mine, parents, children, links, repos, kept: parents.slice(before).map((i) => i.key),
     project: { id: project.id, statusField: project.field?.id ?? null, title: project.title ?? "", url: project.url ?? "" },
   };
-  if (board.cfg.unassigned === true) out.unassigned = await unassignedProject();
+  if (board.cfg.unassigned === true && board.cfg.solo !== true) out.unassigned = await unassignedProject();
   return out;
 
   // The work nobody has (the profile's `unassigned`): the same scope's issues with no assignee, by a
