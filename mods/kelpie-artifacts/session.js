@@ -119,10 +119,12 @@ async function note(line) {
 
 // From another machine: the image comes across the connection as text. A thumbnail, or the
 // whole image once it's opened. Over 8 MiB of output is more than exec carries, so it fails.
+// The thumbnail is made in a private folder of its own (`mktemp -d`), as a name mktemp reserved
+// with ".png" added would be one it never checked. Run as: sh -c THUMB_SCRIPT sh <image>
+export const THUMB_SCRIPT = 'd=$(mktemp -d "${TMPDIR:-/tmp}/herdr-thumb.XXXXXX") || exit 1; t="$d/thumb.png"; sips -Z 480 "$1" --out "$t" >/dev/null 2>&1 || cp -- "$1" "$t"; base64 < "$t"; s=$?; rm -rf "$d"; exit $s';
+
 async function fetchImage(path, to, on, thumbnail) {
-  const script = thumbnail
-    ? 'b=$(mktemp "${TMPDIR:-/tmp}/herdr-thumb.XXXXXX"); t="$b.png"; sips -Z 480 "$1" --out "$t" >/dev/null 2>&1 || cp "$1" "$t"; base64 < "$t"; rm -f "$b" "$t"'
-    : 'base64 < "$1"';
+  const script = thumbnail ? THUMB_SCRIPT : 'base64 < "$1"';
   const out = await exec("sh", ["-c", script, "sh", path], { on });
   if (out.code !== 0 || !out.stdout.trim()) throw new Error(`could not fetch ${path}`);
   const local = `${appHome()}/${to}`;

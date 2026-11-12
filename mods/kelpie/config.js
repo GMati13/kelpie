@@ -707,6 +707,19 @@ export async function installPlugin(id, scope = null) {
 // only, no secrets, and the same checks as the dialog's Save.
 const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
 const SECRET = /token$|^token|password|secret/i;
+// The keys each section takes, and nothing else: refusing a secret by its name alone let one under
+// another name through (`github.pat`). Every key here is a setting the profile dialog has (`wrapUp`
+// is the clean-up command's old name, still read); a new setting joins its section's list.
+export const SECTION_KEYS = {
+  jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator", "handover", "solo", "moveToDone"],
+  project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator", "handover", "solo", "moveToDone"],
+  github: ["owner", "account", "reviewPrompt", "mergePrompt", "approvalPrompt"],
+  commands: ["leftovers", "cleanUp", "wrapUp", "status"],
+  prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
+  notify: ["pulls"],
+  claude: ["config"],
+  web: ["home"],
+};
 // A change to a profile from outside the dialog (an agent's request, a `herdr-app do` command): saved
 // at once, or, when it touches what needs the person's yes (CONFIRM_KEYS), held for the confirm dialog.
 // Every check runs first, so a change that would fail never waits. Returns the request's result.
@@ -764,6 +777,7 @@ export function buildProfile(id, set) {
     const section = { ...(next[key] ?? {}) };
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
+      if (!SECTION_KEYS[key].includes(k)) throw new Error(`${key}.${k}: not a setting of ${key} (${SECTION_KEYS[key].join(", ")}).`);
       const flag = (key === "jira" || key === "project") && (k === "solo" || k === "moveToDone"); // true/false only, never a string
       const ok = v === null || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: ${flag ? "true or false" : `a string${key === "notify" ? " or true/false" : ""}`}, or null to remove it.`);
