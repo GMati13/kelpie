@@ -191,7 +191,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
   offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
-  around it. `configure`: Let me configure it for you, and the plugin check and install behind it.
+  around it. `settings`: the shared permission list allows only gh commands that read, never `gh api`.
+  `configure`: Let me configure it for you, and the plugin check and install behind it.
 - Stories over time: `moved` (a ticket's new status shown at once, until a load agrees), `quick` (pull
   requests read again when an agent's turn ends, and one an agent just opened shown at once), `reload` (a reload asked for mid-load isn't dropped),
   `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
@@ -205,7 +206,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
   patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
-  gives and Check my shell, avatar.sh, install.sh with the icon and art copies, and e2e-demo.sh's guards.
+  gives and Check my shell, avatar.sh, install.sh with the icon and art copies, e2e-demo.sh's guards, and the
+  Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
   read incrementally and kept private, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
