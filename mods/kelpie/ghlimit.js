@@ -6,7 +6,7 @@
 // answer that says what's left (`rateLimit`, asked in every load's queries) is kept, so the story list
 // loads less often while it runs low (stories.js Stories.load()).
 
-import { setShared, shared } from "herdr";
+import { setShared, shared } from "./host.js";
 import { clock12 } from "./ui.js";
 
 // { [account, "" for gh's active one]: { graphql|core: { until, hits } } }: refused until `until`,

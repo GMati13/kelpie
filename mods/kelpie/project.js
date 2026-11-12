@@ -215,7 +215,9 @@ export async function loadProject(board, keep = {}) {
     const index = option ? options.findIndex((o) => o.id === option) : -1;
     const who = i.assignees?.nodes?.[0];
     return {
-      key, url: i.url, item: own?.id ?? null,
+      // `id` and `closed`: what closing it on GitHub needs (stories.js closePlan(), issues.js
+      // closeIssue()), as a Status move to done leaves the issue open.
+      key, url: i.url, item: own?.id ?? null, id: typeof i.id === "string" && NODE_ID.test(i.id) ? i.id : null, closed,
       fields: {
         summary: i.title ?? "",
         // GitHub's issues have no type of the board's: this one is Kelpie's own, never shown as a tag.

@@ -7,7 +7,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { agents, layout, openOverlay, run, setShared, shared, spaces } from "herdr";
+import { openOverlay } from "herdr";
+import { agents, layout, run, setShared, shared, spaces } from "./host.js";
 import { agentMark, agentWords, ago, agentLabels, chrome, groupHeader, icon, menuButton, own, resumeArgv, sideHidden, stop, toggleSide } from "./ui.js";
 import { claudeArgv, deskOf, openDesk, shellArgv, shownProfile } from "./config.js";
 
