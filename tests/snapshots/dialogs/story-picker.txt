@@ -88,6 +88,19 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
             "Rate-limit the public API"
         div [fg=muted]
           "Paused · 1 subtask · 1 in progress"
+    h_flex #sp-ACME-190 [hover(bg=hover)] {click} tip="ACME-190 Remember the last search filters\nReassigned to Jordan Blake · clean up once you're done with it"
+      div
+        div [bg=dim]
+      v_flex
+        h_flex
+          div [font="DM Mono" fg=accent]
+            "ACME-190"
+          div [font="DM Sans" fg=foreground]
+            "Remember the last search filters"
+        div [fg=muted]
+          "Reassigned to Jordan Blake · clean up once you're done with it"
+      div [fg=dim]
+        "Open here"
     h_flex #sp-ACME-184 [hover(bg=hover)] {click} tip="ACME-184 Show times in each stop's time zone\n2 subtasks · 2 in progress"
       div
         div [border=dim]
@@ -99,18 +112,7 @@ v_flex #story-picker [bg=popover] {key_down scroll_wheel}
             "Show times in each stop's time zone"
         div [fg=muted]
           "2 subtasks · 2 in progress"
-    h_flex #sp-ACME-180 [hover(bg=hover)] {click} tip="ACME-180 Export an itinerary as PDF\n2 subtasks · 2 to do"
-      div
-        div [border=dim]
-      v_flex
-        h_flex
-          div [font="DM Mono" fg=accent]
-            "ACME-180"
-          div [font="DM Sans" fg=foreground]
-            "Export an itinerary as PDF"
-        div [fg=muted]
-          "2 subtasks · 2 to do"
   div [fg=dim]
-    "1 of 13"
+    "1 of 15"
   div [fg=dim]
     "↑↓ choose · Enter open · ⌘⇧J next that needs you · ⌘⇧R start or resume · ⌥⌘P pause"

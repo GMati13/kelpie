@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: status-with-the-hooks-line
+expected_outcome: |
+  With the line Kelpie's SessionStart hook gives a Claude in ACME-142's tab (here written ahead of the message, as evals can't start Claude inside Kelpie), asked "what is the status?", it calls get_story and answers about ACME-142 without asking which story is meant.

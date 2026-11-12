@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: prompts-defaults-fit-saves-none
+expected_outcome: |
+  The person's answers match what Kelpie's default prompts already do (a plain ticket start, a merge across several repos with a deploy and a roll back, a teammate approving, a review against the ticket). It says the defaults fit and saves no prompt: no save_profile call sets one, and nothing equal to a default is saved.

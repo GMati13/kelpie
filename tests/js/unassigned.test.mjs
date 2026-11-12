@@ -47,11 +47,12 @@ describe("the demo's load, Jira and a GitHub Project", () => {
       assert.equal(off.unassigned, undefined, "off: nothing asked, nothing kept");
       const on = await demoData(ON(profile));
       assert.deepEqual(own(on), own(off), "your stories are the same either way");
-      assert.deepEqual(keys(on.unassigned.parents), ["ACME-202", "ACME-204", "ACME-207"]);
-      assert.deepEqual(on.unassigned.parents.filter((p) => p.taken).map((p) => p.key), ["ACME-204"], "Lena has ACME-204: a heading");
-      assert.equal(on.unassigned.parents[1].fields.summary, "An accessible date picker");
+      // ACME-195 is Jordan's, over ACME-196 nobody has; ACME-198 nobody has (#91's, shown only when worked alone).
+      assert.deepEqual(keys(on.unassigned.parents), ["ACME-195", "ACME-198", "ACME-202", "ACME-204", "ACME-207"]);
+      assert.deepEqual(on.unassigned.parents.filter((p) => p.taken).map((p) => p.key), ["ACME-195", "ACME-204"], "Jordan has ACME-195, Lena ACME-204: headings");
+      assert.equal(on.unassigned.parents[3].fields.summary, "An accessible date picker");
       // ACME-131 nobody has either, but it's a subtask of ACME-129, one of your stories: there already.
-      assert.deepEqual(keys(on.unassigned.children), ["ACME-203", "ACME-205"]);
+      assert.deepEqual(keys(on.unassigned.children), ["ACME-196", "ACME-203", "ACME-205"]);
       assert.ok(!keys(on.unassigned.children).includes("ACME-131"));
       assert.equal(on.unassigned.error, undefined);
     });
@@ -129,12 +130,13 @@ describe("the sidebar's Unassigned section", async () => {
 
   test("unassignedIn: each marked, a heading's subs only its open ones nobody has", () => {
     const list = unassignedIn(on.data, null).map(({ it }) => it);
-    assert.deepEqual(list.map((it) => [it.key, Boolean(it.taken)]), [["ACME-202", false], ["ACME-204", true], ["ACME-207", false]]);
+    assert.deepEqual(list.map((it) => [it.key, Boolean(it.taken)]), [["ACME-195", true], ["ACME-198", false], ["ACME-202", false], ["ACME-204", true], ["ACME-207", false]]);
     assert.ok(list.every((it) => it.unassigned));
-    assert.deepEqual(list[1].subs.map((s) => s.key), ["ACME-205"]);
+    assert.deepEqual(list[0].subs.map((s) => s.key), ["ACME-196"]);
+    assert.deepEqual(list[3].subs.map((s) => s.key), ["ACME-205"]);
     // Finished work isn't there to pick up.
     const done = { ...on.data, unassigned: { ...on.data.unassigned, parents: on.data.unassigned.parents.map((p) => (p.key === "ACME-207" ? { ...p, fields: { ...p.fields, status: { id: "x", name: "Done", statusCategory: { key: "done" } } } } : p)) } };
-    assert.deepEqual(unassignedIn(done, null).map(({ it }) => it.key), ["ACME-202", "ACME-204"]);
+    assert.deepEqual(unassignedIn(done, null).map(({ it }) => it.key), ["ACME-195", "ACME-198", "ACME-202", "ACME-204"]);
     assert.deepEqual(unassignedIn(off.data, null), [], "not loaded: nothing");
   });
 
@@ -145,7 +147,7 @@ describe("the sidebar's Unassigned section", async () => {
     const { el } = await draw(new StoryList());
     const words = texts(el);
     assert.deepEqual(words.slice(0, plain.length), plain, "everything before it is as without it");
-    assert.deepEqual(words.slice(plain.length).map((w) => w.toLowerCase()), ["unassigned", "3"], "then its heading, counting its rows (Quiet Pages sets headings in capitals)");
+    assert.deepEqual(words.slice(plain.length).map((w) => w.toLowerCase()), ["unassigned", "5"], "then its heading, counting its rows (Quiet Pages sets headings in capitals)");
     assert.ok(byId(el, "stories-unassigned"));
     assert.equal(byId(el, "unassigned-ACME-202"), null, "folded at first");
     const s = storyItems();

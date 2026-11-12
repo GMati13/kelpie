@@ -4,7 +4,7 @@ v_flex
       div [font="DM Sans" fg=muted]
         "UNASSIGNED"
       div [font="DM Mono" fg=dim]
-        "3"
+        "5"
       div
         svg chrome:chevron-down [fg=dim]
       div

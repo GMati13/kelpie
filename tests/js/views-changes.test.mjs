@@ -5,7 +5,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { handlers, isElement, nodeOf, texts, walk } from "gpui-kit";
 import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
-import { StoryList, StoryView, diffRows } from "../../mods/kelpie/stories.js";
+import { StoryList, StoryView, changeGroups, diffRows } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
 
 const KEY = "review:web#421";
@@ -156,7 +156,7 @@ test("changes: the file list's width can be dragged", async () => {
   assert.deepEqual(panels[0].calls.filter(([m]) => m === "size" || m === "size_range").map(([m, a]) => [m, ...a]), [["size", 260], ["size_range", 180, 640]]);
 });
 
-// A file header's actions (Copy path, Open on GitHub or Show in Finder, Ask agent) and its Viewed box
+// A file header's actions (Copy path, Open on GitHub or Show in Finder, Ask Claude) and its Viewed box
 // are told apart by where the press was, as rows of Herdr's virtual list take no click handlers.
 // Herdr reports that press as drawn, zoom included, while the header is laid out at zoom 1: a click on
 // an action used to land on another, or on none, which folded the file (issue #52).
@@ -197,7 +197,7 @@ function clickAt({ view, cx }, zoom, x, key, y = 200) {
 const headerOf = (view, fi) => view.diffView.entries.findIndex((e) => e.r.kind === "file" && e.fi === fi);
 const rowCount = ({ view, cx }) => virtualList(view.render(cx)).args[1];
 // Where each part of a header is, as laid out: the Viewed box at 32 (74 wide), then the actions 10
-// after it, 2 apart: Copy path (26), Open on GitHub or Show in Finder (26), Ask agent (84).
+// after it, 2 apart: Copy path (26), Open on GitHub or Show in Finder (26), Ask Claude (84).
 const CENTRE = { viewed: 32 + 37, copy: 116 + 13, open: 144 + 13, ask: 172 + 42 };
 
 for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
@@ -228,7 +228,7 @@ for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
       assert.ok(mock.of("exec").some(([, args]) => args.some((a) => String(a).includes("/home/test/acme/api/src/file6002.ts"))), "it showed the file");
       assert.equal(rowCount(s), rows, "the file didn't fold");
     });
-    test(`changes: at zoom ${zoom} in ${mode}, Ask agent only opens the bar`, async () => {
+    test(`changes: at zoom ${zoom} in ${mode}, Ask Claude only opens its picker`, async () => {
       const s = await storyChanges([prGroup], { all });
       const rows = rowCount(s);
       // Near its right end too, which a press not divided by the zoom missed past zoom 1.
@@ -267,9 +267,9 @@ test("changes: a press just beside a header's actions doesn't fold the file", as
   assert.ok(rowCount(s) < rows, "a press on the name folds it");
 });
 
-// Ask agent's bar is laid over the top of the diff: opening it takes no room above the list, so the
-// page doesn't move; and a press on the bar isn't a press on the row under it.
-test("changes: Ask agent's bar is laid over the diff, not above it", async () => {
+// Ask Claude's picker is laid over the top of the diff: opening it takes no room above the list, so the
+// page doesn't move; and a press on it isn't a press on the row under it.
+test("changes: Ask Claude's picker is laid over the diff, not above it", async () => {
   const s = await storyChanges([prGroup]);
   // The diff's side of the split: the box holding the list (and, before, the bar above it).
   const pane = (el) => {
@@ -281,7 +281,7 @@ test("changes: Ask agent's bar is laid over the diff, not above it", async () =>
   const before = kids(pane(s.view.render(s.cx))).length;
   clickAt(s, 1.2, CENTRE.ask, headerOf(s.view, 0));
   const el = s.view.render(s.cx);
-  assert.match(texts(el).join(" "), /Ask the agent about/);
+  assert.match(texts(el).join(" "), /Ask Claude about file6000\.ts/);
   assert.equal(kids(pane(el)).length, before, "nothing above the list");
   const bar = byId(el, "ask-bar");
   assert.ok(bar && bar.calls.some(([m]) => m === "absolute"), "the bar is laid over the list");
@@ -293,4 +293,87 @@ test("changes: Ask agent's bar is laid over the diff, not above it", async () =>
   assert.equal(rowCount(s), rows, "nor fold it");
   clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 100);
   assert.deepEqual(s.clip, ["src/file6000.ts"]);
+});
+
+// Ask Claude from a file's header (KELPIE-84): the picker offers a new Claude in the story's space
+// and the story's open Claudes; a suggestion asks the one picked, with the file it's about.
+test("changes: a suggestion in Ask Claude's picker asks the Claude picked about the file", async () => {
+  const s = await storyChanges([prGroup]);
+  mock.state.spaces = [...mock.state.spaces, { id: "s-ask", name: "Elsewhere", tabs: [] }];
+  mock.state.agents = [...mock.state.agents,
+    { address: "t-ask", tab_name: `${STORY} claude`, space: "s-ask", pane: "p-ask", status: "idle", title: "" },
+    { address: "t-other", tab_name: "ACME-999", space: "s-ask", pane: "p-other", status: "idle", title: "" }];
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  clickAt(s, 1, CENTRE.ask, headerOf(s.view, 0));
+  const el = s.view.render(s.cx);
+  const words = texts(el).join(" ");
+  assert.match(words, /New Claude in ACME-184's space/);
+  assert.match(words, new RegExp(`${STORY} claude`), "the story's open Claude is offered");
+  assert.doesNotMatch(words, /ACME-999/, "another story's Claude isn't");
+  assert.equal(s.view.target.chosen, "t-ask", "the Claude on the story's key is picked");
+  mock.calls.length = 0;
+  handlers(el).find((h) => h.id === "ask-claude-suggest-explain").fn({}, s.cx);
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][0].at(-2), "t-ask");
+  assert.match(sent[0][0].at(-1), /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
+  assert.equal(s.view.sending, null, "the picker closed");
+  // What it led to stays over the diff until closed.
+  const after = s.view.render(s.cx);
+  assert.match(texts(after).join(" "), /Sent your question to ACME-184 claude\./);
+  handlers(after).find((h) => h.id === "ask-claude-note-close").fn({}, s.cx);
+  assert.equal(byId(s.view.render(s.cx), "ask-bar"), undefined, "closed, nothing is laid over the diff");
+});
+
+// Commits on a story's branch with no pull request yet are a group of their own, between the
+// uncommitted work and the pull requests; a branch a pull request of the story has stays its (#13).
+const repoOf = (over = {}) => ({ repo: "api", path: "/home/test/acme/ACME-184/api", branch: "ACME-184-zones", key: STORY, ticket: "/home/test/acme/ACME-184", head: "a".repeat(40),
+  files: [], committed: { base: "origin/main", commits: 2, files: [{ path: "src/zone.ts", add: 3, del: 0, status: "modified", patch: "new file mode 100644\n@@ -0,0 +1,3 @@\n+a\n+b\n+c" }] }, ...over });
+const storyIt = { key: STORY, subs: [] };
+const prOf = (over = {}) => ({ url: "https://github.com/kelpie--demo/api/pull/7", number: 7, title: "Zones", repository: { name: "api" }, headRefName: "ACME-184-zones", headRefOid: "b".repeat(40), ...over });
+test("changeGroups: a branch's commits with no pull request yet are a group of their own", () => {
+  const dirty = repoOf({ repo: "web", path: "/home/test/acme/ACME-184/web", committed: null, files: [{ path: "x.ts", add: 1, del: 0, status: "modified", patch: "@@ -1 +1 @@\n-x\n+y" }] });
+  const pr = prOf({ repository: { name: "docs" }, headRefName: "other" });
+  const groups = changeGroups(storyIt, [pr], [[]], [dirty, repoOf()]);
+  assert.deepEqual(groups.map((g) => [g.repo, Boolean(g.url), g.committed ?? null]),
+    [["web", false, null], ["api", false, { branch: "ACME-184-zones", base: "origin/main", commits: 2 }], ["docs#7", true, null]]);
+  const [file] = groups[1].files;
+  assert.deepEqual([file.id, file.path, file.status, file.add], ["committed:/home/test/acme/ACME-184/api:src/zone.ts", "src/zone.ts", "added", 3]);
+  assert.equal(groups[1].path, "/home/test/acme/ACME-184/api", "Show in Finder and the file's text find it");
+  assert.equal(groups[1].label, "ACME-184 · api · 2 commits on ACME-184-zones since origin/main, no pull request yet");
+});
+test("changeGroups: a pull request on that branch, or at that very commit, shows those commits itself", () => {
+  assert.deepEqual(changeGroups(storyIt, [prOf()], [[]], [repoOf()]).map((g) => g.repo), ["api#7"], "its repo and branch");
+  assert.deepEqual(changeGroups(storyIt, [prOf({ merged: true })], [[]], [repoOf()]).map((g) => g.repo), ["api#7"], "merged too");
+  assert.deepEqual(changeGroups(storyIt, [prOf({ repository: { name: "api-service" }, headRefName: "x", headRefOid: "a".repeat(40) })], [[]], [repoOf()]).map((g) => g.repo),
+    ["api-service#7"], "its head commit, from a folder named otherwise");
+  assert.deepEqual(changeGroups(storyIt, [prOf({ repository: { name: "web" } })], [[]], [repoOf()]).map((g) => g.repo), ["api", "web#7"], "the same branch name in another repo");
+  assert.deepEqual(changeGroups(storyIt, [], [], [repoOf({ committed: { base: "origin/main", commits: 0, files: [] } }), repoOf({ committed: null })]), [], "nothing committed, or no default branch");
+});
+test("changes: committed work's heading says no pull request yet, and names the branch", async () => {
+  const group = changeGroups(storyIt, [], [], [repoOf()])[0];
+  const s = await storyChanges([{ ...group, files: [{ ...file(6003, 3), id: "committed:/home/test/acme/ACME-184/api:src/file6003.ts" }] }]);
+  const el = s.view.render(s.cx);
+  assert.match(texts(el).join(" | "), /api \| no PR yet/, "the file list's heading");
+  // The section's heading is the diff list's first row, drawn by its renderer.
+  const list = virtualList(el);
+  const rows = texts(list.args[4]({ start: 0, end: 1 })).join(" | ");
+  assert.match(rows, /api \| ACME-184-zones \| No pull request yet/, "the section's heading");
+});
+test("changes: committed work's hidden lines come from the branch's last commit", async () => {
+  mock.reset();
+  mock.on.exec = (cmd, args) => (cmd === "git" ? { code: 0, stdout: "one\ntwo\n", stderr: "" } : undefined);
+  const tasks = [];
+  const cx = { spawn: (fn) => tasks.push(fn(cx)), notify() {} };
+  const view = new StoryView();
+  const f = { id: "committed:/r/api:src/a.ts", path: "src/a.ts", sha: `gap-${Date.now()}`, group: { committed: { branch: "b" }, path: "/r/api" } };
+  view.openGap({ profile: { id: "p" }, space: null }, f, "0", 20, 0, cx);
+  await Promise.all(tasks);
+  assert.deepEqual(mock.of("exec").map(([c, a]) => [c, a]), [["git", ["-C", "/r/api", "show", "HEAD:src/a.ts"]]]);
+  assert.deepEqual(mock.of("readTextFile"), [], "not the working tree's");
+});
+test("changes: the stories keep each pull request's branch, which tells Changes whose commits it shows", () => {
+  const prs = JSON.stringify(stories.data);
+  assert.match(prs, /"url":"https:\/\/github\.com\/kelpie--demo\/web\/pull\/418"[^}]*"headRefName":"ACME-143-trip-cache"/);
 });

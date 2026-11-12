@@ -1,5 +1,5 @@
 h_flex
-  div
+  div #desk-head {click} tip="Show the Desk ⌥⌘D"
     div
       div [font="DM Sans" fg=muted]
         "DESK"

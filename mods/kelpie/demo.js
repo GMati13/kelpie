@@ -13,15 +13,18 @@
 //   uncommitted work, sessions and the footer's limits.
 // Times in the fixture are relative ("-2h", "-3d", "+40m"), so the demo never looks stale.
 
-import { agents, exec, readTextFile, run, setShared, shared, spaces } from "herdr";
+import { exec, readTextFile } from "herdr";
+import { agents, run, setShared, shared, spaces } from "./host.js";
 import { modFile } from "./ui.js";
-import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
+import { DESK_NAME, DESK_PAUSED, profileById, saveProfile, spacesOf } from "./config.js";
 
 export const DEMO_ID = "demo";
 export const isDemo = (x) => Boolean(x?.demo);
 
 let FIXTURE = null; // the last fixture read, for the few readers that can't wait (the footer, argv)
 const MOVED = {}; // key -> status name, after a transition in the demo
+const MOVED_AT = {}; // key -> when it moved there, as the board would say
+const CLOSED = new Set(); // keys of the GitHub Project demo's issues closed from Kelpie (KelpieClose)
 
 const UNITS = { m: 60e3, h: 3600e3, d: 864e5 };
 const when = (v, now = Date.now()) => {
@@ -52,6 +55,13 @@ function fields(f, i, { withParent = true } = {}) {
     status: jiraStatus(statusNamed(f, MOVED[i.key] ?? i.status)),
     labels: i.labels ?? [],
   };
+  // When it last moved (fixture `moved`, relative), as Jira gives it: the status category's change and
+  // the last change, the same moment here.
+  const moved = movedAt(i);
+  if (moved) out.statuscategorychangedate = out.updated = moved;
+  // Its priority by the fixture's level name (fixture `priorities`, highest first); none when unset.
+  const level = (f.priorities ?? []).find((l) => l.name === i.priority);
+  if (level) out.priority = { id: level.id, name: level.name };
   // Yours are assigned to the fixture's own name; others name someone, or no one. A parent embedded in
   // a subtask names no one, as in Jira.
   const who = i.assignee ?? (i.mine ? f.profile.meName : null);
@@ -60,6 +70,8 @@ function fields(f, i, { withParent = true } = {}) {
   if (withParent && parent) out.parent = { key: parent.key, fields: fields(f, parent, { withParent: false }) };
   return out;
 }
+// When the fixture's ticket last moved (its `moved`, or a move made in the demo), as an ISO date; null when unset.
+const movedAt = (i) => (MOVED_AT[i.key] ? new Date(MOVED_AT[i.key]).toISOString() : i.moved ? new Date(when(i.moved)).toISOString() : null);
 const asIssue = (f, i) => ({ key: i.key, fields: fields(f, i) });
 // An issue nobody has: no assignee named, and not yours.
 const nobodys = (i) => !i.assignee && !i.mine;
@@ -102,7 +114,8 @@ export async function demoJira(args) {
   const ok = (body) => ({ site: f.profile.site, code: 200, authed: true, body });
   const [what, a, b] = args;
   if (what === "search") {
-    // `key in (…) OR parent in (…)`: the stories and their subtasks; `parent in (…)` alone: the subtasks.
+    // `key in (…) OR parent in (…)`: the stories and their subtasks; `parent in (…)` alone: the subtasks;
+    // the sprint's search with no assignee clause (a board worked alone): every issue of the fixture.
     const parents = /parent in \(([^)]*)\)/.exec(a);
     const named = /key in \(([^)]*)\)/.exec(a);
     const among = (m, k) => Boolean(m) && m[1].split(",").map((s) => s.trim()).includes(k);
@@ -110,13 +123,14 @@ export async function demoJira(args) {
       ? f.issues.filter((i) => among(named, i.key) || (i.parent && among(parents, i.parent)))
       : /assignee = currentUser\(\)/.test(a) ? f.issues.filter((i) => i.mine)
       // The sprint's work nobody has (the list's Unassigned section).
-      : /assignee is EMPTY/.test(a) ? f.issues.filter(nobodys) : [];
+      : /assignee is EMPTY/.test(a) ? f.issues.filter(nobodys) : /^sprint in \(/.test(a) ? f.issues : [];
     return ok({ issues: list.map((i) => asIssue(f, i)), isLast: true });
   }
   if (what === "transition") {
     const s = statuses(f).find((x) => x.id === String(b));
     if (!s) return { site: f.profile.site, code: 400, body: { errorMessages: ["No such transition in the demo."] } };
     MOVED[a] = s.name;
+    MOVED_AT[a] = Date.now();
     return { site: f.profile.site, code: 204, authed: true, body: null };
   }
   if (what !== "get") return { site: f.profile.site, code: 400, body: { errorMessages: [`The demo doesn't answer ${what}.`] } };
@@ -124,6 +138,8 @@ export async function demoJira(args) {
   if (/\/board\/\d+\/configuration$/.test(path)) return ok({ columnConfig: { columns: f.board.columns.map((c) => ({ name: c.name, statuses: c.statuses.map((s) => ({ id: s.id })) })) } });
   if (/\/board\/\d+\/sprint\?state=active$/.test(path)) return ok({ values: f.sprints });
   if (/\/board\/\d+$/.test(path)) return ok({ id: f.profile.board, name: f.board.name, type: "scrum" });
+  // The site's priority levels, highest first, as Jira Cloud lists them.
+  if (path === "/rest/api/3/priority") return ok((f.priorities ?? []).map((l) => ({ id: l.id, name: l.name })));
   const m = /\/issue\/([^/?]+)(\/transitions)?/.exec(path);
   const i = m && issueById(f).get(decodeURIComponent(m[1]));
   if (!i) return { site: f.profile.site, code: 404, body: { errorMessages: ["Issue does not exist in the demo."] } };
@@ -140,6 +156,7 @@ export async function demoMoveTo(key, column) {
   const c = (await demoFixture()).board.columns.find((x) => x.name === column);
   if (!c?.statuses?.length) throw new Error(`The demo has no column ${column}.`);
   MOVED[key] = c.statuses[0].name;
+  MOVED_AT[key] = Date.now();
 }
 
 // --- GitHub Project ---------------------------------------------------------------------------
@@ -162,21 +179,24 @@ const columnOf = (f, name) => {
 };
 const login = (name) => String(name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-function ghIssue(f, i) {
+function ghIssue(f, i, withPriority = null) {
   const repo = f.project.repo;
   const column = columnOf(f, MOVED[i.key] ?? i.status);
-  const closed = column === f.board.columns.length - 1;
+  // An issue in the done column is closed, unless the fixture leaves it `open` (a Status move to done
+  // leaves an issue open on GitHub) and Kelpie hasn't closed it since.
+  const closed = CLOSED.has(i.key) || (column === f.board.columns.length - 1 && !i.open);
   const who = i.assignee ?? (i.mine ? f.profile.meName : null);
   const parent = i.parent && issueById(f).get(i.parent);
   return {
     id: nodeId(i.key), number: numberOf(i.key), title: i.summary, url: `https://github.com/${repo}/issues/${numberOf(i.key)}`,
-    state: closed ? "CLOSED" : "OPEN", closedAt: closed ? new Date(when("-2d")).toISOString() : null, repository: { nameWithOwner: repo },
+    state: closed ? "CLOSED" : "OPEN", closedAt: closed ? movedAt(i) ?? new Date(when("-2d")).toISOString() : null, updatedAt: movedAt(i), repository: { nameWithOwner: repo },
     assignees: { nodes: who ? [{ login: i.mine ? f.profile.me : login(who), name: who, avatarUrl: null }] : [] },
     // A label's colour is the fixture's project.labels', as a repo gives each of its labels one.
     labels: { nodes: (i.labels ?? []).map((name) => ({ name, color: f.project.labels?.[name] ?? "ededed" })) },
     parent: parent ? { id: nodeId(parent.key), number: numberOf(parent.key), repository: { nameWithOwner: repo } } : null,
     closedByPullRequestsReferences: { nodes: f.pulls.filter((p) => p.closes === i.key).map((p) => ({ url: prUrl(f, p) })) },
-    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name } }] },
+    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name, updatedAt: movedAt(i) },
+      ...(withPriority ? { priority: priorityValue(f, i) } : {}) }] },
   };
 }
 // An issue as the unassigned question asks for it: a sub-issue's story with its title, page and state.
@@ -184,6 +204,15 @@ function withParentTitle(f, i) {
   const out = ghIssue(f, i), parent = i.parent && issueById(f).get(i.parent);
   if (out.parent && parent) out.parent = { ...out.parent, title: parent.summary, url: `https://github.com/${f.project.repo}/issues/${numberOf(parent.key)}`, state: columnOf(f, MOVED[parent.key] ?? parent.status) === f.board.columns.length - 1 ? "CLOSED" : "OPEN" };
   return out;
+}
+// The Project's priority field (fixture project.priority, a single-select field) as GitHub answers it
+// when asked for by that name: its options are the fixture's levels, `prio-<id>`. Asked by another
+// name, the Project has no such field.
+const priorityOptions = (f) => (f.priorities ?? []).map((l) => ({ id: `prio-${l.id}`, name: l.name }));
+const askedPriority = (f, v) => (v.withPriority === "true" && f.project.priority && v.priority === f.project.priority ? v.priority : null);
+function priorityValue(f, i) {
+  const o = priorityOptions(f).find((x) => x.name === i.priority);
+  return o ? { optionId: o.id, name: o.name } : null;
 }
 // The variables of a gh graphql call: -f/-F name=value, `name[]` gathered into a list.
 function variables(args) {
@@ -201,14 +230,26 @@ export async function demoProject(args) {
   const f = await demoFixture();
   if (!f.project) throw new Error("The demo's fixture has no GitHub Project.");
   const v = variables(args);
-  const op = /^query\s+(\w+)/.exec(v.query ?? "")?.[1];
+  const op = /^(?:query|mutation)\s+(\w+)/.exec(v.query ?? "")?.[1];
+  // Closing issues (issues.js closeIssues()), each slot `c<n>` whose `u<n>` is set: kept in memory
+  // until the mod reloads, as moves are. One the fixture doesn't have is refused alone, as GitHub does.
+  if (op === "KelpieClose") {
+    const data = {}, errors = [];
+    for (let n = 0; v[`u${n}`] === "true"; n++) {
+      const i = f.issues.find((x) => nodeId(x.key) === v[`i${n}`]);
+      if (!i) { data[`c${n}`] = null; errors.push({ type: "NOT_FOUND", path: [`c${n}`], message: `Could not resolve to a node with the global id of '${v[`i${n}`]}'.` }); continue; }
+      CLOSED.add(i.key);
+      data[`c${n}`] = { issue: { id: v[`i${n}`], state: "CLOSED" } };
+    }
+    return errors.length ? { data, errors } : { data };
+  }
   if (op === "KelpieStories") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
-    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };
+    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i, askedPriority(f, v)), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c, askedPriority(f, v))) } })) } };
   }
   if (op === "KelpieSubIssues") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
-    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ghIssue(f, i)) } };
+    return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ghIssue(f, i, askedPriority(f, v))) } };
   }
   // Its slots k0, k1… (`u<n>` set), each a repo and an issue number.
   if (op === "KelpieKept") {
@@ -220,23 +261,27 @@ export async function demoProject(args) {
     return { data };
   }
   const unassigned = op === "KelpieUnassignedUser" || op === "KelpieUnassignedOrg";
-  if (!unassigned && op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
+  // The Project's items: yours, or every issue for a board worked alone (the `…All` queries).
+  const ops = ["KelpieProjectUser", "KelpieProjectOrg", "KelpieProjectUserAll", "KelpieProjectOrgAll"];
+  if (!unassigned && !ops.includes(op)) throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
+  const org = op.endsWith("Org") || op.startsWith("KelpieProjectOrg"), every = op.endsWith("All");
   const sprint = f.sprints?.[0];
   const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(when("-7d")), duration: 14 } : null;
   const field = { id: "PVTIF_demo", name: f.project.iteration ?? "Sprint", configuration: { iterations: iteration ? [iteration] : [] } };
   const project = {
-    id: PROJECT_ID, title: f.project.title, url: `https://github.com/${op === "KelpieProjectOrg" ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
+    id: PROJECT_ID, title: f.project.title, url: `https://github.com/${org ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
     field: { id: "PVTSSF_demo", options: f.board.columns.map((c, n) => ({ id: `opt-${n}`, name: c.name })) },
+    ...(v.withPriority === "true" ? { priorityField: askedPriority(f, v) ? { id: "PVTSSF_prio", options: priorityOptions(f) } : null } : {}),
     fields: { nodes: [{}, field] },
-    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter(unassigned ? nobodys : (i) => i.mine).map((i) => ({
+    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter(unassigned ? nobodys : (i) => every || i.mine).map((i) => ({
       id: `PVTI_${i.key}`, type: "ISSUE", isArchived: false,
       fieldValues: { nodes: iteration ? [{}, { iterationId: iteration.id, field: { id: field.id } }] : [] },
-      content: unassigned ? withParentTitle(f, i) : ghIssue(f, i),
+      content: unassigned ? withParentTitle(f, i) : ghIssue(f, i, askedPriority(f, v)),
     })) },
   };
   // The unassigned question asks only for the items.
   const answer = unassigned ? { items: project.items } : project;
-  return { data: op.endsWith("Org") ? { organization: { projectV2: answer } } : { user: { projectV2: answer } } };
+  return { data: org ? { organization: { projectV2: answer } } : { user: { projectV2: answer } } };
 }
 
 // --- GitHub -----------------------------------------------------------------------------------
@@ -261,7 +306,7 @@ const pullId = (p) => `demo-pr-${p.repo}-${p.number}`;
 function asPull(f, raw) {
   const p = later(raw);
   return {
-    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
+    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(), ...(p.branch ? { headRefName: p.branch } : {}),
     reviewDecision: APPROVED.has(prUrl(f, p)) ? "APPROVED" : p.review ?? null, viewerReview: APPROVED.has(prUrl(f, p)) ? "APPROVED" : null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };
@@ -316,7 +361,7 @@ export async function demoPullFiles(url) {
 // A file's whole text, when the fixture has it: a pull request's (by its url), else uncommitted work's.
 export async function demoBlob(url, path) {
   const f = await demoFixture();
-  const files = url ? f.pulls.find((x) => prUrl(f, x) === url)?.files : (f.local ?? []).flatMap((r) => r.files);
+  const files = url ? f.pulls.find((x) => prUrl(f, x) === url)?.files : (f.local ?? []).flatMap((r) => [...r.files, ...(r.committed?.files ?? [])]);
   const file = files?.find((x) => x.path === path);
   if (typeof file?.text !== "string") throw new Error("the demo has only this file's diff");
   return file.text;
@@ -327,12 +372,14 @@ export async function demoBlob(url, path) {
 const homeOf = async () => (await exec("sh", ["-c", 'printf %s "$HOME"'])).stdout;
 const expand = (path, home) => String(path ?? "").replace(/^~(?=\/|$)/, home);
 
-// changes.py for a demo profile: uncommitted work in the story's ticket folders.
+// changes.py --committed for a demo profile: uncommitted work in the story's ticket folders, and what
+// their branches committed (`committed`: {base, commits, files}) with no pull request yet.
 export async function demoLocal(folder, keys) {
   const f = await demoFixture();
+  const files = (list) => (list ?? []).map((x) => ({ path: x.path, status: x.status ?? "modified", patch: x.patch, ...counted(x.patch) }));
   return (f.local ?? []).filter((r) => keys.includes(r.key)).map((r) => ({
-    repo: r.repo, path: `${folder}/${r.key}/${r.repo}`, branch: r.branch ?? r.key, key: r.key, ticket: true,
-    files: r.files.map((x) => ({ path: x.path, status: x.status ?? "modified", patch: x.patch, ...counted(x.patch) })),
+    repo: r.repo, path: `${folder}/${r.key}/${r.repo}`, branch: r.branch ?? r.key, key: r.key, ticket: true, files: files(r.files),
+    head: null, committed: r.committed ? { base: r.committed.base ?? "origin/main", commits: r.committed.commits ?? 1, files: files(r.committed.files) } : null,
   }));
 }
 // sessions.py for a demo profile: earlier Claude sessions, newest first.
@@ -407,15 +454,18 @@ export function demoAsks(f, terminalOf = () => null, project = false) {
 
 // The demo profile's board: the fixture's Jira board, or (`board` "project", kelpie.demo-github) the
 // same issues as a GitHub Project. One profile either way, as two would open spaces of the same names.
-// The fixture's profile `solo` (true) makes it a board the person works alone on; its `unassigned`
-// (true) shows the sprint's work nobody has.
+// The fixture's profile `solo` (true) makes it a board the person works alone on; its `byPriority` and
+// `showPriority` (true) order and mark the stories by priority; its `unassigned`
+// (true) shows the sprint's work nobody has. The Project's priority field is the
+// fixture's project.priority, so turning those on in the profile dialog is enough there too.
 export function demoBoard(f, board = "jira") {
   const p = f.profile;
+  const prio = { ...(p.byPriority ? { byPriority: true } : {}), ...(p.showPriority ? { showPriority: true } : {}) };
   if (board === "project") {
     const number = 1;
-    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...(p.unassigned ? { unassigned: true } : {}) } };
+    return { jira: null, project: { url: `https://github.com/users/${p.owner}/projects/${number}`, owner: p.owner, ownerType: "user", number, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...prio, ...(p.unassigned ? { unassigned: true } : {}), ...(f.project?.priority ? { priorityField: f.project.priority } : {}) } };
   }
-  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...(p.unassigned ? { unassigned: true } : {}) }, project: null };
+  return { jira: { url: `${p.site}/jira/software/projects/${p.project}/boards/${p.board}`, site: p.site, board: p.board, demo: true, ...(p.handover ? { handover: p.handover } : {}), ...(p.solo ? { solo: true } : {}), ...prio, ...(p.unassigned ? { unassigned: true } : {}) }, project: null };
 }
 
 export async function setupDemo(board = "jira") {
@@ -447,6 +497,8 @@ export async function setupDemo(board = "jira") {
   const paused = {};
   for (const [key, list] of Object.entries(f.paused ?? {})) paused[key] = list.map((x, n) => ({ sessionId: x.id ?? `demo-paused-${key}-${n}`, cwd: folder, name: x.name ?? key, at: when(x.at ?? "-3h") }));
   setShared("kelpie.paused", { ...(shared("kelpie.paused") ?? {}), [DEMO_ID]: paused });
+  // The Desk's paused agents (desk.js), offered in its + menu: `deskPaused`, a list like a key's.
+  setShared(DESK_PAUSED, { ...(shared(DESK_PAUSED) ?? {}), [DEMO_ID]: (f.deskPaused ?? []).map((x, n) => ({ sessionId: x.id ?? `demo-desk-${n}`, cwd: folder, name: x.name ?? "Claude", at: when(x.at ?? "-1h") })) });
   setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address, board === "project") });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
   setShared(DEMO_AT, Date.now());
@@ -455,7 +507,7 @@ export async function setupDemo(board = "jira") {
 // kelpie.demo-remove: undoes kelpie.demo. Closes the demo profile's spaces (ending their stand-in
 // agents), deletes the profile and what's kept for it in shared state, and removes its folder, only
 // when that's inside ~/.local/share/kelpie/demo (an edited fixture could name any folder).
-const BY_PROFILE = ["kelpie.paused", "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.next.picked", "kelpie.profile.last", "kelpie.notify.prs"];
+const BY_PROFILE = ["kelpie.paused", DESK_PAUSED, "kelpie.next.asks", "kelpie.stories.data", "kelpie.stories.preview", "kelpie.next.suggested", "kelpie.next.brewing", "kelpie.next.picked", "kelpie.profile.last", "kelpie.notify.prs"];
 export async function removeDemo() {
   const p = profileById(DEMO_ID);
   for (const s of p ? spacesOf(p) : []) run("space.close", { id: s.id, confirmed: true });
