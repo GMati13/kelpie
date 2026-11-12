@@ -135,6 +135,27 @@ describe("Kelpie's gh finding the real one", () => {
       assert.ok(!r.stderr.includes(TOKEN) && !r.stdout.includes(TOKEN), `${shell} traced the token`);
     }
   });
+  test("the token never goes to another GitHub host that takes GH_TOKEN (*.ghe.com, github.localhost)", () => {
+    const run = (args, env = {}) => { const fakes = fakeGh(); return { fakes, r: sh(join(BIN, "gh"), args, { env: { PATH: fakes.path, KELPIE_GH_ACCOUNT: "bob", ...env } }) }; };
+    // GH_HOST aimed elsewhere: gh as it is, on its own sign-in for that host, with no token handed over.
+    for (const host of ["acme.ghe.com", "github.localhost", "ghe.example.com"]) {
+      const { fakes } = run(["api", "user"], { GH_HOST: host });
+      assert.deepEqual(fakes.calls("gh").map((c) => [c.argv, tokenOf(c)]), [[["api", "user"], null]], host);
+    }
+    assert.equal(run(["api", "user"], { GH_HOST: "GitHub.com" }).r.stdout.trim(), "bob", "github.com, however written, is the profile's");
+    // Named in the arguments: refused, nothing run, not even the token asked for.
+    for (const args of [["repo", "clone", "acme.GHE.com/o/r"], ["api", "--hostname", "github.localhost", "user"], ["pr", "list", "-R", "x.ghe.com/o/r"], ["api", "https://api.acme.ghe.com/user"]]) {
+      const { fakes, r } = run(args);
+      assert.equal(r.code, 2, args.join(" "));
+      assert.match(r.stderr, /names a GitHub host other than github\.com/);
+      assert.deepEqual(fakes.calls("gh"), [], args.join(" "));
+    }
+  });
+  test("git's credential helper through gh is left as it is: git's account doesn't change", () => {
+    const fakes = fakeGh();
+    sh(join(BIN, "gh"), ["auth", "git-credential", "get"], { env: { PATH: fakes.path, KELPIE_GH_ACCOUNT: "bob" } });
+    assert.deepEqual(fakes.calls("gh").map((c) => [c.argv, tokenOf(c)]), [[["auth", "git-credential", "get"], null]]);
+  });
   test("an account that isn't a GitHub login runs nothing", () => {
     for (const bad of ["-x", "a b", "x;y", "$(id)", "a--b", "a-", "bob\nx", "bob\n"]) {
       const fakes = fakeGh();
@@ -192,6 +213,17 @@ describe("gh-shell-check.sh", () => {
     const [ok, words] = shellVerdict(check(`export GH_TOKEN=other\n${GH_SHELL_LINE}`).stdout, "bob");
     assert.equal(ok, false);
     assert.match(words, /sets GH_TOKEN/);
+  });
+  test("stops at its time limit, the shell and everything it started, even an interactive one ignoring TERM", () => {
+    const started = Date.now();
+    const r = check("trap '' TERM; sleep 30 & sleep 30", "bob", { KELPIE_CHECK_FOR: "1" });
+    assert.ok(Date.now() - started < 8000, `took ${Date.now() - started} ms`);
+    assert.notEqual(r.code, 0);
+    assert.match(shellVerdict(r.stdout, "bob")[1], /didn't answer/);
+  });
+  test("names the same account whatever its case, as GitHub does", () => {
+    assert.equal(shellVerdict("shell=OctoCat\nprogram=OctoCat\n", "octocat")[0], true);
+    assert.equal(shellVerdict("shell=octocat\nprogram=alice\n", "OctoCat")[0], false);
   });
   test("no answer says what to check", () => {
     assert.match(shellVerdict("noise from a shell setup\n", "bob")[1], /didn't answer.*gh auth login/);

@@ -139,18 +139,19 @@ describe("prompt templates", () => {
 
 describe("the argv agents start with", () => {
   test("claudeArgv: Default is plain claude; Claude's own folder unsets CLAUDE_CONFIG_DIR; another sets it", () => {
-    assert.deepEqual(claudeArgv(null), ["claude"]);
-    assert.deepEqual(claudeArgv({ claude: { config: "" } }, "-p", "x"), ["claude", "-p", "x"]);
-    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude/" } }), ["env", "-u", "CLAUDE_CONFIG_DIR", "claude"]);
-    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude-work" } }, "--resume"), ["env", "CLAUDE_CONFIG_DIR=/home/u/.claude-work", "claude", "--resume"]);
+    // KELPIE_GH_ACCOUNT= every time no GitHub account is set: one inherited from where Herdr started goes.
+    assert.deepEqual(claudeArgv(null), ["env", "KELPIE_GH_ACCOUNT=", "claude"]);
+    assert.deepEqual(claudeArgv({ claude: { config: "" } }, "-p", "x"), ["env", "KELPIE_GH_ACCOUNT=", "claude", "-p", "x"]);
+    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude/" } }), ["env", "-u", "CLAUDE_CONFIG_DIR", "KELPIE_GH_ACCOUNT=", "claude"]);
+    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude-work" } }, "--resume"), ["env", "CLAUDE_CONFIG_DIR=/home/u/.claude-work", "KELPIE_GH_ACCOUNT=", "claude", "--resume"]);
   });
   test("claudeArgv: a demo profile starts the demo's stand-in agent", () => {
     assert.deepEqual(claudeArgv({ demo: true, claude: { config: "/x/.claude-work" } }, "-p"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
   });
   test("shellArgv: the login shell with the profile's account chosen", () => {
-    assert.deepEqual(shellArgv(null), ["/bin/sh", "-c", 'exec env "$@" CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l', "sh", "-u", "CLAUDE_CONFIG_DIR"]);
+    assert.deepEqual(shellArgv(null), ["/bin/sh", "-c", 'exec env "$@" CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l', "sh", "-u", "CLAUDE_CONFIG_DIR", "KELPIE_GH_ACCOUNT="]);
     assert.deepEqual(shellArgv({ claude: { config: "/h/.claude" } }), shellArgv(null));
-    assert.deepEqual(shellArgv({ claude: { config: "/h/.claude-x" } }).slice(3), ["sh", "CLAUDE_CONFIG_DIR=/h/.claude-x"]);
+    assert.deepEqual(shellArgv({ claude: { config: "/h/.claude-x" } }).slice(3), ["sh", "CLAUDE_CONFIG_DIR=/h/.claude-x", "KELPIE_GH_ACCOUNT="]);
   });
   test("shellArgv: the Claude config folder is an argument, never script, whatever it holds", () => {
     const dir = `/h/it's "odd" $(touch pwned) \`touch pwned\`; touch pwned\n/.claude-x`;
@@ -166,8 +167,8 @@ describe("the argv agents start with", () => {
     assert.equal(sh(own[0], own.slice(1), { env: { SHELL: `${fakes.bin}/show-env`, CLAUDE_CONFIG_DIR: "/elsewhere" } }).stdout, "|1|-l");
   });
   test("resumeArgv: on the session's own account; demo- sessions start the stand-in", () => {
-    assert.deepEqual(resumeArgv("abc", null), ["claude", "--resume", "abc"]);
-    assert.deepEqual(resumeArgv("abc", "/h/.claude-work"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", null), ["env", "KELPIE_GH_ACCOUNT=", "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", "/h/.claude-work"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=", "claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("demo-s2", "/h/.claude-work"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
   });
   test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only, with Kelpie's gh's folder", () => {
@@ -178,7 +179,7 @@ describe("the argv agents start with", () => {
     assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
     // A name that isn't a GitHub login is left out, never passed on.
-    for (const bad of ["-u", "a b", "x;y", "bob\nx", "bob\n"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["claude"], bad);
+    for (const bad of ["-u", "a b", "x;y", "bob\nx", "bob\n"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["env", "KELPIE_GH_ACCOUNT=", "claude"], bad);
   });
   test("Kelpie's gh's folder goes into PATH, so it's passed on only when absolute with no colon or line break", () => {
     const home = mock.state.appHome;
@@ -196,6 +197,9 @@ describe("the argv agents start with", () => {
     const r = sh(argv[0], argv.slice(1), { env: { SHELL: `${fakes.bin}/show-env` } });
     assert.equal(r.stdout, `CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\nKELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin\n`);
     assert.deepEqual(shellArgv({ github: { owner: "acme" } }), shellArgv(null));
+    // No account: one inherited from where Herdr was started is cleared, so gh acts as its active one.
+    const none = shellArgv(null);
+    assert.equal(sh(none[0], none.slice(1), { env: { SHELL: `${fakes.bin}/show-env`, KELPIE_GH_ACCOUNT: "someone" } }).stdout, "CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=\n");
   });
 });
 

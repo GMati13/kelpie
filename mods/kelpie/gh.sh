@@ -11,6 +11,9 @@
 # Never traced: bash, which is macOS's sh, takes xtrace from an exported SHELLOPTS, and a trace would
 # print the token.
 set +xv
+# Kelpie's own account choice, never one inherited from a profile's terminal (Herdr started there),
+# which Kelpie's gh (bin/gh, first on such a PATH) would act on instead.
+unset KELPIE_GH_ACCOUNT
 account=$1
 shift
 if [ "$1" = api ]; then

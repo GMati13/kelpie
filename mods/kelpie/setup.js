@@ -51,9 +51,11 @@ case \${KELPIE_GH_BIN:-} in *:*) ;; /*) PATH="$KELPIE_GH_BIN:$PATH" ;; esac`;
 export function shellVerdict(out, account) {
   const got = (k) => [...String(out ?? "").matchAll(new RegExp(`^${k}=(.*)$`, "gm"))].pop()?.[1]?.trim() ?? "";
   const shell = got("shell"), program = got("program");
-  if (program === account && shell === account) return [true, `Set up: gh in this profile's agents and terminals, and in the programs they start, acts as ${account}.`];
+  // GitHub logins don't care about case: a profile saved as "octocat" is GitHub's "OctoCat".
+  const is = (login) => Boolean(login) && login.toLowerCase() === String(account).toLowerCase();
+  if (is(program) && is(shell)) return [true, `Set up: gh in this profile's agents and terminals, and in the programs they start, acts as ${account}.`];
   if (got("token") === "1") return [false, `Your shell setup sets GH_TOKEN, which gh uses before any account, so Kelpie leaves it alone. Take it out of your shell setup to have gh act as ${account} here.`];
-  if (shell === account) return [false, `Only gh typed in your shell acts as ${account}: programs that run gh ${program ? `act as ${program}` : "don't get an answer"}. Put the line below at the end of your shell setup (it replaces the gh() function given before), then check again.`];
+  if (is(shell)) return [false, `Only gh typed in your shell acts as ${account}: programs that run gh ${program ? `act as ${program}` : "don't get an answer"}. Put the line below at the end of your shell setup (it replaces the gh() function given before), then check again.`];
   if (program || shell) return [false, `gh here acts as ${program || shell}, not ${account}. Put the line below at the end of your shell setup, after anything else that changes PATH, then check again.`];
   return [false, `gh didn't answer. Is the line below in your shell setup, and gh signed in to ${account}? (gh auth login)`];
 }

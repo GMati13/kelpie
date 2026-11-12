@@ -68,6 +68,13 @@ describe("gh.sh", () => {
     }
   });
 
+  test("Default never takes an account inherited from a profile's terminal, even with Kelpie's gh first", () => {
+    const { fakes } = setup();
+    const r = sh("sh", [GH, "", "pr", "list"], { env: { PATH: `${repoFile("mods/kelpie/bin")}:${fakes.path}`, KELPIE_GH_ACCOUNT: "work-me" } });
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(fakes.calls("gh").map((c) => [c.argv, tokenOf(c)]), [[["pr", "list"], null]], "no token asked for or handed over");
+  });
+
   test("a name that isn't a GitHub login runs nothing", () => {
     const { fakes, run } = setup();
     for (const bad of ["-u", "--user=x", "a b", "x;y", "a--b", "-", "a-", "work-me\nx", "x\nwork-me", "work-me\n"]) {

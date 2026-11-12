@@ -416,8 +416,11 @@ export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
 // setup.js, README "Several accounts"), and then every program started there finds it too. None set:
 // nothing, so gh acts as it always has. The folder only when absolute, with no colon or line break, as
 // it goes into PATH (the shell setup line checks it too).
+// No account (Default): KELPIE_GH_ACCOUNT set empty, which Kelpie's gh takes as none, as one inherited
+// from where Herdr was started (a profile's terminal) would make gh act as that profile's account
+// instead of gh's active one. An assignment, not `-u`: env takes options only before the first one.
 export function githubEnv(account) {
-  if (!account || !GITHUB_LOGIN.test(account)) return [];
+  if (!account || !GITHUB_LOGIN.test(account)) return ["KELPIE_GH_ACCOUNT="];
   const bin = modFile("bin");
   return [`KELPIE_GH_ACCOUNT=${account}`, ...(/^\/[^:\n\r]*$/.test(bin) ? [`KELPIE_GH_BIN=${bin}`] : [])];
 }

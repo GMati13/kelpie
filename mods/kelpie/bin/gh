@@ -31,12 +31,22 @@ KELPIE_GH_SKIP=$skip; export KELPIE_GH_SKIP
 account=${KELPIE_GH_ACCOUNT:-}
 [ -z "${GH_TOKEN:-}" ] && [ -n "$account" ] || exec "$real" "$@"
 case "${1:-} ${2:-}" in
-  " "|"auth login"|"auth logout"|"auth switch"|"auth refresh"|"auth setup-git"|help\ *|version\ *|completion\ *|--help\ *|-h\ *|--version\ *) exec "$real" "$@" ;;
+  " "|"auth login"|"auth logout"|"auth switch"|"auth refresh"|"auth setup-git"|"auth git-credential"|help\ *|version\ *|completion\ *|--help\ *|-h\ *|--version\ *) exec "$real" "$@" ;;
 esac
 # A GitHub login: letters, digits and single hyphens, not at either end (GITHUB_LOGIN in ui.js).
 case $account in -*|*-|*--*|*[!A-Za-z0-9-]*)
   echo "KELPIE_GH_ACCOUNT isn't a GitHub account name, so gh doesn't run." >&2; exit 2 ;;
 esac
+# The token is github.com's, but gh also sends GH_TOKEN to GitHub's other hosts that take it (*.ghe.com,
+# github.localhost). A run aimed at another host by GH_HOST runs as it is, on gh's own sign-in for that
+# host; one naming such a host in its arguments (-R, --hostname, a URL, a clone) is refused, as passing
+# it through would act as someone else on github.com when the name was only in a text.
+case ${GH_HOST:-github.com} in [Gg][Ii][Tt][Hh][Uu][Bb].[Cc][Oo][Mm]) ;; *) exec "$real" "$@" ;; esac
+for a in "$@"; do
+  case $a in *[Gg][Hh][Ee].[Cc][Oo][Mm]*|*[Gg][Ii][Tt][Hh][Uu][Bb].[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]*)
+    echo "gh doesn't run: it names a GitHub host other than github.com, where gh would send the token of $account, this profile's account in Kelpie. For that host, run gh with KELPIE_GH_ACCOUNT unset." >&2; exit 2 ;;
+  esac
+done
 # The token is only ever assigned: no command gets it as an argument (a function named like one could).
 token=$("$real" auth token --hostname github.com --user "$account") || token=
 case $token in "") echo "gh isn't signed in as $account, this profile's GitHub account in Kelpie: gh auth login" >&2; exit 1 ;; esac
