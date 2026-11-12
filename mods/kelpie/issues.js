@@ -8,7 +8,7 @@
 import { gh } from "./pulls.js";
 import { adfText, markdownBlocks } from "./adf.js";
 import { prefixFor } from "./config.js";
-import { demoFixture, demoMoveTo, demoProject } from "./demo.js";
+import { demoCommentsOf, demoFixture, demoMoveTo, demoProject } from "./demo.js";
 
 // A Project ticket key: a repo's prefix and the issue's number (config.js PREFIX).
 const TICKET = /^([A-Z][A-Z0-9]+)-(\d+)$/;
@@ -21,11 +21,25 @@ const ID = /^[A-Za-z0-9_=-]{1,100}$/;
 // One issue: its title, and its parent's (a sub-issue's story), with the body for the review prompt.
 const ISSUE = `query KelpieIssue($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issue(number: $number) {
   number title body parent { number title repository { nameWithOwner } } } } }`;
+// How many of a ticket's comments are shown (the newest), on either board.
+export const COMMENTS_MAX = 50;
+// A comment's author as shown: no control characters, one line, 80 characters at most.
+export const commentAuthor = (v) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) : "") || "Someone";
+// An issue's newest comments (COMMENTS_MAX), oldest of them first, with what's left
+// of the budget (ghlimit.js reads it off every GraphQL answer).
+const COMMENTS = `query KelpieComments($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issue(number: $number) {
+  comments(last: 50) { totalCount nodes { id createdAt body author { login avatarUrl(size: 48) ... on User { name } } } } } } rateLimit { remaining limit resetAt } }`;
 // A Project item's Status set to one of its options.
 const MOVE = `mutation KelpieMove($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`;
 
-// An issue closed as completed (Close in the Done group, stories.js closeStories()).
-export const CLOSE = `mutation KelpieClose($issue: ID!) { closeIssue(input: {issueId: $issue, stateReason: COMPLETED}) { issue { id state } } }`;
+// Issues closed as completed (Close in the Done group, stories.js closeStories()), CLOSE_SLOTS a
+// request: slots c0, c1… each an issue's node id (`i<n>`), the unused ones skipped (`u<n>`, `@include`).
+// GitHub runs a request's mutations one after another, so a batch is as gentle as single requests in a
+// row (writes are to go one at a time, or its secondary limit stops them), at a fraction of the wait.
+// The text is the same every time; only variables vary.
+export const CLOSE_SLOTS = 5;
+const closeSlots = Array.from({ length: CLOSE_SLOTS }, (_, n) => n);
+export const CLOSE = `mutation KelpieClose(${closeSlots.map((n) => `$i${n}: ID = "", $u${n}: Boolean = false`).join(", ")}) { ${closeSlots.map((n) => `c${n}: closeIssue(input: {issueId: $i${n}, stateReason: COMPLETED}) @include(if: $u${n}) { issue { id state } }`).join(" ")} }`;
 
 const firstLine = (r, fallback) => (r.stderr || r.stdout || "").trim().split("\n")[0].replace(/^gh: /, "") || fallback;
 
@@ -72,6 +86,24 @@ export async function issueDescription(board, data, key) {
   const ref = issueRef(board, data, key);
   if (!ref) throw new Error(`Kelpie doesn't know which repo ${key} is in.`);
   return markdownBlocks(await issueBody(board, ref));
+}
+
+// A ticket's comments (board.js comments()): { total, list: [{ id, author, avatar, at, blocks }] }, the
+// bodies GitHub's Markdown, drawn through markdownBlocks(). One constant query, the issue's owner, repo
+// and number its variables. The demo's come from its fixture.
+export async function issueComments(board, data, key) {
+  const shape = (c) => ({ id: String(c.id ?? ""), author: commentAuthor(c.author), avatar: c.avatar ?? null, at: c.at, blocks: markdownBlocks(c.body ?? "") });
+  if (board.cfg?.demo) {
+    const list = demoCommentsOf(await demoIssue(key));
+    return { total: list.length, list: list.map(shape) };
+  }
+  const ref = issueRef(board, data, key);
+  if (!ref?.owner || !ref.repo || !ref.number) throw new Error(`Kelpie doesn't know which repo ${key} is in.`);
+  const r = await gh(board.account, ["api", "graphql", "-f", `owner=${ref.owner}`, "-f", `repo=${ref.repo}`, "-F", `number=${ref.number}`, "-f", `query=${COMMENTS}`]);
+  if (r.code !== 0) throw new Error(firstLine(r, `GitHub didn't send ${key}'s comments.`));
+  const c = JSON.parse(r.stdout)?.data?.repository?.issue?.comments;
+  const list = (c?.nodes ?? []).slice(-COMMENTS_MAX).map((n) => shape({ id: n.id, author: n.author?.name || n.author?.login, avatar: n.author?.avatarUrl, at: Date.parse(n.createdAt) || null, body: n.body }));
+  return { total: Math.max(Number(c?.totalCount) || 0, list.length), list };
 }
 
 // The issue as GitHub answers it ({ number, title, body, parent }), or null when there's none.
@@ -124,16 +156,36 @@ export async function setStatus(board, data, key, option) {
   if (r.code !== 0) throw new Error(firstLine(r, "GitHub didn't take the move."));
 }
 
-// Closes an issue on GitHub as completed, on the person's own click in Close's dialog (stories.js
-// closeStories()), never on an agent's word. Its node id is the one the load gave, checked before gh
-// runs; the demo's fixture answers the same mutation (demo.js demoProject()).
-export async function closeIssue(board, data, key) {
-  const id = loadedIssue(data, key)?.id;
-  if (typeof id !== "string" || !ID.test(id)) throw new Error("Kelpie doesn't know which issue it is on GitHub, so nothing was closed");
-  const args = ["api", "graphql", "-f", `issue=${id}`, "-f", `query=${CLOSE}`];
-  if (board.cfg?.demo) return void await demoProject(args);
-  const r = await gh(board.account, args);
-  let said = null;
-  try { said = JSON.parse(r.stdout || "null")?.errors?.[0]?.message ?? null; } catch {}
-  if (r.code !== 0 || said) throw new Error(said || firstLine(r, "GitHub didn't close it"));
+// Closes issues on GitHub as completed, on the person's own click in Close's dialog (stories.js
+// closeStories()), never on an agent's word: CLOSE_SLOTS a request, one request after another, `each`
+// hearing each batch's results as it ends (the dialog shows them as they come). Each node id is the one
+// the load gave, checked before gh runs; one that isn't is never sent. A slot GitHub refuses (no
+// permission on its repo, an issue gone) fails alone. Returns [{ key, ok, why }] in `keys`' order. The
+// demo's fixture answers the same mutation (demo.js demoProject()).
+export async function closeIssues(board, data, keys, each = () => {}) {
+  const out = [];
+  const say = (why) => String(why ?? "").split("\n")[0].replace(/^gh: /, "").replace(/[.\s]+$/, "").slice(0, 160);
+  for (let at = 0; at < keys.length; at += CLOSE_SLOTS) {
+    const chunk = keys.slice(at, at + CLOSE_SLOTS).map((key) => ({ key, id: loadedIssue(data, key)?.id }));
+    const results = chunk.map((x) => (typeof x.id === "string" && ID.test(x.id) ? null : { key: x.key, ok: false, why: "Kelpie doesn't know which issue it is on GitHub, so nothing was sent" }));
+    const asks = chunk.map((x, n) => ({ ...x, n })).filter((x) => !results[x.n]);
+    if (asks.length) {
+      const args = ["api", "graphql", ...asks.flatMap((x, slot) => ["-f", `i${slot}=${x.id}`, "-F", `u${slot}=true`]), "-f", `query=${CLOSE}`];
+      let answer = null, failed = null;
+      if (board.cfg?.demo) answer = await demoProject(args).catch((e) => { failed = e?.message; return null; });
+      else {
+        const r = await gh(board.account, args);
+        try { answer = JSON.parse(r.stdout || "null"); } catch { answer = null; }
+        if (!answer?.data) failed = answer?.errors?.[0]?.message ?? firstLine(r, "GitHub didn't close them");
+      }
+      asks.forEach((x, slot) => {
+        const done = answer?.data?.[`c${slot}`]?.issue?.state === "CLOSED";
+        const why = answer?.errors?.find((e) => e?.path?.[0] === `c${slot}`)?.message ?? failed ?? "GitHub didn't say it closed";
+        results[x.n] = done ? { key: x.key, ok: true, why: null } : { key: x.key, ok: false, why: say(why) };
+      });
+    }
+    out.push(...results);
+    each(results);
+  }
+  return out;
 }

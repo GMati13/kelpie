@@ -1,1 +1,1 @@
-Shown in Kelpie: {{input.key}}, with the passage marked in its description.
+Shown in Kelpie: {{input.key}}. The passage is marked in its description.

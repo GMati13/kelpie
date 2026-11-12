@@ -6,7 +6,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { home, panes, props, run } from "herdr";
+import { home, props } from "herdr";
+import { panes, run } from "./host.js";
 import { SMALL, agentMark, agentWords, chrome, icon, iconButton, programIcon, sessionTitle } from "./ui.js";
 import { decor, skinFont, skinText, skinTheme } from "./skins/index.js";
 

@@ -9,7 +9,8 @@
     "handover": "QA",
     "solo": true,
     "moveToDone": false,
-    "prompt": "/ticket {key}"
+    "prompt": "/ticket {key}",
+    "showPriority": true
   },
   "github": {
     "owner": "acme"

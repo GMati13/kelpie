@@ -1,4 +1,4 @@
-h_flex #done-ACME-118 [hover(bg=hover)] {hover click} tip="Done on the board · 1 subtask · 1 done. Show its details, pull requests and earlier sessions"
+h_flex #done-ACME-118 [hover(bg=hover)] {hover click} tip="Done 5d ago · 1 subtask · 1 done. Show its details, pull requests and earlier sessions"
   div
     div
       svg chrome:check [fg=done]

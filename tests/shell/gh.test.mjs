@@ -58,9 +58,26 @@ describe("gh.sh", () => {
     assert.equal(fakes.calls("gh").length, 1, "only the token was asked for");
   });
 
+  test("a trace turned on from outside never prints the token", () => {
+    // bash (macOS's sh) takes xtrace from an exported SHELLOPTS; dash ignores it.
+    const { fakes } = setup();
+    for (const shell of ["sh", "bash"]) {
+      const r = sh(shell, [GH, "work-me", "api", "user"], { env: { PATH: fakes.path, SHELLOPTS: "xtrace", PS4: "+ " } });
+      assert.equal(r.code, 0, r.stderr);
+      assert.ok(!r.stderr.includes(TOKEN) && !r.stdout.includes(TOKEN), `${shell} traced the token`);
+    }
+  });
+
+  test("Default never takes an account inherited from a profile's terminal, even with Kelpie's gh first", () => {
+    const { fakes } = setup();
+    const r = sh("sh", [GH, "", "pr", "list"], { env: { PATH: `${repoFile("mods/kelpie/bin")}:${fakes.path}`, KELPIE_GH_ACCOUNT: "work-me" } });
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(fakes.calls("gh").map((c) => [c.argv, tokenOf(c)]), [[["pr", "list"], null]], "no token asked for or handed over");
+  });
+
   test("a name that isn't a GitHub login runs nothing", () => {
     const { fakes, run } = setup();
-    for (const bad of ["-u", "--user=x", "a b", "x;y", "a--b", "-"]) {
+    for (const bad of ["-u", "--user=x", "a b", "x;y", "a--b", "-", "a-", "work-me\nx", "x\nwork-me", "work-me\n"]) {
       assert.equal(run(bad, "api", "user").code, 2, bad);
     }
     assert.deepEqual(fakes.calls("gh"), []);

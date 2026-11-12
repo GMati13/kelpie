@@ -3,7 +3,7 @@
     {
       "name": "show_passage",
       "title": "Show a passage in Kelpie",
-      "description": "Opens a story in Kelpie, the person's story view (a ticket on their Jira board or GitHub Project), with a passage of its description scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description (not a summary or paraphrase; a few sentences at most, '…' for words left out). `key` is the story's own key: a subtask's description isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says whether it found the passage; tell the person what happened.",
+      "description": "Opens a story in Kelpie, the person's story view (a ticket on their board), with a passage of its description or of one of its comments scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, where someone said or decided it, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description or one of its comments (not a summary or paraphrase; a few sentences at most, '…' for words left out): Kelpie looks in both. `key` is the story's own key: a subtask's isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says where it found the passage (the description, whose comment, a closest match, or nowhere); tell the person what happened.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -13,7 +13,7 @@
           },
           "quote": {
             "type": "string",
-            "description": "The passage, word for word from the description."
+            "description": "The passage, word for word from the description or a comment."
           },
           "note": {
             "type": "string",
@@ -57,7 +57,7 @@
     {
       "name": "save_profile",
       "title": "Save a change to a Kelpie profile",
-      "description": "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only what changes: name and folder replace; a section (jira, project, github, web, prompts, notify, commands, claude) given as an object is merged into the saved one; a key or section set to null is removed. A profile has one board, jira or project (a GitHub Project), not both: set the other to null. Values are strings, except jira.board and project.number (numbers, filled in from the address) and notify.pulls and either board's solo and moveToDone (true/false). An id that doesn't exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the jira sign-in and address, the project's address and key prefixes, either board's prompts, the github account and prompts) aren't saved until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at Kelpie, and call save_status once they've answered. Save only what the person agreed to.",
+      "description": "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only what changes: name and folder replace; a section (jira, project, github, web, prompts, notify, commands, claude) given as an object is merged into the saved one; a key or section set to null is removed. A profile has one board, jira or project (a GitHub Project), not both: set the other to null. Values are strings, except jira.board and project.number (numbers, filled in from the address) and notify.pulls and either board's solo, moveToDone, byPriority and showPriority (true/false). An id that doesn't exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the jira sign-in and address, the project's address and key prefixes, either board's prompts, the github account and prompts) aren't saved until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at Kelpie, and call save_status once they've answered. Save only what the person agreed to.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -181,6 +181,27 @@
       },
       "annotations": {
         "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_story",
+      "title": "Read a story as Kelpie has it",
+      "description": "Where you run in Kelpie (the person's profile, and the story your tab belongs to, or the Desk) and what Kelpie holds about a story: its status on the board, each subtask's status and assignee, its pull requests with their checks and review, its agents and what each is doing, what it needs from the person, the profile's status line for it, and how old that is. Use it first when the person asks about \"the story\", its status or what's left, without naming one: `key` left out means your own story (else the one Kelpie shows). With `key`, that story (a subtask's key gives its story). For what Kelpie doesn't hold, use your own access. Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "A story's or subtask's key, like ABC-123; left out, your own story."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
