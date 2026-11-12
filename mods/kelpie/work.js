@@ -12,7 +12,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { layout, nextCommand, run, setShared, shared, theme } from "herdr";
+import { nextCommand, theme } from "herdr";
+import { layout, run, setShared, shared } from "./host.js";
 import { SMALL, TEXT, chrome, find, fullName, icon, iconButton, stop, textButton } from "./ui.js";
 import { REFRESH, count } from "./source.js";
 import { openSetup, profileElsewhere, savedSetup, setupOf, shownProfile, shownSpace } from "./config.js";

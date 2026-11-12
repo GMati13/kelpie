@@ -14,7 +14,7 @@ Layouts and mods for [Herdr](https://herdr.dev) built around profiles and storie
 
 ## A look around
 
-Each story's pull requests and uncommitted work, file by file, with a review's progress kept as you go:
+Each story's pull requests, commits not in a pull request yet and uncommitted work, file by file, with a review's progress kept as you go:
 
 ![The Changes view: a file list on the left, a diff on the right](docs/screenshots/changes.png)
 
@@ -45,7 +45,7 @@ A story nobody has started yet:
   - [`terminal-browser`](https://terminal-browser.com) (`brew install --cask terminal-browser`) for the Web panel
   - `sqlite3`, which lets Restart browser forget a page that froze it
 
-Developed on macOS. Linux is meant to work but is less tested. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only. Without `sips`, the Screenshots gallery shows the full images as its thumbnails.
+Developed on macOS. Linux is meant to work but is less tested: CI runs the tests there, but nobody has used it on a Linux desktop yet. There, Kelpie has no Keychain (use a token command for Jira), opens links with `xdg-open`, and reads screenshot sizes with ImageMagick's `identify`, as `sips` is macOS-only. Without `sips`, the Screenshots gallery shows the full images as its thumbnails.
 
 ## Install
 
@@ -158,6 +158,8 @@ herdr-app do kelpie.demo-remove
 `CLAUDE.md` holds the internals and design notes. It's written for the coding agents that work on Kelpie, so it's dense, but it's the reference for how every part works.
 
 Run `./test.sh` before committing (Node 22 or later, `python3`, `git` and `jq`; nothing to install), or let git run it for you: `git config core.hooksPath scripts`. CI runs it on macOS and Linux. `tests/README.md` says how the tests work and how to add one; a security-relevant change comes with a test. The rules for working on Kelpie (development, testing, security, product) are in `.claude/rules/`.
+
+When something shows late, `herdr-app do kelpie.debug-loads` writes a record of what Kelpie loads, what waits and how long each took into Herdr's shared state; read it with `jq '."kelpie.debug.loads"' ~/.config/herdr-app/shared.json`, and run the command again to turn it off.
 
 ## License
 

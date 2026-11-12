@@ -81,3 +81,35 @@ div
                         TextView.html "pr-desc-5-1-0-text-0" "<span>☐ Docs</span>" [fg=foreground/c4]
               v_flex
                 TextView.html "pr-desc-6-text-0" "<span>Closes <a href=\"https://jira.example.com/browse/ACME-166\">ACME-166</a>.</span>" [fg=foreground/c4]
+        v_flex #review-ticket-section
+          h_flex
+            v_flex [border=border]
+              h_flex #review-ticket
+                div [fg=muted]
+                  "Ticket"
+                div #review-ticket-key [font="DM Mono" fg=accent hover(fg=foreground)] {click} tip="Open in Jira: ACME-166"
+                  "ACME-166"
+                div [fg=foreground] tip="Share a trip with a link"
+                  "Share a trip with a link"
+          h_flex
+            div #review-ticket-desc-body [font="Fraunces" fg=foreground/c4]
+              v_flex
+                v_flex [fg=foreground/e0]
+                  TextView.html "review-ticket-desc-0-text-0" "<span>Travellers want to show a trip to someone who has no account. Give each trip a link that opens it read-only, without signing in.</span>" [fg=foreground/e0]
+                v_flex [fg=accent]
+                  TextView.html "review-ticket-desc-1-text-0" "<span>ACCEPTANCE</span>" [fg=accent]
+                v_flex
+                  h_flex
+                    div [fg=dim]
+                      "•"
+                    div
+                      v_flex
+                        v_flex
+                          TextView.html "review-ticket-desc-2-0-0-text-0" "<span>The link works for 14 days, then says it has expired</span>" [fg=foreground/c4]
+                  h_flex
+                    div [fg=dim]
+                      "•"
+                    div
+                      v_flex
+                        v_flex
+                          TextView.html "review-ticket-desc-2-1-0-text-0" "<span>Whoever opens it sees the trip but can't change it</span>" [fg=foreground/c4]

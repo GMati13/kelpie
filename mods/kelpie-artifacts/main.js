@@ -39,6 +39,14 @@ const clock = (mtime) => {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
+// A note typed to go with an image (Add to chat): one line, as it's pasted into a terminal, where a line
+// break or another control character could press Enter or steer the terminal; at most NOTE_MAX characters.
+// Exported for the tests.
+export const NOTE_MAX = 500;
+export const cleanNote = (text) => [...String(text ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim()].slice(0, NOTE_MAX).join("").trim();
+// The note goes in a paste of its own after the image's path, so the path alone is what Claude Code
+// takes for an image; this long after the first paste.
+const NOTE_AFTER = 400;
 // Sizes and pointer positions arrive in real pixels, but layout sizes are multiplied by zoom.
 const toLayout = (v) => v / (settings().zoom || 1);
 const pointIn = (p) => (p ? { x: toLayout(p.x), y: toLayout(p.y) } : undefined);
@@ -79,6 +87,10 @@ export default class Artifacts extends View {
     this.controls = true;
     this.textInput = InputState.new({ value: "", placeholder: "Type, then Return" });
     this.textInput.on("submit", (_e, cx) => { this.commitText(); cx.notify(); });
+    // Add to chat's note: what to look at in the image ("the button is cut off here"). Enter adds both.
+    this.noteInput = InputState.new({ value: "", placeholder: "A note for the agent, if you like: what to look at" });
+    this.noteInput.on("submit", (_e, cx) => { this.sendNote(cx); cx.notify(); });
+    this.noteFor = null; // while the note bar is open: { terminal, path, marks } (marks: the marked version)
     this.shown = true;
     this.viewport = { width: 0, height: 0 };
     this.resetView();
@@ -219,15 +231,28 @@ export default class Artifacts extends View {
   }
 
   // Puts a file in a Claude message box, unsent: its path goes through the clipboard,
-  // because Herdr's paste presses no Enter. Whatever text you had copied comes back afterwards.
-  pasteToChat(path, terminal, cx) {
-    const pane = terminal ? panes().find((p) => p.terminal === terminal)?.pane : null;
+  // because Herdr's paste presses no Enter. A note follows in a paste of its own, once the path's has
+  // landed, in the same pane. Whatever text you had copied comes back afterwards.
+  pasteToChat(path, terminal, cx, note = "") {
+    const paneOf = () => (terminal ? panes().find((p) => p.terminal === terminal)?.pane : null);
+    const pane = paneOf();
     if (!pane) return false;
+    const text = cleanNote(note);
     const before = cx.read_from_clipboard();
     cx.write_to_clipboard(`${path} `);
     run("pane.focus", { pane });
     run("terminal.paste");
-    cx.timer.after(1500, (cx) => {
+    if (text) {
+      cx.timer.after(NOTE_AFTER, (cx) => {
+        // Only into the agent the image went to: gone meanwhile, the note stays unsent.
+        const still = paneOf();
+        if (!still) return;
+        cx.write_to_clipboard(`${text} `);
+        run("pane.focus", { pane: still });
+        run("terminal.paste");
+      });
+    }
+    cx.timer.after(1500 + (text ? NOTE_AFTER : 0), (cx) => {
       if (before !== undefined) cx.write_to_clipboard(before);
       this.added = null;
       cx.notify();
@@ -235,15 +260,56 @@ export default class Artifacts extends View {
     return true;
   }
 
-  addToChat(item, cx, terminal = this.chatTerminal(item)) {
+  // Add to chat opens a bar for a note to go with the image (or its marked version), to `terminal`.
+  openNote(item, terminal, cx, marks = false) {
+    if (!terminal) return;
+    this.noteFor = { terminal, path: item.path, marks };
+    this.noteInput.set_value("");
+    // After this press has finished moving focus to the panel.
+    cx.timer.after(30, () => this.noteInput.focus());
+  }
+
+  closeNote() {
+    this.noteFor = null;
+    this.noteInput.set_value("");
+    this.handle?.focus();
+  }
+
+  // Enter, or the bar's Add: the image, then the note, into the agent's message box, unsent.
+  sendNote(cx) {
+    const n = this.noteFor;
+    const item = n ? this.items.find((i) => i.path === n.path) : null;
+    if (!n || !item) { this.noteFor = null; return; }
+    const note = cleanNote(this.noteInput.value());
+    this.closeNote();
+    if (n.marks) {
+      const size = this.size(item);
+      if (size) this.addMarksToChat(item, size, cx, n.terminal, note);
+    } else this.addToChat(item, cx, n.terminal, note);
+  }
+
+  // Under the image while Add to chat's note is open, in place of the filmstrip or the mark-up tools.
+  noteBar(t) {
+    const n = this.noteFor;
+    const name = agents().find((a) => a.address === n.terminal)?.tab_name ?? panes().find((p) => p.terminal === n.terminal)?.title ?? "the agent";
+    return h_flex().id("artifact-note-bar").absolute().left(0).right(0).bottom(MARGIN).px(MARGIN).justify_center().cursor_default()
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .child(this.capsule(t).h(CONTROL + 12).w_full().max_w(560).pl(14).pr(4).gap(8)
+        .child(div().flex_none().max_w(160).truncate().text_size(SMALL).text_color(t.dim).tooltip(`Goes to ${name}'s message box, unsent`).child(`To ${name}`))
+        .child(div().flex_1().min_w(0).child(Input.new(this.noteInput).w_full().h(CONTROL).px(10).rounded_full().border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
+        .child(this.button(t, "artifact-note-add", "Add", (cx) => this.sendNote(cx), true, `Put the ${n.marks ? "marked image" : "image"} and the note in the message box, without sending ↩`))
+        .child(this.button(t, "artifact-note-cancel", "Cancel", () => this.closeNote(), false, "Close without adding it, Esc")));
+  }
+
+  addToChat(item, cx, terminal = this.chatTerminal(item), note = "") {
     // A double-click shouldn't attach it twice to the same agent. Another agent, or later on, is fine.
     if (this.added === `${terminal}|${item.path}`) return;
-    if (this.pasteToChat(item.path, terminal, cx)) this.added = `${terminal}|${item.path}`;
+    if (this.pasteToChat(item.path, terminal, cx, note)) this.added = `${terminal}|${item.path}`;
   }
 
   // The image with its marks, straight to the message box. You stay in mark-up with the marks intact,
   // so you can change them and add another version, and nothing joins the gallery.
-  addMarksToChat(item, size, cx, terminal = this.chatTerminal(item)) {
+  addMarksToChat(item, size, cx, terminal = this.chatTerminal(item), note = "") {
     this.commitText();
     const m = this.markup;
     if (!m?.marks.length || m.adding) return;
@@ -256,7 +322,7 @@ export default class Artifacts extends View {
     cx.spawn(async (cx) => {
       const out = await exec("sh", ["-c", FLATTEN_SCRIPT, "sh", item.path, ...drawArgs(m.marks, size.width, size.height)], on ? { on } : {}).catch((e) => ({ code: 1, stderr: String(e), stdout: "" }));
       m.adding = false;
-      if (out.code === 0 && out.stdout.trim() && this.pasteToChat(out.stdout.trim(), terminal, cx)) m.addedVersion = version;
+      if (out.code === 0 && out.stdout.trim() && this.pasteToChat(out.stdout.trim(), terminal, cx, note)) m.addedVersion = version;
       else m.error = out.stderr?.includes("not found") ? "ImageMagick isn't installed" : "Couldn't add it to the chat";
       cx.notify();
     });
@@ -361,7 +427,7 @@ export default class Artifacts extends View {
         .child(this.button(t, "markup-cancel", "Cancel", () => { this.markup = null; }))
         .when(m.marks.length > 0 || Boolean(m.editing), (el) => el
           .child(this.button(t, "markup-save", m.saving ? "Saving…" : "Save copy", (cx) => this.saveMarks(t, item, size, cx), false, "Keep this version in the gallery"))
-          .when(Boolean(this.chatTerminal(item)), (x) => x.child(this.chatButton(t, "markup-add", item, m.addedVersion === `${this.chatTerminal(item)}|${JSON.stringify(m.marks)}` ? "Added" : m.adding ? "Adding…" : "Add to chat", true, "Put this version in the message box, without sending", (to, cx) => this.addMarksToChat(item, size, cx, to))))));
+          .when(Boolean(this.chatTerminal(item)), (x) => x.child(this.chatButton(t, "markup-add", item, m.addedVersion === `${this.chatTerminal(item)}|${JSON.stringify(m.marks)}` ? "Added" : m.adding ? "Adding…" : "Add to chat", true, "Put this version in the message box, with a note if you like, without sending", (to, cx) => { this.commitText(); this.openNote(item, to, cx, true); })))));
   }
 
   resize(by) {
@@ -525,7 +591,7 @@ export default class Artifacts extends View {
         .child(h_flex().absolute().left(0).right(0).top(MARGIN).justify_center().cursor_default()
           .child(this.capsule(t).px(14).text_size(SMALL).text_color(this.markup.error ? t.blocked : t.muted)
             .child(this.markup.error ?? `Marking up ${item.name}`)))
-        .child(this.markupBar(t, item, size));
+        .child(this.noteFor?.marks ? this.noteBar(t) : this.markupBar(t, item, size));
     }
     const edge = (id, side, name, by, tip) => fading(div().id(`${id}-edge`).absolute().top("50%").mt(-18)).when(side === "left", (el) => el.left(MARGIN)).when(side === "right", (el) => el.right(MARGIN))
       .child(this.capsule(t).child(this.button(t, id, icon(name), () => this.step(by), false, tip)));
@@ -544,7 +610,7 @@ export default class Artifacts extends View {
           this.markup = { tool: "box", color: localStorage.getItem("ink") ?? INK, marks: [], undone: [], current: null, saving: false, error: null };
         }, false, "Draw on a new copy of this image"))))
         .when(Boolean(this.chatTerminal(item)), (el) => el.child(this.capsule(t).child(this.chatButton(t, "artifact-add", item,
-          this.added === `${this.chatTerminal(item)}|${item.path}` ? "Added" : "Add to chat", this.added === `${this.chatTerminal(item)}|${item.path}`, "Put this image in the message box, without sending", (to, cx) => this.addToChat(item, cx, to)))))
+          this.added === `${this.chatTerminal(item)}|${item.path}` ? "Added" : "Add to chat", this.added === `${this.chatTerminal(item)}|${item.path}`, "Put this image in the message box, with a note if you like, without sending", (to, cx) => this.openNote(item, to, cx)))))
         .when(Boolean(size), (el) => el.child(this.capsule(t)
           .child(this.button(t, "artifact-out", icon("minus"), () => this.zoomBy(size, 1 / 1.25), false, "Zoom out"))
           .child(div().flex_none().w(40).flex().justify_center().text_size(SMALL).text_color(t.muted).child(percent))
@@ -558,7 +624,8 @@ export default class Artifacts extends View {
           .when(!this.session?.on, (c) => c.child(this.button(t, "artifact-reveal", revealLabel(), () => { reveal(item.path); }))))))
       .when(at > 0, (el) => el.child(edge("artifact-prev", "left", "chevron-left", -1, "Previous")))
       .when(at < this.items.length - 1, (el) => el.child(edge("artifact-next", "right", "chevron-right", 1, "Next")))
-      .child(fading(h_flex().id("artifact-bottom").absolute().left(0).right(0).bottom(MARGIN).justify_center()).child(this.strip(t, at)));
+      .child(this.noteFor && !this.noteFor.marks ? this.noteBar(t)
+        : fading(h_flex().id("artifact-bottom").absolute().left(0).right(0).bottom(MARGIN).justify_center()).child(this.strip(t, at)));
   }
 
   viewer(t, item, size, zoomed) {
@@ -657,6 +724,11 @@ export default class Artifacts extends View {
 
   onKey(e, cx) {
     const k = e.key;
+    if (this.noteFor) {
+      if (k !== "escape") return false; // letters are for the note
+      this.closeNote();
+      return true;
+    }
     if (this.markup?.editing) {
       if (k !== "escape") return false; // letters are for the text
       this.markup.editing = null;
@@ -725,6 +797,7 @@ export default class Artifacts extends View {
       this.items = [];
       this.open = null;
       this.markup = null;
+      this.noteFor = null;
       this.state = "looking";
       this.resetView();
     }
@@ -737,6 +810,8 @@ export default class Artifacts extends View {
     }
     const item = this.items.find((i) => i.path === this.open);
     if (this.open && !item) { this.open = null; this.markup = null; this.resetView(); }
+    // The note is for the image it was opened on: another image shown, or the mark-up left, closes it.
+    if (this.noteFor && (this.noteFor.path !== item?.path || (this.noteFor.marks && !this.markup))) this.noteFor = null;
     if (item && !this.sizes[item.path]) {
       this.sizes[item.path] = "loading";
       cx.spawn(async (cx) => {

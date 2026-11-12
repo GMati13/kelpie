@@ -13,7 +13,8 @@
 //   uncommitted work, sessions and the footer's limits.
 // Times in the fixture are relative ("-2h", "-3d", "+40m"), so the demo never looks stale.
 
-import { agents, exec, readTextFile, run, setShared, shared, spaces } from "herdr";
+import { exec, readTextFile } from "herdr";
+import { agents, run, setShared, shared, spaces } from "./host.js";
 import { modFile } from "./ui.js";
 import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
 
@@ -22,6 +23,7 @@ export const isDemo = (x) => Boolean(x?.demo);
 
 let FIXTURE = null; // the last fixture read, for the few readers that can't wait (the footer, argv)
 const MOVED = {}; // key -> status name, after a transition in the demo
+const CLOSED = new Set(); // keys of the GitHub Project demo's issues closed from Kelpie (KelpieClose)
 
 const UNITS = { m: 60e3, h: 3600e3, d: 864e5 };
 const when = (v, now = Date.now()) => {
@@ -161,7 +163,9 @@ const login = (name) => String(name).toLowerCase().normalize("NFD").replace(/[\u
 function ghIssue(f, i) {
   const repo = f.project.repo;
   const column = columnOf(f, MOVED[i.key] ?? i.status);
-  const closed = column === f.board.columns.length - 1;
+  // An issue in the done column is closed, unless the fixture leaves it `open` (a Status move to done
+  // leaves an issue open on GitHub) and Kelpie hasn't closed it since.
+  const closed = CLOSED.has(i.key) || (column === f.board.columns.length - 1 && !i.open);
   const who = i.assignee ?? (i.mine ? f.profile.meName : null);
   const parent = i.parent && issueById(f).get(i.parent);
   return {
@@ -191,7 +195,19 @@ export async function demoProject(args) {
   const f = await demoFixture();
   if (!f.project) throw new Error("The demo's fixture has no GitHub Project.");
   const v = variables(args);
-  const op = /^query\s+(\w+)/.exec(v.query ?? "")?.[1];
+  const op = /^(?:query|mutation)\s+(\w+)/.exec(v.query ?? "")?.[1];
+  // Closing issues (issues.js closeIssues()), each slot `c<n>` whose `u<n>` is set: kept in memory
+  // until the mod reloads, as moves are. One the fixture doesn't have is refused alone, as GitHub does.
+  if (op === "KelpieClose") {
+    const data = {}, errors = [];
+    for (let n = 0; v[`u${n}`] === "true"; n++) {
+      const i = f.issues.find((x) => nodeId(x.key) === v[`i${n}`]);
+      if (!i) { data[`c${n}`] = null; errors.push({ type: "NOT_FOUND", path: [`c${n}`], message: `Could not resolve to a node with the global id of '${v[`i${n}`]}'.` }); continue; }
+      CLOSED.add(i.key);
+      data[`c${n}`] = { issue: { id: v[`i${n}`], state: "CLOSED" } };
+    }
+    return errors.length ? { data, errors } : { data };
+  }
   if (op === "KelpieStories") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
     return { data: { nodes: (v.ids ?? []).map((id) => byId.get(id)).filter(Boolean).map((i) => ({ ...ghIssue(f, i), subIssues: { nodes: f.issues.filter((c) => c.parent === i.key).map((c) => ghIssue(f, c)) } })) } };
@@ -248,7 +264,7 @@ const pullId = (p) => `demo-pr-${p.repo}-${p.number}`;
 function asPull(f, raw) {
   const p = later(raw);
   return {
-    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
+    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(), ...(p.branch ? { headRefName: p.branch } : {}),
     reviewDecision: APPROVED.has(prUrl(f, p)) ? "APPROVED" : p.review ?? null, viewerReview: APPROVED.has(prUrl(f, p)) ? "APPROVED" : null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };
@@ -303,7 +319,7 @@ export async function demoPullFiles(url) {
 // A file's whole text, when the fixture has it: a pull request's (by its url), else uncommitted work's.
 export async function demoBlob(url, path) {
   const f = await demoFixture();
-  const files = url ? f.pulls.find((x) => prUrl(f, x) === url)?.files : (f.local ?? []).flatMap((r) => r.files);
+  const files = url ? f.pulls.find((x) => prUrl(f, x) === url)?.files : (f.local ?? []).flatMap((r) => [...r.files, ...(r.committed?.files ?? [])]);
   const file = files?.find((x) => x.path === path);
   if (typeof file?.text !== "string") throw new Error("the demo has only this file's diff");
   return file.text;
@@ -314,12 +330,14 @@ export async function demoBlob(url, path) {
 const homeOf = async () => (await exec("sh", ["-c", 'printf %s "$HOME"'])).stdout;
 const expand = (path, home) => String(path ?? "").replace(/^~(?=\/|$)/, home);
 
-// changes.py for a demo profile: uncommitted work in the story's ticket folders.
+// changes.py --committed for a demo profile: uncommitted work in the story's ticket folders, and what
+// their branches committed (`committed`: {base, commits, files}) with no pull request yet.
 export async function demoLocal(folder, keys) {
   const f = await demoFixture();
+  const files = (list) => (list ?? []).map((x) => ({ path: x.path, status: x.status ?? "modified", patch: x.patch, ...counted(x.patch) }));
   return (f.local ?? []).filter((r) => keys.includes(r.key)).map((r) => ({
-    repo: r.repo, path: `${folder}/${r.key}/${r.repo}`, branch: r.branch ?? r.key, key: r.key, ticket: true,
-    files: r.files.map((x) => ({ path: x.path, status: x.status ?? "modified", patch: x.patch, ...counted(x.patch) })),
+    repo: r.repo, path: `${folder}/${r.key}/${r.repo}`, branch: r.branch ?? r.key, key: r.key, ticket: true, files: files(r.files),
+    head: null, committed: r.committed ? { base: r.committed.base ?? "origin/main", commits: r.committed.commits ?? 1, files: files(r.committed.files) } : null,
   }));
 }
 // sessions.py for a demo profile: earlier Claude sessions, newest first.

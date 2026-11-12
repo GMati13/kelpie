@@ -5,7 +5,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { handlers, isElement, nodeOf, texts, walk } from "gpui-kit";
 import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
-import { StoryList, StoryView, diffRows } from "../../mods/kelpie/stories.js";
+import { StoryList, StoryView, changeGroups, diffRows } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
 
 const KEY = "review:web#421";
@@ -293,4 +293,56 @@ test("changes: Ask agent's bar is laid over the diff, not above it", async () =>
   assert.equal(rowCount(s), rows, "nor fold it");
   clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 100);
   assert.deepEqual(s.clip, ["src/file6000.ts"]);
+});
+
+// Commits on a story's branch with no pull request yet are a group of their own, between the
+// uncommitted work and the pull requests; a branch a pull request of the story has stays its (#13).
+const repoOf = (over = {}) => ({ repo: "api", path: "/home/test/acme/ACME-184/api", branch: "ACME-184-zones", key: STORY, ticket: "/home/test/acme/ACME-184", head: "a".repeat(40),
+  files: [], committed: { base: "origin/main", commits: 2, files: [{ path: "src/zone.ts", add: 3, del: 0, status: "modified", patch: "new file mode 100644\n@@ -0,0 +1,3 @@\n+a\n+b\n+c" }] }, ...over });
+const storyIt = { key: STORY, subs: [] };
+const prOf = (over = {}) => ({ url: "https://github.com/kelpie--demo/api/pull/7", number: 7, title: "Zones", repository: { name: "api" }, headRefName: "ACME-184-zones", headRefOid: "b".repeat(40), ...over });
+test("changeGroups: a branch's commits with no pull request yet are a group of their own", () => {
+  const dirty = repoOf({ repo: "web", path: "/home/test/acme/ACME-184/web", committed: null, files: [{ path: "x.ts", add: 1, del: 0, status: "modified", patch: "@@ -1 +1 @@\n-x\n+y" }] });
+  const pr = prOf({ repository: { name: "docs" }, headRefName: "other" });
+  const groups = changeGroups(storyIt, [pr], [[]], [dirty, repoOf()]);
+  assert.deepEqual(groups.map((g) => [g.repo, Boolean(g.url), g.committed ?? null]),
+    [["web", false, null], ["api", false, { branch: "ACME-184-zones", base: "origin/main", commits: 2 }], ["docs#7", true, null]]);
+  const [file] = groups[1].files;
+  assert.deepEqual([file.id, file.path, file.status, file.add], ["committed:/home/test/acme/ACME-184/api:src/zone.ts", "src/zone.ts", "added", 3]);
+  assert.equal(groups[1].path, "/home/test/acme/ACME-184/api", "Show in Finder and the file's text find it");
+  assert.equal(groups[1].label, "ACME-184 · api · 2 commits on ACME-184-zones since origin/main, no pull request yet");
+});
+test("changeGroups: a pull request on that branch, or at that very commit, shows those commits itself", () => {
+  assert.deepEqual(changeGroups(storyIt, [prOf()], [[]], [repoOf()]).map((g) => g.repo), ["api#7"], "its repo and branch");
+  assert.deepEqual(changeGroups(storyIt, [prOf({ merged: true })], [[]], [repoOf()]).map((g) => g.repo), ["api#7"], "merged too");
+  assert.deepEqual(changeGroups(storyIt, [prOf({ repository: { name: "api-service" }, headRefName: "x", headRefOid: "a".repeat(40) })], [[]], [repoOf()]).map((g) => g.repo),
+    ["api-service#7"], "its head commit, from a folder named otherwise");
+  assert.deepEqual(changeGroups(storyIt, [prOf({ repository: { name: "web" } })], [[]], [repoOf()]).map((g) => g.repo), ["api", "web#7"], "the same branch name in another repo");
+  assert.deepEqual(changeGroups(storyIt, [], [], [repoOf({ committed: { base: "origin/main", commits: 0, files: [] } }), repoOf({ committed: null })]), [], "nothing committed, or no default branch");
+});
+test("changes: committed work's heading says no pull request yet, and names the branch", async () => {
+  const group = changeGroups(storyIt, [], [], [repoOf()])[0];
+  const s = await storyChanges([{ ...group, files: [{ ...file(6003, 3), id: "committed:/home/test/acme/ACME-184/api:src/file6003.ts" }] }]);
+  const el = s.view.render(s.cx);
+  assert.match(texts(el).join(" | "), /api \| no PR yet/, "the file list's heading");
+  // The section's heading is the diff list's first row, drawn by its renderer.
+  const list = virtualList(el);
+  const rows = texts(list.args[4]({ start: 0, end: 1 })).join(" | ");
+  assert.match(rows, /api \| ACME-184-zones \| No pull request yet/, "the section's heading");
+});
+test("changes: committed work's hidden lines come from the branch's last commit", async () => {
+  mock.reset();
+  mock.on.exec = (cmd, args) => (cmd === "git" ? { code: 0, stdout: "one\ntwo\n", stderr: "" } : undefined);
+  const tasks = [];
+  const cx = { spawn: (fn) => tasks.push(fn(cx)), notify() {} };
+  const view = new StoryView();
+  const f = { id: "committed:/r/api:src/a.ts", path: "src/a.ts", sha: `gap-${Date.now()}`, group: { committed: { branch: "b" }, path: "/r/api" } };
+  view.openGap({ profile: { id: "p" }, space: null }, f, "0", 20, 0, cx);
+  await Promise.all(tasks);
+  assert.deepEqual(mock.of("exec").map(([c, a]) => [c, a]), [["git", ["-C", "/r/api", "show", "HEAD:src/a.ts"]]]);
+  assert.deepEqual(mock.of("readTextFile"), [], "not the working tree's");
+});
+test("changes: the stories keep each pull request's branch, which tells Changes whose commits it shows", () => {
+  const prs = JSON.stringify(stories.data);
+  assert.match(prs, /"url":"https:\/\/github\.com\/kelpie--demo\/web\/pull\/418"[^}]*"headRefName":"ACME-143-trip-cache"/);
 });
