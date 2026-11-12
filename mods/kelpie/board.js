@@ -21,7 +21,7 @@
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
-import { issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
+import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
 
 const PAGES = 5; // up to 500 tickets a search
@@ -200,4 +200,19 @@ export async function doneOption(board, key, data) {
 export async function moveStatus(board, key, option, data) {
   if (board.kind === "project") return setStatus(board, data, key, option);
   await jira(board.cfg, "transition", key, option.id);
+}
+
+// Whether a board's tickets can be left open once done, and so be closed from Kelpie: a GitHub
+// Project's (a Status move to its done column leaves the issue open); a Jira ticket's done status is
+// its being closed.
+export const closesTickets = (board) => board?.kind === "project";
+
+// How many tickets a close request takes at once, so a view can say which are being closed now.
+export { CLOSE_SLOTS as CLOSE_BATCH } from "./issues.js";
+
+// Closes done tickets on their board, as completed, on the person's own click (Close in the Done
+// group): [{ key, ok, why }], `each` hearing each batch's results as they come (issues.js closeIssues()).
+export async function closeTickets(board, keys, data, each) {
+  if (!closesTickets(board)) throw new Error("its board closes a ticket by moving it to done");
+  return closeIssues(board, data, keys, each);
 }

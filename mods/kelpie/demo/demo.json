@@ -296,6 +296,7 @@
     },
     {
       "key": "ACME-118",
+      "open": true,
       "assignee": "Priya Nair",
       "summary": "Show prices in the traveller's currency",
       "type": "Story",
@@ -304,6 +305,7 @@
     },
     {
       "key": "ACME-119",
+      "open": true,
       "summary": "Convert prices in the price service",
       "parent": "ACME-118",
       "status": "Done",
