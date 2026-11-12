@@ -159,6 +159,8 @@ herdr-app do kelpie.demo-remove
 
 Run `./test.sh` before committing (Node 22 or later, `python3`, `git` and `jq`; nothing to install), or let git run it for you: `git config core.hooksPath scripts`. CI runs it on macOS and Linux. `tests/README.md` says how the tests work and how to add one; a security-relevant change comes with a test. The rules for working on Kelpie (development, testing, security, product) are in `.claude/rules/`.
 
+When something shows late, `herdr-app do kelpie.debug-loads` writes a record of what Kelpie loads, what waits and how long each took into Herdr's shared state; read it with `jq '."kelpie.debug.loads"' ~/.config/herdr-app/shared.json`, and run the command again to turn it off.
+
 ## License
 
 MIT, see `LICENSE`. Bundled third-party files keep their own licences, kept beside them:
