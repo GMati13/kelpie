@@ -145,6 +145,20 @@ describe("which keys the load asks for", () => {
     assert.deepEqual(r.mine.map((i) => i.key), ["ACME-8"], "Jira says ACME-8 is yours; ACME-5 is Ana's");
   });
 
+  // Anyone on the board writes what it holds, and a key goes into searches, folder names and `{key}`
+  // commands: an issue whose key (or its parent's) isn't one is left out (security.md).
+  test("Jira: an issue the board gives whose key isn't a key is left out of the load", async () => {
+    mock.reset();
+    const searches = [];
+    const bad = { key: "ACME-2 $(touch owned)", fields: { summary: "Odd", issuetype: { name: "Story", subtask: false }, status: { id: "1" }, assignee: me } };
+    const badParent = { key: "ACME-3", fields: { summary: "Odd parent", issuetype: { name: "Sub-task", subtask: true }, status: { id: "1" }, parent: { key: "ACME-4) OR key in (X-1" }, assignee: me } };
+    fakeJira(searches, { sprint: [ISSUES[0], bad, badParent] });
+    const r = await loadBoard({ kind: "jira", cfg }, {});
+    const keys = [...r.mine, ...r.parents, ...r.children].map((i) => i.key);
+    assert.deepEqual([...new Set(keys)], ["ACME-1"]);
+    assert.ok(!searches.some((s) => /touch|X-1|ACME-3|ACME-4/.test(s)), searches.join("\n"));
+  });
+
   test("Jira: a kept search Jira can't answer fails the load, so nothing is pruned", async () => {
     mock.reset();
     fakeJira([], { down: true });

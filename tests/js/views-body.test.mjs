@@ -72,6 +72,37 @@ test("a review's details show its description", async () => {
   assert.doesNotMatch(words, /Describe how you tested it/);
 });
 
+// A review whose title names a ticket shows that ticket under its description, as Start review gives
+// it to the agent: its key (opening its page), its summary and its description. The demo's web#421
+// names ACME-166, a teammate's story the list doesn't hold, so the board is asked for it.
+test("a review's details show the ticket its title names", async () => {
+  const { el, cx } = await body({ preview: "review:web#421" });
+  const ticket = render(byId(el, "review-ticket-section"), skinTheme());
+  assert.match(ticket, /"Ticket"[\s\S]*"ACME-166"[\s\S]*"Share a trip with a link"/);
+  assert.match(render(byId(el, "review-ticket-desc-body"), skinTheme()), /The link works for 14 days, then says it has expired/);
+  mock.calls.length = 0;
+  press(el, "review-ticket-key", cx);
+  assert.ok(mock.of("exec").some(([, args]) => args.includes("https://jira.example.com/browse/ACME-166")), "its key opens the ticket's page");
+});
+
+// A ticket the list holds needs no asking, and a subtask's story shows beside it.
+test("a review naming a subtask of the list shows its story too", async () => {
+  const data = structuredClone(stories);
+  data.data.reviews = data.data.reviews.map((p) => (p.url.endsWith("/web/pull/421") ? { ...p, title: "ACME-161 Fuzzy matching" } : p));
+  setupDemoWorld({ stories: data });
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "review:web#421" });
+  const { el } = await draw(new StoryBody());
+  const ticket = render(byId(el, "review-ticket-section"), skinTheme());
+  assert.match(ticket, /"ACME-161"[\s\S]*"Fuzzy matching in the search service"/);
+  assert.match(ticket, /"Story"[\s\S]*"ACME-160"[\s\S]*"Typo-tolerant search"/);
+});
+
+// One naming no ticket has no ticket section.
+test("a review naming no ticket shows none", async () => {
+  const { el } = await body({ preview: "review:api#305" });
+  assert.equal(byId(el, "review-ticket-section"), null);
+});
+
 // A subtask row's actions show on the row hovered (on_hover, this copy's), over its title's end: at
 // rest it keeps no room for them.
 const hoverRow = (el, key, on, cx) => handlers(el, "on_hover").find((h) => h.id === `sub-row-${key}`).fn(on, cx);

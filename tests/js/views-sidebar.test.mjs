@@ -9,7 +9,8 @@ import { StoryList } from "../../mods/kelpie/stories.js";
 import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
-import { handlers, nodeOf, texts } from "gpui-kit";
+import { div, handlers, nodeOf, texts } from "gpui-kit";
+import { groupHeader } from "../../mods/kelpie/ui.js";
 import { v_flex } from "gpui-base";
 import { mock } from "herdr";
 
@@ -177,6 +178,70 @@ test("the Desk closed, and open without an agent", async () => {
   snap("sidebar/desk-closed", deskRows(t, {}, profileById(DEMO)));
   setupDemoWorld({ stories, spaces: [{ name: "Desk", tabs: [{ name: "Terminal", agent: null }] }] });
   snap("sidebar/desk-no-agent", deskRows(t, {}, profileById(DEMO)));
+});
+
+// The Desk's heading goes to the Desk itself, without picking one of its agents (#133): its plain
+// terminals counted after its agents, a click there showing the Desk on that terminal (a menu of
+// them when there are several); its + and clock menus still open their own menus.
+const deskWorld = (tabs) => setupDemoWorld({ stories, spaces: [{ name: "Desk", tabs }] });
+const deskSpace = () => mock.state.spaces.find((s) => s.name === "Desk");
+const runs = () => mock.calls.filter((c) => c.fn === "run").map((c) => [c.args[0], c.args[1]]);
+const AGENT_TAB = FIXTURE.spaces.find((s) => s.name === "Desk").tabs.find((c) => c.agent);
+test("the Desk's heading shows the Desk without focusing an agent", () => {
+  deskWorld([AGENT_TAB, { name: "Terminal" }]);
+  const desk = deskSpace();
+  assert.ok(desk && !desk.active, "the Desk is open, another space shown");
+  const el = deskRows(skinTheme(), {}, profileById(DEMO));
+  const click = handlers(el, "on_click").find((h) => h.id === "desk-head");
+  assert.ok(click, "the heading is clickable");
+  mock.calls = [];
+  click.fn({}, { notify() {}, stop_propagation() {} });
+  assert.deepEqual(runs(), [["space.select", { id: desk.id }]], "it shows the Desk, and focuses no pane");
+});
+
+test("with agents, the Desk's heading counts its terminals", () => {
+  deskWorld([AGENT_TAB, { name: "Terminal" }]);
+  const t = skinTheme();
+  const one = deskRows(t, {}, profileById(DEMO));
+  snap("sidebar/desk-agent-terminal", one);
+  const mark = byId(one, "desk-terminals");
+  assert.ok(mark, "a terminal mark in the heading");
+  assert.deepEqual(texts(mark), ["1"]);
+  mock.calls = [];
+  handlers(mark, "on_click")[0].fn({}, { notify() {}, stop_propagation() {} });
+  const tab = deskSpace().tabs.find((c) => c.name === "Terminal");
+  assert.deepEqual(runs().at(-1), ["tab.select", { id: tab.id }], "one terminal: a click shows it");
+  // Its clicks stay off the heading, which would show the Desk where it was instead.
+  assert.ok(handlers(byId(one, "desk-terminals-wrap"), "on_click").some((h) => h.id === "desk-terminals-wrap"));
+
+  deskWorld([AGENT_TAB, { name: "Terminal" }, { name: "Build" }]);
+  const host = {};
+  const two = deskRows(t, host, profileById(DEMO));
+  assert.deepEqual(texts(byId(two, "desk-terminals")), ["2"]);
+  handlers(byId(two, "desk-terminals"), "on_click")[0].fn({}, { notify() {}, stop_propagation() {} });
+  assert.equal(host.menu, "desk-terminals", "several: a click opens a menu of them");
+  const menu = deskRows(t, host, profileById(DEMO));
+  const build = deskSpace().tabs.find((c) => c.name === "Build");
+  mock.calls = [];
+  handlers(menu, "on_click").find((h) => h.id === "desk-terminals-row-2").fn({}, { notify() {}, stop_propagation() {} });
+  assert.deepEqual(runs().at(-1), ["tab.select", { id: build.id }]);
+
+  // Without terminals, nothing in the heading but its agents' count.
+  deskWorld([AGENT_TAB]);
+  assert.equal(byId(deskRows(t, {}, profileById(DEMO)), "desk-terminals"), null);
+});
+
+test("the Desk heading's + and clock menus still open", () => {
+  deskWorld([AGENT_TAB, { name: "Terminal" }]);
+  const host = {};
+  const sessions = [{ id: "demo-x", title: "Earlier", updated: NOW - 3600e3, cwd: "/x" }];
+  const el = deskRows(skinTheme(), host, profileById(DEMO), { sessions });
+  for (const id of ["desk-new", "desk-sessions"]) {
+    host.menu = null;
+    handlers(el, "on_click").find((h) => h.id === `${id}-more`).fn({}, { notify() {}, stop_propagation() {} });
+    assert.equal(host.menu, id, `${id} opens its menu`);
+  }
+  assert.ok(!handlers(byId(el, "desk-head"), "on_click").some((h) => /^desk-(new|sessions)/.test(h.id ?? "")), "they aren't inside the clickable heading");
 });
 
 // The top of the list: the freshness line and the counts (its root's first child, pinned), then Next
@@ -532,4 +597,31 @@ test("a deleted profile's run note is pruned with the next load", async () => {
   putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW }, gone: { at: NOW - 60e3, done: NOW } });
   await draw(new StoryList());
   assert.deepEqual(Object.keys(mock.sharedValue("kelpie.next.picked")), [DEMO]);
+});
+
+// A deleted profile's stories copy (80 KB and more) and every other entry kept by profile went on
+// living in shared state, written out with every write of it (#39).
+test("a deleted profile's stories copy and other entries are pruned with the next load", async () => {
+  setupDemoWorld({ stories });
+  const keys = ["kelpie.stories.data", "kelpie.stories.preview", "kelpie.stories.note", "kelpie.next.asks", "kelpie.next.suggested",
+    "kelpie.next.brewing", "kelpie.point", "kelpie.clean.leftovers", "kelpie.clean.checking", "kelpie.pulls.folded", "kelpie.done.open"];
+  for (const key of keys) putShared(key, { ...(mock.sharedValue(key) ?? {}), gone: { at: NOW } });
+  putShared("kelpie.paused", { ...(mock.sharedValue("kelpie.paused") ?? {}), gone: { "ACME-1": { id: "s" } } });
+  await draw(new StoryList());
+  for (const key of keys) assert.ok(!("gone" in (mock.sharedValue(key) ?? {})), `${key} keeps the deleted profile's entry`);
+  assert.ok("gone" in mock.sharedValue("kelpie.paused"), "paused sessions stay");
+  assert.ok(DEMO in mock.sharedValue("kelpie.stories.data"), "the shown profile's copy stays");
+});
+
+// A group heading's trail (the Desk's terminals, Done's chevron) goes into one tree only: in Herdr an
+// element is drawn once, so one also put into the heading the skin replaces left Quiet Pages' Desk
+// heading undrawn, its plain look in its place (#133).
+test("a group heading's trail is drawn once, in both layouts", () => {
+  for (const layout of ["Kelpie", "Kelpie-Plain"]) {
+    setupDemoWorld({ stories, layout });
+    const trail = div().id("trail");
+    const head = groupHeader(skinTheme(), "Done", 3, trail);
+    assert.equal(nodeOf(trail).parents, 1, `${layout}: put into one tree`);
+    assert.ok(byId(head, "trail"), `${layout}: the heading drawn holds it`);
+  }
 });
