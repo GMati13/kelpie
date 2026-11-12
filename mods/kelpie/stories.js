@@ -1624,6 +1624,7 @@ const RENAMED = new Set();
 // again after the stories reload once it's a few minutes old, or on Refresh. Each copy (the header,
 // the story view) keeps its own.
 const DESCRIPTIONS = {}; // key -> { blocks, at, loading, error }
+const TICKETS = {}; // "<profile>:<key>" -> { found: { key, summary, story } | null, at, loading }: a review's ticket the list doesn't hold
 const MOVES = {}; // key -> { list: [{ id, name, to, category }], at, loading, error }: where its status can go
 const MOVED = {}; // key -> { status, category, id, at }: a status just set here, shown until the stories catch up
 const MOVED_FOR = 10 * 60 * 1000; // a move the board's answers still don't show is kept this long at most
@@ -3113,6 +3114,7 @@ export class Stories extends Source {
     const c = CHECKS[checksOf(p)], r = REVIEW[p.reviewDecision];
     const demo = Boolean(st.setup.github?.demo) || isDemo(st.profile);
     const about = this.description(t, st, `pr:${p.url}`, cx, { id: "pr-desc", fold: true, load: async () => markdownBlocks(await pullBody(p, { demo, account: st.setup?.github?.account })) });
+    const ticket = it.review ? this.reviewTicket(t, st, p, cx) : null;
     return v_flex().id("story-detail").flex_1().min_w(0).min_h(0).gap(8)
       .when(Boolean(note), (el) => el.child(note))
       .child(h_flex().flex_none().gap(6).items_center().text_size(SMALL).text_color(t.muted)
@@ -3122,7 +3124,58 @@ export class Stories extends Source {
         .when(!p.isDraft && Boolean(r), (el) => el.child(chip(t, r[0], t[r[1]]))))
       .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(it.review ? "Start review opens a Claude agent on it, in the Reviews space."
         : "It names no ticket, so its agents work on the Desk."))
-      .when(Boolean(about), (el) => el.child(this.scrollBox(div().id(`pr-desc-view-${it.key}`), `${st.profile?.id}:${it.key}`).flex_1().min_h(0).overflow_y_scrollbar().child(about)));
+      .when(Boolean(about || ticket), (el) => el.child(this.scrollBox(div().id(`pr-desc-view-${it.key}`), `${st.profile?.id}:${it.key}`).flex_1().min_h(0).overflow_y_scrollbar()
+        .when(Boolean(about), (x) => x.child(about)).when(Boolean(ticket), (x) => x.child(ticket))));
+  }
+
+  // The ticket a review's title names (the one Start review gives its agent), under the pull
+  // request's description: "Ticket", its key (opening its page), its summary, its story when it's a
+  // subtask, then its description folded as a story's is. Only on a profile with a board; the summary
+  // comes from what the list loaded, else the board is asked once (lookUp(), a teammate's ticket).
+  reviewTicket(t, st, p, cx) {
+    const board = boardOf(st.setup);
+    const key = board && st.data ? prKey(p, st.data, projectsOf(st.data)) : null;
+    if (!key) return null;
+    const found = this.ticketOf(st, board, key, cx);
+    const url = ticketUrl(board, st.data, key);
+    const where = board.kind === "project" ? "Open on GitHub" : `Open in ${board.name}`;
+    const line = (id, label, k, words, link) => h_flex().id(id).flex_none().w_full().min_w(0).gap(8).items_center().text_size(SMALL)
+      .child(div().flex_none().font_semibold().text_color(t.muted).child(label))
+      .child(skinFont(div(), "numbers").id(`${id}-key`).flex_none().text_color(link ? t.accent : t.dim)
+        .when(Boolean(link), (el) => el.cursor_pointer().hover((x) => x.text_color(t.foreground)).tooltip(`${where}: ${k}`).on_click(() => open(link))).child(k))
+      .when(Boolean(words), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.foreground).tooltip(words).child(words)));
+    const story = found?.story;
+    const head = v_flex().w_full().min_w(0).max_w(DOC.width).gap(6).pt(16).border_t_1().border_color(t.border)
+      .child(line("review-ticket", "Ticket", key, found?.summary ?? "", url))
+      .when(Boolean(story), (el) => el.child(line("review-ticket-story", "Story", story.key, story.summary, ticketUrl(board, st.data, story.key))));
+    const about = this.description(t, st, key, cx, { id: "review-ticket-desc", fold: true });
+    return v_flex().id("review-ticket-section").flex_none().w_full().min_w(0)
+      .child(h_flex().flex_none().w_full().justify_center().px(40).child(head))
+      .when(Boolean(about), (el) => el.child(about));
+  }
+
+  // A ticket's summary and story ({ key, summary, story }, story null unless it's a subtask): from the
+  // list's data when loaded there, else looked up on the board once (null when it doesn't know it).
+  ticketOf(st, board, key, cx) {
+    // The stories and their subtasks carry the fields (`mine` only names keys).
+    const issues = [...(st.data?.parents ?? []), ...(st.data?.children ?? [])];
+    const loaded = issues.find((i) => i.key === key && i.fields);
+    if (loaded) {
+      const parent = loaded.fields.issuetype?.subtask ? loaded.fields.parent?.key : null;
+      const of = parent && issues.find((i) => i.key === parent);
+      return { key, summary: loaded.fields.summary ?? "", story: parent ? { key: parent, summary: of?.fields?.summary ?? "" } : null };
+    }
+    const id = `${st.profile?.id}:${key}`;
+    const was = TICKETS[id];
+    if (!was || (!was.loading && was.at < st.at && Date.now() - was.at > DESC_EVERY)) {
+      TICKETS[id] = { ...(was ?? {}), loading: true, at: was?.at ?? 0 };
+      cx.spawn(async (cx) => {
+        const found = await lookUp(board, key, st.data).catch(() => null);
+        TICKETS[id] = { found, at: Date.now() };
+        cx.notify();
+      });
+    }
+    return TICKETS[id].found ?? null;
   }
 
   detail(t, st, it, cx, note = null) {
