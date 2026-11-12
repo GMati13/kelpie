@@ -166,6 +166,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `budget.test.mjs`: what one full story load may ask of GitHub (#150): a realistic Project profile against a
   fake gh that counts requests, how many run at once and their points by GitHub's own prices (written in
   the test, from `rateLimit(dryRun: true)`: measure again when a query changes), and the hour that makes.
+- `load-times.test.mjs`: where a story load's time goes (#108): each part (the board, the three pull request
+  searches, the sessions) timed on its own, a slow one not counted against the others (the tests' clock
+  moved on by hand), and the freshness line's tooltip saying them for a load of a second or more.
 - `jira-load.test.mjs`: how many round trips a Jira board's load waits on (#40), against a fake jira.sh that
   answers after a moment and notes each request's round: the kept stories asked beside the stories' own
   search, yours told by their assignee when jira.sh names the account, still asked when it doesn't.
