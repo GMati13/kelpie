@@ -3200,10 +3200,16 @@ export class Stories extends Source {
       : b.items.map((item, n) => ({ ...b, start: (b.start ?? 1) + n, items: [item], hl: b.hl && (!found.exact || lit(item)), next: n > 0 }))));
     const said = !d.blocks ? (d.error ? "The description didn't load" : "Loading the description…")
       : !found ? "Couldn't find this passage in the description" : found.exact ? "Here in the description" : "Closest match in the description";
-    const bar = h_flex().id("passage-bar").flex_none().w_full().gap(10).items_center().px(8).py(6).rounded(7).bg(tint(t.accent, "14"))
-      .child(div().flex_none().text_size(SMALL).font_semibold().text_color(found ? t.accent : t.dim).child(said))
-      .child(div().flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.muted).tooltip(`“${hl.quote}”`).child(hl.note || (found?.exact ? "" : `“${hl.quote}”`)))
-      .child(textButton(t, "passage-back", "Back to the story", (_e, cx) => { setShared(PASSAGE, null); cx.notify(); }));
+    // The bar sits on the reading column (as wide and as indented as the rows below, its text on
+    // theirs), so on a wide screen it stays right above the passage; the note wraps under the
+    // status rather than being cut off.
+    const note = hl.note || (found?.exact ? "" : `“${hl.quote}”`);
+    const bar = h_flex().flex_none().w_full().justify_center().px(28)
+      .child(v_flex().id("passage-bar").w_full().min_w(0).max_w(DOC.width + 24).gap(2).px(12).py(6).rounded(7).bg(tint(t.accent, "14"))
+        .child(h_flex().w_full().min_w(0).gap(10).items_center()
+          .child(div().id("passage-said").flex_1().min_w(0).text_size(SMALL).font_semibold().text_color(found ? t.accent : t.dim).tooltip(`“${hl.quote}”`).child(said))
+          .child(textButton(t, "passage-back", "Back to the story", (_e, cx) => { setShared(PASSAGE, null); cx.notify(); })))
+        .when(Boolean(note), (el) => el.child(div().id("passage-note").w_full().min_w(0).text_size(SMALL).text_color(t.muted).tooltip(`“${hl.quote}”`).child(note))));
     const item = (i) => {
       const b = blocks[i];
       const block = blocksView(t, `rd-${i}`, [b], 14, i === 0);
