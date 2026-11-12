@@ -9,7 +9,8 @@
 
 import { div } from "gpui-kit";
 import { Popup, ScrollHandle, h_flex, v_flex } from "gpui-base";
-import { agents, run, setShared, shared, spaces, window, layout, openOverlay } from "herdr";
+import { window, openOverlay } from "herdr";
+import { agents, layout, run, setShared, shared, spaces } from "./host.js";
 import { SMALL, ScrollPool, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, agentMark, agentWords, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
 import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profiles, shownProfile, shownSpace, spaceProfiles, spacesOf, switchProfile } from "./config.js";
 import { startAgent } from "./source.js";
@@ -178,7 +179,8 @@ export class SpacePicker {
 export class WorkSide {
   constructor() {
     this.stories = new StoryList();
-    this.sessions = new Sessions();
+    // Drawn only for a profile without a board (plain()): a board's list loads the sessions itself.
+    this.sessions = new Sessions(() => !hasBoard(shownProfile()));
     // The Desk's menus keep what's open here (menuButton() writes `host.menu`).
     this.deskMenus = {};
   }

@@ -174,7 +174,7 @@ describe("the plugin's install is the person's click", () => {
       assert.doesNotMatch(readRepo("mods/kelpie", f), /installPlugin/, f);
     }
     const yes = bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {");
-    assert.match(yes, /const \{ overlay, installPlugin: install, installThen: then = null(, doneStory)?(, runPicks: picks)? \} = props\(\);/);
+    assert.match(yes, /const \{ overlay, installPlugin: install, installThen: then = null(, doneStory)?(, runPicks: picks)?(, closeStories: closing)? \} = props\(\);/);
     assert.match(yes, /cx\.spawn\(async \(\) => \{ await installPlugin\(install, then\)/);
   });
 });

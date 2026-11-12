@@ -48,6 +48,17 @@ test("searchPulls: your own latest review comes as viewerReview", async () => {
   assert.ok(prs.every((p) => !("viewerLatestReview" in p)));
 });
 
+// Changes leaves a branch's commits to the pull request on that branch (#13), so every search asks for it.
+test("searchPulls: open and merged pull requests come with their branch", async () => {
+  mock.on.exec = () => ({ code: 0, stderr: "", stdout: JSON.stringify({ data: { search: { nodes: [{ number: 1, url: "https://github.com/acme/web/pull/1", repository: { name: "web" }, headRefName: "ABC-1-x" }] } } }) });
+  for (const q of ["is:pr is:open", "is:pr is:merged"]) {
+    mock.calls.length = 0;
+    const [pr] = await searchPulls(q, { light: /merged/.test(q) });
+    assert.equal(pr.headRefName, "ABC-1-x");
+    assert.ok(mock.of("exec").some(([, args]) => args.some((a) => /\bheadRefName\b/.test(String(a)))), `${q} asks for it`);
+  }
+});
+
 test("pullBody: reads the description through the API, for a github.com pull request only", async () => {
   mock.on.exec = () => ({ code: 0, stderr: "", stdout: "## What\nIt does this.\n" });
   assert.equal(await pullBody(PR), "## What\nIt does this.");
