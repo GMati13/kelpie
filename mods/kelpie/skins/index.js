@@ -79,7 +79,8 @@
 // themes/Kelpie-<Name>.json. Shared files (this one, base.js, common.js, the views) change only to add a
 // hook every skin can use, a no-op in base (the plain Kelpie layout must look exactly as it did).
 
-import { setShared, shared, theme } from "herdr";
+import { theme } from "herdr";
+import { setShared, shared } from "../host.js";
 import base from "./base.js";
 import quietPages from "./quiet-pages.js";
 

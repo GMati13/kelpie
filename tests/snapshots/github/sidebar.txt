@@ -71,12 +71,17 @@ v_flex [fg=foreground]
             div [fg=accent]
               "Conjure more to do"
     h_flex
-      div
+      div #desk-head {click} tip="Show the Desk ⌥⌘D"
         div
           div [font="DM Sans" fg=muted]
             "DESK"
           div [font="DM Mono" fg=dim]
             "1"
+          div
+            div #desk-terminals-wrap {down:left click}
+              h_flex #desk-terminals [fg=dim hover(bg=hover)] {click} tip="1 terminal on the Desk (Terminal): click to show it"
+                svg chrome:terminal
+                "1"
           div
             div
               div [bg=dim/f2] ×32 … [bg=dim/1a]
@@ -479,7 +484,12 @@ v_flex [fg=foreground]
         div [font="DM Mono" fg=dim]
           "1"
         div
-          svg chrome:chevron-right [fg=dim]
+          h_flex
+            div #stories-close-all {down:left click}
+              h_flex #stories-close-all-button [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Close ACME-118 on GitHub: done on the board, 2 of its issues are still open there"
+                svg own:circle-check
+                "Close all · 1"
+            svg chrome:chevron-right [fg=dim]
         div
           div
             div [bg=dim/f2] ×32 … [bg=dim/1a]
