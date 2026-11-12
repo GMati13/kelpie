@@ -1,5 +1,6 @@
 #!/bin/sh
-# Asks a Jira Cloud site for the Kelpie layout's board and prints {site, code, authed, body} as JSON.
+# Asks a Jira Cloud site for the Kelpie layout's board and prints {site, code, authed, account, body}
+# as JSON.
 #   jira.sh [--email <email> --token-command <command>] <site> <keychain item> search '<jql>' [<nextPageToken>]
 #   jira.sh [--email <email> --token-command <command>] <site> <keychain item> get '<path>'
 #   jira.sh [--email <email> --token-command <command>] <site> <keychain item> transition <KEY> <transition id>
@@ -88,8 +89,11 @@ code=$(printf 'user = "%s:%s"\n' "$email" "$token" |
     -H 'Accept: application/json' -H 'Content-Type: application/json' "$@" 2>/dev/null)
 
 # A rejected token still gets 200 and an empty, anonymous result: Jira names the account only
-# when the request was signed in.
+# when the request was signed in. Its id is printed too ("account", "" when it isn't one), so a load
+# can tell your issues by their assignee without asking Jira again (board.js keptJira()).
 if grep -qi '^x-aaccountid:' "$headers"; then authed=true; else authed=false; fi
+account=$(grep -i '^x-aaccountid:' "$headers" | head -n 1 | cut -d: -f2- | tr -d ' \r')
+printf %s "$account" | grep -Eqx '[A-Za-z0-9:_-]{1,128}' || account=
 
-jq -nc --arg site "$site" --arg code "${code:-0}" --argjson authed "$authed" --rawfile raw "$body" \
-  '{site: $site, code: ($code | tonumber), authed: $authed, body: ($raw | try fromjson catch null)}'
+jq -nc --arg site "$site" --arg code "${code:-0}" --argjson authed "$authed" --arg account "$account" --rawfile raw "$body" \
+  '{site: $site, code: ($code | tonumber), authed: $authed, account: $account, body: ($raw | try fromjson catch null)}'

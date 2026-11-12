@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import {
-  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, shellArgv, spacesOf,
+  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
 import { existsSync } from "node:fs";
@@ -196,5 +196,22 @@ describe("the argv agents start with", () => {
     const r = sh(argv[0], argv.slice(1), { env: { SHELL: `${fakes.bin}/show-env` } });
     assert.equal(r.stdout, `CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\nKELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin\n`);
     assert.deepEqual(shellArgv({ github: { owner: "acme" } }), shellArgv(null));
+  });
+});
+
+// A profile command gets `{key}` as it is, read by the person's shell: a key that isn't a ticket key
+// (one a board's answer could hold) is refused before anything runs (security.md).
+describe("runCommand: only ticket keys", () => {
+  const P = { id: "w", name: "Work", folder: "/code/work" };
+  test("a key that isn't one runs nothing", async () => {
+    const lines = [];
+    mock.on.exec = (cmd, args) => { lines.push(String(args[3])); return { code: 0, stdout: "", stderr: "" }; };
+    for (const key of ["ACME-1; touch owned", "ACME-1 $(id)", "acme-1", "ACME-", "", null, "pull:web#3", "ACME-1\n"]) {
+      await assert.rejects(runCommand(P, "check {key}", key, 5), /isn't a ticket key/, String(key));
+    }
+    assert.deepEqual(lines, [], "nothing ran");
+    const r = await runCommand(P, "check {key}", "ACME_X-12", 5);
+    assert.equal(r.code, 0);
+    assert.deepEqual(lines, ["check ACME_X-12"], "a ticket key goes in");
   });
 });

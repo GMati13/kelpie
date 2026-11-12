@@ -19,6 +19,9 @@ export function element(kind, args = []) {
         if (prop === "when_some" || prop === "when_else") throw new Error(`unknown element method \`${prop}\`: Herdr's elements have when() and map(), not ${prop}()`);
         if (prop === "map" && typeof a[0] === "function") return a[0](el) ?? el;
         node.calls.push([prop, a]);
+        // How many parents each element was put into: in Herdr an element is drawn once, so one put
+        // into two trees (one of them thrown away) leaves a hole (`parents`, for the tests).
+        if (prop === "child" || prop === "children") for (const v of prop === "children" && Array.isArray(a[0]) ? a[0] : a) if (isElement(v)) v[NODE].parents = (v[NODE].parents ?? 0) + 1;
         return el;
       };
     },

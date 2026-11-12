@@ -2,7 +2,8 @@
 
 import { div, image, svg } from "gpui-kit";
 import { Avatar, AvatarFallback, AvatarImage, Popup, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, run, window } from "herdr";
+import { appHome, exec, window } from "herdr";
+import { agents, focused, hc, run } from "./host.js";
 import { agentState, decor, skinFont, skinText, statusMark } from "./skins/index.js";
 
 export { CLAUDE_TMP, STAT_MTIME, fullName, openExternal, platform, reveal, revealLabel } from "./platform.js";
@@ -267,11 +268,14 @@ export const DIALOG = { pad: INSET, gap: 8, section: 16 };
 
 // A list's group heading, inside a list padded 8 (rows pad 8 more): its label, and its count at the right.
 // `trail`: an element after the count, on the heading's own line (a fold chevron).
+// The trail goes into one tree only, the skin's when it draws its own, else this one: an element
+// can be drawn once, and one put in both left the skin's heading undrawn (#133).
 export function groupHeader(t, label, n, trail = null) {
-  return decor("groupDecor", t, h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
+  const head = h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
     .child(skinFont(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.muted), "label").child(skinText(label, "label")))
-    .when(n != null, (el) => el.child(skinFont(div().flex_none().text_color(t.dim), "count").child(skinText(String(n), "count"))))
-    .when(Boolean(trail), (el) => el.child(div().flex_none().ml(6).child(trail))), { label, count: n, trail });
+    .when(n != null, (el) => el.child(skinFont(div().flex_none().text_color(t.dim), "count").child(skinText(String(n), "count"))));
+  const out = decor("groupDecor", t, head, { label, count: n, trail });
+  return out !== head || !trail ? out : head.child(div().flex_none().ml(6).child(trail));
 }
 
 // What an agent is doing, not where it lives: a tab you named, else its own session title, else
