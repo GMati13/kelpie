@@ -7,19 +7,26 @@
 # token by name and hands it to the real gh alone, as GH_TOKEN, so gh's active account (one per
 # machine, which any sign-in can switch) doesn't matter. Left as they are: a GH_TOKEN already set
 # (someone chose it), shells without the account, gh's own sign-in commands, help and completion.
-here=$(cd "${0%/*}" 2>/dev/null && pwd -P)
+# Never traced: bash, which is macOS's sh, takes xtrace from an exported SHELLOPTS, and a trace would
+# print the token.
+set +xv
+case $0 in */*) here=$(cd "${0%/*}" 2>/dev/null && pwd -P) ;; *) here=$(pwd -P) ;; esac
 
-# The real gh: the first on PATH that isn't in this folder (no loop), absolute folders only.
+# The real gh: the first on PATH that isn't in this folder nor in another Kelpie gh's folder this run
+# came through (KELPIE_GH_SKIP: with two copies on PATH, say two clones, each would run the other for
+# ever), absolute folders only.
+skip=$here${KELPIE_GH_SKIP:+:$KELPIE_GH_SKIP}
 real=
 old_ifs=$IFS; IFS=:; set -f
 for d in $PATH; do
   case $d in /*) ;; *) continue ;; esac
   [ -f "$d/gh" ] && [ -x "$d/gh" ] || continue
-  [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$here" ] && continue
+  case ":$skip:" in *":$(cd "$d" 2>/dev/null && pwd -P):"*) continue ;; esac
   real=$d/gh; break
 done
 IFS=$old_ifs; set +f
 [ -n "$real" ] || { echo "gh isn't installed: Kelpie's gh found no other gh on PATH." >&2; exit 127; }
+KELPIE_GH_SKIP=$skip; export KELPIE_GH_SKIP
 
 account=${KELPIE_GH_ACCOUNT:-}
 [ -z "${GH_TOKEN:-}" ] && [ -n "$account" ] || exec "$real" "$@"
@@ -30,8 +37,9 @@ esac
 case $account in -*|*-|*--*|*[!A-Za-z0-9-]*)
   echo "KELPIE_GH_ACCOUNT isn't a GitHub account name, so gh doesn't run." >&2; exit 2 ;;
 esac
-token=$("$real" auth token --hostname github.com --user "$account") && [ -n "$token" ] \
-  || { echo "gh isn't signed in as $account, this profile's GitHub account in Kelpie: gh auth login" >&2; exit 1; }
+# The token is only ever assigned: no command gets it as an argument (a function named like one could).
+token=$("$real" auth token --hostname github.com --user "$account") || token=
+case $token in "") echo "gh isn't signed in as $account, this profile's GitHub account in Kelpie: gh auth login" >&2; exit 1 ;; esac
 [ "${1:-} ${2:-}" = "auth status" ] && echo "In this terminal, gh acts as $account, the Kelpie profile's GitHub account." >&2
 GH_TOKEN=$token; export GH_TOKEN
 exec "$real" "$@"

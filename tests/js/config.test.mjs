@@ -178,7 +178,16 @@ describe("the argv agents start with", () => {
     assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
     // A name that isn't a GitHub login is left out, never passed on.
-    for (const bad of ["-u", "a b", "x;y"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["claude"], bad);
+    for (const bad of ["-u", "a b", "x;y", "bob\nx", "bob\n"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["claude"], bad);
+  });
+  test("Kelpie's gh's folder goes into PATH, so it's passed on only when absolute with no colon or line break", () => {
+    const home = mock.state.appHome;
+    try {
+      for (const bad of ["rel/home", "/a:b", "/a\nb"]) {
+        mock.state.appHome = bad;
+        assert.deepEqual(claudeArgv({ github: { account: "work-me" } }), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude"], bad);
+      }
+    } finally { mock.state.appHome = home; }
   });
   test("shellArgv: the GitHub account reaches the login shell's environment as an argument, never as script", () => {
     const argv = shellArgv({ github: { owner: "acme", account: "work-me" } });

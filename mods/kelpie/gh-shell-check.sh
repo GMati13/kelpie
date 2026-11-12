@@ -7,7 +7,9 @@
 # sets GH_TOKEN itself. 15 s at most. Run by setup.js (the GitHub page's "Check my shell").
 #   gh-shell-check.sh <account>
 account=$1
-printf '%s' "$account" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9]|-[A-Za-z0-9])*$' || { echo "That isn't a GitHub account name." >&2; exit 2; }
+# A GitHub login: letters, digits and single hyphens, not at either end (GITHUB_LOGIN in ui.js). A case
+# pattern, not grep, which checks each line on its own and would pass "bob" with a second line.
+case $account in ""|-*|*-|*--*|*[!A-Za-z0-9-]*) echo "That isn't a GitHub account name." >&2; exit 2 ;; esac
 bin=$(cd "$(dirname "$0")" && pwd)/bin
 KELPIE_GH_ACCOUNT=$account KELPIE_GH_BIN=$bin GH_PAGER='' "${SHELL:-/bin/sh}" -lic '
   echo "shell=$(gh api user --jq .login 2>/dev/null)"

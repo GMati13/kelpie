@@ -35,11 +35,12 @@ const storeCommand = (item, email) =>
 // The line that makes gh act as a profile's GitHub account in its agents and terminals, and in every
 // program started there: Kelpie starts them with KELPIE_GH_ACCOUNT and KELPIE_GH_BIN (githubEnv in
 // ui.js), and this, at the end of the person's own shell setup, puts Kelpie's gh (bin/gh) first in
-// PATH (Kelpie can't: shell startup puts gh's own folder first again). Shells without the variable are
-// left as they are. A gh() shell function, given here before, reached only gh typed in the shell (#103).
-// The README's "Several accounts" shows the same lines (a test checks they match). zsh and bash.
+// PATH (Kelpie can't: shell startup puts gh's own folder first again): only an absolute folder with no
+// colon, as a relative one would run whatever the folder a shell is in holds. Shells without the
+// variable are left as they are. A gh() shell function, given here before, reached only gh typed in
+// the shell (#103). The README's "Several accounts" shows the same lines (a test checks they match). zsh and bash.
 export const GH_SHELL_LINE = `# Kelpie: gh acts as the profile's GitHub account, for programs that run it too
-if [ -n "$KELPIE_GH_BIN" ]; then PATH="$KELPIE_GH_BIN:$PATH"; fi`;
+case \${KELPIE_GH_BIN:-} in *:*) ;; /*) PATH="$KELPIE_GH_BIN:$PATH" ;; esac`;
 
 // What Check my shell says, from gh-shell-check.sh's lines (`shell=`, the shell's own gh; `program=`,
 // gh run by a program started from it; `token=1`, GH_TOKEN set by the shell setup): [ok, words].

@@ -8,7 +8,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { GH_SHELL_LINE, shellVerdict } from "../../mods/kelpie/setup.js";
 import { fakeBin, readRepo, repoFile, sh, tempDir } from "../lib/helpers.mjs";
@@ -83,6 +83,16 @@ for (const shell of ["bash", "zsh"]) {
       assert.deepEqual(calls.map((c) => [c.argv, tokenOf(c)]), [[["api", "user"], "chosen"], [["api", "user"], null]]);
     });
 
+    test("the line puts only an absolute folder with no colon first in PATH, and minds set -u", () => {
+      for (const bin of ["bin", "./bin", "/a:/b", ":/a", "/a:"]) {
+        const fakes = fakeGh();
+        const r = inShell(shell, fakes, 'printf %s "$PATH"', { env: { KELPIE_GH_BIN: bin } });
+        assert.equal(r.stdout, fakes.path, bin);
+      }
+      const r = inShell(shell, fakeGh(), "set -u; echo fine", { account: null });
+      assert.equal(r.stdout, "fine\n", r.stderr);
+    });
+
     test("an account gh isn't signed in to fails with what to do, and gh doesn't run as anyone else", () => {
       const fakes = fakeGh();
       const r = inShell(shell, fakes, "sh -c 'gh pr list'", { account: "carol" });
@@ -104,8 +114,27 @@ describe("Kelpie's gh finding the real one", () => {
     assert.equal(r.code, 127);
     assert.match(r.stderr, /found no other gh/);
   });
+  test("never one copy running another for ever: two Kelpie gh folders on PATH", () => {
+    const other = join(tempDir(), "bin");
+    mkdirSync(other);
+    copyFileSync(join(BIN, "gh"), join(other, "gh"));
+    for (const args of [["help"], ["api", "user"]]) {
+      const fakes = fakeGh();
+      const r = sh(join(BIN, "gh"), args, { env: { PATH: `${BIN}:${other}:${fakes.path}`, KELPIE_GH_ACCOUNT: "bob" }, timeout: 5000 });
+      assert.equal(r.code, 0, `${args}: ${r.stderr}`);
+      assert.deepEqual(fakes.calls("gh").at(-1).argv, args);
+    }
+  });
+  test("a trace turned on from outside never prints the token", () => {
+    // bash (macOS's sh) takes xtrace from an exported SHELLOPTS; dash ignores it.
+    for (const shell of ["sh", ...(has("bash") ? ["bash"] : [])]) {
+      const r = sh(shell, [join(BIN, "gh"), "api", "user"], { env: { PATH: fakeGh().path, KELPIE_GH_ACCOUNT: "bob", SHELLOPTS: "xtrace", PS4: "+ " } });
+      assert.equal(r.stdout.trim(), "bob", r.stderr);
+      assert.ok(!r.stderr.includes(TOKEN) && !r.stdout.includes(TOKEN), `${shell} traced the token`);
+    }
+  });
   test("an account that isn't a GitHub login runs nothing", () => {
-    for (const bad of ["-x", "a b", "x;y", "$(id)", "a--b", "a-"]) {
+    for (const bad of ["-x", "a b", "x;y", "$(id)", "a--b", "a-", "bob\nx", "bob\n"]) {
       const fakes = fakeGh();
       const r = sh(join(BIN, "gh"), ["api", "user"], { env: { PATH: fakes.path, KELPIE_GH_ACCOUNT: bad } });
       assert.equal(r.code, 2, bad);
@@ -167,7 +196,7 @@ describe("gh-shell-check.sh", () => {
   });
   test("a name that isn't a GitHub login starts nothing", () => {
     shellFakes.clear();
-    for (const bad of ["-x", "a b", "x;y", "$(id)"]) assert.equal(sh("sh", [CHECK, bad], { env: { SHELL: `${shellFakes.bin}/fake-shell` } }).code, 2, bad);
+    for (const bad of ["-x", "a b", "x;y", "$(id)", "a--b", "a-", "", "bob\nx", "x\nbob", "bob\n"]) assert.equal(sh("sh", [CHECK, bad], { env: { SHELL: `${shellFakes.bin}/fake-shell` } }).code, 2, bad);
     assert.deepEqual(shellFakes.calls("fake-shell"), []);
   });
 });

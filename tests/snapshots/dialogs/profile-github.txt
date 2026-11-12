@@ -116,7 +116,7 @@ div #work-setup-fit [bg=#00000080]
               div
                 "# Kelpie: gh acts as the profile's GitHub account, for programs that run it too"
               div
-                "if [ -n \"$KELPIE_GH_BIN\" ]; then PATH=\"$KELPIE_GH_BIN:$PATH\"; fi"
+                "case ${KELPIE_GH_BIN:-} in *:*) ;; /*) PATH=\"$KELPIE_GH_BIN:$PATH\" ;; esac"
             h_flex #setup-gh-copy [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
               "Copy"
           h_flex

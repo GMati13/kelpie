@@ -410,8 +410,13 @@ export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
 // account's token on each run. Kelpie can't put that folder first in PATH itself (shell startup puts
 // gh's own folder first again): a line at the end of the person's shell setup does (GH_SHELL_LINE in
 // setup.js, README "Several accounts"), and then every program started there finds it too. None set:
-// nothing, so gh acts as it always has.
-export const githubEnv = (account) => (account && GITHUB_LOGIN.test(account) ? [`KELPIE_GH_ACCOUNT=${account}`, `KELPIE_GH_BIN=${modFile("bin")}`] : []);
+// nothing, so gh acts as it always has. The folder only when absolute, with no colon or line break, as
+// it goes into PATH (the shell setup line checks it too).
+export function githubEnv(account) {
+  if (!account || !GITHUB_LOGIN.test(account)) return [];
+  const bin = modFile("bin");
+  return [`KELPIE_GH_ACCOUNT=${account}`, ...(/^\/[^:\n\r]*$/.test(bin) ? [`KELPIE_GH_BIN=${bin}`] : [])];
+}
 // The argv that resumes a Claude session, on the account (config folder) it ran on, with the profile's
 // GitHub account (githubEnv). No config (the session is in Claude's own ~/.claude): no
 // CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids
