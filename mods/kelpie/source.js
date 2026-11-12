@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, setShared, shared, spaces } from "herdr";
+import { run, setShared, shared, spaces } from "./host.js";
 import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
 import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
 import { asked, began, ended, skipped, waits } from "./debug.js";
@@ -26,8 +26,15 @@ export class Source {
 
   init(cx) {
     this.seen = shared(REFRESH);
-    this.load(cx, { why: "start" });
-    cx.timer.every(this.every, (cx) => this.load(cx, { why: "timer" }));
+    if (this.wanted()) this.load(cx, { why: "start" }); else this.skipped = true;
+    cx.timer.every(this.every, (cx) => { if (this.wanted()) this.load(cx, { why: "timer" }); else this.skipped = true; });
+  }
+
+  // Whether its loads are worth making now. A source its view doesn't draw (the sidebar's sessions
+  // while the profile shown has a board, whose list loads its own) skips the timer's: each would run
+  // its script and redraw the view for nothing. Drawn again, it loads at once (state()).
+  wanted() {
+    return true;
   }
 
   // Its name in the load record (debug.js): the source and whose data it is.
@@ -98,9 +105,12 @@ export class Source {
   state(cx) {
     const ctx = this.context();
     const r = shared(REFRESH);
-    if (r !== this.seen) { this.seen = r; this.load(cx, { again: true, why: "refresh" }); }
-    else if (!this.cache[ctx.key]) this.load(cx, { why: "nothing loaded yet" });
-    else if (this.again.has(ctx.key) && !this.busy.has(ctx.key)) this.load(cx, { why: "asked again while one ran" });
+    if (r !== this.seen) { this.seen = r; this.skipped = false; this.load(cx, { again: true, why: "refresh" }); }
+    else if (!this.cache[ctx.key] || this.skipped || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) {
+      const why = !this.cache[ctx.key] ? "nothing loaded yet" : this.skipped ? "drawn again: the timer's loads were skipped" : "asked again while one ran";
+      this.skipped = false;
+      this.load(cx, { why });
+    }
     return { ...ctx, ...(this.cache[ctx.key] ?? { data: null, error: null, at: 0 }), loading: this.busy.has(ctx.key) };
   }
 }

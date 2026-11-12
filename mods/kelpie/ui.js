@@ -2,7 +2,8 @@
 
 import { div, image, svg } from "gpui-kit";
 import { Avatar, AvatarFallback, AvatarImage, Popup, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, run, window } from "herdr";
+import { appHome, exec, window } from "herdr";
+import { agents, focused, hc, run } from "./host.js";
 import { agentState, decor, skinFont, skinText, statusMark } from "./skins/index.js";
 
 export { CLAUDE_TMP, STAT_MTIME, fullName, openExternal, platform, reveal, revealLabel } from "./platform.js";

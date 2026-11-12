@@ -9,7 +9,8 @@
 // changed, as every copy draws again on a shared write. A request turned away again for the same
 // reason (a stale list asking on every draw while GitHub's budget runs low) changes nothing written,
 // so the record can't make the list draw over and over.
-import { notify, setShared, shared } from "herdr";
+import { notify } from "herdr";
+import { setShared, shared } from "./host.js";
 
 export const DEBUG = "kelpie.debug.loads";
 export const DEBUG_ON = "kelpie.debug.on";

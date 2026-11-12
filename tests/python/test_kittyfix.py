@@ -68,6 +68,32 @@ class Chunks(unittest.TestCase):
         self.assertNotIn(b"AAAA", out)
         self.assertIsNone(rw.cur)
 
+    def test_an_image_still_arriving_isnt_dropped_however_long_it_takes(self):
+        # Read slowly (1 KB a read on macOS), a 2.5 MB frame took over CUR_FOR and was dropped whole.
+        rw = kf.Rewriter()
+        rw.feed(apc(b"a=T,f=100,i=1,m=1", b"AAAA"))
+        rw.cur_t -= kf.CUR_FOR + 0.1
+        rw.feed(apc(b"m=1", b"BBBB"))
+        self.assertEqual(rw.flush(force=True), b"")
+        self.assertIsNotNone(rw.cur, "a chunk came just now")
+        out = rw.feed(apc(b"m=0", b"CCCC"))
+        self.assertIn(apc(b"a=T,f=100,i=%d,m=0" % kf.FRESH, b"AAAABBBBCCCC"), out)
+
+
+class Frames(unittest.TestCase):
+    def test_a_finished_frame_goes_out_while_the_next_ones_image_is_still_coming(self):
+        # The browser sends the next frame right away: each finished frame waited for the next one's
+        # image, and during video 126 frames (64 MB) were held at once, late on screen.
+        rw = kf.Rewriter()
+        first = b"\x1b[?2026h" + apc(b"a=T,f=100,i=1", b"AAAA") + b"\x1b[?2026l"
+        out = rw.feed(first + b"\x1b[?2026h" + apc(b"a=T,f=100,i=2,m=1", b"BBBB"))
+        self.assertTrue(out.startswith(b"\x1b[?2026h") and out.endswith(b"\x1b[?2026l"), out)
+        self.assertIn(b"AAAA", out)
+        self.assertNotIn(b"BBBB", out, "the next frame waits for its end")
+        rest = rw.feed(apc(b"m=0", b"CCCC") + b"\x1b[?2026l")
+        self.assertEqual(rest, b"\x1b[?2026h" + apc(b"a=T,f=100,i=%d,m=0" % (kf.FRESH + 1), b"BBBBCCCC")
+                         + b"\x1b[?2026l")
+
 
 class BadInput(unittest.TestCase):
     def test_non_utf8_bytes_in_a_command_dont_raise(self):
