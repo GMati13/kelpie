@@ -96,7 +96,13 @@
       "labels": ["mobile"],
       "type": "Story",
       "status": "In Progress",
-      "description": "Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.\n\n## What we want\n\nSaved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.\n\n- Cache every trip the traveller opened in the last 30 days in `IndexedDB`\n- Queue edits made offline and replay them in order\n- Show a calm banner while offline, never a blocking error\n\n## Out of scope\n\nDownloading map tiles: that's ACME-190.\n\n## Done when\n\n1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online\n3. Conflicts keep the newest change and say so in the trip's history"
+      "description": "Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.\n\n## What we want\n\nSaved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.\n\n- Cache every trip the traveller opened in the last 30 days in `IndexedDB`\n- Queue edits made offline and replay them in order\n- Show a calm banner while offline, never a blocking error\n\n## Out of scope\n\nDownloading map tiles: that's ACME-190.\n\n## Done when\n\n1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online\n3. Conflicts keep the newest change and say so in the trip's history",
+      "comments": [
+        { "author": "Tomás Ruiz", "at": "-3d", "body": "Should the banner say how long ago the trip was saved? Travellers asked for that in the last study." },
+        { "author": "Priya Nair", "at": "-2d", "body": "Yes, but keep it short: \"Saved 2h ago\". No dates." },
+        { "author": "Lena Fischer", "at": "-1d", "body": "Product call: map tiles stay out of this story, they're **ACME-190**. Offline maps would double the cache size." },
+        { "author": "Priya Nair", "at": "-5h", "body": "Scope change after today's review: conflicts keep the newest change, and the trip's history says which edit won.\n\n- No merge dialog for now\n- Keep the losing edit in `tripHistory` so it can be put back" }
+      ]
     },
     {
       "key": "ACME-143",
@@ -105,7 +111,10 @@
       "parent": "ACME-142",
       "status": "In Progress",
       "mine": true,
-      "description": "Add a `TripCache` on top of the trips store: write a trip through on every successful load, read it first when the network fails. Keep at most 30 days of trips and drop the oldest first."
+      "description": "Add a `TripCache` on top of the trips store: write a trip through on every successful load, read it first when the network fails. Keep at most 30 days of trips and drop the oldest first.",
+      "comments": [
+        { "author": "Tomás Ruiz", "at": "-6h", "body": "Use the existing `tripsStore` keys for the cache, so the sync queue can find the trips it replays." }
+      ]
     },
     {
       "key": "ACME-144",

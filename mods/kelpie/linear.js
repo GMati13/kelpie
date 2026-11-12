@@ -41,6 +41,8 @@ export const QUERIES = Object.freeze({
   stories: `query KelpieLinearStories($filter: IssueFilter!) { issues(filter: $filter, first: 100) { nodes { ${ISSUE} children(first: 50) { nodes { ${ISSUE} } } } } }`,
   // One issue by its key: its title, description and parent (the review prompt's, a look-up's).
   issue: `query KelpieLinearIssue($id: String!) { issue(id: $id) { identifier title description parent { identifier title } } }`,
+  // One issue's comments, by its key (a ticket's Comments in its details).
+  comments: `query KelpieLinearComments($id: String!) { issue(id: $id) { comments(first: 50) { nodes { id createdAt body user { name displayName avatarUrl } } } } }`,
   // An issue moved to another of its team's states.
   move: `mutation KelpieLinearMove($id: String!, $state: String!) { issueUpdate(id: $id, input: { stateId: $state }) { success } }`,
 });
@@ -220,6 +222,17 @@ async function askIssue(board, key) {
 // A ticket's description, as the reader's blocks (Linear writes Markdown).
 export async function linearDescription(board, key) {
   return markdownBlocks((await askIssue(board, key))?.description ?? "");
+}
+
+// A ticket's comments (board.js comments()): { total, list }, oldest first, by when each was written
+// (whatever order Linear sends them in), bodies Linear's Markdown. `shape` is board.js's own, so the
+// three boards' comments come out alike.
+export async function linearComments(board, key, shape) {
+  if (!KEY.test(key ?? "")) throw new Error(`${key} isn't a ticket key.`);
+  const nodes = (await linear(board.cfg, QUERIES.comments, { id: key })).issue?.comments?.nodes ?? [];
+  const list = nodes.map((c) => shape({ id: c.id, author: c.user?.name || c.user?.displayName, avatar: c.user?.avatarUrl, at: Date.parse(c.createdAt) || null, blocks: markdownBlocks(c.body ?? "") }))
+    .sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  return { total: list.length, list };
 }
 
 // A ticket's title, its parent's key and its description as text (the review prompt's).
