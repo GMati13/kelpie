@@ -8,7 +8,8 @@ import { DEMO, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mj
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { StoryList, Stories, StoryBody } from "../../mods/kelpie/stories.js";
+import { StoryList, Stories, StoryBody, storyItems } from "../../mods/kelpie/stories.js";
+import { rendering, setShared } from "../../mods/kelpie/host.js";
 import { spaceProfiles, spacesOf, profileById } from "../../mods/kelpie/config.js";
 import Quiet from "../../mods/kelpie/main.js";
 import { SpacePicker } from "../../mods/kelpie/workside.js";
@@ -81,4 +82,56 @@ test("each space's profile comes from one read of each list", () => {
   assert.equal(of.get("s0")?.id, DEMO, "the demo's spaces are the demo's");
   assert.equal(of.get("x0"), null, "a space in no profile's folder is no profile's");
   assert.equal(spacesOf(profileById(DEMO)).length, mock.state.spaces.length - 30);
+});
+
+// Each Herdr list and shared key is read once per render (#37): the helpers a render goes through
+// each asked again (the tab bar read the spaces 19 times and every profile's stories twice, the story
+// list the spaces 20 times), and every read converts its whole value. Herdr draws every Kelpie view
+// through main.js, which keeps a render's reads (host.js), so these draw them that way, with the
+// layout following its show/hide commands as Herdr's does, after a first draw that settles it.
+const ROLES = [
+  ["story-list", {}], ["story-list", { shown: "ACME-142" }], ["stories", { shown: "ACME-142" }], ["story-body", { shown: "ACME-142" }],
+  ["story-view", { shown: "ACME-142" }], ["toolbar", { shown: "ACME-142" }], ["footer", { shown: "ACME-142" }],
+  ["space-picker", { shown: "ACME-142" }], ["work-side", { shown: "ACME-142" }],
+];
+const node = (root, id) => (root?.id === id ? root : (root?.children ?? []).map((c) => node(c, id)).find(Boolean) ?? null);
+for (const [role, setup] of ROLES) {
+  test(`${role}${setup.shown ? ` (${setup.shown} shown)` : ""}: each list and shared key is read once a render`, async () => {
+    setupDemoWorld({ stories, ...setup, props: { role } });
+    crowd(30);
+    mock.on.run = (name, args) => {
+      if (name === "layout.show" || name === "layout.hide") { const n = node(mock.state.layout, args.id); if (n) n.hidden = name === "layout.hide"; }
+      return undefined;
+    };
+    // The tab bar's and footer's own tasks (the key loop, the stats) never end under the stub.
+    const loops = role === "toolbar" || role === "footer";
+    const cx = { ...fakeCx(), ...(loops ? { spawn() {} } : {}) }, view = new Quiet({});
+    view.init({}, cx);
+    view.render(cx);
+    await cx.settle();
+    view.render(cx);
+    mock.reads = {};
+    mock.calls.length = 0;
+    view.render(cx);
+    const writes = mock.calls.filter((c) => ["setShared", "run", "hc"].includes(c.fn)).map((c) => `${c.fn} ${JSON.stringify(c.args[0])}`);
+    assert.deepEqual(writes, [], "a settled render writes nothing");
+    const again = Object.entries(mock.reads).filter(([, n]) => n > 1);
+    assert.deepEqual(again, [], `read more than once in one render: ${again.map(([k, n]) => `${k} ×${n}`).join(", ")}`);
+    // The list keeps its own stories: the shared copy, every profile's, is only its start.
+    if (role === "story-list") assert.equal(mock.reads["shared:kelpie.stories.data"], undefined, "the list reads the shared stories");
+  });
+}
+
+// The tab bar, the layout's sync and the keys each ask for the shown profile's stories: built once a
+// render, again after anything is written.
+test("the stories are worked out once a render", () => {
+  setupDemoWorld({ stories, shown: "ACME-142" });
+  rendering(() => {
+    const first = storyItems();
+    assert.ok(first?.items.length, "the demo's stories");
+    assert.equal(storyItems(), first);
+    setShared("kelpie.stories.preview", { [DEMO]: "ACME-180" });
+    assert.notEqual(storyItems(), first, "worked out again after a write");
+  });
+  assert.notEqual(storyItems(), storyItems(), "outside a render, every time");
 });
