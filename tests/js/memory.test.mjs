@@ -53,3 +53,14 @@ test("memory: the caches keyed by patches stay under their size", () => {
   for (const [name, n] of Object.entries(sizes)) assert.ok(n <= 8e6, `${name}: ${n} characters of patches`);
   assert.ok(sizes.hashes > 7e6, "but they still hold most of what fits");
 });
+
+// A ticket's comments are kept as its description is: the most recently loaded, at most KEEP.comments.
+test("memory: only the comments loaded most recently are kept", async () => {
+  const view = new Stories(), cx = fakeCx();
+  const st = { at: 0, setup: { jira: { site: "https://acme.atlassian.net", board: 1, demo: true } }, data: {} };
+  view.threads = {};
+  for (let i = 1; i < KEEP.comments * 2; i++) view.commentsOf(st, `ACME-${i}`, cx);
+  await cx.settle();
+  assert.ok(Object.keys(view.threads).length <= KEEP.comments, `${Object.keys(view.threads).length} threads kept`);
+  assert.equal(view.threads["ACME-1"], undefined, "the oldest went");
+});

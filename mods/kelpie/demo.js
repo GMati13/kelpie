@@ -140,15 +140,24 @@ export async function demoJira(args) {
   if (/\/board\/\d+$/.test(path)) return ok({ id: f.profile.board, name: f.board.name, type: "scrum" });
   // The site's priority levels, highest first, as Jira Cloud lists them.
   if (path === "/rest/api/3/priority") return ok((f.priorities ?? []).map((l) => ({ id: l.id, name: l.name })));
-  const m = /\/issue\/([^/?]+)(\/transitions)?/.exec(path);
+  const m = /\/issue\/([^/?]+)(\/transitions|\/comment)?/.exec(path);
   const i = m && issueById(f).get(decodeURIComponent(m[1]));
   if (!i) return { site: f.profile.site, code: 404, body: { errorMessages: ["Issue does not exist in the demo."] } };
+  // Its comments, newest first as Kelpie asks (orderBy=-created), each body as ADF.
+  if (m[2] === "/comment") {
+    const list = demoCommentsOf(i).reverse().map((c) => ({ id: c.id, author: { displayName: c.author }, created: new Date(c.at).toISOString(), body: adfOf(c.body) }));
+    return ok({ total: list.length, comments: list });
+  }
   if (m[2]) {
     const now = MOVED[i.key] ?? i.status;
     return ok({ transitions: statuses(f).filter((s) => s.name !== now).map((s) => ({ id: s.id, name: s.name, isAvailable: true, to: { id: s.id, name: s.name, statusCategory: { key: s.category } } })) });
   }
   return ok({ key: i.key, fields: { ...fields(f, i), description: adfOf(i.description) } });
 }
+
+// An issue's comments in the fixture (`comments: [{ author, at, body }]`, oldest first, bodies as light
+// Markdown), with their times made absolute and an id each. Both boards' demos answer from it.
+export const demoCommentsOf = (i) => (i?.comments ?? []).map((c, n) => ({ id: `demo-${i.key}-${n + 1}`, author: c.author ?? null, at: when(c.at), body: String(c.body ?? "") }));
 
 // A Status move on the demo's GitHub Project (issues.js setStatus()): the issue takes the column's
 // first status, as a transition to it does on the demo's Jira.

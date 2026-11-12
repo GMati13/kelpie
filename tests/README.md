@@ -148,6 +148,11 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   Markdown with only http(s) links), `ticketText`/`lookUp` (one constant query, values as variables; a
   sub-issue goes to its story), Status options and a move (the mutation's argv, every id checked before gh
   runs), the status chip (no menu off the Project; the new status shown at once), the demo's answers.
+- `comments.test.mjs`: a ticket's comments on either board (`board.js comments()`): Jira's newest asked
+  for and shown newest last, authors' names cleaned, keys checked before jira.sh runs; a Project's one
+  constant query with its values as variables, only http(s) links; a Linear team's (its constant query,
+  oldest first whatever order Linear sends); both demos' answers from the fixture;
+  and the details' folded "Comments · n", opened to the newest three with Show all, none without any.
 - `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
   agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
@@ -292,7 +297,7 @@ test with a diff, so a change to a view shows exactly what it changed.
 | --- | --- |
 | `views-sidebar` | the story list in every state the demo has (needs you, changes requested, failing checks, ready to merge, working, finished with the broom, paused, not open, waiting on others), reviews, your pull requests and "No ticket", the Desk (open, closed, without an agent), Next (no picks, Claude's picks, brewing, the Desk asking, all clear) and the opened queue; a finished story with a working agent has no broom |
 | `views-header` | the title row's main action per state (Peek, Fix checks, Address comments, Merge, Show agent, Resume, Start work), Pause, the icons, More open, folded; a review before and while its agent runs (and Approve asking twice); a pull request with no ticket |
-| `views-body` | the details: the description folded with Show more and opened, a subtask's own description, the subtasks with their actions, the fade only while the details overflow (`fits()`), a review's details |
+| `views-body` | the details: the description folded with Show more and opened, its comments folded (opened in `comments.test.mjs`, `body/comments`), a subtask's own description, the subtasks with their actions, the fade only while the details overflow (`fits()`), a review's details |
 | `views-toolbar` | the tab bar: agent tabs, the + menu, Changes and Screenshots with counts; a preview (Overview, the rest only when they hold something), a review (Changes alone), the Desk |
 | `views-dialogs` | the clean-up confirm with its leftovers, Clean up all, the "Leave KEY?" dialog of a story's last tab, an agent's profile change waiting for a yes, the story picker (and filtered); the profile dialog's Agents, GitHub and Board pages (Jira, and a GitHub Project after a Check), and what its Board page saves (one board, prefixes, the board's prompt moving with it) |
 | `views-footer` | the Claude limits line (usual, near a limit with its reset time, past a reset), the profile picker row and menu |

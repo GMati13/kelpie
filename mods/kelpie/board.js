@@ -34,10 +34,10 @@
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
-import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
+import { COMMENTS_MAX, closeIssues, commentAuthor, issueComments, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
 import { priorityOf } from "./config.js";
-import { linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
+import { linearComments, linearDescription, linearLookUp, linearMove, linearOptions, linearText, linearUrl, loadLinear } from "./linear.js";
 
 const PAGES = 5; // up to 500 tickets a search
 // Whose tickets the stories' search finds: the person's own, or on a board worked alone everyone's
@@ -244,6 +244,21 @@ export async function description(board, key, data) {
   if (board.kind === "project") return issueDescription(board, data, key);
   if (board.kind === "linear") return linearDescription(board, key);
   return adfBlocks((await jira(board.cfg, "get", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`)).body?.fields?.description);
+}
+
+// A ticket's comments, newest last: { total, list: [{ id, author, avatar, at, blocks }] }, `list` the
+// newest COMMENTS_MAX of `total`, `at` epoch ms, `avatar` a picture's link or null, `blocks` the
+// reader's (adf.js). Others write them: names are cleaned (commentAuthor()), bodies drawn like a
+// description (only http(s) links). Asked when shown, by StoryBody, never sent to an agent.
+export async function comments(board, key, data) {
+  if (board.kind === "project") return issueComments(board, data, key);
+  if (board.kind === "linear") return linearComments(board, key, (c) => ({ id: String(c.id ?? ""), author: commentAuthor(c.author), avatar: c.avatar ?? null, at: c.at, blocks: c.blocks }));
+  // The key goes into the path: checked first (security.md).
+  if (!KEY.test(key ?? "")) throw new Error(`${key} isn't a ticket key.`);
+  const r = await jira(board.cfg, "get", `/rest/api/3/issue/${key}/comment?orderBy=-created&maxResults=${COMMENTS_MAX}`);
+  const list = (r.body?.comments ?? []).slice(0, COMMENTS_MAX).map((c) => ({ id: String(c.id ?? ""), author: commentAuthor(c.author?.displayName), avatar: c.author?.avatarUrls?.["48x48"] ?? null,
+    at: Date.parse(c.created) || null, blocks: adfBlocks(c.body) })).reverse();
+  return { total: Math.max(Number(r.body?.total) || 0, list.length), list };
 }
 
 // A ticket's summary, its parent's key and its description as text (the review prompt's).
