@@ -298,7 +298,8 @@ class Rewriter:
 
     def apc(self, d, payload):
         if self.cur is not None and 'a' not in d and 'i' not in d and set(d) <= {'m', 'q'}:
-            self.cur[1].append(payload)
+            # given up means no chunk for CUR_FOR: a big image read slowly is still coming
+            self.cur[1].append(payload); self.cur_t = time.time()
             if d.get('m', '0') == '0':
                 self.items.append(('img', self.cur[0], b''.join(self.cur[1]))); self.cur = None
             return
@@ -314,14 +315,19 @@ class Rewriter:
         # Emit everything up to the last block end; inside a block, wait for its end.
         if self.cur is not None and force and time.time() - self.cur_t > CUR_FOR:
             log('dropped an image never finished %r' % self.cur[0]); self.cur = None
-        if self.cur is not None:
-            return b''
-        if self.sync and not (force and time.time() - self.sync_t > 0.25):
-            # keep buffering until the block closes (bounded: terminal-browser closes every frame)
-            return b''
+        # keep buffering until the block closes (bounded: terminal-browser closes every frame)
+        whole = self.cur is None and not (self.sync and not (force and time.time() - self.sync_t > 0.25))
+        n = len(self.items)
+        if not whole:
+            # Frames already finished go out now: they waited for the next frame's image to arrive
+            # too, and the browser sends the next one right away (126 frames, 64 MB, were held).
+            while n and self.items[n - 1][0] != 'end':
+                n -= 1
+            if not n:
+                return b''
         out = []
         block = []
-        for it in self.items:
+        for it in self.items[:n]:
             if it[0] == 'end':
                 out.append(self.process(block, ended=True))
                 if self.mark:
@@ -332,8 +338,8 @@ class Rewriter:
             else:
                 block.append(it)
         out.append(self.process(block))
-        self.items = []
-        if force and self.retired and time.time() - self.retired[0][0] > RETIRE_FOR:
+        self.items = self.items[n:]
+        if whole and force and self.retired and time.time() - self.retired[0][0] > RETIRE_FOR:
             out.append(self.retire())
         return b''.join(out)
 
