@@ -10,7 +10,8 @@
 
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
+import { appHome, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
+import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
 import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
@@ -764,7 +765,12 @@ export default class Quiet extends View {
     });
   }
 
+  // Every Kelpie view draws here, its host reads kept for the render (host.js).
   render(cx) {
+    return rendering(() => this.draw(cx));
+  }
+
+  draw(cx) {
     if (this.work) return this.work.render(cx);
     const role = props()?.role ?? "sidebar";
     if (!STATS_ROLES.includes(role)) return (ROLES[role] ?? sidebar)();

@@ -3,7 +3,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, setShared, shared, spaces } from "herdr";
+import { run, setShared, shared, spaces } from "./host.js";
 import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
 import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
 

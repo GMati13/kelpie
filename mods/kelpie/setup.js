@@ -11,7 +11,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState, Textarea, TextareaState } from "gpui-base";
-import { closeOverlay, exec, pickFolder, props, setShared, shared, spaces } from "herdr";
+import { closeOverlay, exec, pickFolder, props } from "herdr";
+import { setShared, shared, spaces } from "./host.js";
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";

@@ -10,7 +10,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
-import { closeOverlay, openOverlay, props, run } from "herdr";
+import { closeOverlay, openOverlay, props } from "herdr";
+import { run } from "./host.js";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, mark, primaryButton, textButton, tint } from "./ui.js";
 import { closeStories, moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
