@@ -637,18 +637,20 @@ function subsLine(t, it) {
     .children(segs.map((c, i) => div().flex_1().h_full().rounded(1).bg(i < parts[0].n ? c : alpha(c, 0.45))));
 }
 
-// A ticket's priority as a small mark (#122), the same on either board: chevrons pointing up for the
-// levels above the middle (the highest, doubled, in the theme's amber: the one that should stand out;
-// the next ones quiet), down for those below it (dim), nothing for the middle level or a ticket with
-// none, so a list of ordinary work stays plain. Nothing red: the highest is urgent, not an error. Its
-// tooltip says the level by the board's name. Null when there's nothing to draw.
+// A ticket's priority as a small mark (#122), the same on either board: arrows, never chevrons (in
+// Kelpie a chevron folds or opens something, so one beside a key read as a control). Up for the levels
+// above the middle, down for those below; the highest and the lowest are arrows to a line, so each
+// level differs by shape, not by colour alone. Only the highest is in colour (the theme's amber: the
+// one that should stand out), the next ones quiet, the low ones dim; nothing for the middle level or a
+// ticket with none, so a list of ordinary work stays plain. Nothing red: the highest is urgent, not an
+// error. Its tooltip says the level by the board's name. Null when there's nothing to draw.
 export function priorityLook(p) { // exported for the tests
   if (!p || !(p.of > 1)) return null;
   const mid = (p.of - 1) / 2;
   if (p.rank === mid) return null;
-  if (p.rank === 0) return { icon: "chevrons-up", color: "working" };
-  if (p.rank < mid) return { icon: "chevron-up", color: "muted" };
-  return { icon: p.rank === p.of - 1 ? "chevrons-down" : "chevron-down", color: "dim" };
+  if (p.rank === 0) return { icon: "arrow-up-to-line", color: "working" };
+  if (p.rank < mid) return { icon: "arrow-up", color: "muted" };
+  return { icon: p.rank === p.of - 1 ? "arrow-down-to-line" : "arrow-down", color: "dim" };
 }
 function priorityMark(t, id, p) {
   const look = priorityLook(p);
@@ -3122,6 +3124,8 @@ export class Stories extends Source {
       .child(h_flex().id("story-head-text").flex_1().min_w(0).overflow_hidden().gap(8).items_center()
         .child(skinFont(div().id("story-key").flex_none().text_color(t.accent), "key", SMALL).cursor_pointer().tooltip(where.tip)
           .on_click(() => open(where.url)).child(skinText(where.label, "key")))
+        // Its priority beside its key, as on its row in the list (#122), while Show priority is on.
+        .when(!lone && priorityOf(st.setup).show && Boolean(priorityLook(it.priority)), (el) => el.child(priorityMark(t, "story-prio", it.priority)))
         // The progress line gives way first, then the title truncates (its tip carries both); the
         // meter and the status chip never shrink, so nothing is cut mid-word.
         .child(skinFont(div(), "title").id("story-title").min_w(0).flex_shrink(1).truncate().text_size(TITLE).font_semibold()

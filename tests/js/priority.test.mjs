@@ -82,12 +82,19 @@ describe("ordering by priority", () => {
 
 describe("the priority mark", () => {
   const look = (rank, of) => priorityLook({ name: "x", rank, of });
-  test("up above the middle (the highest doubled, amber), none in the middle, down below", () => {
+  test("up above the middle (the highest to a line, amber), none in the middle, down below", () => {
     assert.deepEqual([0, 1, 2, 3, 4].map((r) => look(r, 5)), [
-      { icon: "chevrons-up", color: "working" }, { icon: "chevron-up", color: "muted" }, null,
-      { icon: "chevron-down", color: "dim" }, { icon: "chevrons-down", color: "dim" },
+      { icon: "arrow-up-to-line", color: "working" }, { icon: "arrow-up", color: "muted" }, null,
+      { icon: "arrow-down", color: "dim" }, { icon: "arrow-down-to-line", color: "dim" },
     ]);
-    assert.deepEqual([0, 1, 2, 3].map((r) => look(r, 4)?.icon), ["chevrons-up", "chevron-up", "chevron-down", "chevrons-down"], "P0-P3 have no middle");
+    assert.deepEqual([0, 1, 2, 3].map((r) => look(r, 4)?.icon), ["arrow-up-to-line", "arrow-up", "arrow-down", "arrow-down-to-line"], "P0-P3 have no middle");
+  });
+  test("never a chevron (Kelpie's fold and open mark), and each level its own shape, not colour alone", () => {
+    for (const of of [2, 3, 4, 5, 7]) {
+      const icons = Array.from({ length: of }, (_, r) => look(r, of)?.icon).filter(Boolean);
+      for (const i of icons) assert.doesNotMatch(i, /chevron/, i);
+      assert.equal(new Set(icons).size, Math.min(icons.length, 4), `${of} levels: ${icons.join(" ")}`);
+    }
   });
   test("nothing red, and nothing for no priority or a single level", () => {
     for (let r = 0; r < 5; r++) assert.notEqual(look(r, 5)?.color, "blocked");
@@ -210,6 +217,19 @@ describe("the story list's rows", async () => {
     setupDemoWorld({ profile, stories });
     return ids((await draw(new StoryList())).el);
   };
+  test("the story header shows it beside the key too, only while Show priority is on", async () => {
+    const { Stories } = await import("../../mods/kelpie/stories.js");
+    const header = async (jira) => {
+      const profile = { jira: { ...demoProfile().jira, ...jira } };
+      setupDemoWorld({ profile });
+      const stories = await loadStories(StoryList);
+      setupDemoWorld({ profile, stories });
+      mock.state.shared.set("kelpie.stories.preview", { demo: "ACME-178" });
+      return ids((await draw(new Stories())).el);
+    };
+    assert.ok((await header({ showPriority: true })).includes("story-prio"), "ACME-178, Highest, is marked");
+    assert.ok(!(await header({})).includes("story-prio"), "off: no mark");
+  });
   test("show the mark after the key only while Show priority is on", async () => {
     assert.ok(!(await drawn({ byPriority: true })).some((id) => id.startsWith("prio-")), "off: no marks");
     const on = await drawn({ showPriority: true });
