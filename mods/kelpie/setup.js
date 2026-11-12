@@ -16,7 +16,7 @@ import { setShared, shared, spaces } from "./host.js";
 import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
-import { ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { jiraPriorities } from "./board.js";
@@ -805,9 +805,11 @@ export class Setup {
       messages: () => [
         page("Messages", "What a button sends to an agent. A pull request's buttons send to its agent, or start one with it when none is open; {prs} is the pull request's link, several joined by \"and\"."),
         group("Your pull requests"),
-        ...ASK_PROMPTS.filter((a) => !REVIEW_ASKS.includes(a.id) && !IDEA_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text, null)),
+        ...ASK_PROMPTS.filter((a) => !REVIEW_ASKS.includes(a.id) && !IDEA_ASKS.includes(a.id) && !ASK_CLAUDE.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text, null)),
         group("Reviews", "Nothing is posted until you press one"),
         ...ASK_PROMPTS.filter((a) => REVIEW_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label.replace(/ \(review\)$/, ""), this.asks[a.id], a.text, null)),
+        group("Ask Claude", "Its suggestions: each follows what's asked about"),
+        ...ASK_PROMPTS.filter((a) => ASK_CLAUDE.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text, null)),
         group("What next?"),
         ...ASK_PROMPTS.filter((a) => IDEA_ASKS.includes(a.id)).map((a) => (a.id === "idea"
           ? promptField(`ask-${a.id}`, "Start an idea", this.asks[a.id], a.text,

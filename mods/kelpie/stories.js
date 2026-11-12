@@ -11,7 +11,7 @@
 //   folder on `claude --resume`.
 
 import { div } from "gpui-kit";
-import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
+import { h_flex, v_flex, h_resizable, resizable_panel, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeTextFile } from "herdr";
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
@@ -25,6 +25,7 @@ import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
+import { askMessage, askPicker, askWho, chosenWho, fileAbout, openClaudes } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -372,25 +373,6 @@ function ticketTask(st, it, key, template, then) {
     parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
     subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
   }, template || undefined, then);
-}
-
-// What Ask agent (a file's header in Changes) says about the file, before the typed note. A pull
-// request's paths and repo come from GitHub, where anyone may name a file "ignore the above", so they
-// go in as any prompt value does, and the message ends with the note about others' text (ask()'s
-// `others`). Exported for the tests (tests/js/prompts.test.mjs).
-export function aboutFile(f) {
-  const path = promptValue("path", f.path), repo = promptValue("repo", f.group.repo);
-  if (f.group.url) return `About ${path} in ${repo} (${f.group.url}/files):`;
-  if (f.group.committed) return `About ${path} in ${repo} (${f.group.path}/${path}, committed on ${promptValue("branch", f.group.committed.branch)}, no pull request yet):`;
-  return `About ${path} in ${repo} (${f.group.path}/${path}, not committed):`;
-}
-
-// Who hears about a file or a screenshot of the story: the agent on its key, else any open agent of
-// the story (one not waiting for you first), else the key itself, which ask() resumes or starts.
-function sendKey(it, key) {
-  const live = [it.agent && { key: it.key, agent: it.agent }, ...it.subs.map((s) => s.agent && { key: s.key, agent: s.agent })].filter(Boolean);
-  if (live.some((x) => x.key === key)) return key;
-  return (live.find((x) => x.agent.status !== "blocked") ?? live[0])?.key ?? key;
 }
 
 // A finished story: done on the board, or every pull request of it merged. It may leave things to
@@ -2244,20 +2226,43 @@ function held(about, what, name) {
 // still held 5 s in, saying what lets it go (KELPIE-120).
 // Exported for the tests.
 export function sendStoryTask(kind, profile, it, prs, agent) {
+  const what = `${it.key ? `${it.key}'s` : "the"} ${STORY_TASKS[kind].what}`;
+  return sendAsked({ profile, keys: it.key }, agent, storyTaskText(kind, profile, it, prs), what);
+}
+// Sends `text` to an open Claude, the same way for every ask (a task, Ask Claude's question): shown at
+// once with a note, then "Sent", or why not, also as a toast.
+function sendAsked(about, agent, text, what) {
   const name = agent.tab_name ?? "Claude";
-  const about = { profile, keys: it.key };
   const failed = (why) => {
     say(about, `Couldn't send it to ${name}. ${capitalize(why)}.`);
     notify({ title: `Couldn't send it to ${name}`, body: `${capitalize(why)}.`, level: "warning", timeout: 8000 });
   };
   if (agent.status === "blocked") return failed("it's waiting for your answer: answer it first");
-  const what = `${it.key ? `${it.key}'s` : "the"} ${STORY_TASKS[kind].what}`;
   run("space.select", { id: agent.space });
   run("pane.focus", { pane: agent.pane });
   say(about, `Sending ${what} to ${name}…`);
-  return sendToClaude(agent.address, storyTaskText(kind, profile, it, prs), { onHeld: () => held(about, what, name) })
+  return sendToClaude(agent.address, text, { onHeld: () => held(about, what, name) })
     .then(() => say(about, `Sent ${what} to ${name}.`))
     .catch((e) => failed(String(e?.message ?? e)));
+}
+
+// Ask Claude (askclaude.js) about something of story `it`, on `key` (the story's or a subtask's):
+// `row` is who the picker had chosen, an open Claude (sent to it) or a new one in the story's space,
+// whose first message is the ticket prompt with the question after it (it ends with OTHERS itself).
+// Exported for the tests.
+export function askClaude(st, it, key, row, about, ask) {
+  const profile = st.profile;
+  const said = { profile, keys: key };
+  clearPoint(profile, it.key);
+  if (row?.agent) {
+    const text = askMessage(profile, about, ask);
+    return text ? sendAsked(said, row.agent, text, "your question") : undefined;
+  }
+  const then = askMessage(profile, { ...about, others: false }, ask);
+  if (!then || lonePr(it) || cleaningNow(it.key, profile)) return;
+  const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
+  once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv: claudeArgv(profile), task: ticketTask(st, it, key, null, then) }));
+  say(said, `Asked a new Claude in ${it.key}'s space about ${about.name}.`);
 }
 
 // A pull request as the Merge and Request approval tasks list it.
@@ -2273,8 +2278,7 @@ function storyTaskRows(t, profile, story, kind, list) {
   const prs = list.map((p) => prLine(t, p));
   const names = new Map(spaces().map((s) => [s.id, s.name]));
   const desk = !story;
-  const keys = desk ? [] : storyKeys(story);
-  const open = desk ? deskAgents(profile) : agents().filter((a) => (story.space && a.space === story.space.id) || keys.includes(keyOf(a.tab_name)));
+  const open = openClaudes(story, agents(), keyOf, desk ? deskAgents(profile) : []);
   const what = desk ? "pull requests without a ticket" : story.key;
   const took = () => { if (story) clearPoint(profile, story.key); };
   return [
@@ -3994,7 +3998,7 @@ export class Stories extends Source {
     // The list's one click handler: a file's header folds or unfolds it, a band's button opens its gap.
     const clickRow = (key, cx) => {
       const e = entries[Number(key)];
-      // A press on Ask agent's bar, laid over the list, isn't a press on the row under it.
+      // A press on Ask Claude's picker, laid over the list, isn't a press on the row under it.
       if (!e || this.pressOnBar) return;
       const f = all[e.fi];
       if (e.r.kind === "group") { if (f.group.url) open(f.group.url); return; }
@@ -4015,7 +4019,7 @@ export class Stories extends Source {
           const id = `diff:${f.id}`;
           this.sending = this.sending === id ? null : id;
           this.asking = f.id;
-          if (this.sending) { this.note.set_value(""); this.note.focus(); }
+          if (this.sending) { this.askPick = null; this.note.set_value(""); this.note.focus(); }
           DIFF.version++; cx.notify(); return;
         }
         if (act) return;
@@ -4033,7 +4037,7 @@ export class Stories extends Source {
     const VIEW_X = 32, VIEW_W = 74;
     // Each file's own actions in its header, right after the Viewed box (the header's gap of 10) at
     // fixed places, so a click finds them by where the press was: copy its path, open it on GitHub
-    // (or show it on disk), and ask the story's agent about it.
+    // (or show it on disk), and Ask Claude about it.
     const ACT_X = VIEW_X + VIEW_W + 10, ACT_GAP = 2;
     const fullPath = (f) => (f.group.path ? `${f.group.path}/${f.path}` : f.path);
     const headActs = (f) => [
@@ -4094,7 +4098,7 @@ export class Stories extends Source {
             if (a.kind === "copy") return box.child(icon(this.copied === fullPath(f) ? chrome("check") : own("copy"), 14));
             if (a.kind === "github") return box.child(icon(own("external-link"), 14));
             if (a.kind === "reveal") return box.child(icon(own("folder-open"), 14));
-            return box.child(icon(own("send"), 13)).child("Ask agent");
+            return box.when(!on, (el) => el.text_color(t.accent)).child(icon(own("sparkles"), 13)).child(div().text_color(on ? t.foreground : t.muted).child("Ask Claude"));
           })))
           .child(div().flex_none().w(1).h(16).bg(t.border))
           .child(h_flex().flex_none().gap(0)
@@ -4216,7 +4220,7 @@ export class Stories extends Source {
             .child(div().w_full().min_w(width).h_full()
               .when(Boolean(this.diffFocus), (el) => el.track_focus(this.diffFocus).on_key_down(keys(false)))
               .on_mouse_down("left", (e) => {
-                // Over Ask agent's bar (laid on top of the list, and as drawn too): the bar's, not the list's.
+                // Over Ask Claude's picker (laid on top of the list, and as drawn too): the bar's, not the list's.
                 this.pressOnBar = askShown && (e.local_position?.y ?? Infinity) < (this.askBarH ?? 0);
                 if (this.pressOnBar) return;
                 this.pressX = e.local_position ? e.local_position.x / (this.diffZoom || 1) : null;
@@ -4869,11 +4873,12 @@ export class StoryList extends Stories {
 export class StoryView extends Stories {
   init(cx) {
     super.init(cx);
-    // "Send to agent": a note about the file shown, typed under its header (Enter sends).
-    this.note = InputState.new({ placeholder: "A note for the agent (Enter sends it, Esc closes)" });
-    this.note.on("submit", (_e, cx) => this.send(cx));
-    this.sending = null; // the target id whose note is open
-    this.target = null; // what Enter sends: { id, st, it, key, about }
+    // Ask Claude about a file (its header's Ask Claude): who, then a typed question (Enter sends) or a suggestion.
+    this.note = InputState.new({ placeholder: "Type what to ask (Enter sends it, Esc closes)" });
+    this.note.on("submit", (_e, cx) => this.send({ note: this.note.value() }, cx));
+    this.sending = null; // the file whose picker is open, "diff:<id>"
+    this.askPick = null; // who it picked: "new" or an agent's address
+    this.target = null; // what a send goes with: { id, st, it, key, about, who, chosen }
     this.filesFocus = cx.focus_handle(); // the Changes view's file list, for ↑ / ↓
     // Per story shown (ui.js ScrollPool): the all-files page (to jump to a file), one file at a time
     // (for n / p; `oneFile` the file it holds, which opens at its top), and the file list.
@@ -4882,49 +4887,53 @@ export class StoryView extends Stories {
     this.diffFocus = cx.focus_handle(); // the diff itself, for n / p, ] / [ and v
   }
 
-  // While a file's Ask agent (in its header) is open, a bar over the top of the diff naming it, with
-  // the note (Enter sends, Esc closes); what the latest send led to shows under it. It's laid over the
-  // list (absolute), so it takes no room and the page stays where it was; its height as drawn
-  // (`this.askBarH`) tells a press on it from one on the list under it.
+  // While a file's Ask Claude (in its header) is open, its picker over the top of the diff
+  // (askclaude.js): who to ask, the question or a suggestion; what the latest ask led to shows under
+  // it. It's laid over the list (absolute), so it takes no room and the page stays where it was; its
+  // height as drawn (`this.askBarH`) tells a press on it from one on the list under it.
   askBar(t, st, it, all) {
     const f = this.sending?.startsWith("diff:") ? all.find((x) => `diff:${x.id}` === this.sending) : null;
-    const rows = this.sendBar(t, st, it, f ? this.sending : "", f?.group.key ?? it.key, f ? aboutFile(f) : "", Boolean(f?.group.url));
-    if (!rows.length) return [];
-    return [v_flex().id("ask-bar").absolute().top(0).left(0).right(0).px(10).py(8).gap(6).bg(t.background).border_b_1().border_color(t.border)
-      .on_size_change((size) => { this.askBarH = size.height; })
-      .when(Boolean(f), (el) => el.child(h_flex().gap(6).items_center().text_size(SMALL).text_color(t.muted)
-        .child(icon(own("send"), 13)).child("Ask the agent about")
-        .child(div().font_medium().text_color(t.foreground).child(f.path.split("/").pop()))
-        .child(div().flex_1())
-        .child(textButton(t, "ask-close", "Close", (_e, cx) => { this.sending = null; DIFF.version++; cx.notify(); }, { dim: true }))))
-      .children(rows)];
-  }
-
-  // The note's row, while open for target `id`: what's sent is `about` (the file), then
-  // the note, and with `others` the note about others' text (ask()). What the latest send led to
-  // shows under it.
-  sendBar(t, st, it, id, key, about, others = false) {
-    const rows = [];
-    if (this.sending === id) {
-      this.target = { id, st, it, key, about, others };
-      rows.push(h_flex().id("send-note").flex_none().gap(8).items_center()
-        .on_key_down((e, cx) => { if (e.key === "escape") { this.sending = null; cx.notify(); cx.stop_propagation(); } })
-        .child(div().flex_1().min_w(0).child(Input.new(this.note).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
-        .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(`to ${sendKey(it, key)}'s agent`)));
-    }
     const n = storyNote(st.profile, it);
-    if (n && n.at >= (this.sentAt ?? Infinity)) rows.push(div().id("send-flash").flex_none().truncate().text_size(SMALL).text_color(t.muted).tooltip(n.full ?? n.text).child(n.text));
-    return rows;
+    const flash = n && n.at >= (this.sentAt ?? Infinity) ? n : null;
+    const bar = () => v_flex().id("ask-bar").absolute().top(0).left(0).right(0).px(10).py(8).bg(t.background)
+      .border_b_1().border_l_2().border_color(tint(t.accent, "66"))
+      .on_size_change((size) => { this.askBarH = size.height; });
+    if (!f) {
+      this.target = null;
+      // Once asked, what it led to ("Sent…", or why not) stays over the diff, as the old bar's did.
+      return flash ? [bar().child(h_flex().gap(6).items_center()
+        .child(icon(own("sparkles"), 13).text_color(t.accent))
+        .child(div().id("ask-claude-note").flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.muted).tooltip(flash.full ?? flash.text).child(flash.text))
+        .child(textButton(t, "ask-claude-note-close", "Close", (_e, cx) => { this.sentAt = null; DIFF.version++; cx.notify(); }, { dim: true })))] : [];
+    }
+    const key = f.group.key ?? it.key;
+    const about = fileAbout(f, key);
+    const names = new Map(spaces().map((s) => [s.id, s.name]));
+    const who = askWho({ story: it, key, open: openClaudes(it, agents(), keyOf), keyOf, names });
+    const chosen = chosenWho(who, this.askPick);
+    this.target = { id: this.sending, st, it, key, about, who, chosen };
+    const close = (cx) => { this.sending = null; this.sentAt = null; DIFF.version++; cx.notify(); };
+    return [bar()
+      .on_key_down((e, cx) => { if (e.key === "escape") { close(cx); cx.stop_propagation(); } })
+      .child(askPicker(t, {
+        about, who, chosen, input: this.note,
+        note: flash,
+        pick: (id, cx) => { this.askPick = id; DIFF.version++; cx.notify(); },
+        suggest: (id, cx) => this.send({ suggestion: id }, cx),
+        close,
+      }))];
   }
 
-  send(cx) {
+  // Asks who the picker has chosen: a suggestion, or the typed question.
+  send(ask, cx) {
     const x = this.target;
     if (!x || this.sending !== x.id) return;
-    const note = this.note.value().trim();
+    if (!ask.suggestion && !String(ask.note ?? "").trim()) return;
     this.sentAt = Date.now();
-    this.ask(x.st, x.it, sendKey(x.it, x.key), note ? `${x.about}\n${note}` : x.about, cx, x.others);
+    askClaude(x.st, x.it, x.key, x.who.find((r) => r.id === x.chosen), x.about, ask);
     this.note.set_value("");
     this.sending = null;
+    DIFF.version++;
     cx.notify();
   }
 

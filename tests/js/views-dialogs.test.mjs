@@ -468,6 +468,18 @@ test("Delete profile, on the General page, deletes the profile only on its secon
   assert.equal(mock.state.shared.get("kelpie.profiles")[DEMO], undefined);
 });
 
+// Ask Claude's suggestions are profile messages (KELPIE-84), a group of their own on the Messages page.
+test("the profile dialog's Messages page: Ask Claude's suggestions, in a group of their own", () => {
+  const words = texts(profilePage("messages")).join("\n");
+  const group = words.indexOf("Ask Claude"), next = words.indexOf("What next?", group);
+  assert.ok(group > 0 && next > group, "an Ask Claude group before What next?'s");
+  for (const label of ["Explain this", "Review this change", "Fix this", "Write a test for it"]) {
+    const at = words.indexOf(label, group);
+    assert.ok(at > group && at < next, label);
+  }
+  assert.ok(words.indexOf("Explain this") > group, "not under Your pull requests");
+});
+
 test("the Keychain store command: none with a line break in the item or email, as it would start a command of its own", () => {
   assert.match(storeCommand("jira-acme", "me@example.com"), /^read -rs .*security -i/);
   for (const [item, email] of [["jira-acme\ndump-keychain -d", "me@example.com"], ["jira-acme", "me@example.com\ndump-keychain"], ["a\rb", "me@example.com"]]) {
