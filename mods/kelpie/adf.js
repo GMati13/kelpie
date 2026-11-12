@@ -264,7 +264,7 @@ export function findPassage(list, quote) {
       if (z <= s || a >= e) return b;
       return b.kind === "code" ? { ...b, marked: true } : { ...b, runs: markRuns(b.runs, Math.max(s, a) - a, Math.min(e, z) - a) };
     }, (b, i) => (touched.has(i) ? { ...b, hl: true } : b));
-    return { index: Math.min(...touched), exact: true, blocks };
+    return { index: Math.min(...touched), exact: true, share: 1, blocks };
   }
   // Not word for word: the top-level block holding most of the passage's words, if most of them.
   const words = [...new Set(pieces.join(" ").split(" ").filter((w) => w.length >= 3))];
@@ -276,5 +276,23 @@ export function findPassage(list, quote) {
     if (share >= 0.6 && (!best || share > best.share)) best = { i, share };
   }
   if (!best) return null;
-  return { index: best.i, exact: false, blocks: list.map((b, i) => (i === best.i ? { ...b, hl: true } : b)) };
+  return { index: best.i, exact: false, share: best.share, blocks: list.map((b, i) => (i === best.i ? { ...b, hl: true } : b)) };
+}
+
+// Where a quote is in a ticket: its description (`description`, blocks) or one of its comments
+// (`comments`, [{ blocks }], oldest first): { where: "description" | "comment", n (the comment's place,
+// -1 for the description), found (findPassage()'s) }, or null. Word for word wins over a closest match
+// wherever it is; the description is looked in first, then the comments newest first (the later word on
+// something is usually the one asked about), and between closest matches the one sharing most of the
+// quote's words wins, the description on a tie.
+export function findInTicket(description, comments, quote) {
+  const tries = [{ where: "description", n: -1, blocks: description }, ...(comments ?? []).map((c, n) => ({ where: "comment", n, blocks: c?.blocks })).reverse()];
+  let best = null;
+  for (const x of tries) {
+    const found = x.blocks?.length ? findPassage(x.blocks, quote) : null;
+    if (!found) continue;
+    if (found.exact) return { where: x.where, n: x.n, found };
+    if (!best || found.share > best.found.share) best = { where: x.where, n: x.n, found };
+  }
+  return best;
 }

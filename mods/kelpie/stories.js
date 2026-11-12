@@ -22,7 +22,7 @@ import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
-import { adfLines, findPassage, markdownBlocks } from "./adf.js";
+import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { askMessage, askPicker, askWho, chosenWho, fileAbout, openClaudes } from "./askclaude.js";
@@ -1856,12 +1856,43 @@ export function showPassage({ key, quote, note = "" }) {
 // outcome goes to passage.result.json beside it, the request removed.
 const passageText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 export function showPassageRequest() {
-  return answerRequest("passage", (req) => {
+  return answerRequest("passage", async (req) => {
     const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
     if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
-    if (quote.length < 3) throw new Error("quote: the passage's words, as the description has them.");
-    return showPassage({ key, quote, note }) ? { ok: true } : { ok: false, error: `${key} isn't a story in the shown profile's list.` };
+    if (quote.length < 3) throw new Error("quote: the passage's words, as the description or a comment has them.");
+    if (!showPassage({ key, quote, note })) return { ok: false, error: `${key} isn't a story in the shown profile's list.` };
+    // Where it is, for the agent's answer: the description and comments as the details will show
+    // them. A board too slow to say in time leaves `found` out; the story is shown either way.
+    const where = await Promise.race([passageWhere(storyItems()?.st, key, quote), exec("sleep", [String(PASSAGE_WAIT / 1000)]).then(() => null)]).catch(() => null);
+    return { ok: true, ...(where ?? {}) };
   });
+}
+// How long a passage request waits to say where the passage is (the plugin waits 5 s in all). Mods
+// have no setTimeout: they wait on `sleep`.
+const PASSAGE_WAIT = 3500;
+// Where `quote` is in the ticket `key`: { found: "description" | "comment" | "none", exact, author,
+// written } (`author` and `written`, an ISO time, for a comment; not `at`, which answerRequest()
+// stamps on every result), from the descriptions and comments the views keep (DESCRIPTIONS,
+// THREADS), loading what isn't there yet into them, so the details don't ask again.
+// Exported for the tests.
+export async function passageWhere(st, key, quote) {
+  if (!st?.setup) return null;
+  const board = boardOf(st.setup);
+  const get = async (store, max, load) => {
+    const had = store[key];
+    if (had && !had.loading && !had.error) return had;
+    const got = { ...(await load()), at: Date.now() };
+    if (!store[key]?.loading) keep(store, key, got, max);
+    return got;
+  };
+  const [d, c] = await Promise.all([
+    get(DESCRIPTIONS, KEEP.descriptions, async () => ({ blocks: await boardDescription(board, key, st.data) })).catch(() => ({ blocks: [] })),
+    get(THREADS, KEEP.comments, () => boardComments(board, key, st.data)).catch(() => ({ list: [] })),
+  ]);
+  const hit = findInTicket(d.blocks ?? [], c.list ?? [], quote);
+  if (!hit) return { found: "none" };
+  const x = hit.where === "comment" ? c.list[hit.n] : null;
+  return { found: hit.where, exact: hit.found.exact, ...(x ? { author: x.author, written: x.at ? new Date(x.at).toISOString() : null } : {}) };
 }
 
 // A request from the plugin (plugin/server.py): `<home>/kelpie/<name>.json` read and handed to
@@ -3517,16 +3548,40 @@ export class Stories extends Source {
   // there (`this.readerH`, as drawn, so divided by the zoom when used). Herdr reports a size only when
   // it changes, so each passage's copy has ids of its own and is measured afresh.
   reader(t, st, it, hl, cx) {
+    // The description, then the comments under it, as one reading list: a passage is looked for in
+    // both (findInTicket()), so one in a comment is marked and centred like one in the description.
     const d = this.descriptionOf(st, it.key, cx);
-    if (d.blocks && (this.passage?.at !== hl.at || this.passage.of !== d.blocks)) this.passage = { at: hl.at, of: d.blocks, found: findPassage(d.blocks, hl.quote) };
-    const found = d.blocks ? this.passage.found : null;
+    const c = this.commentsOf(st, it.key, cx);
+    const desc = d.blocks ?? (d.error ? [] : null);
+    const talk = c.list ?? (c.error ? [] : null);
+    if (desc && (this.passage?.at !== hl.at || this.passage.of !== desc || this.passage.talk !== talk)) {
+      const inDesc = findPassage(desc, hl.quote);
+      // Word for word in the description needs no comments; anything else waits for them.
+      const found = inDesc?.exact ? { where: "description", n: -1, found: inDesc } : talk ? findInTicket(desc, talk, hl.quote) : undefined;
+      this.passage = { at: hl.at, of: desc, talk, found };
+    }
+    const hit = desc ? this.passage.found : undefined; // undefined: still looking; null: not there
+    const found = hit?.found ?? null;
     // A list's entries are items of their own (each a one-entry list, numbered on), so the one
     // holding the passage is what's scrolled to, not the middle of a long list.
     const lit = (x) => /"mark":true|"marked":true/.test(JSON.stringify(x));
-    const blocks = (found?.blocks ?? d.blocks ?? []).flatMap((b) => (b.kind !== "list" ? [b]
-      : b.items.map((item, n) => ({ ...b, start: (b.start ?? 1) + n, items: [item], hl: b.hl && (!found.exact || lit(item)), next: n > 0 }))));
-    const said = !d.blocks ? (d.error ? "The description didn't load" : "Loading the description…")
-      : !found ? "Couldn't find this passage in the description" : found.exact ? "Here in the description" : "Closest match in the description";
+    const rows = (list, mine) => list.flatMap((b) => (b.kind !== "list" ? [b]
+      : b.items.map((item, n) => ({ ...b, start: (b.start ?? 1) + n, items: [item], hl: b.hl && (!mine?.exact || lit(item)), next: n > 0 }))));
+    const own = (where, n) => (hit?.where === where && hit.n === n ? found : null);
+    const comments = talk ?? [];
+    const blocks = [
+      ...rows(own("description", -1)?.blocks ?? desc ?? [], own("description", -1)),
+      ...(comments.length ? [{ kind: "talk-head", text: `Comments · ${c.total ?? comments.length}` }] : []),
+      ...comments.flatMap((x, n) => [{ kind: "who", author: x.author, at: x.at, avatar: x.avatar }, ...rows(own("comment", n)?.blocks ?? x.blocks, own("comment", n)).map((b) => ({ ...b, talk: true }))]),
+    ];
+    const whose = (n) => { const x = comments[n]; return x ? `${x.author}'s comment${x.at ? `, ${ago(x.at) === "now" ? "just now" : `${ago(x.at)} ago`}` : ""}` : "a comment"; };
+    const said = !desc ? "Loading the description…"
+      : hit === undefined ? "Looking in the comments too…"
+      : !hit ? (d.error ? (comments.length ? "The description didn't load, and the passage isn't in its comments" : "The description didn't load")
+        : c.error ? "Couldn't find this passage in the description (the comments didn't load)"
+        : comments.length ? "Couldn't find this passage in the description or its comments" : "Couldn't find this passage in the description")
+      : hit.where === "comment" ? (found.exact ? `Here in ${whose(hit.n)}` : `Closest match: ${whose(hit.n)}`)
+      : found.exact ? "Here in the description" : "Closest match in the description";
     // The bar sits on the reading column (as wide and as indented as the rows below, its text on
     // theirs), so on a wide screen it stays right above the passage; the note wraps under the
     // status rather than being cut off.
@@ -3539,10 +3594,21 @@ export class Stories extends Source {
         .when(Boolean(note), (el) => el.child(div().id("passage-note").w_full().min_w(0).text_size(SMALL).text_color(t.muted).tooltip(`“${hl.quote}”`).child(note))));
     const item = (i) => {
       const b = blocks[i];
-      const block = blocksView(t, `rd-${i}`, [b], 14, i === 0);
+      // The comments' heading and each comment's author line, as the Overview draws them.
+      if (b.kind === "talk-head" || b.kind === "who") {
+        const line = b.kind === "talk-head"
+          ? div().px(12).text_size(SMALL).font_semibold().text_color(t.muted).child(b.text)
+          : h_flex().px(12).gap(8).items_center().min_w(0)
+            .child(avatar(t, b.author, 18, b.author, avatarFile(b.avatar)))
+            .child(div().min_w(0).truncate().text_size(SMALL).font_semibold().text_color(t.foreground).child(b.author))
+            .child(div().flex_none().text_size(SMALL).text_color(t.dim).child(!b.at ? "" : ago(b.at) === "now" ? "just now" : `${ago(b.at)} ago`));
+        return h_flex().w_full().justify_center().px(28).pt(b.kind === "talk-head" ? 28 : 14).pb(2)
+          .child(div().w_full().min_w(0).max_w(DOC.width + 24).child(line));
+      }
+      const block = blocksView(t, `rd-${i}`, [b], 14, i === 0 && !b.talk);
       const box = b.hl ? div().px(12).py(8).rounded(8).bg(tint(t.accent, "12")).border_l_2().border_color(t.accent).child(block) : div().px(12).child(block);
       return h_flex().w_full().justify_center().px(28).pt(i === 0 ? 24 : b.kind === "h" ? 20 : b.next ? 2 : 6).pb(i === blocks.length - 1 ? 32 : b.kind === "list" ? 2 : 6)
-        .child(skinFont(div(), "reading").w_full().min_w(0).max_w(DOC.width + 24).text_size(DOC.size).line_height(`${LINE}px`).text_color(tint(t.foreground, "c4")).child(box));
+        .child(skinFont(div(), "reading").w_full().min_w(0).max_w(DOC.width + 24).text_size(DOC.size).line_height(`${LINE}px`).text_color(tint(t.foreground, "c4")).child(b.talk ? div().pl(26).child(box) : box));
     };
     const sig = `${hl.at}:${blocks.length}`;
     if (this.readerSig !== sig) { this.readerSig = sig; this.readerH = {}; this.readerAt = null; }

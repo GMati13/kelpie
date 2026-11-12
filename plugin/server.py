@@ -71,18 +71,19 @@ TOOLS = [
         "name": "show_passage",
         "title": "Show a passage in Kelpie",
         "description": (
-            "Opens a story in Kelpie, the person's story view (a ticket on their Jira board or GitHub Project), with a passage of its description scrolled "
-            "into view and marked, so they read it where it is. Use it when they ask where the story says "
-            "something, which part covers a point, or to show them. `quote` must be words copied exactly from "
-            "the story's description (not a summary or paraphrase; a few sentences at most, '…' for words left "
-            "out). `key` is the story's own key: a subtask's description isn't shown yet, and the story must be "
-            "in the profile Kelpie shows. Kelpie says whether it found the passage; tell the person what happened."
+            "Opens a story in Kelpie, the person's story view (a ticket on their board), with a passage of its description or of one of its "
+            "comments scrolled into view and marked, so they read it where it is. Use it when they ask where the story says "
+            "something, where someone said or decided it, which part covers a point, or to show them. `quote` must be words "
+            "copied exactly from the story's description or one of its comments (not a summary or paraphrase; a few sentences "
+            "at most, '…' for words left out): Kelpie looks in both. `key` is the story's own key: a subtask's isn't shown "
+            "yet, and the story must be in the profile Kelpie shows. Kelpie says where it found the passage (the description, "
+            "whose comment, a closest match, or nowhere); tell the person what happened."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "key": {"type": "string", "description": "The story's ticket key, like ABC-123."},
-                "quote": {"type": "string", "description": "The passage, word for word from the description."},
+                "quote": {"type": "string", "description": "The passage, word for word from the description or a comment."},
                 "note": {"type": "string", "description": "A few words on what the passage is, shown above it."},
             },
             "required": ["key", "quote"],
@@ -344,11 +345,30 @@ def show_passage(args):
     if not KEY.match(key):
         return "key: a ticket key, like ABC-123.", True
     if len(quote) < 3:
-        return "quote: the passage's words, copied from the description.", True
+        return "quote: the passage's words, copied from the description or a comment.", True
     answer = ask("passage", {"key": key, "quote": quote, "note": note}, "show-passage")
-    if answer.get("ok"):
-        return f"Shown in Kelpie: {key}, with the passage marked in its description" + (f" ({note})." if note else "."), False
-    return f"Kelpie didn't show it: {clean(answer.get('error'), 300) or 'no reason given'}", True
+    if not answer.get("ok"):
+        return f"Kelpie didn't show it: {clean(answer.get('error'), 300) or 'no reason given'}", True
+    return f"Shown in Kelpie: {key}. {passage_found(answer)}", False
+
+
+def passage_found(answer):
+    """Where Kelpie found the passage, in a sentence. A comment's author is someone else's text: cleaned,
+    and given as data (in quotes), never as words of Kelpie's."""
+    found, exact = answer.get("found"), answer.get("exact") is True
+    if found == "description":
+        return "The passage is marked in its description." if exact else (
+            "No word-for-word match: Kelpie marked the closest one, in its description. Check the quote is copied exactly.")
+    if found == "comment":
+        author = clean(answer.get("author"), 80) or "someone"
+        at = clean(answer.get("written"), 40)
+        whose = f'a comment by "{author}"' + (f" (written {at})" if at else "")
+        return f"The passage is marked in {whose}." if exact else (
+            f"No word-for-word match: Kelpie marked the closest one, in {whose}. Check the quote is copied exactly.")
+    if found == "none":
+        return ("Kelpie didn't find the passage in its description or its comments, and says so there. "
+                "Check the quote is copied exactly, or tell the person it isn't in the ticket.")
+    return "Kelpie marks the passage where it finds it, in the description or a comment."
 
 
 def get_profile(args):
@@ -565,7 +585,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.5.2"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.6.0"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":

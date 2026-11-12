@@ -223,7 +223,7 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   and the key loop staying free while a clean-up runs (`command()` in main.js).
 - Actions: `move-to-done`, `run-picks` (Claude's picks started together), `story-task-send` (the Merge
   and Request approval menus' sends), `ask-claude` (who Ask Claude offers, what it sends and where), `terminal` (a story's Terminal), `pulls` (Approve), `point` (what
-  Next points at in a story), `passage` (a description's passage shown), `playing` (the web panel's
+  Next points at in a story), `passage` (a passage shown, in the description or a comment, and the answer saying where), `playing` (the web panel's
   sound mark), `menu-button` (a press on an open menu stays on it), `scroll` (each thing keeps its own
   scroll position), `artifacts-note` (Add to chat's note: the image's path, then the note as one clean
   line, only into the agent it was opened for).
