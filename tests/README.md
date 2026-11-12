@@ -94,6 +94,7 @@ does; `.when_some()` and `.when_else()` throw, as Herdr's elements don't have th
 isn't drawn: "unknown element method"). State handles (`InputState.new(cx)`,
 `TextareaState.new(...)`, `VirtualListScrollHandle.new()`) keep `set_value()`/`value()` and record the rest.
 `.map(fn)` runs `fn` on the element, as gpui's does.
+Each element counts the parents it was put into (`nodeOf(el).parents`, by `child()`/`children()`): in Herdr an element is drawn once, so one put into two trees, one of them thrown away, isn't drawn where it was meant to be.
 `View` is a plain base class (`this.props`).
 
 For inspecting what a view rendered (import from `"gpui-kit"`):

@@ -808,6 +808,16 @@
             "\\033[0m● Most of it is the map library (1.1 MB) loaded on every page. Loading it only on the trip map would take the first load down to about 700 KB.",
             ""
           ]
+        },
+        {
+          "name": "Terminal",
+          "screen": [
+            "\\033[32m~/acme\\033[0m $ npx vite-bundle-visualizer",
+            "",
+            "  Generated stats.html (2.04 MB total, map library 1.10 MB)",
+            "",
+            "\\033[32m~/acme\\033[0m $ "
+          ]
         }
       ]
     }
