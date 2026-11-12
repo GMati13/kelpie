@@ -320,7 +320,8 @@ describe("the demo's stories, as the list builds them", () => {
     const list = ordered(build(d, new Map(), {}, new Map(), null));
     assert.deepEqual(list.map((x) => [x.it.key, x.n[0], sunk(x.it, x.n)]), [
       ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
-      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false], ["ACME-176", 6, false], ["ACME-178", 6, false],
+      // In progress by last activity (#141): ACME-175's pull request changed most recently.
+      ["ACME-175", 6, false], ["ACME-142", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false], ["ACME-176", 6, false], ["ACME-178", 6, false],
       ["ACME-129", 6, true],
     ]);
   });

@@ -72,6 +72,7 @@
     "priority": "Priority",
     "labels": {"mobile": "0e8a16", "sync": "c5def5", "payments": "fbca04", "ios": "5319e7", "search": "1d76db", "frontend": "bfd4f2", "design": "e99695", "accessibility": "006b75", "charts": "f9d0c4", "bug": "d73a4a", "ci": "ededed", "security": "b60205"}
   },
+  "_moved": "An issue's `moved` (relative) is when it last moved on the board, as Jira and a Project give it: the stories handed over or done are ordered by it, the latest first (ACME-122 two hours ago, then ACME-129's subtask three days ago; Done: ACME-116, then ACME-118). Unset: the board says nothing.",
   "_priorities": "The board's priority levels, highest first (Jira's site list, the Project's Priority field's options); each issue's `priority` names one, ACME-138 and its subtask none. The profile shows them once its board's byPriority/showPriority are on (the profile dialog's Board page, or `byPriority`/`showPriority` true in `profile` here).",
   "priorities": [
     {"id": "1", "name": "Highest"},
@@ -334,6 +335,7 @@
     },
     {
       "key": "ACME-130",
+      "moved": "-3d",
       "priority": "Medium",
       "summary": "Reset email template",
       "parent": "ACME-129",
@@ -367,6 +369,7 @@
     },
     {
       "key": "ACME-122",
+      "moved": "-2h",
       "priority": "Medium",
       "assignee": "Sam Okafor",
       "summary": "Upgrade the services to Node 22",
@@ -376,6 +379,7 @@
     },
     {
       "key": "ACME-123",
+      "moved": "-2h",
       "priority": "Medium",
       "summary": "Node 22 base images and CI",
       "parent": "ACME-122",
@@ -384,6 +388,7 @@
     },
     {
       "key": "ACME-118",
+      "moved": "-5d",
       "priority": "Medium",
       "open": true,
       "assignee": "Priya Nair",
@@ -394,6 +399,7 @@
     },
     {
       "key": "ACME-119",
+      "moved": "-5d",
       "priority": "Medium",
       "open": true,
       "summary": "Convert prices in the price service",
@@ -403,6 +409,7 @@
     },
     {
       "key": "ACME-116",
+      "moved": "-1d",
       "priority": "Medium",
       "assignee": "Priya Nair",
       "summary": "Move error reports to the new tracker",
@@ -412,6 +419,7 @@
     },
     {
       "key": "ACME-117",
+      "moved": "-1d",
       "priority": "Medium",
       "summary": "Report API errors to the new tracker",
       "parent": "ACME-116",
