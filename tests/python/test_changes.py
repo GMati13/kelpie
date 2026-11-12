@@ -153,6 +153,70 @@ class Changes(unittest.TestCase):
         write(os.path.join(d, "build", "out.js"), "x\n")
         self.assertEqual(self.changes("ABC-1")[0]["files"], [])
 
+    # Commits on a story's branch that no pull request shows yet: what the branch committed since it
+    # left the default branch (issue #13).
+    def branched(self, *parts, branch="ABC-1-work"):
+        d = self.repo(*parts)
+        git(d, "checkout", "-q", "-b", branch)
+        write(os.path.join(d, "src", "a.ts"), "one\ntwo\n")
+        git(d, "add", ".")
+        git(d, "commit", "-q", "-m", "a")
+        write(os.path.join(d, "README.md"), "hello\nagain\n")
+        git(d, "commit", "-q", "-am", "b")
+        return d
+
+    def test_committed_work_only_when_asked(self):
+        self.branched("ABC-1", "api")
+        [found] = self.changes("ABC-1")
+        self.assertNotIn("committed", found)
+        self.assertNotIn("head", found)
+
+    def test_what_the_branch_committed_since_the_default_branch(self):
+        d = self.branched("ABC-1", "api")
+        write(os.path.join(d, "README.md"), "not committed\n")
+        [found] = self.changes("--committed", "ABC-1")
+        c = found["committed"]
+        self.assertEqual((c["base"], c["commits"]), ("main", 2))
+        files = {f["path"]: f for f in c["files"]}
+        self.assertEqual(sorted(files), ["README.md", "src/a.ts"])
+        self.assertEqual((files["src/a.ts"]["add"], files["src/a.ts"]["del"]), (2, 0))
+        self.assertIn("new file mode", files["src/a.ts"]["patch"])
+        self.assertIn("+again", files["README.md"]["patch"])
+        self.assertNotIn("not committed", files["README.md"]["patch"], "the working tree is the other group's")
+        self.assertEqual([f["path"] for f in found["files"]], ["README.md"])
+        self.assertRegex(found["head"], r"^[0-9a-f]{40}$")
+
+    def test_flags_in_either_order_with_unpushed(self):
+        self.branched("ABC-1", "api")
+        [found] = self.changes("--committed", "--unpushed", "ABC-1")
+        self.assertEqual((found["committed"]["commits"], found["unpushed"]), (2, 3))
+
+    def test_the_remotes_default_branch_comes_first(self):
+        d = self.branched("ABC-1", "api")
+        remote = os.path.join(self.root, "remote.git")
+        git(self.root, "init", "-q", "--bare", remote)
+        git(d, "remote", "add", "origin", remote)
+        git(d, "push", "-q", "origin", "main:main", "ABC-1-work~1:refs/heads/trunk")
+        git(d, "remote", "set-head", "origin", "trunk")
+        c = self.changes("--committed", "ABC-1")[0]["committed"]
+        self.assertEqual((c["base"], c["commits"], [f["path"] for f in c["files"]]), ("origin/trunk", 1, ["README.md"]))
+
+    def test_nothing_committed_yet_has_no_files(self):
+        d = self.repo("ABC-1", "api")
+        git(d, "checkout", "-q", "-b", "ABC-1-work")
+        c = self.changes("--committed", "ABC-1")[0]["committed"]
+        self.assertEqual((c["commits"], c["files"]), (0, []))
+
+    def test_none_on_the_default_branch_itself_or_detached(self):
+        d = self.repo("ABC-1", "api")
+        self.assertIsNone(self.changes("--committed", "ABC-1")[0]["committed"], "main itself")
+        git(d, "checkout", "-q", "--detach")
+        self.assertIsNone(self.changes("--committed", "ABC-1")[0]["committed"], "detached")
+
+    def test_none_without_a_default_branch(self):
+        self.repo("ABC-1", "api", branch="ABC-1-only")
+        self.assertIsNone(self.changes("--committed", "ABC-1")[0]["committed"])
+
 
 class Sessions(unittest.TestCase):
     def test_runs_on_an_empty_home_and_keeps_its_index_there(self):

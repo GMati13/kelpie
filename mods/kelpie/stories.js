@@ -378,7 +378,9 @@ function ticketTask(st, it, key, template, then) {
 // `others`). Exported for the tests (tests/js/prompts.test.mjs).
 export function aboutFile(f) {
   const path = promptValue("path", f.path), repo = promptValue("repo", f.group.repo);
-  return f.group.url ? `About ${path} in ${repo} (${f.group.url}/files):` : `About ${path} in ${repo} (${f.group.path}/${path}, not committed):`;
+  if (f.group.url) return `About ${path} in ${repo} (${f.group.url}/files):`;
+  if (f.group.committed) return `About ${path} in ${repo} (${f.group.path}/${path}, committed on ${promptValue("branch", f.group.committed.branch)}, no pull request yet):`;
+  return `About ${path} in ${repo} (${f.group.path}/${path}, not committed):`;
 }
 
 // Who hears about a file or a screenshot of the story: the agent on its key, else any open agent of
@@ -1191,7 +1193,7 @@ const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
-  ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
+  ...(p.headRefName ? { headRefName: p.headRefName } : {}), ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
   author: p.author ? { login: p.author.login } : null, repository: { name: p.repository?.name }, commits: { nodes: [{ commit: { statusCheckRollup: { state: checksOf(p) } } }] } });
 const session = (x) => ({ id: x.id, title: x.title, cwd: x.cwd, updated: x.updated, running: x.running, first: x.first, ...(x.config ? { config: x.config } : {}) });
 
@@ -1337,6 +1339,29 @@ function statusOf(status, patch) {
   if (status === "renamed" || /^rename from /m.test(p)) return "renamed";
   return "modified";
 }
+// The Changes view's groups (changes.py's repos, the pull requests and their files): first each repo's
+// uncommitted work, then what each repo's branch committed with no pull request showing it yet
+// (issue #13), then one group per pull request. A pull request of the story shows a branch's commits
+// when it's that repo's and that branch, or has that very commit at its head (a folder named other
+// than its repo). Exported for the tests.
+export function changeGroups(it, prs, prLists, local) {
+  const fileOf = (r, f, kind) => ({ id: `${kind}:${r.path}:${f.path}`, path: f.path, add: f.add, del: f.del, status: fileStatus(f.status, f.patch), patch: f.patch });
+  const shownBy = (r) => prs.some((p) => (r.branch && p.headRefName === r.branch && p.repository?.name === r.repo) || (r.head && p.headRefOid === r.head));
+  const ahead = local.filter((r) => r.committed?.files?.length && !shownBy(r));
+  return [
+    // changes.py lists the ticket folders' repos even when clean.
+    ...local.filter((r) => r.files.length).map((r) => ({ label: `${r.key} · ${r.repo} · not committed`, key: r.key, repo: r.repo, path: r.path,
+      files: r.files.map((f) => fileOf(r, f, "local")) })),
+    ...ahead.map((r) => {
+      const n = r.committed.commits;
+      return { label: `${r.key} · ${r.repo} · ${n === 1 ? "a commit" : `${n} commits`} on ${r.branch} since ${r.committed.base}, no pull request yet`, key: r.key, repo: r.repo, path: r.path,
+        committed: { branch: r.branch, base: r.committed.base, commits: n }, files: r.committed.files.map((f) => fileOf(r, f, "committed")) };
+    }),
+    ...prs.map((p, i) => ({ label: `${it.review ? "Review" : it.pull ? "No ticket" : p.key ?? it.key} · ${prName(p)}${p.merged ? " · merged" : ""}`, key: p.key ?? it.key, repo: prName(p), url: p.url, merged: Boolean(p.merged), title: p.title ?? "", failed: prLists[i] === null,
+      files: (prLists[i] ?? []).map((f) => ({ id: `${prName(p)}:${f.filename}`, path: f.filename, from: f.previous_filename ?? null, add: f.additions, del: f.deletions, status: fileStatus(f.status, f.patch), sha: f.status === "removed" ? null : f.sha, patch: f.patch ?? "(no diff to show: a binary file, or too large for GitHub to inline)" })) })),
+  ];
+}
+
 // A file's status as one letter in the file list, coloured; modified, the usual case, stays dim.
 const STATUS = { added: ["A", "done", "Added"], removed: ["D", "blocked", "Deleted"], renamed: ["R", "accent", "Renamed"], modified: ["M", "dim", "Modified"] };
 
@@ -3559,18 +3584,11 @@ export class Stories extends Source {
           Promise.all(prs.map((p) => prFiles(p).catch(() => null))),
           // A pull request shown on its own has no ticket folders or sessions: only its files.
           lonePr(it) ? [] : demo ? demoLocal(st.setup.folder, keys) : readTextFile(modFile("changes.py"))
-            .then((code) => exec("python3", ["-I", "-c", code, st.setup.folder, ...keys], on))
+            .then((code) => exec("python3", ["-I", "-c", code, st.setup.folder, "--committed", ...keys], on))
             .then((r) => (r.code === 0 ? JSON.parse(r.stdout || "[]") : [])).catch(() => []),
           lonePr(it) ? [] : this.storySessions(st, it, keys),
         ]);
-        // A group per repo with uncommitted work (changes.py lists the ticket folders' repos even
-        // when clean), then one per pull request.
-        const groups = [
-          ...local.filter((r) => r.files.length).map((r) => ({ label: `${r.key} · ${r.repo} · not committed`, key: r.key, repo: r.repo, path: r.path,
-            files: r.files.map((f) => ({ id: `local:${r.path}:${f.path}`, path: f.path, add: f.add, del: f.del, status: fileStatus(f.status, f.patch), patch: f.patch })) })),
-          ...prs.map((p, i) => ({ label: `${it.review ? "Review" : it.pull ? "No ticket" : p.key ?? it.key} · ${prName(p)}${p.merged ? " · merged" : ""}`, key: p.key ?? it.key, repo: prName(p), url: p.url, merged: Boolean(p.merged), title: p.title ?? "", failed: prLists[i] === null,
-            files: (prLists[i] ?? []).map((f) => ({ id: `${prName(p)}:${f.filename}`, path: f.filename, from: f.previous_filename ?? null, add: f.additions, del: f.deletions, status: fileStatus(f.status, f.patch), sha: f.status === "removed" ? null : f.sha, patch: f.patch ?? "(no diff to show: a binary file, or too large for GitHub to inline)" })) })),
-        ];
+        const groups = changeGroups(it, prs, prLists, local);
         const shots = lonePr(it) ? 0 : await countShots(sessions.map((s) => s.id), st.space?.machine ?? null).catch(() => undefined);
         keep(this.extra, it.key, { groups, local, at: Date.now() }, KEEP.changes);
         setCounts(it.key, { files: groups.reduce((n, g) => n + g.files.length, 0), shots, repo: (local.find((r) => r.files.length) ?? local[0])?.path ?? null });
@@ -3861,8 +3879,9 @@ export class Stories extends Source {
       for (const a of headActs(f)) { if (x >= at - ACT_GAP / 2 && x < at + a.w + ACT_GAP / 2) return a.kind; at += a.w + ACT_GAP; }
       return x >= VIEW_X + VIEW_W && x < at + 8 ? "none" : null;
     };
-    // A pull request's (or uncommitted repo's) section heading on the page of all files: well clear of
-    // the file above, its icon, repo and number large, its title, merged / not committed, how many of
+    // A pull request's (or a repo's uncommitted or committed work's) section heading on the page of all
+    // files: well clear of the file above, its icon, repo and number large, its title (a branch's name
+    // for its commits), merged / not committed / no pull request yet, how many of
     // its files are viewed, and a rule under it in the accent. A click opens the pull request.
     const section = (g) => {
       const files = all.filter((x) => x.group === g);
@@ -3870,14 +3889,14 @@ export class Stories extends Source {
       const [name, num] = g.url ? g.repo.split("#") : [g.repo, null];
       return v_flex().w_full().h_full().flex_none().justify_end().when(Boolean(g.url), (el) => el.cursor_pointer())
         .child(h_flex().w_full().gap(10).px(4).pb(8).items_center().whitespace_nowrap().border_b_2().border_color(tint(t.accent, "99"))
-          .child(div().flex_none().text_color(g.url ? t.accent : t.muted).child(icon(own(g.url ? (g.merged ? "git-merge" : "git-pull-request") : "folder-open"), 16)))
+          .child(div().flex_none().text_color(g.url ? t.accent : t.muted).child(icon(g.committed ? chrome("git-branch") : own(g.url ? (g.merged ? "git-merge" : "git-pull-request") : "folder-open"), 16)))
           .child(h_flex().flex_none().gap(6).items_baseline()
             .child(div().text_size(TEXT + 3).font_semibold().text_color(t.foreground).child(name))
             .when(Boolean(num), (el) => el.child(div().text_size(TEXT + 3).text_color(t.dim).child(`#${num}`))))
-          .when(Boolean(g.title), (el) => el.child(div().flex_shrink(1).min_w(0).truncate().text_size(TEXT).text_color(t.muted).child(g.title)))
+          .when(Boolean(g.title || g.committed), (el) => el.child(div().flex_shrink(1).min_w(0).truncate().text_size(TEXT).text_color(t.muted).child(g.title || g.committed.branch)))
           .child(div().flex_none().px(7).py(1).rounded(5).text_size(SMALL)
             .bg(g.url ? (g.merged ? tint(t.accent, "26") : tint(t.done, "26")) : t.raised).text_color(g.url ? (g.merged ? t.accent : t.done) : t.muted)
-            .child(g.url ? (g.merged ? "Merged" : "Open") : "Not committed"))
+            .child(g.url ? (g.merged ? "Merged" : "Open") : g.committed ? "No pull request yet" : "Not committed"))
           .when(g.key !== it.key, (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(g.key)))
           .child(div().flex_none().text_size(SMALL).text_color(done === files.length ? t.done : t.dim)
             .child(`${files.length} file${files.length === 1 ? "" : "s"} · ${done === files.length ? "all viewed" : `${done} viewed`}`))
@@ -3993,7 +4012,7 @@ export class Stories extends Source {
             h_flex().id(`files-group-${gi}`).flex_none().px(6).pt(10).pb(3).gap(6).items_center().text_size(SMALL).tooltip(g.label)
               .when(g.key !== it.key, (el) => el.child(div().flex_none().text_color(t.dim).child(g.key)))
               .child(div().flex_shrink(1).min_w(0).truncate().font_medium().text_color(t.muted).child(g.repo))
-              .when(!g.url || g.merged, (el) => el.child(div().flex_none().text_color(t.dim).child(g.url ? "merged" : "not committed")))
+              .when(!g.url || g.merged, (el) => el.child(div().flex_none().text_color(t.dim).child(g.url ? "merged" : g.committed ? "no PR yet" : "not committed")))
               .child(div().flex_1())
               .when(g.files.length > 1, (el) => el.child(div().flex_none().text_color(t.dim)
                 .child(`${g.files.filter((f) => seen({ ...f, group: g })).length}/${g.files.length}`))),
@@ -4094,7 +4113,12 @@ export class Stories extends Source {
         let text;
         // A demo profile's files (demo.js) have their text in the fixture, if anywhere.
         if (isDemo(st.profile)) text = await demoBlob(f.group.url ?? null, f.path);
-        else if (f.group.path) text = await readTextFile(`${f.group.path}/${f.path}`, { on: st.space?.machine ?? null });
+        // Committed work's new side is the branch's last commit, not the working tree.
+        else if (f.group.committed) {
+          const r = await exec("git", ["-C", f.group.path, "show", `HEAD:${f.path}`], st.space?.machine ? { on: st.space.machine } : {});
+          if (r.code !== 0) throw new Error((r.stderr || "git couldn't read it").trim());
+          text = r.stdout;
+        } else if (f.group.path) text = await readTextFile(`${f.group.path}/${f.path}`, { on: st.space?.machine ?? null });
         else {
           // The pull request's own version of the file, by its blob (merged ones too).
           const m = /github\.com\/([^/]+)\/([^/]+)\/pull\//.exec(f.group.url ?? "");

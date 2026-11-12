@@ -223,7 +223,7 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   scroll position), `artifacts-note` (Add to chat's note: the image's path, then the note as one clean
   line, only into the agent it was opened for).
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
-  patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
+  patches; a branch's commits with no pull request yet are a group of their own (`changeGroups()`). `harness` and `snapshot`: the stubs and the snapshot helper themselves.
 - `kanban.test.mjs`: a Jira board without sprints (Kanban, or team-managed with sprints off): `activeSprints()`
   falling back to the board, `boardScope()`'s filter JQL, a load on a fake jira.sh. `signin.test.mjs`: Jira
   sign-in through a token command, `jira()` to the real jira.sh with a fake curl, and the profile dialog's
@@ -234,7 +234,7 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   gives and Check my shell, avatar.sh, stdin.sh (What next?'s task on stdin), install.sh with the icon and art copies, e2e-demo.sh's guards, and the
   Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
-  folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
+  folders, branches, worktrees, renames, untracked files, a branch's commits since the default branch), sessions.py (titles, keys, accounts, the index
   read incrementally and kept private, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
 - `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
   the person's yes, what's saved at once and carried over between boards, the scopes, button messages and

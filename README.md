@@ -14,7 +14,7 @@ Layouts and mods for [Herdr](https://herdr.dev) built around profiles and storie
 
 ## A look around
 
-Each story's pull requests and uncommitted work, file by file, with a review's progress kept as you go:
+Each story's pull requests, commits not in a pull request yet and uncommitted work, file by file, with a review's progress kept as you go:
 
 ![The Changes view: a file list on the left, a diff on the right](docs/screenshots/changes.png)
 
