@@ -221,6 +221,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
+- `memory.test.mjs`: what the story views keep per key or per patch stays bounded over a long session (#41):
+  only the last stories' Changes, descriptions (never one still loading), and under 8 million characters of
+  patches in each cache keyed by them.
 - `agent-marks.test.mjs`: an agent's state has one mark (`agentMark()`, #101): the tab bar, a split pane's
   header, the sidebar's agent rows and a subtask's slot draw the same for each state in both layouts, no two
   states alike (unknown isn't idle), motion only for working and needs you, a Claude's tab never its icon
