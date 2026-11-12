@@ -17,7 +17,7 @@ import { agents, focused, hc, layout, memo, panes, run, setShared, shared, space
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -2179,11 +2179,19 @@ function startDeskTask(kind, profile, prs) {
   openDesk(profile, { name, argv: claudeArgv(profile), task: storyTaskText(kind, profile, NO_TICKET, prs) });
 }
 
+// A send hc holds (sendToClaude's onHeld): the note and a toast, as the note may not be on screen.
+function held(about, what, name) {
+  const w = heldWords(what, name);
+  say(about, w.note, w.full);
+  notify({ title: w.title, body: w.body, level: "warning", timeout: 15000 });
+}
+
 // Or the same task sent to a Claude already open, as its next message. Not to one waiting for your
 // answer: the message would land in its question. The Claude is shown at once, with a note that it's
-// sending, as hc holds a send for a few seconds of quiet (up to a minute while the person has a draft
-// typed there): picked from a story's row in the list, nothing on screen moved meanwhile, and a
-// failure went only to the note, in details not shown. So a failure is a toast too.
+// sending, as hc holds a send for a few seconds of quiet, and on while it thinks a draft is typed
+// there (sendToClaude()): picked from a story's row in the list, nothing on screen moved meanwhile, and
+// a failure went only to the note, in details not shown. So a failure is a toast too, and so is a send
+// still held 5 s in, saying what lets it go (KELPIE-120).
 // Exported for the tests.
 export function sendStoryTask(kind, profile, it, prs, agent) {
   const name = agent.tab_name ?? "Claude";
@@ -2197,7 +2205,7 @@ export function sendStoryTask(kind, profile, it, prs, agent) {
   run("space.select", { id: agent.space });
   run("pane.focus", { pane: agent.pane });
   say(about, `Sending ${what} to ${name}…`);
-  return sendToClaude(agent.address, storyTaskText(kind, profile, it, prs))
+  return sendToClaude(agent.address, storyTaskText(kind, profile, it, prs), { onHeld: () => held(about, what, name) })
     .then(() => say(about, `Sent ${what} to ${name}.`))
     .catch((e) => failed(String(e?.message ?? e)));
 }
@@ -2250,7 +2258,7 @@ function askPull(profile, p, kind, key) {
     return say(about, `Asked a new agent on the Desk: ${ASK[kind].toLowerCase()} ${prName(p)}.`);
   }
   if (a.status === "blocked") return say(about, `${a.tab_name} is waiting for your answer: answer it first.`);
-  sendToClaude(a.address, text).then(() => { showPullAgent(p); say(about, `Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
+  sendToClaude(a.address, text, { onHeld: () => held(about, "it", a.tab_name) }).then(() => { showPullAgent(p); say(about, `Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
     .catch((e) => say(about, `Couldn't send it to ${a.tab_name}: ${String(e?.message ?? e)}`));
 }
 
@@ -2873,7 +2881,7 @@ export class Stories extends Source {
     if (!agent && launchHeld(it.key)) { if (busyOf(it.key)?.kind !== "clean") say(about, `${it.key}'s agent is still starting: try again in a few seconds.`); cx.notify(); return; }
     if (agent) {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
-      sendToClaude(agent.address, told).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
+      sendToClaude(agent.address, told, { onHeld: () => { held(about, "it", agent.tab_name); cx.notify(); } }).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
     } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, told));
     else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, told));
     // A new agent knows nothing yet: the ticket prompt comes first.
@@ -3183,7 +3191,7 @@ export class Stories extends Source {
     const about = { profile: st.profile, keys: it.key };
     const tell = (text) => (cx) => {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
-      sendToClaude(agent.address, text).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
+      sendToClaude(agent.address, text, { onHeld: () => { held(about, "it", agent.tab_name); cx.notify(); } }).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
         .catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
     };
     const decide = (id, label, text, tip) => this.carefulButton(t, `review-${id}`, label, true, tell(text), { tip, confirmTip: `${tip}: click again to send it to its agent` });

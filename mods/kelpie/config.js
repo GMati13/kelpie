@@ -683,7 +683,8 @@ export async function configureOnDesk(profile, scope = "all", agent = null) {
   if (!(await hasPlugin(profile))) return askPlugin(profile, "configure", scope);
   const text = configureText(profile, scope);
   if (agent) {
-    sendToClaude(agent.address, text).catch((e) => notify({ title: `Couldn't ask ${agent.tab_name}`, body: String(e?.message ?? e), level: "error", timeout: 8000 }));
+    const w = heldWords("it", agent.tab_name);
+    sendToClaude(agent.address, text, { onHeld: () => notify({ title: w.title, body: w.body, level: "warning", timeout: 15000 }) }).catch((e) => notify({ title: `Couldn't ask ${agent.tab_name}`, body: String(e?.message ?? e), level: "error", timeout: 8000 }));
     run("space.select", { id: agent.space });
     run("pane.focus", { pane: agent.pane });
     return agent.space;
@@ -984,7 +985,40 @@ export async function applyPendingProfile(yes) {
 // is Claude, as the system says, not as the terminal says: any program can print the escape that
 // makes Herdr list it as an agent, and a message typed into a shell would run as a command. Claude
 // Code runs as `claude` (or under node, from an npm install); the demo's stand-in counts too.
-export async function sendToClaude(address, text) {
+//
+// hc holds a send while it thinks the person has text typed and not sent there: text keys since the
+// last Enter, not what the screen shows, so a Claude prompt cleared with Esc Esc, or a menu answered
+// with a key, still holds it, and any key or mouse movement over the pane holds it on (KELPIE-120:
+// tried on hc 0.1.20). Herdr stops a mod's hc after 30 s, which cancels that send, so it's tried
+// again, HOLD_TRIES times in all (about 3 minutes): a cancelled send never lands, so no copy is
+// doubled. `onHeld` is called once if it hasn't gone after HELD_AFTER seconds (hc's quiet pause is
+// ~3 s), for the caller to say what lets it go. One send at a time to a terminal: another while one
+// waits is refused (shared SENDING, by address, bounded by `until` so a reload can't lock it).
+export const HOLD_TRIES = 6;
+const HELD_AFTER = 5;
+const SENDING = "kelpie.sending";
+export async function sendToClaude(address, text, { onHeld = null } = {}) {
+  const busy = (shared(SENDING) ?? {})[address];
+  if (busy && Date.now() < busy.until) throw new Error("the last one is still waiting: press Ctrl+U in it");
+  setShared(SENDING, { ...(shared(SENDING) ?? {}), [address]: { at: Date.now(), until: Date.now() + (HOLD_TRIES * 30 + 15) * 1000 } });
+  let done = false;
+  const start = Date.now();
+  // Only once that long has really passed, so a sleep cut short never calls a quick send held.
+  if (onHeld) exec("sleep", [String(HELD_AFTER)]).then(() => { if (!done && Date.now() - start >= HELD_AFTER * 1000 - 250) onHeld(); }).catch(() => {});
+  try {
+    for (let tries = 1; ; tries++) {
+      try { return await sendOnce(address, text); }
+      catch (e) { if (e !== STOPPED || tries >= HOLD_TRIES) throw e === STOPPED ? new Error(HELD) : e; }
+    }
+  } finally {
+    done = true;
+    const now = { ...(shared(SENDING) ?? {}) };
+    delete now[address];
+    setShared(SENDING, now);
+  }
+}
+const STOPPED = new Error("stopped");
+async function sendOnce(address, text) {
   const r = await hc(["get", address, "--json"]);
   let fg = {};
   try { fg = JSON.parse(r.stdout || "{}").foreground ?? {}; } catch { /* unknown: refused below */ }
@@ -998,16 +1032,25 @@ export async function sendToClaude(address, text) {
   if (!claude) throw new Error(`it isn't running Claude (it runs ${fg.name || "something unknown"}), so nothing was sent`);
   // hc answers a send it refused (the agent blocked, still settling, gone) with an exit code, not a
   // rejection, so that's checked: taken as sent, Kelpie said "Sent" for a message that never went.
-  // The text goes after `--`, so one starting with a dash is never read as an option.
-  // hc holds a send while the person has something typed and not sent in that terminal (up to a
-  // minute), and Herdr stops a mod's hc after 30 s: then nothing is delivered (seen in the demo).
+  // The text goes after `--`, so one starting with a dash is never read as an option. Herdr
+  // stopping it at 30 s is STOPPED, tried again above.
   const sent = await hc(["send", "--json", "--", address, text]).catch((e) => {
-    throw new Error(/longer than/.test(String(e?.message ?? e)) ? HELD : String(e?.message ?? e));
+    throw /longer than/.test(String(e?.message ?? e)) ? STOPPED : new Error(String(e?.message ?? e));
   });
   if (sent.code !== 0) throw new Error(sendError(sent));
   return sent;
 }
-const HELD = "it held the message back for 30 s, most likely behind something typed in it and not sent yet: send or clear that, then try again";
+const HELD = "it held it back for 3 minutes, as if something were typed there and not sent: press Ctrl+U in it, then try again";
+
+// What a caller says while a send is held (sendToClaude's `onHeld`): the key that lets it go, short
+// enough for a note's line and a toast (the whole of it cut off mid-line in both, seen in the demo),
+// and in `full` (the note's tooltip) why, as the person can't see it: the prompt may look empty.
+export const heldWords = (what, name) => ({
+  title: `Waiting to send to ${name}`,
+  body: "Click in it and press Ctrl+U to let it go.",
+  note: `Waiting to send ${what} to ${name}: click in it and press Ctrl+U to let it go.`,
+  full: `Waiting to send ${what} to ${name}: Herdr thinks something was typed there and not sent, even if its prompt looks empty (a menu answered with a key, or a line cleared with Esc counts). Click in ${name} and press Ctrl+U, or Enter if something is really there.`,
+});
 
 // Why hc didn't send, in plain words: its error's kind, else its own message (nothing was sent).
 const SEND_ERRORS = {
