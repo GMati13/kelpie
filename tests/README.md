@@ -244,6 +244,11 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   manifests, and the evals' stand-in tool list, `plugin/evals/mocks/kelpie/_tools.json`, kept equal to what the
   server lists. After changing a tool, save it again:
   `printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | python3 -I plugin/server.py | jq .result > plugin/evals/mocks/kelpie/_tools.json`.
+- `where.test.mjs`: where an agent runs (#106): `KELPIE_PROFILE`/`KELPIE_STORY` on the argv of a story's
+  terminal and the Desk's agent (env's arguments, the shell's script unchanged, a bad id or key left out,
+  no token), and `kelpie.get-story` / `kelpie.where-<terminal>` from the demo (a story, a subtask's key
+  giving its story, an unknown key refused, the agent's own story by its terminal or its environment, the
+  Desk). The hook itself is in `tests/python/test_plugin.py` (`SessionStart`).
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.

@@ -41,7 +41,7 @@
 
 import { appHome, exec, notify, openOverlay } from "herdr";
 import { hc, panes, run, setShared, shared, spaces } from "./host.js";
-import { GITHUB_LOGIN, MOD, githubEnv, modFile } from "./ui.js";
+import { GITHUB_LOGIN, MOD, githubEnv, modFile, placed } from "./ui.js";
 
 const PROFILES = "kelpie.profiles";
 const OLD = "kelpie.spaces";
@@ -240,8 +240,10 @@ export const isDesk = (space) => Boolean(space) && deskOf(profileOf(space))?.id 
 // Claude agent with no task, on the profile's account). With `tab` ({ name, folder, argv, task }),
 // that tab opens in it instead (a resumed session, say). Resolves to the Desk's space id, null when
 // a new one didn't show up in time.
-export async function openDesk(profile = shownProfile(), tab = null) {
+export async function openDesk(profile = shownProfile(), given = null) {
   if (!profile) return null;
+  // Its terminals are told the profile, and that they're in no story (placed(), ui.js).
+  const tab = given && { ...given, ...(given.argv ? { argv: placed(given.argv, profile) } : {}) };
   // A story previewed over the Desk would hide its terminals.
   const previews = shared(PREVIEWS) ?? {};
   if (previews[profile.id]) setShared(PREVIEWS, { ...previews, [profile.id]: null });
@@ -256,7 +258,7 @@ export async function openDesk(profile = shownProfile(), tab = null) {
     if (!desk.active) run("space.select", { id: desk.id });
     return desk.id;
   }
-  const first = tab ?? { argv: claudeArgv(profile) };
+  const first = tab ?? { argv: placed(claudeArgv(profile), profile) };
   const folder = first.folder ?? profile.folder;
   const before = new Set(spaces().map((s) => s.id));
   run("space.new", { name: DESK_NAME, ...(folder ? { folder } : {}), ...(first.name ? { tab: first.name } : {}), ...(first.argv ? { argv: first.argv } : {}), ...(first.task ? { task: first.task } : {}) });

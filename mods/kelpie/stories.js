@@ -14,10 +14,10 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeTextFile } from "herdr";
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -304,7 +304,9 @@ async function spaceFor(profile, it, before, ms = 3000) {
 
 // Opens a tab for a story: in its space when work on it has started, else as the first tab of a new
 // space for it. Shows that space; returns its id, null when a new space didn't show up in time.
-async function launch(profile, it, { name, folder, argv, task }) {
+// Its terminal is told the profile and the story (placed(), ui.js), whichever tab it is.
+async function launch(profile, it, { name, folder, argv: given, task }) {
+  const argv = placed(given, profile, it.key);
   const tab = { name, folder: folder ?? profile.folder, ...(argv ? { argv } : {}), ...(task ? { task } : {}) };
   if (it.space) {
     newTab({ space: it.space.id, ...tab });
@@ -1951,6 +1953,106 @@ export function suggestNextRequest() {
   });
 }
 
+// Where an agent runs, as Kelpie sees it, for the Claude in it (the plugin's SessionStart hook and
+// get_story): its terminal's space when Kelpie knows it (`terminal`), else what its environment says
+// (`profile`, `story`: placed() in ui.js), else null. { profile, place: "story" | "desk" | "space", key }.
+const WHERE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+function whereOf(req) {
+  const agent = typeof req?.terminal === "string" ? agents().find((a) => a.address === req.terminal) : null;
+  const space = agent && spaces().find((x) => x.id === agent.space);
+  const owner = space && profileOf(space);
+  if (owner) {
+    const key = storyKeyOf(space);
+    return { profile: owner, place: isDesk(space) ? "desk" : key ? "story" : "space", key };
+  }
+  const named = typeof req?.profile === "string" ? profiles().find((p) => p.id === req.profile) : null;
+  if (!named || typeof req?.story !== "string") return null;
+  return WHERE_KEY.test(req.story) ? { profile: named, place: "story", key: req.story } : { profile: named, place: "space", key: null };
+}
+// A profile's stories as the list has them, the Done group's too, with when they loaded.
+function loadedFor(profile) {
+  const data = (shared(DATA) ?? {})[profile?.id]?.data;
+  if (!hasBoard(profile) || !data) return null;
+  const { all, items } = storyLists(data, profile, boardOf(profile).handover);
+  return { data, items, all, at: (shared(DATA) ?? {})[profile.id]?.at ?? null };
+}
+// The story a key is about: its own, or the story a subtask of it belongs to.
+const storyOfKey = (all, key) => all.find((it) => it.key === key) ?? all.find((it) => it.story && it.subs.some((x) => x.key === key)) ?? null;
+// Others' words (titles, names, pull request titles): cleaned of control characters and cut.
+const told = (v, max = 160) => passageText(v, max);
+// Where an agent runs, as the hook and get_story give it: the profile's id and name, the place, and
+// in a story its key, title and subtasks' keys.
+function wherePart(where, loaded) {
+  if (!where) return null;
+  const it = where.key && loaded ? storyOfKey(loaded.all, where.key) : null;
+  return {
+    profile: { id: where.profile.id, name: told(where.profile.name, 60) }, place: where.place,
+    ...(where.key ? { key: it?.key ?? where.key } : {}),
+    ...(it ? { title: told(it.title), subtasks: it.story ? it.subs.map((x) => x.key) : [] } : {}),
+  };
+}
+// What Kelpie holds about a story, for an agent asked about it: the board's status and each subtask's
+// (with its assignee and agent), its pull requests (state, checks and review in words), its agents,
+// what it needs from the person, the status command's line, and when it all loaded.
+function storyReport(profile, it, loaded) {
+  const pr = (p) => ({ name: prName(p), title: told(p.title), url: p.url, state: prLook({}, p, checksOf(p))[1], ...(p.isDraft ? { draft: true } : {}) });
+  const agent = (a) => (a ? { tab: told(a.tab_name, 80), doing: agentWords(a.status) } : null);
+  const sub = (x) => Object.fromEntries(Object.entries({
+    key: x.key, title: told(x.title), status: x.status ?? null, assignee: x.assignee ? told(x.assignee, 80) : null, yours: Boolean(x.mine),
+    agent: agent(x.agent), paused: x.paused ? true : undefined, pullRequests: x.prs.length ? x.prs.map(pr) : undefined,
+  }).filter(([, v]) => v !== undefined));
+  const status = STATUSES[`${profile.id}:${it.key}`];
+  const out = {
+    key: it.key, title: told(it.title), status: it.status ?? null, assignee: it.assignee ? told(it.assignee, 80) : null,
+    url: lonePr(it)?.url ?? ticketUrl(boardOf(profile), loaded.data, it.key),
+    needs: need(it)[1],
+    ...(it.reassigned ? { reassigned: reassignedWords(it) } : {}),
+    ...(it.category === "done" && !it.space ? { finished: true } : {}),
+    hasSpace: Boolean(it.space),
+    ...(it.story ? { subtasks: it.subs.map(sub), pullRequests: it.prs.map(pr) } : { pullRequests: it.subs[0].prs.map(pr) }),
+    agents: allAgents(it).map(agent),
+    ...(allPaused(it).length ? { paused: allPaused(it) } : {}),
+    ...(status?.line ? { statusLine: told(status.line, 300) } : {}),
+    loaded: !loaded.at ? "not yet" : ago(loaded.at) === "now" ? "just now" : `${ago(loaded.at)} ago`,
+  };
+  if (!it.story) delete out.subtasks;
+  return out;
+}
+
+// kelpie.get-story (the plugin's get_story): where the asking agent runs, and what Kelpie holds
+// about a story: `key` (a subtask's gives its story), else the agent's own story, else the one shown.
+// { ok, where, story }. Read only: nothing moves.
+export function getStoryRequest() {
+  return answerRequest("story-get", (req) => {
+    const where = whereOf(req);
+    const profile = where?.profile ?? shownProfile();
+    if (!profile) throw new Error("No Kelpie profile is shown.");
+    if (!hasBoard(profile)) return { ok: true, where: wherePart(where, null), story: null, why: `The profile ${told(profile.name, 60)} has no board, so Kelpie holds no stories for it.` };
+    const loaded = loadedFor(profile);
+    const asked = typeof req?.key === "string" && req.key ? passageText(req.key, 40).toUpperCase() : null;
+    if (asked && !WHERE_KEY.test(asked)) throw new Error("key: a ticket key, like ABC-12.");
+    const shown = !where && storyNow()?.profile?.id === profile.id ? storyNow()?.story?.key : null;
+    const key = asked ?? where?.key ?? shown ?? null;
+    if (!loaded) throw new Error(`${told(profile.name, 60)}'s stories haven't loaded yet.`);
+    const part = wherePart(where, loaded);
+    if (!key) return { ok: true, where: part, story: null, why: where?.place === "desk" ? "You're on the profile's Desk, which is for work with no story: name a story's key to ask about one." : "No story here: name a story's key to ask about one." };
+    const it = storyOfKey(loaded.all, key);
+    if (!it) throw new Error(`${key} isn't a story or subtask in ${told(profile.name, 60)}'s list in Kelpie.`);
+    return { ok: true, where: part, story: storyReport(profile, it, loaded) };
+  });
+}
+// kelpie.where-<terminal> (the plugin's SessionStart hook): where that terminal's agent runs, when
+// its environment doesn't say (a Claude started by hand, a tab Kelpie didn't open) or says it's in no
+// story (the Desk, or another space). The terminal is in the command's name and the request's file's,
+// so agents starting at once don't answer each other's. { ok, where } (null outside Kelpie's spaces).
+export function whereRequest(terminal) {
+  if (!/^[\w-]{1,40}$/.test(terminal)) return null;
+  return answerRequest(`where-${terminal}`, (req) => {
+    const where = whereOf({ ...req, terminal });
+    return { ok: true, where: wherePart(where, where && hasBoard(where.profile) ? loadedFor(where.profile) : null) };
+  });
+}
+
 // What the last action said (pausing, asking, cleaning up), per profile, with the tickets it's about
 // (`keys`). In shared state, as the buttons sit in several copies (the title row, the details, the
 // changes); it goes after a few minutes. A note about one story (its keys all that story's) shows in
@@ -2222,7 +2324,7 @@ export function startReview(profile, p, key = null) {
     const task = reviewTask(profile.github, { url: p.url, repo: p.repository.name, number: p.number, title: p.title, author: p.author?.login ?? "", folder: checkout.folder ?? "", ...ticket });
     // The agent starts in the profile's folder, never in the checkout: it's someone else's code, and
     // Claude would take in its settings, hooks and instructions there. It reads the checkout by path.
-    const tab = { name, folder: profile.folder, argv: claudeArgv(profile), task };
+    const tab = { name, folder: profile.folder, argv: placed(claudeArgv(profile), profile), task };
     const space = spacesOf(profile).find((s) => s.name === REVIEWS);
     if (!space) return run("space.new", { name: REVIEWS, folder: tab.folder, tab: name, argv: tab.argv, task: tab.task });
     newTab({ space: space.id, ...tab });

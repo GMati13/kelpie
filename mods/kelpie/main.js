@@ -13,9 +13,9 @@ import { h_flex, v_flex } from "gpui-base";
 import { appHome, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
 import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
 import { toggleDebug } from "./debug.js";
-import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
+import { CONTROL, MOD, ROW, modFile, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -165,16 +165,16 @@ function sidebar(state) {
 }
 
 // The toolbar's Claude and Terminal (and their keys): in a story, the story's own; elsewhere a tab in
-// the shown space's folder.
+// the shown space's folder, told the profile and the space's story when it's one's (placed(), ui.js).
 function newClaude(work = storyNow(), space = spaces().find((s) => s.active)) {
   if (work?.story) return work.claude();
   if (isDesk(space)) showDeskView(shownProfile(), "agent"); // the new tab, not the Desk's screenshots
-  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: claudeArgv(shownProfile()) });
+  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: placed(claudeArgv(shownProfile()), shownProfile(), storyKeyOf(space)) });
 }
 function newTerminal(work = storyNow(), space = spaces().find((s) => s.active)) {
   if (work?.story) return work.terminal();
   if (isDesk(space)) showDeskView(shownProfile(), "agent");
-  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: shellArgv(shownProfile()) });
+  if (space && !profileElsewhere()) newTab({ space: space.id, folder: liveFolder(space), argv: placed(shellArgv(shownProfile()), shownProfile(), storyKeyOf(space)) });
 }
 
 // Closing a tab (its ✕, cmd-w): the last tab of a space closes the space, so that asks first, in words
@@ -661,6 +661,10 @@ export async function command(c) {
   if (c === "get-next") return getNextRequest();
   if (c === "add-next") return addNextRequest();
   if (c === "suggest-next") return suggestNextRequest();
+  // get-story, where-<terminal>: where an agent runs and what Kelpie holds about a story (the plugin's
+  // get_story tool and its SessionStart hook; stories.js).
+  if (c === "get-story") return getStoryRequest();
+  if (c.startsWith("where-")) return whereRequest(c.slice("where-".length));
   // These run for long (a clean-up up to 25 s a key, Clean up all every finished story in turn):
   // not awaited, as the command loop handles one command at a time and every key would wait on them.
   if (c.startsWith("pause-story-")) return detach(c, pauseStoryByKey(c.slice("pause-story-".length)));
