@@ -13,7 +13,8 @@
 //   uncommitted work, sessions and the footer's limits.
 // Times in the fixture are relative ("-2h", "-3d", "+40m"), so the demo never looks stale.
 
-import { agents, exec, readTextFile, run, setShared, shared, spaces } from "herdr";
+import { exec, readTextFile } from "herdr";
+import { agents, run, setShared, shared, spaces } from "./host.js";
 import { modFile } from "./ui.js";
 import { DESK_NAME, profileById, saveProfile, spacesOf } from "./config.js";
 
@@ -195,12 +196,17 @@ export async function demoProject(args) {
   if (!f.project) throw new Error("The demo's fixture has no GitHub Project.");
   const v = variables(args);
   const op = /^(?:query|mutation)\s+(\w+)/.exec(v.query ?? "")?.[1];
-  // Closing an issue (issues.js closeIssue()): kept in memory until the mod reloads, as moves are.
+  // Closing issues (issues.js closeIssues()), each slot `c<n>` whose `u<n>` is set: kept in memory
+  // until the mod reloads, as moves are. One the fixture doesn't have is refused alone, as GitHub does.
   if (op === "KelpieClose") {
-    const i = f.issues.find((x) => nodeId(x.key) === v.issue);
-    if (!i) throw new Error("Could not resolve to a node with the global id.");
-    CLOSED.add(i.key);
-    return { data: { closeIssue: { issue: { id: v.issue, state: "CLOSED" } } } };
+    const data = {}, errors = [];
+    for (let n = 0; v[`u${n}`] === "true"; n++) {
+      const i = f.issues.find((x) => nodeId(x.key) === v[`i${n}`]);
+      if (!i) { data[`c${n}`] = null; errors.push({ type: "NOT_FOUND", path: [`c${n}`], message: `Could not resolve to a node with the global id of '${v[`i${n}`]}'.` }); continue; }
+      CLOSED.add(i.key);
+      data[`c${n}`] = { issue: { id: v[`i${n}`], state: "CLOSED" } };
+    }
+    return errors.length ? { data, errors } : { data };
   }
   if (op === "KelpieStories") {
     const byId = new Map(f.issues.map((i) => [nodeId(i.key), i]));
