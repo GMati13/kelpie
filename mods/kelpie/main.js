@@ -10,7 +10,9 @@
 
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, layout, nextCommand, notify, openOverlay, panes, props, run, setShared, shared, spaces, terminals, theme, window } from "herdr";
+import { appHome, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
+import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
+import { toggleDebug } from "./debug.js";
 import { CONTROL, MOD, ROW, modFile, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, getNextRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
@@ -403,11 +405,16 @@ export const profileDir = () => (shownProfile()?.id ?? "none").replace(/[^A-Za-z
 // The start page and kittyfix's path reach the loop's shell as arguments ("$1", "$2"), never as
 // script (only the profile's folder name is, made of letters, digits, - and _): `command` is what
 // browserLoop runs, `args` what its shell gets after the script. Exported for the tests.
+// The folders hold the profile's cookies and sign-ins, so they're the person's alone: made under
+// umask 077 (in a subshell, so the browser's own files, downloads say, keep the usual mode) and
+// tightened when an older Kelpie made them with the default permissions.
 export const browserCommand = (url, python) => {
-  const dir = `$HOME/.local/share/kelpie/web/${profileDir()}`;
+  const web = "$HOME/.local/share/kelpie/web";
+  const dir = `${web}/${profileDir()}`;
   const env = `env XDG_RUNTIME_DIR="${dir}/run" TERMINAL_BROWSER_APPDATA="${dir}/data" XDG_DATA_HOME="${dir}/share" `;
   const fix = python ? 'python3 "$1" -- ' : "";
-  const command = `mkdir -p "${dir}/run" "${dir}/data" "${dir}/share" && ${fix}${env}terminal-browser \${2:+"$2"}`;
+  const folders = `"${dir}/run" "${dir}/data" "${dir}/share"`;
+  const command = `(umask 077 && mkdir -p ${folders}) && chmod 700 "${web}" "${dir}" ${folders} && ${fix}${env}terminal-browser \${2:+"$2"}`;
   return { command, args: [python ? modFile("kittyfix.py") : "", url || ""] };
 };
 
@@ -551,7 +558,10 @@ export async function watchPlaying() {
   playingBusy = true;
   try {
     let folders = [];
-    const pids = playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout);
+    // No browser running in any slot: nothing of it can play, so pmset isn't asked (every 3 s, for
+    // everyone who never opens Web).
+    const browsers = terminals().some((x) => isSlot(x.name) && x.state === "live");
+    const pids = browsers ? playingPids((await exec("pmset", ["-g", "assertions"]).catch(() => null))?.stdout) : [];
     if (pids.length) folders = playingFolders((await exec("ps", ["eww", "-o", "command=", "-p", pids.join(",")]).catch(() => null))?.stdout);
     // The demo has no browser: its fixture says whether it plays.
     for (const p of profiles()) if (isDemo(p) && demoPlaying()) folders.push(p.id.replace(/[^A-Za-z0-9_-]/g, "-"));
@@ -635,6 +645,8 @@ async function command(c) {
   if (c === "clean-all") return cleanAll();
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
   if (c === "what-next") return whatNext();
+  // debug-loads: the load record (debug.js) written to shared state, or no longer.
+  if (c === "debug-loads") return toggleDebug();
   // demo: the demo profile and its spaces, from mods/kelpie/demo/demo.json (demo.js); demo-remove undoes it.
   // demo-github: the same profile with its board a GitHub Project of the same issues (demo puts Jira back).
   if (c === "demo-github") return setupDemo("project").catch((e) => notify({ title: "The demo didn't open", body: String(e?.message ?? e).slice(0, 300), level: "error", timeout: 8000 }));
@@ -757,7 +769,12 @@ export default class Quiet extends View {
     });
   }
 
+  // Every Kelpie view draws here, its host reads kept for the render (host.js).
   render(cx) {
+    return rendering(() => this.draw(cx));
+  }
+
+  draw(cx) {
     if (this.work) return this.work.render(cx);
     const role = props()?.role ?? "sidebar";
     if (!STATS_ROLES.includes(role)) return (ROLES[role] ?? sidebar)();
