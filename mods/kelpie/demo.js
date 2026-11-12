@@ -112,13 +112,14 @@ export async function demoJira(args) {
   const ok = (body) => ({ site: f.profile.site, code: 200, authed: true, body });
   const [what, a, b] = args;
   if (what === "search") {
-    // `key in (…) OR parent in (…)`: the stories and their subtasks; `parent in (…)` alone: the subtasks.
+    // `key in (…) OR parent in (…)`: the stories and their subtasks; `parent in (…)` alone: the subtasks;
+    // the sprint's search with no assignee clause (a board worked alone): every issue of the fixture.
     const parents = /parent in \(([^)]*)\)/.exec(a);
     const named = /key in \(([^)]*)\)/.exec(a);
     const among = (m, k) => Boolean(m) && m[1].split(",").map((s) => s.trim()).includes(k);
     const list = parents
       ? f.issues.filter((i) => among(named, i.key) || (i.parent && among(parents, i.parent)))
-      : /assignee = currentUser\(\)/.test(a) ? f.issues.filter((i) => i.mine) : [];
+      : /assignee = currentUser\(\)/.test(a) ? f.issues.filter((i) => i.mine) : /^sprint in \(/.test(a) ? f.issues : [];
     return ok({ issues: list.map((i) => asIssue(f, i)), isLast: true });
   }
   if (what === "transition") {
@@ -258,22 +259,25 @@ export async function demoProject(args) {
     }
     return { data };
   }
-  if (op !== "KelpieProjectUser" && op !== "KelpieProjectOrg") throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
+  // The Project's items: yours, or every issue for a board worked alone (the `…All` queries).
+  const ops = ["KelpieProjectUser", "KelpieProjectOrg", "KelpieProjectUserAll", "KelpieProjectOrgAll"];
+  if (!ops.includes(op)) throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
+  const org = op.startsWith("KelpieProjectOrg"), every = op.endsWith("All");
   const sprint = f.sprints?.[0];
   const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(when("-7d")), duration: 14 } : null;
   const field = { id: "PVTIF_demo", name: f.project.iteration ?? "Sprint", configuration: { iterations: iteration ? [iteration] : [] } };
   const project = {
-    id: PROJECT_ID, title: f.project.title, url: `https://github.com/${op === "KelpieProjectOrg" ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
+    id: PROJECT_ID, title: f.project.title, url: `https://github.com/${org ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,
     field: { id: "PVTSSF_demo", options: f.board.columns.map((c, n) => ({ id: `opt-${n}`, name: c.name })) },
     ...(v.withPriority === "true" ? { priorityField: askedPriority(f, v) ? { id: "PVTSSF_prio", options: priorityOptions(f) } : null } : {}),
     fields: { nodes: [{}, field] },
-    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter((i) => i.mine).map((i) => ({
+    items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: f.issues.filter((i) => every || i.mine).map((i) => ({
       id: `PVTI_${i.key}`, type: "ISSUE", isArchived: false,
       fieldValues: { nodes: iteration ? [{}, { iterationId: iteration.id, field: { id: field.id } }] : [] },
       content: ghIssue(f, i, askedPriority(f, v)),
     })) },
   };
-  return { data: op === "KelpieProjectOrg" ? { organization: { projectV2: project } } : { user: { projectV2: project } } };
+  return { data: org ? { organization: { projectV2: project } } : { user: { projectV2: project } } };
 }
 
 // --- GitHub -----------------------------------------------------------------------------------
