@@ -602,7 +602,13 @@ function syncPanel(baseline = false) {
 
 let lastCommand = {}; // { c, at }: the last key command this copy ran
 
-async function command(c) {
+// A command's work left running on its own; what goes wrong is logged as the loop logs it.
+function detach(c, work) {
+  Promise.resolve(work).catch((e) => console.log(`kelpie ${c}: ${e}`));
+}
+
+// Exported for the tests.
+export async function command(c) {
   if (["files", "changes", "artifacts", "web"].includes(c)) return togglePanel(c);
   if (c === "refresh") return setShared(REFRESH, Date.now());
   if (c === "close") { const tab = focused()?.tab; return tab && closeTab(tab); }
@@ -640,9 +646,11 @@ async function command(c) {
   if (c === "get-next") return getNextRequest();
   if (c === "add-next") return addNextRequest();
   if (c === "suggest-next") return suggestNextRequest();
-  if (c.startsWith("pause-story-")) return pauseStoryByKey(c.slice("pause-story-".length));
-  if (c.startsWith("clean-story-")) return cleanStoryByKey(c.slice("clean-story-".length));
-  if (c === "clean-all") return cleanAll();
+  // These run for long (a clean-up up to 25 s a key, Clean up all every finished story in turn):
+  // not awaited, as the command loop handles one command at a time and every key would wait on them.
+  if (c.startsWith("pause-story-")) return detach(c, pauseStoryByKey(c.slice("pause-story-".length)));
+  if (c.startsWith("clean-story-")) return detach(c, cleanStoryByKey(c.slice("clean-story-".length)));
+  if (c === "clean-all") return detach(c, cleanAll());
   // what-next: Claude, in the background, fills Next's queue with suggestions (the magic button).
   if (c === "what-next") return whatNext();
   // debug-loads: the load record (debug.js) written to shared state, or no longer.

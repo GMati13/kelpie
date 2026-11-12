@@ -213,6 +213,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
   check behind a finished story's broom), `note` (where the last action's note shows), `avatars`
   (assignees' pictures, fetched once).
+- `flows.test.mjs`: flows driven through their real entry points on the demo's world (#18): Pause on a demo
+  agent, ⌥⌘C on a story with a space, a pull request button while the story's agent is still starting,
+  and the key loop staying free while a clean-up runs (`command()` in main.js).
 - Actions: `move-to-done`, `run-picks` (Claude's picks started together), `story-task-send` (the Merge
   and Request approval menus' sends), `terminal` (a story's Terminal), `pulls` (Approve), `point` (what
   Next points at in a story), `passage` (a description's passage shown), `playing` (the web panel's
