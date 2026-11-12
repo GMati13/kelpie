@@ -140,3 +140,27 @@ Start with that.
 ```text
 Submit your review on the pull request now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted.
 ```
+
+### Explain this (Ask Claude) (`explain`)
+
+```text
+Explain what this does and why it's there, in plain words. Don't change anything.
+```
+
+### Review this change (Ask Claude) (`check`)
+
+```text
+Review this change: is it correct, and is anything missing or risky? Tell me what you find; don't change anything yet.
+```
+
+### Fix this (Ask Claude) (`fixit`)
+
+```text
+Find what's wrong here and fix it, then tell me what you changed.
+```
+
+### Write a test for it (Ask Claude) (`test`)
+
+```text
+Write a test for this, in the style of the tests around it, and tell me what it covers.
+```
