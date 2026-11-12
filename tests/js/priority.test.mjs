@@ -140,6 +140,11 @@ describe("the demo's Jira board", () => {
     assert.deepEqual(await toDo(false), ["ACME-180", "ACME-176", "ACME-178"]);
     assert.deepEqual(await toDo(true), ["ACME-178", "ACME-180", "ACME-176"]);
   });
+  test("what needs you stays in urgency order: an agent waiting beats Highest with failing checks", async () => {
+    const d = await demoData({ ...DEMO_PROFILE, jira: { ...DEMO_PROFILE.jira, byPriority: true } });
+    const keys = ordered(build(d, new Map([["ACME-143", { status: "blocked" }]])), true).map((x) => x.it.key);
+    assert.ok(keys.indexOf("ACME-142") < keys.indexOf("ACME-151"), keys.join(" "));
+  });
   test("What next?'s snapshot names the levels and each ticket's priority", async () => {
     const profile = { ...DEMO_PROFILE, jira: { ...DEMO_PROFILE.jira, showPriority: true } };
     const d = await demoData(profile);
