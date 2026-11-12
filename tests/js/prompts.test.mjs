@@ -229,12 +229,17 @@ describe("What next? runs read only, and hands its picks in through the plugin",
       if (cmd === "sh" && String(args?.[1] ?? "").includes("installed_plugins.json")) {
         return { code: 0, stdout: `${plugin ? JSON.stringify({ plugins: { "kelpie@kelpie": [{ scope: "user" }] } }) : ""}\n\u001e\n{}`, stderr: "" };
       }
-      if (cmd === "env") { handIn(); return { code: 0, stdout: JSON.stringify({ result }), stderr: "" }; }
+      if (cmd === "mktemp") return { code: 0, stdout: "/tmp/kelpie-brew.X1\n", stderr: "" };
+      if (cmd === "sh" && String(args?.[0] ?? "").endsWith("/stdin.sh")) { handIn(); return { code: 0, stdout: JSON.stringify({ result }), stderr: "" }; }
       return undefined;
     };
   };
   const handed = () => mock.state.shared.set("kelpie.next.suggested", { w: { at: Date.now(), items: [{ key: "AA-1", action: "Do it" }] } });
-  const run = () => mock.of("exec").find(([c]) => c === "env");
+  // Claude's run, as stdin.sh is handed it: [program, its arguments, exec's options].
+  const run = () => {
+    const call = mock.of("exec").find(([c, a]) => c === "sh" && String(a?.[0] ?? "").endsWith("/stdin.sh"));
+    return call && [call[1][2], call[1].slice(3), call[2]];
+  };
   const errors = () => mock.of("notify").filter(([n]) => n.level === "error");
   test("claude -p in plan mode, without the editing tools, told which profile it's for", async () => {
     const profile = { id: "w", name: "W", folder: "/work/acme" };
@@ -247,11 +252,41 @@ describe("What next? runs read only, and hands its picks in through the plugin",
     const tools = args.slice(args.indexOf("--disallowedTools") + 1, args.indexOf("--disallowedTools") + 4);
     assert.deepEqual(tools, ["Edit", "Write", "NotebookEdit"]);
     assert.ok(args.includes("--no-session-persistence"));
-    assert.equal(args[args.indexOf("-p") + 1], "the task");
+    assert.equal(args.at(-1), "-p", "the task isn't an argument: -p reads it from stdin");
     assert.equal(options.cwd, "/work/acme");
     assert.ok(!args.includes("--dangerously-skip-permissions"));
     assert.ok(!args.includes("--allowedTools"), "nothing more is allowed than plan mode allows");
     assert.equal(errors().length, 0);
+  });
+  // #26: an argument is in `ps` for every user of the machine, and the task holds the stories, pull
+  // requests and others' titles. It goes into a private folder of its own, which stdin.sh feeds to
+  // Claude and removes (tests/shell/stdin.test.mjs runs it for real).
+  test("the task goes in on stdin, through a private folder, never on the command line", async () => {
+    world({ handIn: handed });
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "the secret-ish task");
+    const all = mock.of("exec").flatMap(([c, a]) => [c, ...(a ?? [])]);
+    assert.ok(!all.some((x) => String(x).includes("secret-ish")), "in no command's arguments");
+    assert.deepEqual(mock.of("exec").find(([c]) => c === "mktemp")[1], ["-d"], "a folder only the person can read");
+    assert.deepEqual(mock.of("writeTextFile"), [["/tmp/kelpie-brew.X1/task", "the secret-ish task", null]]);
+    const sh = mock.of("exec").find(([c, a]) => c === "sh" && String(a?.[0] ?? "").endsWith("/stdin.sh"));
+    assert.equal(sh[1][1], "/tmp/kelpie-brew.X1", "stdin.sh gets the folder");
+    assert.equal(sh[2].timeout, 10 * 60 * 1000);
+    assert.equal(mock.of("exec").filter(([c]) => c === "rm" || c === "rmdir").length, 0, "stdin.sh removes it itself");
+  });
+  test("a run that never reaches stdin.sh removes the task here; no folder, no Claude", async () => {
+    world({ handIn: handed });
+    const before = mock.on.exec;
+    mock.on.exec = (cmd, args) => { if (cmd === "sh" && String(args?.[0] ?? "").endsWith("/stdin.sh")) throw new Error("can't start"); return before(cmd, args); };
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "t");
+    assert.deepEqual(mock.of("exec").filter(([c]) => c === "rm" || c === "rmdir").map(([c, a]) => [c, a]), [["rm", ["-f", "--", "/tmp/kelpie-brew.X1/task"]], ["rmdir", ["--", "/tmp/kelpie-brew.X1"]]]);
+    assert.equal(errors().length, 1);
+    mock.reset();
+    world();
+    mock.on.exec = ((w) => (cmd, args) => (cmd === "mktemp" ? { code: 1, stdout: "", stderr: "no" } : w(cmd, args)))(mock.on.exec);
+    await brew({ id: "w", name: "W", folder: "/work/acme" }, "t");
+    assert.equal(run(), undefined);
+    assert.equal(mock.of("writeTextFile").length, 0);
+    assert.match(errors()[0][0].body, /couldn't make a private folder/);
   });
   test("on another Claude account the same", async () => {
     const profile = { id: "w", name: "W", folder: "/work/acme", claude: { config: "/home/me/.claude-work" } };

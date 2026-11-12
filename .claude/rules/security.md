@@ -24,7 +24,7 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 **Other people's code.** Never run it. A review agent starts outside the checkout (in the profile's folder) and reviews by reading. No default prompt asks to run, build, install or test a pull request.
 
-**Background agents.** Claude run without a terminal (What next?) runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is. Plan mode lets through only tools marked read only: in the plugin, only tools that change nothing of the person's work get that mark (`get_profile`, `save_status`, which only reads a saved answer, `get_next`, and `suggest_next`, which only changes what Kelpie suggests).
+**Background agents.** Claude run without a terminal (What next?) gets its task on stdin, never as an argument (`ps` shows arguments to every user): `feedClaude()` writes it into a private `mktemp -d` folder, which `stdin.sh` opens as Claude's input and removes before Claude starts. It runs read-only: `--permission-mode plan`, editing tools disallowed, whatever the person's default mode is. Plan mode lets through only tools marked read only: in the plugin, only tools that change nothing of the person's work get that mark (`get_profile`, `save_status`, which only reads a saved answer, `get_next`, and `suggest_next`, which only changes what Kelpie suggests).
 
 **Files.** Never delete, overwrite or write through a symlink to a file the person owns; installs and copies skip and report what's in the way. Deletions are guarded by an exact, tested path check (`removeDemo()`, `resetBrowser()`). Temp files and folders: `mktemp` / `mktemp -d` (private), never fixed names in `/tmp`. Caches holding prompts or titles are private.
 
@@ -41,4 +41,3 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 Where the code doesn't meet these rules yet (fix them with tests, then remove the line):
 
 - Add to chat (`pasteToChat()`, `mods/kelpie-artifacts/main.js`) pastes a file path into an agent's terminal with `terminal.paste`, without `sendToClaude()`'s check that the terminal really runs Claude. It presses no Enter, so nothing runs by itself.
-- What next? passes its whole prompt as a command-line argument (`claude -p <task>` in `brew()`), visible to other users in `ps`.

@@ -206,7 +206,7 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
   patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
-  gives and Check my shell, avatar.sh, install.sh with the icon and art copies, e2e-demo.sh's guards, and the
+  gives and Check my shell, avatar.sh, stdin.sh (What next?'s task on stdin), install.sh with the icon and art copies, e2e-demo.sh's guards, and the
   Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index

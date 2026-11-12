@@ -12,7 +12,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, Input, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
-import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout } from "herdr";
+import { agents, appHome, exec, focused, hc, notify, openOverlay, panes, readTextFile, run, setAgentOrder, setShared, shared, spaces, layout, writeTextFile } from "herdr";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
@@ -5383,6 +5383,25 @@ export function whatNext() {
   const s = storyItems();
   if (s) startSuggest(s.st, s.items, s.reviews);
 }
+// Runs argv with `text` as its input (Herdr's exec() takes none): mktemp -d makes a folder only the
+// person can read, the text goes into its `task`, and stdin.sh opens that as the program's input and
+// removes the folder before the program starts. A run that never got as far as stdin.sh removes it
+// here instead. Exported for the tests.
+export async function feedClaude(argv, text, options) {
+  const made = await exec("mktemp", ["-d"]);
+  const dir = String(made?.stdout ?? "").trim();
+  if (made?.code !== 0 || !/^\/[^\n]+$/.test(dir)) throw new Error("Kelpie couldn't make a private folder to hand Claude its task.");
+  let handed = false;
+  try {
+    await writeTextFile(`${dir}/task`, text, null);
+    const r = await exec("sh", [modFile("stdin.sh"), dir, ...argv], options);
+    handed = true;
+    return r;
+  } finally {
+    // Only the one file and then the folder, empty: never a recursive delete.
+    if (!handed) await exec("rm", ["-f", "--", `${dir}/task`]).then(() => exec("rmdir", ["--", dir])).catch(() => {});
+  }
+}
 export async function brew(profile, task) {
   const started = Date.now();
   setBrewing(profile, started);
@@ -5397,8 +5416,11 @@ export async function brew(profile, task) {
     // no editing tools. Reading through the person's own access (plugins, MCP, tools) still works, and
     // so does suggest_next, marked read only: it changes only what Kelpie suggests. KELPIE_PROFILE
     // tells the plugin which profile the picks are for, as this Claude runs in no terminal of Herdr's.
-    const [cmd, ...args] = ["env", `KELPIE_PROFILE=${profile.id}`, ...claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p", task)];
-    const r = await exec(cmd, args, { cwd: profile.folder, timeout: BREW_FOR });
+    // The task (the snapshot: stories, pull requests, others' titles) goes in on stdin, never as an
+    // argument, which `ps` shows every user of the machine: written into a private folder of its own,
+    // which stdin.sh opens as Claude's input and removes before Claude starts (feedClaude()).
+    const argv = ["env", `KELPIE_PROFILE=${profile.id}`, ...claudeArgv(profile, "--permission-mode", "plan", "--disallowedTools", "Edit", "Write", "NotebookEdit", "--no-session-persistence", "--output-format", "json", "-p")];
+    const r = await feedClaude(argv, task, { cwd: profile.folder, timeout: BREW_FOR });
     let out = null;
     try { out = JSON.parse(r.stdout); } catch { /* not JSON: said below */ }
     if (!out || out.is_error) throw new Error(String(out?.result ?? r.stderr ?? "").trim().split("\n").pop() || `Claude stopped (code ${r.code}).`);
