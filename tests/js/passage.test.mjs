@@ -6,7 +6,7 @@ import { before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mock } from "herdr";
-import { handlers, texts } from "gpui-kit";
+import { handlers, nodeOf, texts, walk } from "gpui-kit";
 import { put, tempDir } from "../lib/helpers.mjs";
 import { byId, render } from "../lib/snapshot.mjs";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -83,6 +83,29 @@ test("the details show the passage bar while it's shown, and Back to the story e
   assert.doesNotMatch(render(el, skinTheme()), /#story-overview-/, "the reader takes the overview's place");
   handlers(el).find((h) => h.id === "passage-back").fn({}, cx);
   assert.equal(passage(), null);
+});
+
+// On a wide screen the bar spanned the whole details while the text below is a centred column
+// (#28): it now sits on that column, and a long note wraps rather than being cut off.
+test("the passage bar sits on the reading column and its note is never cut off", async () => {
+  const long = `What the PDF holds, ${"and more besides ".repeat(12)}`.slice(0, 200);
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-180", quote: "with confirmation numbers and addresses", note: long, at: Date.now() });
+  const { el } = await draw(new StoryBody());
+  const calls = (x) => nodeOf(x).calls;
+  const maxW = (n) => n.calls.find(([m]) => m === "max_w")?.[1][0];
+  const bar = byId(el, "passage-bar");
+  // The reading column is the rows' own width, in the invisible copy they're measured in.
+  const measure = walk(el).find((n) => n.calls.some(([m, a]) => m === "id" && String(a[0]).startsWith("story-reader-measure-")));
+  const columns = new Set(walk(measure.calls.flatMap(([, a]) => a)).map(maxW).filter(Boolean));
+  assert.equal(columns.size, 1, "the rows share one column width");
+  assert.equal(maxW(nodeOf(bar)), [...columns][0], "the bar is as wide as the reading column");
+  const holder = walk(el).find((n) => n.calls.some(([m, a]) => m === "child" && a[0] === bar));
+  assert.ok(holder.calls.some(([m]) => m === "justify_center"), "and centred on it");
+  const note = byId(bar, "passage-note");
+  assert.ok(note, "the note is drawn");
+  assert.ok(texts(note).includes(long), "the whole note is there");
+  assert.ok(!calls(note).some(([m]) => m === "truncate"), "the note wraps rather than being cut off");
 });
 
 test("a passage the description doesn't hold says so", async () => {
