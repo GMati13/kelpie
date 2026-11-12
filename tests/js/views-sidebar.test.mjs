@@ -9,7 +9,8 @@ import { StoryList } from "../../mods/kelpie/stories.js";
 import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
-import { handlers, nodeOf, texts } from "gpui-kit";
+import { div, handlers, nodeOf, texts } from "gpui-kit";
+import { groupHeader } from "../../mods/kelpie/ui.js";
 import { v_flex } from "gpui-base";
 import { mock } from "herdr";
 
@@ -610,4 +611,17 @@ test("a deleted profile's stories copy and other entries are pruned with the nex
   for (const key of keys) assert.ok(!("gone" in (mock.sharedValue(key) ?? {})), `${key} keeps the deleted profile's entry`);
   assert.ok("gone" in mock.sharedValue("kelpie.paused"), "paused sessions stay");
   assert.ok(DEMO in mock.sharedValue("kelpie.stories.data"), "the shown profile's copy stays");
+});
+
+// A group heading's trail (the Desk's terminals, Done's chevron) goes into one tree only: in Herdr an
+// element is drawn once, so one also put into the heading the skin replaces left Quiet Pages' Desk
+// heading undrawn, its plain look in its place (#133).
+test("a group heading's trail is drawn once, in both layouts", () => {
+  for (const layout of ["Kelpie", "Kelpie-Plain"]) {
+    setupDemoWorld({ stories, layout });
+    const trail = div().id("trail");
+    const head = groupHeader(skinTheme(), "Done", 3, trail);
+    assert.equal(nodeOf(trail).parents, 1, `${layout}: put into one tree`);
+    assert.ok(byId(head, "trail"), `${layout}: the heading drawn holds it`);
+  }
 });
