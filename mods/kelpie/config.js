@@ -982,11 +982,16 @@ function sendError(r) {
   return why || `the send ended with code ${r.code}`;
 }
 
+// A ticket key, as Jira makes them and a GitHub Project's keys are (`PREFIX`-<number>).
+const KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+
 // Runs one of a profile's commands (commands.leftovers, commands.cleanUp, commands.status) for a ticket key, in the
 // profile's folder, through the user's shell. It gets `seconds` to finish, then it and whatever it
 // started are stopped. Resolves to { code, out } (its output and errors together, trimmed; code 143
-// when stopped); throws when it couldn't run.
+// when stopped); throws when it couldn't run, and before anything runs when `key` isn't a ticket key,
+// as `{key}` goes into the command as it is, for the person's shell to read (security.md).
 export async function runCommand(profile, command, key, seconds, on = null) {
+  if (!KEY.test(String(key ?? ""))) throw new Error("That isn't a ticket key, so the command didn't run.");
   const line = command.replace(/\{key\}/g, key);
   // Job control puts the command in a process group of its own, so the timer stops all of it; the
   // shell's own job notices are dropped (the command's errors still come, on stdout).
