@@ -16,7 +16,7 @@ import { gh } from "./pulls.js";
 import { demoLimit, demoProject } from "./demo.js";
 import { limitMessage } from "./ghlimit.js";
 import { GITHUB_LOGIN, prefixFor, priorityOf } from "./config.js";
-import { projectCategory } from "./board.js";
+import { projectCategory, unassignedOf } from "./board.js";
 
 const PAGES = 10; // up to 1000 of your items
 const NODES = 100; // stories asked for at once (GitHub's most for nodes(ids:))
@@ -52,6 +52,15 @@ const projectFields = (filter) => `id title url
     nodes { id type isArchived
       fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2IterationField { id } } } } }
       content { ... on Issue { ${ISSUE} } } } }`;
+// The Project's issues nobody has (the profile's `unassigned`: the list's Unassigned section), a page
+// of them in its order, with what the scope needs (their iteration) and a sub-issue's story's title and
+// page, for its heading. The filter is a constant too. (`parent` asked twice merges into one.)
+const UNASSIGNED = `items(first: 100, after: $cursor, query: "no:assignee is:issue", orderBy: { field: POSITION, direction: ASC }) {
+    pageInfo { hasNextPage endCursor }
+    nodes { id type isArchived
+      fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2IterationField { id } } } } }
+      content { ... on Issue { ${ISSUE} parent { title url state } } } } }`;
+const UNASSIGNED_PAGES = 3; // up to 300 issues nobody has
 // What GitHub says is left of the account's GraphQL budget, asked in every load's queries (pulls.js
 // gh() keeps it: Kelpie loads less often when it runs low, ghlimit.js).
 const BUDGET = "rateLimit { remaining limit resetAt }";
@@ -73,6 +82,8 @@ export const QUERIES = Object.freeze({
   stories: `query KelpieStories($ids: [ID!]!, ${PRIORITY_VARS}) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} subIssues(first: 50) { nodes { id } } } } }`,
   subs: `query KelpieSubIssues($ids: [ID!]!, ${PRIORITY_VARS}) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} } } }`,
   // Kept stories' issues by key (keptProject()): each slot's node id and its parent's, and who gh runs as.
+  unassignedUser: `query KelpieUnassignedUser($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${UNASSIGNED} } } }`,
+  unassignedOrg: `query KelpieUnassignedOrg($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${UNASSIGNED} } } }`,
   kept: `query KelpieKept(${slots.map((n) => `$o${n}: String = "", $r${n}: String = "", $n${n}: Int = 0, $u${n}: Boolean = false`).join(", ")}) { ${BUDGET} viewer { login } ${slots.map((n) => `k${n}: repository(owner: $o${n}, name: $r${n}) @include(if: $u${n}) { issue(number: $n${n}) { id parent { id } } }`).join(" ")} }`,
 });
 
@@ -295,10 +306,47 @@ export async function loadProject(board, keep = {}) {
     if (solo) return allMine(raw, dressed);
     if (kept.viewer && (raw.assignees?.nodes ?? []).some((n) => n?.login === kept.viewer)) mine.push(dressed);
   });
-  return {
+  const out = {
     site: "https://github.com", columns, sprints, mine, parents, children, links, repos, kept: parents.slice(before).map((i) => i.key),
     ...(solo ? { solo: true } : {}), ...(cut ? { cut: items.length } : {}),
     project: { id: project.id, statusField: project.field?.id ?? null, title: project.title ?? "", url: project.url ?? "" },
     ...(levels ? { priorities: levels } : {}),
   };
+  if (board.cfg.unassigned === true && board.cfg.solo !== true) out.unassigned = await unassignedProject();
+  return out;
+
+  // The work nobody has (the profile's `unassigned`): the same scope's issues with no assignee, by a
+  // question of its own, apart from yours (board.js unassignedOf()). The pull requests closing them
+  // don't join `links`: they'd put those issues among your stories. Its failing doesn't fail the
+  // load: the section says so and the rest shows.
+  async function unassignedProject() {
+    const had = new Set(Object.keys(links));
+    try {
+      const raw = [];
+      let at = null;
+      for (let page = 0; page < UNASSIGNED_PAGES; page++) {
+        const data = await ask(board, ["-f", `owner=${owner}`, "-F", `number=${number}`, ...(at ? ["-f", `cursor=${at}`] : []), "-f", `query=${board.cfg.ownerType === "org" ? QUERIES.unassignedOrg : QUERIES.unassignedUser}`]);
+        const p = (board.cfg.ownerType === "org" ? data.organization : data.user)?.projectV2;
+        raw.push(...(p?.items?.nodes ?? []));
+        const next = p?.items?.pageInfo;
+        if (!next?.hasNextPage || !next.endCursor) break;
+        at = next.endCursor;
+      }
+      const got = raw.filter((x) => x?.type === "ISSUE" && !x.isArchived && x.content?.id && inScope(x) && !(x.content.assignees?.nodes ?? []).length).map((x) => {
+        const c = x.content, d = dress(c);
+        // A sub-issue's story, as the heading it goes under when someone else has it.
+        if (d?.fields.parent && c.parent) {
+          const shut = c.parent.state === "CLOSED";
+          d.fields.parent = { key: d.fields.parent.key, ...(c.parent.url ? { url: c.parent.url } : {}), fields: { summary: c.parent.title ?? "", issuetype: { name: "Issue", subtask: false, madeUp: true },
+            status: { id: null, name: shut ? "Closed" : "Open", statusCategory: { key: projectCategory(-1, options.length, shut) } } } };
+        }
+        return d;
+      }).filter(Boolean);
+      return unassignedOf(got, seen);
+    } catch (e) {
+      return { parents: [], children: [], error: String(e?.message ?? e) };
+    } finally {
+      for (const url of Object.keys(links)) if (!had.has(url)) delete links[url];
+    }
+  }
 }
