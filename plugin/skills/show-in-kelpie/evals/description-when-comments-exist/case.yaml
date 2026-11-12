@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: description-when-comments-exist
+expected_outcome: |
+  Finds the requirement in the description ('Cache every trip the traveller opened in the last 30 days in IndexedDB'), not in a comment, and calls show_passage for ACME-142 with a quote copied word for word from the description.
+context:
+  scaffold_script: place-files.sh
