@@ -1,7 +1,7 @@
 // The shown tab's Claude session's artifacts, in the side panel beside Files and Changes.
 // Images for now; other kinds can join them later. It only ever shows that session's own.
 // With props { scope: "story" } (the Kelpie layout's Screenshots view), it shows the sessions the Kelpie
-// layout lists in shared state instead: every Claude session of the story shown.
+// layout lists in shared state instead: every Claude session of the story shown (or of the Desk).
 //
 // Viewer: wheel zooms toward the pointer, drag pans, double-click toggles fit and 100%.
 // Keys: + - zoom, 0 fit, 1 100%, arrows pan when zoomed and step when fitted, [ ] always step,
@@ -19,7 +19,8 @@ import { fetchFull, findSession, isFull, isReady, listImages, locate, pixelSize,
 const POLL = 3000;
 // Written by the Kelpie layout (mods/kelpie/stories.js) for its Screenshots view: { key, ids, keys:
 // { [session id]: subtask key }, terminals: { [session id]: agent terminal }, agents: [the story space's agent terminals], on, started }. Only
-// `key` until the story's sessions are known.
+// `key` until the story's sessions are known. On the Desk (mods/kelpie/desk.js deskNow) the same with
+// `desk: true`, its key "desk:<profile>": the Desk's agents' sessions.
 const STORY = "kelpie.artifacts.sessions";
 const TEXT = 13;
 const SMALL = 11.5;
@@ -707,9 +708,10 @@ export default class Artifacts extends View {
 
   empty(t) {
     // A story not started yet has no agents to talk about.
-    const started = shared(STORY)?.started;
+    const { started, desk } = shared(STORY) ?? {};
     const text = this.story
-      ? this.state === "looking" ? "Looking for the story's Claude sessions…"
+      ? this.state === "looking" ? `Looking for the ${desk ? "Desk" : "story"}'s Claude sessions…`
+        : desk ? "Screenshots the Desk's agents save show here."
         : started ? "Screenshots its agents save show here." : "Screenshots show here once you start work and an agent takes one."
       : this.state === "looking" ? "Looking for this tab's Claude session…"
         : this.state === "no-session" ? "No Claude session in this tab."

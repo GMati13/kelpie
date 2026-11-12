@@ -25,6 +25,13 @@ h_flex
               "Terminal"
             div [fg=dim]
               "⌥⌘T"
+    div [bg=border]
+    h_flex #view-shots [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      div
+        "Screenshots"
+      div
+        div
+          div [bg=#c195ab]
   h_flex
     div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
       svg chrome:folder
