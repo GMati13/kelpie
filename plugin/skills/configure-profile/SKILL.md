@@ -160,7 +160,7 @@ First look at how the folder is laid out: clones, worktrees, folders per ticket 
 
 The prompts are what each kind of agent is told first, and the defaults are written for anyone, so they often don't fit: the merge default asks for a merge and deploy plan across repositories, with how to deploy and roll back, which is noise for one repo with nothing to deploy and still misses what the person's own merge needs. Most people never find out they can change them, so for `all` and the `prompts` scope, go through them with the person rather than waiting to be asked. On any other scope, leave them alone unless the person brings them up.
 
-1. **Ask how they work**, a few plain questions, one at a time, each with likely answers to pick from. Only ask what bears on a prompt the profile uses (no merge or review questions without GitHub, no ticket questions without a board):
+1. **Ask how they work**, a few plain questions, one at a time, each with likely answers to pick from. Start by saying in a line what the round covers (starting tickets, merging, reviews, What next?), so the person knows how long it is and what they can skip. Only ask what bears on a prompt the profile uses (no merge or review questions without GitHub, no ticket questions without a board):
    - How do they start on a ticket: a slash command or skill they use (`/ticket`, say), a routine (a branch per ticket, a plan first), or just "work on it"?
    - How does a pull request get merged: one repository or several at once, a deploy afterwards or none, who approves (a teammate, nobody: they work alone), any release step?
    - What should a review look at (their team's conventions, tests, security), beyond reading the change against its ticket?
