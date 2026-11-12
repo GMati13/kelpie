@@ -4,7 +4,7 @@
 // sqlite3 and python3, in a temp HOME.
 import { before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fakeBin, put, sh, tempDir } from "../lib/helpers.mjs";
@@ -141,5 +141,38 @@ describe("the browser's command: the start page and kittyfix's path are argument
     assert.equal(alone.pwned, false);
     assert.deepEqual(once(browserCommand("", false)).browser, []);
     assert.equal(once(browserCommand("", true)).python3.at(-1), "terminal-browser");
+  });
+});
+
+describe("the browser's folders hold its cookies and sign-ins, so they're the person's alone", () => {
+  const mode = (p) => (statSync(p).mode & 0o777).toString(8);
+  // Runs the command once in `home`; the fake browser notes the umask it was started with.
+  const start = (home) => {
+    mock.reset();
+    mock.state.shared.set("kelpie.profiles", { acme: { id: "acme", name: "Acme", folder: "/w" } });
+    mock.state.shared.set("kelpie.profile.chosen", { id: "acme", space: null });
+    const f = fakeBin().add("terminal-browser", 'umask > "$d/umask"');
+    const { command, args } = browserCommand("", false);
+    const r = sh("/bin/sh", ["-c", `umask 022; ${command}`, "sh", ...args], { env: { HOME: home, PATH: f.path } });
+    assert.equal(r.code, 0, r.stderr);
+    return readFileSync(join(f.log, readdirSync(f.log).filter((n) => !n.startsWith("."))[0], "umask"), "utf8").trim();
+  };
+
+  test("a first start makes every folder down to the profile's private", () => {
+    const home = tempDir();
+    start(home);
+    const web = `${home}/.local/share/kelpie/web`;
+    for (const p of [`${home}/.local/share/kelpie`, web, `${web}/acme`, `${web}/acme/run`, `${web}/acme/data`, `${web}/acme/share`]) assert.equal(mode(p), "700", p);
+  });
+  test("folders an older Kelpie made with the default permissions are tightened", () => {
+    const home = tempDir();
+    const web = `${home}/.local/share/kelpie/web`;
+    for (const p of ["run", "data", "share"]) mkdirSync(`${web}/acme/${p}`, { recursive: true });
+    for (const p of [web, `${web}/acme`, `${web}/acme/run`, `${web}/acme/data`, `${web}/acme/share`]) chmodSync(p, 0o755);
+    start(home);
+    for (const p of [web, `${web}/acme`, `${web}/acme/run`, `${web}/acme/data`, `${web}/acme/share`]) assert.equal(mode(p), "700", p);
+  });
+  test("the browser itself keeps the usual umask, so its downloads aren't made private too", () => {
+    assert.equal(start(tempDir()), "0022");
   });
 });

@@ -21,7 +21,7 @@
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
-import { issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
+import { closeIssues, issueDescription, issueLookUp, issueRef, issueText, loadedIssue, setStatus } from "./issues.js";
 import { loadProject } from "./project.js";
 
 const PAGES = 5; // up to 500 tickets a search
@@ -50,6 +50,10 @@ async function search(cfg, jql) {
 
 // A key as Jira makes them, checked before one goes into a search (security.md).
 const KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+// Whether an issue the board gave has a ticket key, and its parent too when it names one. Keys go
+// into searches, folder names and `{key}` commands, and what Jira answers can't be trusted, so an
+// issue without one is left out of the load (security.md).
+const keyed = (i) => KEY.test(i?.key ?? "") && (!i.fields?.parent || KEY.test(i.fields.parent.key ?? ""));
 
 // The stories and subtasks a search finds by key: `key in (…) OR parent in (…)` (with `and`, only
 // the keys' own issues that match it too). A key Jira doesn't know (a ticket deleted or moved since)
@@ -104,7 +108,7 @@ export async function loadBoard(board, keep = {}) {
   const columns = (config.body?.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((x) => x.id) }));
   // A scrum board's active sprints, or a Kanban board's open work (sprint.js boardScope).
   const { sprints, jql: scope } = boardScope(active, config);
-  const mine = scope ? await search(cfg, `${scope} AND assignee = currentUser() ORDER BY Rank`) : [];
+  const mine = scope ? (await search(cfg, `${scope} AND assignee = currentUser() ORDER BY Rank`)).filter(keyed) : [];
   const parents = new Map();
   for (const i of mine) {
     const p = i.fields?.issuetype?.subtask ? i.fields.parent : i;
@@ -113,7 +117,7 @@ export async function loadBoard(board, keep = {}) {
   // The children and, in the same search, the parents themselves: a subtask's embedded parent
   // carries no assignee, so a story's own fields come from here when it answers.
   const keys = [...parents.keys()].join(", ");
-  const found = parents.size ? await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`) : [];
+  const found = parents.size ? (await search(cfg, `key in (${keys}) OR parent in (${keys}) ORDER BY Rank`)).filter(keyed) : [];
   for (const i of found) if (parents.has(i.key)) parents.set(i.key, { key: i.key, fields: i.fields });
   const children = found.filter((i) => !parents.has(i.key));
   const kept = await keptJira(cfg, keep, new Set([...parents.keys(), ...children.map((i) => i.key)]));
@@ -200,4 +204,19 @@ export async function doneOption(board, key, data) {
 export async function moveStatus(board, key, option, data) {
   if (board.kind === "project") return setStatus(board, data, key, option);
   await jira(board.cfg, "transition", key, option.id);
+}
+
+// Whether a board's tickets can be left open once done, and so be closed from Kelpie: a GitHub
+// Project's (a Status move to its done column leaves the issue open); a Jira ticket's done status is
+// its being closed.
+export const closesTickets = (board) => board?.kind === "project";
+
+// How many tickets a close request takes at once, so a view can say which are being closed now.
+export { CLOSE_SLOTS as CLOSE_BATCH } from "./issues.js";
+
+// Closes done tickets on their board, as completed, on the person's own click (Close in the Done
+// group): [{ key, ok, why }], `each` hearing each batch's results as they come (issues.js closeIssues()).
+export async function closeTickets(board, keys, data, each) {
+  if (!closesTickets(board)) throw new Error("its board closes a ticket by moving it to done");
+  return closeIssues(board, data, keys, each);
 }
