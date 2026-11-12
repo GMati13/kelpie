@@ -18,7 +18,7 @@ import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, chooseProfile, claudeArgv, hasPlugin, deskOf, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, reviewTask, runCommand, sendToClaude, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { boardSite, closeTicket, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findPassage, markdownBlocks } from "./adf.js";
@@ -5111,12 +5111,15 @@ function askClose(st, list) {
     closeStories: { profile: st.profile.id, keys: list.map((it) => it.key) }, detail, items } });
 }
 
-// Close's dialog button: closes what closePlan() says of each story, as it stands now, one issue after
-// another, each story under its busy mark (and Close all under `close:<profile>`). One that fails (no
-// permission on its repo, an issue gone) doesn't stop the rest; the note names each with why, to close
-// by hand. The closed issues show at once, then the stories load once. Returns { closed, failed:
-// [{ key, why }] }, null when nothing could run.
-export async function closeStories({ profile, keys = [] }) {
+// Close's dialog button: closes what closePlan() says of each story, as it stands now, a few issues a
+// request (board.js closeTickets()), each story under its busy mark until its own are done (and Close
+// all under `close:<profile>`). As each batch ends, its issues show closed at once (the rows lose their
+// Close, Close all's count drops) and `onStep` hears how far it got ({ total, closed, failed: { key:
+// why }, on: the keys being closed now }), so the dialog marks each issue as it goes: a run of 30 is a
+// minute's work, too long to sit silent. One that fails (no permission on its repo, an issue gone)
+// doesn't stop the rest; the note names each with why, to close by hand. Then the stories load once.
+// Returns { closed, failed: [{ key, why }] }, null when nothing could run.
+export async function closeStories({ profile, keys = [], onStep = () => {} }) {
   const s = storyItems();
   if (s?.st.profile.id !== profile) { say({ profile }, "Nothing was closed: that profile isn't shown any more."); return null; }
   const board = boardOf(s.st.setup);
@@ -5125,36 +5128,47 @@ export async function closeStories({ profile, keys = [] }) {
   if (!list.length) { say({ profile, keys }, "Nothing was closed: those stories have no issue still open."); return null; }
   const group = list.length > 1 ? `close:${profile}` : null;
   const total = list.reduce((n, it) => n + closePlan(it).close.length, 0);
-  const atAll = group ? takeBusy(group, { kind: "close", keys: [], step: "Closing on GitHub…" }, total * CLOSE_EACH + BUSY_MARGIN) : null;
+  const atAll = group ? takeBusy(group, { kind: "close", keys: [], step: `Closing on GitHub… 0 of ${total}` }, total * CLOSE_EACH + BUSY_MARGIN) : null;
   if (group && !atAll) { say({ profile }, "Close all is already running."); return null; }
-  const closed = [], failed = [], skipped = [];
-  try {
-    for (const it of list) {
-      const plan = closePlan(it);
-      const at = takeBusy(it.key, { kind: "close", keys: plan.close.map((x) => x.key), step: `Closing on GitHub… 1 of ${plan.close.length}` },
-        plan.close.length * CLOSE_EACH + BUSY_MARGIN);
-      if (!at) { skipped.push(it.key); continue; }
-      try {
-        for (const [i, x] of plan.close.entries()) {
-          stepBusy(it.key, at, { step: `Closing on GitHub… ${i + 1} of ${plan.close.length}` });
-          if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length + 1} of ${total}` });
-          try {
-            await closeTicket(board, x.key, s.st.data);
-            closed.push(x.key);
-          } catch (e) {
-            failed.push({ key: x.key, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
-          }
-        }
-      } finally { endBusy(it.key, at); }
-    }
-  } finally { if (group) endBusy(group, atAll); }
-  // Closed shows at once (the row loses its Close), then the stories load once.
-  if (closed.length) {
-    const gone = new Set(closed);
-    const mark = (list) => (list ?? []).map((i) => (gone.has(i.key) ? { ...i, closed: true } : i));
-    patchLoaded(s.st.profile, (d) => ({ ...d, parents: mark(d.parents), children: mark(d.children) }));
-    setShared(REFRESH, Date.now());
+  // Each story's mark, taken before anything runs; a story already busy is left as it is.
+  const runs = [], skipped = [];
+  for (const it of list) {
+    const issues = closePlan(it).close.map((x) => x.key);
+    const at = takeBusy(it.key, { kind: "close", keys: issues, step: `Closing on GitHub… 0 of ${issues.length}` }, issues.length * CLOSE_EACH + BUSY_MARGIN);
+    if (at) runs.push({ it, issues, at }); else skipped.push(it.key);
   }
+  const closed = [], failed = [];
+  const settled = (k) => closed.includes(k) || failed.some((f) => f.key === k);
+  const step = (on = []) => onStep({ total: runs.reduce((n, r) => n + r.issues.length, 0), closed: [...closed], failed: Object.fromEntries(failed.map((f) => [f.key, f.why])), on });
+  const all = runs.flatMap((r) => r.issues);
+  let next = 0;
+  try {
+    step(all.slice(0, CLOSE_BATCH));
+    await closeTickets(board, all, s.st.data, (results) => {
+      next += results.length;
+      for (const x of results) if (x.ok) closed.push(x.key); else failed.push({ key: x.key, why: x.why });
+      // Closed shows at once: the rows lose their Close and Close all's count drops as it goes.
+      const gone = new Set(results.filter((x) => x.ok).map((x) => x.key));
+      if (gone.size) {
+        const mark = (l) => (l ?? []).map((i) => (gone.has(i.key) ? { ...i, closed: true } : i));
+        patchLoaded(s.st.profile, (d) => ({ ...d, parents: mark(d.parents), children: mark(d.children) }));
+      }
+      for (const r of runs) {
+        const done = r.issues.filter(settled).length;
+        if (done === r.issues.length) endBusy(r.it.key, r.at);
+        else stepBusy(r.it.key, r.at, { step: `Closing on GitHub… ${done + 1} of ${r.issues.length}` });
+      }
+      if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length} of ${all.length}` });
+      step(all.slice(next, next + CLOSE_BATCH));
+    });
+  } catch (e) {
+    // Nothing ran (the board can't close tickets): every issue not settled yet is named with why.
+    for (const k of all) if (!settled(k)) failed.push({ key: k, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
+  } finally {
+    for (const r of runs) endBusy(r.it.key, r.at);
+    if (group) endBusy(group, atAll);
+  }
+  if (closed.length) setShared(REFRESH, Date.now());
   const text = `${closed.length ? `Closed ${keyList(closed)} on GitHub.` : "Nothing was closed."}${failed.length
     ? ` Couldn't close ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: close ${failed.length === 1 ? "it" : "them"} by hand on GitHub.` : ""}${skipped.length
     ? ` ${keyList(skipped)} ${skipped.length === 1 ? "was" : "were"} busy, so left as ${skipped.length === 1 ? "it was" : "they were"}.` : ""}`;

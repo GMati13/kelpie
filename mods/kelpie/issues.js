@@ -24,8 +24,14 @@ const ISSUE = `query KelpieIssue($owner: String!, $repo: String!, $number: Int!)
 // A Project item's Status set to one of its options.
 const MOVE = `mutation KelpieMove($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`;
 
-// An issue closed as completed (Close in the Done group, stories.js closeStories()).
-export const CLOSE = `mutation KelpieClose($issue: ID!) { closeIssue(input: {issueId: $issue, stateReason: COMPLETED}) { issue { id state } } }`;
+// Issues closed as completed (Close in the Done group, stories.js closeStories()), CLOSE_SLOTS a
+// request: slots c0, c1… each an issue's node id (`i<n>`), the unused ones skipped (`u<n>`, `@include`).
+// GitHub runs a request's mutations one after another, so a batch is as gentle as single requests in a
+// row (writes are to go one at a time, or its secondary limit stops them), at a fraction of the wait.
+// The text is the same every time; only variables vary.
+export const CLOSE_SLOTS = 5;
+const closeSlots = Array.from({ length: CLOSE_SLOTS }, (_, n) => n);
+export const CLOSE = `mutation KelpieClose(${closeSlots.map((n) => `$i${n}: ID = "", $u${n}: Boolean = false`).join(", ")}) { ${closeSlots.map((n) => `c${n}: closeIssue(input: {issueId: $i${n}, stateReason: COMPLETED}) @include(if: $u${n}) { issue { id state } }`).join(" ")} }`;
 
 const firstLine = (r, fallback) => (r.stderr || r.stdout || "").trim().split("\n")[0].replace(/^gh: /, "") || fallback;
 
@@ -124,16 +130,36 @@ export async function setStatus(board, data, key, option) {
   if (r.code !== 0) throw new Error(firstLine(r, "GitHub didn't take the move."));
 }
 
-// Closes an issue on GitHub as completed, on the person's own click in Close's dialog (stories.js
-// closeStories()), never on an agent's word. Its node id is the one the load gave, checked before gh
-// runs; the demo's fixture answers the same mutation (demo.js demoProject()).
-export async function closeIssue(board, data, key) {
-  const id = loadedIssue(data, key)?.id;
-  if (typeof id !== "string" || !ID.test(id)) throw new Error("Kelpie doesn't know which issue it is on GitHub, so nothing was closed");
-  const args = ["api", "graphql", "-f", `issue=${id}`, "-f", `query=${CLOSE}`];
-  if (board.cfg?.demo) return void await demoProject(args);
-  const r = await gh(board.account, args);
-  let said = null;
-  try { said = JSON.parse(r.stdout || "null")?.errors?.[0]?.message ?? null; } catch {}
-  if (r.code !== 0 || said) throw new Error(said || firstLine(r, "GitHub didn't close it"));
+// Closes issues on GitHub as completed, on the person's own click in Close's dialog (stories.js
+// closeStories()), never on an agent's word: CLOSE_SLOTS a request, one request after another, `each`
+// hearing each batch's results as it ends (the dialog shows them as they come). Each node id is the one
+// the load gave, checked before gh runs; one that isn't is never sent. A slot GitHub refuses (no
+// permission on its repo, an issue gone) fails alone. Returns [{ key, ok, why }] in `keys`' order. The
+// demo's fixture answers the same mutation (demo.js demoProject()).
+export async function closeIssues(board, data, keys, each = () => {}) {
+  const out = [];
+  const say = (why) => String(why ?? "").split("\n")[0].replace(/^gh: /, "").replace(/[.\s]+$/, "").slice(0, 160);
+  for (let at = 0; at < keys.length; at += CLOSE_SLOTS) {
+    const chunk = keys.slice(at, at + CLOSE_SLOTS).map((key) => ({ key, id: loadedIssue(data, key)?.id }));
+    const results = chunk.map((x) => (typeof x.id === "string" && ID.test(x.id) ? null : { key: x.key, ok: false, why: "Kelpie doesn't know which issue it is on GitHub, so nothing was sent" }));
+    const asks = chunk.map((x, n) => ({ ...x, n })).filter((x) => !results[x.n]);
+    if (asks.length) {
+      const args = ["api", "graphql", ...asks.flatMap((x, slot) => ["-f", `i${slot}=${x.id}`, "-F", `u${slot}=true`]), "-f", `query=${CLOSE}`];
+      let answer = null, failed = null;
+      if (board.cfg?.demo) answer = await demoProject(args).catch((e) => { failed = e?.message; return null; });
+      else {
+        const r = await gh(board.account, args);
+        try { answer = JSON.parse(r.stdout || "null"); } catch { answer = null; }
+        if (!answer?.data) failed = answer?.errors?.[0]?.message ?? firstLine(r, "GitHub didn't close them");
+      }
+      asks.forEach((x, slot) => {
+        const done = answer?.data?.[`c${slot}`]?.issue?.state === "CLOSED";
+        const why = answer?.errors?.find((e) => e?.path?.[0] === `c${slot}`)?.message ?? failed ?? "GitHub didn't say it closed";
+        results[x.n] = done ? { key: x.key, ok: true, why: null } : { key: x.key, ok: false, why: say(why) };
+      });
+    }
+    out.push(...results);
+    each(results);
+  }
+  return out;
 }
