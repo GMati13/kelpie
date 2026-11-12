@@ -629,7 +629,7 @@ export function fillLines(template, names, fields) {
 // to read and save the profile), so the first message only says what to set up. Scopes: the skill's
 // table.
 export const CONFIGURE_SCOPES = {
-  all: "everything, from A to Z",
+  all: "everything, from A to Z, prompts included",
   general: "General: name, folder",
   agents: "Agents: the accounts they run on",
   claude: "Agents: the Claude account only",
