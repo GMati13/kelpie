@@ -99,6 +99,12 @@ div
                     "Show less"
             h_flex
               v_flex
+                v_flex #story-talk
+                  h_flex #story-talk-head [fg=muted hover(fg=foreground)] {click} tip="Show the comments"
+                    svg chrome:chevron-right [fg=dim]
+                    "Comments · 4"
+            h_flex
+              v_flex
                 div #sub-cols-zoom-probe {size_change}
                 div #prs-story [fg=muted]
                   "On the story itself"
@@ -153,7 +159,7 @@ div
                               div
                                 div
                                   div [bg=#7fb3ae]
-                  div
+                  v_flex
                     div #sub-desc-ACME-143-body [font="Fraunces" fg=foreground/c4]
                       v_flex
                         v_flex
@@ -230,6 +236,10 @@ div
                               TextView.html "sub-desc-ACME-143-0-w-0-34" "<span>oldest</span>" [fg=foreground/c4]
                             div
                               TextView.html "sub-desc-ACME-143-0-w-0-35" "<span>first.</span>" [fg=foreground/c4]
+                    v_flex #sub-talk-ACME-143
+                      h_flex #sub-talk-ACME-143-head [fg=muted hover(fg=foreground)] {click} tip="Show the comments"
+                        svg chrome:chevron-right [fg=dim]
+                        "Comments · 1"
                   h_flex
                     h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use"
                       div

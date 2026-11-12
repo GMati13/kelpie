@@ -75,6 +75,12 @@ div
                     "Show more"
             h_flex
               v_flex
+                v_flex #story-talk
+                  h_flex #story-talk-head [fg=muted hover(fg=foreground)] {click} tip="Show the comments"
+                    svg chrome:chevron-right [fg=dim]
+                    "Comments · 4"
+            h_flex
+              v_flex
                 div #sub-cols-zoom-probe {size_change}
                 div #prs-story [fg=muted]
                   "On the story itself"
