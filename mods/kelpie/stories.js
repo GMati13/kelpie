@@ -17,7 +17,7 @@ import { agents, focused, hc, layout, memo, panes, run, setShared, shared, space
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -540,6 +540,23 @@ function storyLists(data, profile, handover, byAgent = agentsByKey(profile)) {
   const left = leftStories(profile);
   const all = build(data, byAgent, pausedIn(profile), storySpaces(profile), handover, { left, all: true });
   return { all, items: ordered(all.filter((it) => !settled(it, left)), priorityOf(profile).order), done: byDone(all.filter((it) => settled(it, left))).map((it) => ({ it, n: need(it) })) };
+}
+// The board's work nobody has (data.unassigned, loaded with the profile's `unassigned` on: board.js
+// unassignedOf()), each { it, n } as the list's are, for the sidebar's Unassigned section: previewed
+// like a story not open, but nothing to start (taking one is done on the board). Each is marked
+// `unassigned`; a story someone else has, there only as the heading over its subtasks nobody has, is
+// `taken` too (its subs are those subtasks alone). Finished work isn't there to pick up. Built from
+// that data alone, so nothing of it reaches the list's groups, its counts or Next. Exported for the tests.
+export function unassignedIn(data, handover) {
+  const u = data?.unassigned;
+  if (!u?.parents?.length) return [];
+  const taken = new Set(u.parents.filter((p) => p.taken).map((p) => p.key));
+  const open = (x) => x.category !== "done";
+  return build({ ...data, parents: u.parents, children: u.children ?? [], mine: [], kept: [], prs: [] }, new Map(), {}, new Map(), handover, { all: true })
+    .filter((it) => !it.pr)
+    .map((it) => (taken.has(it.key) ? { ...it, unassigned: true, taken: true, subs: it.subs.filter(open) } : { ...it, unassigned: true }))
+    .filter((it) => (it.taken ? it.story && it.subs.length > 0 : open(it)))
+    .map((it) => ({ it, n: need(it) }));
 }
 
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
@@ -1756,7 +1773,7 @@ function knownKeys() {
 
 // The shared keys kept by profile id, whose deleted profiles' entries pruneShared() drops (a function,
 // as some are declared further down). Paused agents stay out: a session paused there is still on disk.
-const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, DONE_CLEAN];
+const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, UNASSIGNED_OPEN, DONE_CLEAN];
 
 // After each fresh load (the list's), what shared state keeps of what's gone goes: views of closed
 // spaces, ticks and counts of keys no profile lists, the profile's paused agents on keys it no longer
@@ -1960,6 +1977,8 @@ const HEAD_FOLDED = "kelpie.storyhead.folded";
 const PR_FOLDS = "kelpie.pulls.folded";
 // The sidebar's Done group unfolded by hand (profile id -> true); folded otherwise.
 const DONE_OPEN = "kelpie.done.open";
+// The sidebar's Unassigned section unfolded by hand (profile id -> true); folded otherwise.
+const UNASSIGNED_OPEN = "kelpie.unassigned.open";
 // Move to Done's "Clean up afterwards", as last chosen (profile id -> true); off otherwise.
 const DONE_CLEAN = "kelpie.done.clean";
 export const headFolded = () => Boolean(shared(HEAD_FOLDED));
@@ -2009,7 +2028,7 @@ function clearPoint(profile, key) {
 // when the list doesn't hold that story. Its details unfold, as they're what's shown.
 export function showPassage({ key, quote, note = "" }) {
   const s = storyItems();
-  const it = s && [...s.items, ...s.done].find((x) => x.it.key === key)?.it;
+  const it = s && [...s.items, ...s.done, ...s.unassigned].find((x) => x.it.key === key)?.it;
   if (!it) return false;
   setShared(PASSAGE, { profile: s.st.profile.id, key, quote, note, at: Date.now() });
   if (headFolded()) foldHead(false);
@@ -2723,7 +2742,7 @@ export class Stories extends Source {
     // else (hereKeys()): the board is asked for those by key too.
     const prior = this.cache?.[key]?.data ?? null;
     const keep = { keys: hereKeys(setup.profile, prior), projects: prior ? [...projectsOf(prior)] : [], repos: prior?.repos ?? {} };
-    const { site, columns, sprints, mine, parents, children, links, repos, project, kept, priorities, solo, cut } = await timed("board", loadBoard(boardOf(setup), keep));
+    const { site, columns, sprints, mine, parents, children, links, repos, project, kept, priorities, solo, cut, unassigned } = await timed("board", loadBoard(boardOf(setup), keep));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
@@ -2736,6 +2755,9 @@ export class Stories extends Source {
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       ...(priorities ? { priorities: priorities.map(priorityLevel).filter(Boolean).slice(0, 20) } : {}),
       ...(solo ? { solo: true } : {}), ...(cut ? { cut } : {}),
+      // The work nobody has (the profile's `unassigned`), apart from yours: build(), need(), Next and
+      // the counts never read it, only the list's Unassigned section (unassignedIn()).
+      ...(unassigned ? { unassigned: { parents: unassigned.parents.map((i) => ({ ...issue(i), ...(i.taken ? { taken: true } : {}) })), children: unassigned.children.map(issue), ...(unassigned.error ? { error: unassigned.error } : {}) } } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began, setup.profile?.id));
@@ -3287,7 +3309,8 @@ export class Stories extends Source {
         // (fittedTags()), so they give way before the title and never push the status off the line.
         .child(it.tags?.length ? this.fittedTags(t, it.tags, "story-tags", `head:${it.key}`) : div().flex_1())
         .when(Boolean(subMeter), (el) => el.child(div().flex_none().child(subMeter)))
-        .when(!it.review && !it.pr && !lonePr(it), (el) => el.child(assigned(t, "story-assignee", it.assignee, it.you, it.avatar)))
+        // Not for a story someone else has that's there only over its subtasks nobody has: who has it isn't loaded.
+        .when(!it.review && !it.pr && !lonePr(it) && !it.taken, (el) => el.child(assigned(t, "story-assignee", it.assignee, it.you, it.avatar)))
         .when(Boolean(it.status), (el) => el.child(it.review || it.pr ? div().flex_none().child(lozenge(t, it.status, it.category))
           : this.statusChip(t, st, it.key, it.status, it.category, "story-status-menu", cx))))
       .child(h_flex().flex_none().gap(6).items_center().ml(8).children(actions))
@@ -3349,7 +3372,8 @@ export class Stories extends Source {
       : { label: it.space ? "Start agent" : "Start work", tip: `Start a Claude agent on ${key}${it.space ? "" : ", in a new space for the story"}`, fresh: true };
     // A finished story the list left out (its Done group's) is nothing to start: no filled Start work,
     // though More still starts one afresh, and Resume stays for a session of its own.
-    const over = settled(it) && !live.length && !paused.length;
+    // Nor is the work nobody has (the Unassigned section's): it's taken on the board.
+    const over = (settled(it) || Boolean(it.unassigned)) && !live.length && !paused.length;
     const go = work && !(over && work.fresh) && primaryButton(t, "story-main", work.label, () => startWork(st, it), { tip: `${work.tip} ⌘⇧R` });
     // Its open pull requests, for Merge and Request approval (the same menus as on its row in the
     // list, rowTasks). With more than one ready to merge, the main action is Merge all: the Merge
@@ -4605,10 +4629,11 @@ export class Stories extends Source {
     const spaceKey = keyOf(st.space?.name);
     const inStory = profileOf(st.space)?.id === st.profile.id ? items.find((x) => x.it.key === spaceKey)?.it ?? null : null;
     const reviews = reviewsOf(st.data);
-    const shown = findItem([...items, ...done], loneOf(st.data), previewIn(st.profile)) ?? inStory;
+    const unassigned = showsUnassigned(st.setup) ? unassignedIn(st.data, boardOf(st.setup)?.handover) : [];
+    const shown = findItem([...items, ...done, ...unassigned], loneOf(st.data), previewIn(st.profile)) ?? inStory;
     // What's shown, for carefulButton: a button armed on one story isn't armed on the next.
     this.shownKey = `${st.profile.id}:${shown?.key ?? ""}`;
-    return { st, t, items, reviews, shown, done, all };
+    return { st, t, items, reviews, shown, done, all, unassigned };
   }
 
   // A story previewed that has begun (sessions, pull requests) has its screenshots counted once per
@@ -4915,12 +4940,61 @@ export class StoryList extends Stories {
     ...done.filter(({ it }) => open || it.key === shown?.key).map(({ it }) => this.doneRow(t, it, it.key === shown?.key, st))];
   }
 
+  // A piece of work nobody has, in the Unassigned section: drawn as a story not open, muted, with
+  // "Unassigned" on its key line where a row names who has it; a click previews it (a subtask, `sub`:
+  // its story, where it's among the subtasks). No actions: taking it is done on the board.
+  unassignedRow(t, st, it, on, sub = null) {
+    const x = sub ?? it;
+    const state = storyState(it, need(it));
+    const sign = statusMark(t, state, { where: "row", size: 8, color: t.dim });
+    return decor("rowDecor", t, h_flex().id(`unassigned-${x.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
+      .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .on_click(() => selectStory(st.profile, it))
+      .tooltip(`Nobody has ${x.key} yet. ${sub ? `Show ${it.key}, its story` : "Show its details"}: you take it on the board`)
+      .child(div().flex_none().mt(1).child(sign ?? mark(t, state, 16)))
+      .child(v_flex().flex_1().min_w(0).gap(2)
+        .child(skinFont(div(), "ui").h(ROW_TITLE).line_height(`${ROW_TITLE}px`).min_w(0).truncate().font_medium().text_color(t.muted).child(x.title))
+        .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).opacity(0.6)
+          .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(x.key))
+          .child(div().flex_none().text_color(t.dim).child("Unassigned"))
+          .when(Boolean(x.tags?.length), (el) => el.child(this.fittedTags(t, x.tags, `tags-unassigned-${x.key}`, `unassigned:${x.key}`))))),
+      { selected: on, state, story: it, now: new Date() });
+  }
+
+  // The Unassigned section, with the profile's `unassigned` on (config.js showsUnassigned()): the
+  // sprint's work nobody has, under everything else and folded unless unfolded by hand (per profile),
+  // so it doesn't crowd what's yours. The stories nobody has, then each story someone else has as a
+  // heading over its subtasks nobody has (a story of yours keeps its own in its details). Its count
+  // is how many rows it holds; it's in neither the list's counts nor Next. Folded, the one shown keeps
+  // its rows.
+  unassignedGroup(t, st, list, shown) {
+    if (!showsUnassigned(st.setup)) return [];
+    const error = st.data.unassigned?.error ?? null;
+    const count = list.reduce((n, { it }) => n + (it.taken ? it.subs.length : 1), 0);
+    if (!count && !error) return [];
+    const all = shared(UNASSIGNED_OPEN) ?? {};
+    const open = Boolean(all[st.profile.id]);
+    const flip = () => { const next = { ...all }; if (open) delete next[st.profile.id]; else next[st.profile.id] = true; setShared(UNASSIGNED_OPEN, next); };
+    const where = st.data.sprints?.[0]?.kanban ? "on the board" : "in the sprint";
+    const head = (it) => h_flex().id(`unassigned-story-${it.key}`).flex_none().px(8).pt(10).pb(2).gap(8).items_center().rounded(6).text_size(SMALL).cursor_pointer()
+      .text_color(it.key === shown?.key ? t.foreground : t.dim).hover((x) => x.text_color(t.foreground))
+      .tooltip(`Someone else has ${it.key}: show it`).on_click(() => selectStory(st.profile, it))
+      .child(skinFont(div().flex_none(), "key").child(it.key))
+      .child(div().flex_1().min_w(0).truncate().child(it.title));
+    const rows = ({ it }) => (it.taken ? [head(it), ...it.subs.map((x) => this.unassignedRow(t, st, it, false, x))] : [this.unassignedRow(t, st, it, it.key === shown?.key)]);
+    return [div().id("stories-unassigned").flex_none().cursor_pointer().on_click(flip)
+      .tooltip(`${open ? "Fold" : "Show"} the stories and subtasks ${where} that nobody has`)
+      .child(groupHeader(t, "Unassigned", count, icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim))),
+    ...(open && error ? [empty(t, `Unassigned work didn't load: ${error}`)] : []),
+    ...list.filter(({ it }) => open || it.key === shown?.key).flatMap(rows)];
+  }
+
   render(cx) {
     // When this copy was first drawn, whatever it showed (picksArrived()): an "All clear" Next
     // whose run brings picks still opens on them.
     this.queueBorn ??= Date.now();
     const drawing = Date.now();
-    const { st, t, early, items, reviews, shown, done, all } = this.prepare(cx);
+    const { st, t, early, items, reviews, shown, done, all, unassigned } = this.prepare(cx);
     if (early) return early;
     this.drawMs = Date.now() - drawing; // putting the list together, for the freshness line's tooltip
     orderAgents(st.profile, items);
@@ -5111,7 +5185,9 @@ export class StoryList extends Stories {
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))
           .children(others.map((s) => plain(`space-${s.id}`, s.active && !shown, t.dim, s.name, `${s.tabs.length} tab${s.tabs.length === 1 ? "" : "s"} · no story`,
             () => { setPreview(st.profile, null); run("space.select", { id: s.id }); }, true))))
-        .children(this.doneGroup(t, st, done, shown)));
+        .children(this.doneGroup(t, st, done, shown))
+        // Last, under everything else: the sprint's work nobody has, when the profile shows it.
+        .children(this.unassignedGroup(t, st, unassigned, shown)));
   }
 }
 
@@ -5240,10 +5316,10 @@ export function syncTracking(baseline = false) {
 export function storyNow() {
   const s = storyItems();
   if (!s) return null;
-  const { st: { profile }, items, done, lone } = s;
+  const { st: { profile }, items, done, unassigned, lone } = s;
   const preview = previewIn(profile);
   const spaceKey = profileOf(s.st.space)?.id === profile.id ? keyOf(s.st.space?.name) : null;
-  const it = findItem([...items, ...done], lone, preview) ?? findItem(items, [], spaceKey);
+  const it = findItem([...items, ...done, ...unassigned], lone, preview) ?? findItem(items, [], spaceKey);
   if (!it) return null;
   const counts = (shared(COUNTS) ?? {})[it.key];
   return {
@@ -5262,7 +5338,8 @@ export function storyNow() {
 // The shown profile's stories in the list's order (each with its need, `n`), and the reviews waiting
 // for you, from what the list loaded; null where the profile shows no stories. For the keys and the
 // story picker. `done`: the finished stories the list leaves out (its Done group), which can be shown
-// but need nothing.
+// but need nothing; `unassigned`: the work nobody has (its Unassigned section, when the profile shows
+// it), the same.
 // Asked several times in one render (the tab bar, the layout's sync, the keys), it's worked out once
 // per render (host.js memo()).
 export const storyItems = () => memo("storyItems", readStoryItems);
@@ -5270,8 +5347,9 @@ function readStoryItems() {
   const ctx = READER.context();
   const data = sharedData(ctx)?.data;
   if (!ctx.profile || !hasBoard(ctx.setup) || !data) return null;
-  const { items, done } = storyLists(data, ctx.profile, boardOf(ctx.setup)?.handover);
-  return { st: { ...ctx, data }, items, done, reviews: reviewsOf(data), lone: loneOf(data) };
+  const handover = boardOf(ctx.setup)?.handover;
+  const { items, done } = storyLists(data, ctx.profile, handover);
+  return { st: { ...ctx, data }, items, done, unassigned: showsUnassigned(ctx.setup) ? unassignedIn(data, handover) : [], reviews: reviewsOf(data), lone: loneOf(data) };
 }
 
 // The story key a space is named by, when it's a story's space (its profile has Jira).

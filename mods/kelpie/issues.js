@@ -43,8 +43,10 @@ export const CLOSE = `mutation KelpieClose(${closeSlots.map((n) => `$i${n}: ID =
 
 const firstLine = (r, fallback) => (r.stderr || r.stdout || "").trim().split("\n")[0].replace(/^gh: /, "") || fallback;
 
-// The issue the list loaded under a key, or null.
-export const loadedIssue = (data, key) => [...(data?.parents ?? []), ...(data?.children ?? [])].find((i) => i.key === key) ?? null;
+// The issue the list loaded under a key, or null: the person's, else the work nobody has (the
+// Unassigned section's, board.js unassignedOf()).
+export const loadedIssue = (data, key) => [...(data?.parents ?? []), ...(data?.children ?? []), ...(data?.unassigned?.parents ?? []), ...(data?.unassigned?.children ?? [])]
+  .find((i) => i.key === key) ?? null;
 
 // Which issue a key is: { owner, repo, number, url, item }, from the issue the list loaded (its page
 // and Project item), else from the repo its prefix names (data.repos) and the key's number, with no

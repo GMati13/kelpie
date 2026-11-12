@@ -29,6 +29,8 @@
 //   columns   the team's states in Linear's board order, { name, statuses: [state id], category }
 //   issues    { key, url (the issue's page), fields: as a Project's }
 //   linear    { team: id, key }
+// Either board, with the profile's `unassigned` set: `unassigned` { parents, children, error? }, the
+// work nobody has (unassignedOf()), apart from the person's.
 
 import { activeSprints, boardScope, jira } from "./sprint.js";
 import { adfBlocks, adfText } from "./adf.js";
@@ -114,6 +116,44 @@ async function keptJira(cfg, keep, have, account = "") {
   return { parents: parents.map((i) => ({ key: i.key, fields: i.fields })), children, mine: [...parents, ...children].filter((i) => own.has(i.key)) };
 }
 
+// The work nobody has, for the list's Unassigned section (the profile's `unassigned`, config.js
+// showsUnassigned()), kept apart from the person's so the list's groups, counts and Next don't change:
+// { parents, children }. `got`: the board's unassigned issues in its order, each { key, fields } (a
+// Project's with its url and item), a subtask's `fields.parent` its story ({ key, fields? }, a
+// Project's with its url). The stories nobody has come as they are; a subtask nobody has whose story
+// someone else has brings that story as a heading over it (`taken`), made from what the subtask says
+// of it. What `have` holds (the person's stories and subtasks) is left out, and a subtask of one of
+// their stories too: it's in that story's own details already. Exported for the tests.
+export function unassignedOf(got, have) {
+  const parents = [], children = [], seen = new Set();
+  const stories = new Set(got.filter((i) => !i.fields?.issuetype?.subtask).map((i) => i.key));
+  for (const i of got) {
+    if (!KEY.test(i.key ?? "") || have.has(i.key) || seen.has(i.key)) continue;
+    if (!i.fields?.issuetype?.subtask) { seen.add(i.key); parents.push(i); continue; }
+    const up = i.fields?.parent;
+    if (!up?.key || !KEY.test(up.key) || have.has(up.key)) continue;
+    if (!stories.has(up.key) && !seen.has(up.key)) {
+      seen.add(up.key);
+      parents.push({ ...up, key: up.key, taken: true, fields: { ...(up.fields ?? {}), parent: null } });
+    }
+    seen.add(i.key);
+    children.push(i);
+  }
+  return { parents, children };
+}
+
+// Jira's: the board's scope (its active sprints, or a Kanban board's open work) with no assignee. Its
+// failing doesn't fail the load: the section says so and the rest shows.
+async function unassignedJira(cfg, scope, have) {
+  if (!scope) return { parents: [], children: [] };
+  try {
+    const got = await search(cfg, `${scope} AND assignee is EMPTY ORDER BY Rank`);
+    return unassignedOf(got.map((i) => ({ key: i.key, fields: i.fields })), have);
+  } catch (e) {
+    return { parents: [], children: [], error: String(e?.message ?? e) };
+  }
+}
+
 // The site's priority levels, highest first, as Jira orders them: [{ id, name }]. Jira's search gives
 // each issue its priority's id and name, never its place, so the order comes from here. Jira Cloud
 // answers this as a list; its paged form (`values`) is read too.
@@ -174,7 +214,9 @@ export async function loadBoard(board, keep = {}) {
     mine: more.mine.filter((i) => !have.has(i.key) && (stories.has(i.key) || stories.has(i.fields?.parent?.key))),
   };
   // Worked alone, a story's subtasks found beside it are the person's too, whoever has them.
-  return { site: active.site, columns, sprints, mine: [...mine, ...(solo ? children : []), ...kept.mine], ...(solo ? { solo: true } : {}), parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key), ...(priorities ? { priorities } : {}) };
+  const out = { site: active.site, columns, sprints, mine: [...mine, ...(solo ? children : []), ...kept.mine], ...(solo ? { solo: true } : {}), parents: [...parents.values(), ...kept.parents], children: [...children, ...kept.children], kept: kept.parents.map((i) => i.key), ...(priorities ? { priorities } : {}) };
+  if (cfg.unassigned === true && cfg.solo !== true) out.unassigned = await unassignedJira(cfg, scope, new Set([...out.parents, ...out.children].map((i) => i.key)));
+  return out;
 }
 
 // The board's own address (a link to it is one an agent may offer, stories.js askLink()), from what
@@ -185,7 +227,7 @@ export const boardSite = (board, data) => data?.site ?? board?.cfg?.site ?? "";
 // the page the load gave it, else made from its key's repo (data.repos) when that's known.
 export function ticketUrl(board, data, key) {
   if (board?.kind === "project") {
-    const loaded = [...(data?.parents ?? []), ...(data?.children ?? [])].find((i) => i.key === key)?.url;
+    const loaded = loadedIssue(data, key)?.url;
     if (loaded) return loaded;
     const m = /^([A-Z][A-Z0-9]+)-(\d+)$/.exec(key ?? "");
     const repo = m && data?.repos?.[m[1]];

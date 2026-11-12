@@ -8,7 +8,8 @@
     "board": 7,
     "owner": "kelpie--demo",
     "me": "you",
-    "meName": "Alex Morgan"
+    "meName": "Alex Morgan",
+    "unassigned": true
   },
   "board": {
     "name": "Acme Trips",
@@ -446,6 +447,54 @@
       "parent": "ACME-116",
       "status": "Done",
       "mine": true
+    },
+    {
+      "key": "ACME-202",
+      "summary": "Show the day's stops on a map",
+      "labels": [
+        "mobile"
+      ],
+      "type": "Story",
+      "status": "To Do",
+      "description": "The day view lists its stops one under another. Add a map above the list with a pin per stop, numbered in the day's order, so travellers see at a glance how far apart they are."
+    },
+    {
+      "key": "ACME-203",
+      "summary": "Map tiles for offline trips",
+      "parent": "ACME-202",
+      "status": "To Do"
+    },
+    {
+      "key": "ACME-204",
+      "assignee": "Lena Vogel",
+      "summary": "An accessible date picker",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "The booking form's date picker can't be used without a mouse and says nothing to a screen reader. Make it work with the keyboard alone and label every day."
+    },
+    {
+      "key": "ACME-205",
+      "summary": "Keyboard navigation in the date picker",
+      "labels": [
+        "accessibility"
+      ],
+      "parent": "ACME-204",
+      "status": "To Do",
+      "description": "Arrow keys move a day, Page Up and Page Down a month, Home and End the week's first and last day, Enter picks."
+    },
+    {
+      "key": "ACME-206",
+      "assignee": "Lena Vogel",
+      "summary": "Screen reader labels for each day",
+      "parent": "ACME-204",
+      "status": "In Progress"
+    },
+    {
+      "key": "ACME-207",
+      "summary": "The trip total rounds each booking twice",
+      "type": "Bug",
+      "status": "To Do",
+      "description": "A trip's total rounds every booking to the cent and then rounds the sum again, so it can be a cent off what the bookings add up to."
     }
   ],
   "pulls": [

@@ -179,6 +179,14 @@ div #work-setup-fit [bg=#00000080]
               "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go."
           h_flex [bg=accent]
             div [bg=accent_foreground]
+        h_flex #setup-unassigned {click}
+          v_flex
+            div
+              "Show unassigned work"
+            div [fg=dim]
+              "Off: the list shows only what's assigned to you."
+          h_flex [bg=border]
+            div [bg=muted]
         v_flex
           h_flex [border=border]
             div

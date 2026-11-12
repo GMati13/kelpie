@@ -115,7 +115,7 @@ TOOLS = [
             "claude) given as an object is merged into the saved one; a key or section set to null is removed. "
             "A profile has one board, jira or project (a GitHub Project), not both: set the other to null. "
             "Values are strings, except jira.board and project.number (numbers, filled in from the address) and "
-            "notify.pulls and either board's solo, moveToDone, byPriority and showPriority (true/false). An id that doesn't "
+            "notify.pulls and either board's solo, moveToDone, byPriority, showPriority and unassigned (true/false). An id that doesn't "
             "exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token "
             "or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick "
             "the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the "
@@ -585,7 +585,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.6.0"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.6.1"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":
