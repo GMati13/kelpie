@@ -187,6 +187,27 @@
       }
     },
     {
+      "name": "get_story",
+      "title": "Read a story as Kelpie has it",
+      "description": "Where you run in Kelpie (the person's profile, and the story your tab belongs to, or the Desk) and what Kelpie holds about a story: its status on the board, each subtask's status and assignee, its pull requests with their checks and review, its agents and what each is doing, what it needs from the person, the profile's status line for it, and how old that is. Use it first when the person asks about \"the story\", its status or what's left, without naming one: `key` left out means your own story (else the one Kelpie shows). With `key`, that story (a subtask's key gives its story). For what Kelpie doesn't hold, use your own access. Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "A story's or subtask's key, like ABC-123; left out, your own story."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "suggest_next",
       "title": "Hand Kelpie suggestions for Next",
       "description": "The Kelpie tool for suggestions: hands your picks of what the person could do next to Kelpie, which shows them in Next as suggested by Claude, replacing earlier ones. Use it only when asked to fill or refresh Kelpie's suggestions (What next? asks this way): a person asking you what to work on wants your answer in the chat, and calling it would replace the picks they have. All picks in one call, best first, 8 at most. Each is one of: `key`, a ticket key (a subtask's goes to its story; one pick per story); `url`, a GitHub pull request link; `idea`, a short brief for an agent, with `where` (no ticket: something to make better, 3 at most, after the rest). Each has `action`, what Next shows (a verb first, under 60 characters), and `why`, one short line on why now. Kelpie checks each and says what it kept and what it dropped, and why. It changes only what Kelpie suggests: nothing on the board, on GitHub or in any file.",

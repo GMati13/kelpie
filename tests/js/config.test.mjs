@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import {
-  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, shellArgv, spacesOf,
+  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
 import { existsSync } from "node:fs";
@@ -139,18 +139,19 @@ describe("prompt templates", () => {
 
 describe("the argv agents start with", () => {
   test("claudeArgv: Default is plain claude; Claude's own folder unsets CLAUDE_CONFIG_DIR; another sets it", () => {
-    assert.deepEqual(claudeArgv(null), ["claude"]);
-    assert.deepEqual(claudeArgv({ claude: { config: "" } }, "-p", "x"), ["claude", "-p", "x"]);
-    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude/" } }), ["env", "-u", "CLAUDE_CONFIG_DIR", "claude"]);
-    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude-work" } }, "--resume"), ["env", "CLAUDE_CONFIG_DIR=/home/u/.claude-work", "claude", "--resume"]);
+    // KELPIE_GH_ACCOUNT= every time no GitHub account is set: one inherited from where Herdr started goes.
+    assert.deepEqual(claudeArgv(null), ["env", "KELPIE_GH_ACCOUNT=", "claude"]);
+    assert.deepEqual(claudeArgv({ claude: { config: "" } }, "-p", "x"), ["env", "KELPIE_GH_ACCOUNT=", "claude", "-p", "x"]);
+    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude/" } }), ["env", "-u", "CLAUDE_CONFIG_DIR", "KELPIE_GH_ACCOUNT=", "claude"]);
+    assert.deepEqual(claudeArgv({ claude: { config: "/home/u/.claude-work" } }, "--resume"), ["env", "CLAUDE_CONFIG_DIR=/home/u/.claude-work", "KELPIE_GH_ACCOUNT=", "claude", "--resume"]);
   });
   test("claudeArgv: a demo profile starts the demo's stand-in agent", () => {
     assert.deepEqual(claudeArgv({ demo: true, claude: { config: "/x/.claude-work" } }, "-p"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
   });
   test("shellArgv: the login shell with the profile's account chosen", () => {
-    assert.deepEqual(shellArgv(null), ["/bin/sh", "-c", 'exec env "$@" CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l', "sh", "-u", "CLAUDE_CONFIG_DIR"]);
+    assert.deepEqual(shellArgv(null), ["/bin/sh", "-c", 'exec env "$@" CLAUDE_ACCOUNT_CHOSEN=1 "${SHELL:-/bin/sh}" -l', "sh", "-u", "CLAUDE_CONFIG_DIR", "KELPIE_GH_ACCOUNT="]);
     assert.deepEqual(shellArgv({ claude: { config: "/h/.claude" } }), shellArgv(null));
-    assert.deepEqual(shellArgv({ claude: { config: "/h/.claude-x" } }).slice(3), ["sh", "CLAUDE_CONFIG_DIR=/h/.claude-x"]);
+    assert.deepEqual(shellArgv({ claude: { config: "/h/.claude-x" } }).slice(3), ["sh", "CLAUDE_CONFIG_DIR=/h/.claude-x", "KELPIE_GH_ACCOUNT="]);
   });
   test("shellArgv: the Claude config folder is an argument, never script, whatever it holds", () => {
     const dir = `/h/it's "odd" $(touch pwned) \`touch pwned\`; touch pwned\n/.claude-x`;
@@ -166,25 +167,55 @@ describe("the argv agents start with", () => {
     assert.equal(sh(own[0], own.slice(1), { env: { SHELL: `${fakes.bin}/show-env`, CLAUDE_CONFIG_DIR: "/elsewhere" } }).stdout, "|1|-l");
   });
   test("resumeArgv: on the session's own account; demo- sessions start the stand-in", () => {
-    assert.deepEqual(resumeArgv("abc", null), ["claude", "--resume", "abc"]);
-    assert.deepEqual(resumeArgv("abc", "/h/.claude-work"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", null), ["env", "KELPIE_GH_ACCOUNT=", "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", "/h/.claude-work"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=", "claude", "--resume", "abc"]);
     assert.deepEqual(resumeArgv("demo-s2", "/h/.claude-work"), ["sh", `${mock.state.appHome}/mods/kelpie/demo/agent.sh`, "idle", ""]);
   });
-  test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only", () => {
+  test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only, with Kelpie's gh's folder", () => {
     const gh = { github: { owner: "acme", account: "work-me" } };
-    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude"]);
-    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", "claude", "-p"]);
-    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude", "--resume", "abc"]);
-    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", "claude", "--resume", "abc"]);
+    const BIN = `KELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin`;
+    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude"]);
+    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "-p"]);
+    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
     // A name that isn't a GitHub login is left out, never passed on.
-    for (const bad of ["-u", "a b", "x;y"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["claude"], bad);
+    for (const bad of ["-u", "a b", "x;y", "bob\nx", "bob\n"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["env", "KELPIE_GH_ACCOUNT=", "claude"], bad);
+  });
+  test("Kelpie's gh's folder goes into PATH, so it's passed on only when absolute with no colon or line break", () => {
+    const home = mock.state.appHome;
+    try {
+      for (const bad of ["rel/home", "/a:b", "/a\nb"]) {
+        mock.state.appHome = bad;
+        assert.deepEqual(claudeArgv({ github: { account: "work-me" } }), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude"], bad);
+      }
+    } finally { mock.state.appHome = home; }
   });
   test("shellArgv: the GitHub account reaches the login shell's environment as an argument, never as script", () => {
     const argv = shellArgv({ github: { owner: "acme", account: "work-me" } });
     assert.ok(!argv[2].includes("work-me"));
-    const fakes = fakeBin().add("show-env", 'env | grep -E "^(KELPIE_GH_ACCOUNT|CLAUDE_ACCOUNT_CHOSEN)=" | sort');
+    const fakes = fakeBin().add("show-env", 'env | grep -E "^(KELPIE_GH_ACCOUNT|KELPIE_GH_BIN|CLAUDE_ACCOUNT_CHOSEN)=" | sort');
     const r = sh(argv[0], argv.slice(1), { env: { SHELL: `${fakes.bin}/show-env` } });
-    assert.equal(r.stdout, "CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\n");
+    assert.equal(r.stdout, `CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=work-me\nKELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin\n`);
     assert.deepEqual(shellArgv({ github: { owner: "acme" } }), shellArgv(null));
+    // No account: one inherited from where Herdr was started is cleared, so gh acts as its active one.
+    const none = shellArgv(null);
+    assert.equal(sh(none[0], none.slice(1), { env: { SHELL: `${fakes.bin}/show-env`, KELPIE_GH_ACCOUNT: "someone" } }).stdout, "CLAUDE_ACCOUNT_CHOSEN=1\nKELPIE_GH_ACCOUNT=\n");
+  });
+});
+
+// A profile command gets `{key}` as it is, read by the person's shell: a key that isn't a ticket key
+// (one a board's answer could hold) is refused before anything runs (security.md).
+describe("runCommand: only ticket keys", () => {
+  const P = { id: "w", name: "Work", folder: "/code/work" };
+  test("a key that isn't one runs nothing", async () => {
+    const lines = [];
+    mock.on.exec = (cmd, args) => { lines.push(String(args[3])); return { code: 0, stdout: "", stderr: "" }; };
+    for (const key of ["ACME-1; touch owned", "ACME-1 $(id)", "acme-1", "ACME-", "", null, "pull:web#3", "ACME-1\n"]) {
+      await assert.rejects(runCommand(P, "check {key}", key, 5), /isn't a ticket key/, String(key));
+    }
+    assert.deepEqual(lines, [], "nothing ran");
+    const r = await runCommand(P, "check {key}", "ACME_X-12", 5);
+    assert.equal(r.code, 0);
+    assert.deepEqual(lines, ["check ACME_X-12"], "a ticket key goes in");
   });
 });

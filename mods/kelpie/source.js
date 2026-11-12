@@ -3,9 +3,10 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run, setShared, shared, spaces } from "herdr";
-import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, primaryButton } from "./ui.js";
+import { run, setShared, shared, spaces } from "./host.js";
+import { SMALL, TEXT, ago, chrome, empty as emptyText, icon, placed, primaryButton } from "./ui.js";
 import { claudeArgv, newTab, openProfile, openSetup, setupOf, shownSpace } from "./config.js";
+import { asked, began, ended, skipped, waits } from "./debug.js";
 
 export const REFRESH = "kelpie.refresh";
 const STUCK = 2 * 60 * 1000;
@@ -25,8 +26,20 @@ export class Source {
 
   init(cx) {
     this.seen = shared(REFRESH);
-    this.load(cx);
-    cx.timer.every(this.every, (cx) => this.load(cx));
+    if (this.wanted()) this.load(cx, { why: "start" }); else this.skipped = true;
+    cx.timer.every(this.every, (cx) => { if (this.wanted()) this.load(cx, { why: "timer" }); else this.skipped = true; });
+  }
+
+  // Whether its loads are worth making now. A source its view doesn't draw (the sidebar's sessions
+  // while the profile shown has a board, whose list loads its own) skips the timer's: each would run
+  // its script and redraw the view for nothing. Drawn again, it loads at once (state()).
+  wanted() {
+    return true;
+  }
+
+  // Its name in the load record (debug.js): the source and whose data it is.
+  job(ctx) {
+    return `${this.id}:${ctx.profile?.id ?? ctx.space?.id ?? "none"}`;
   }
 
   // The shown space, its setup, and a key that changes when either (or a source's own option) does.
@@ -48,20 +61,26 @@ export class Source {
   // turn ending). A load already running began before that change, so its answer may not have it:
   // the request isn't dropped but waits, and the next draw once that load ends loads again. A timer's
   // or a stale copy's request isn't kept, as the load running answers it.
-  load(cx, { again = false } = {}) {
+  //   `why`: what asked for it, for the load record (debug.js).
+  load(cx, { again = false, why = again ? "asked again" : "asked" } = {}) {
     const ctx = this.context();
     if (!this.ready(ctx)) return;
+    const job = this.job(ctx);
+    asked(job, why);
     // A load still marked busy after STUCK was dropped (a reload or restart mid-load ends its task
     // without its finally): it no longer blocks the next one, or "Updating…" would stay for good.
     if (this.busy.has(ctx.key) && Date.now() - (this.started[ctx.key] ?? 0) < STUCK) {
-      if (again) this.again.add(ctx.key);
+      if (again) { this.again.add(ctx.key); waits(job, why, cx); }
+      else skipped(job, `${why}: the load running answers it`, cx);
       return;
     }
     this.again.delete(ctx.key);
     this.busy.add(ctx.key);
     this.started[ctx.key] = Date.now();
+    began(job, why, cx);
     cx.spawn(async (cx) => {
       const before = this.cache[ctx.key];
+      let error = null;
       try {
         const data = await this.fetch(ctx);
         this.cache[ctx.key] = { data, error: null, at: Date.now() };
@@ -70,10 +89,12 @@ export class Source {
         if (typeof n === "number" && shared(name) !== n) setShared(name, n);
         this.loaded?.(ctx); // a source shown by several copies wakes the others
       } catch (e) {
-        this.cache[ctx.key] = { data: before?.data ?? null, error: String(e?.message ?? e), at: Date.now() };
+        error = String(e?.message ?? e);
+        this.cache[ctx.key] = { data: before?.data ?? null, error, at: Date.now() };
         this.loaded?.(ctx); // the others show the error too
       } finally {
         this.busy.delete(ctx.key);
+        ended(job, error, cx);
         cx.notify();
       }
     });
@@ -84,8 +105,12 @@ export class Source {
   state(cx) {
     const ctx = this.context();
     const r = shared(REFRESH);
-    if (r !== this.seen) { this.seen = r; this.load(cx, { again: true }); }
-    else if (!this.cache[ctx.key] || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) this.load(cx);
+    if (r !== this.seen) { this.seen = r; this.skipped = false; this.load(cx, { again: true, why: "refresh" }); }
+    else if (!this.cache[ctx.key] || this.skipped || (this.again.has(ctx.key) && !this.busy.has(ctx.key))) {
+      const why = !this.cache[ctx.key] ? "nothing loaded yet" : this.skipped ? "drawn again: the timer's loads were skipped" : "asked again while one ran";
+      this.skipped = false;
+      this.load(cx, { why });
+    }
     return { ...ctx, ...(this.cache[ctx.key] ?? { data: null, error: null, at: 0 }), loading: this.busy.has(ctx.key) };
   }
 }
@@ -125,19 +150,23 @@ export function needsSetup(t, st, what, glyph, line, focus = what.toLowerCase())
 }
 
 // Starts (or, if a tab with this name is open, shows) a Claude agent in the space, in its folder.
-// With no space shown (or the one shown then closed since), it gets a new space of its own.
-export function startAgent(st, { name, task, folder, argv }) {
+// With no space shown (or the one shown then closed since), it gets a new space of its own. Its
+// terminal is told the profile, and no story (placed(), ui.js): these spaces are a profile's own
+// ("Working on"), as a story's agents start through stories.js.
+export function startAgent(st, { name, task, folder, argv: given }) {
   const tab = name && spaces().flatMap((s) => s.tabs).find((c) => c.name === name);
   if (tab) return run("tab.select", { id: tab.id });
   const where = folder ?? st.setup.folder;
+  const profile = st.setup?.profile ?? st.profile;
+  const argv = placed(given ?? claudeArgv(profile), profile);
   if (!st.space || !spaces().some((s) => s.id === st.space.id)) {
-    return run("space.new", { ...(where ? { folder: where } : {}), ...(name ? { tab: name } : {}), argv: argv ?? claudeArgv(st.setup?.profile ?? st.profile), ...(task ? { task } : {}) });
+    return run("space.new", { ...(where ? { folder: where } : {}), ...(name ? { tab: name } : {}), argv, ...(task ? { task } : {}) });
   }
   return newTab({
     space: st.space.id,
     ...(where ? { folder: where } : {}),
     ...(name ? { name } : {}),
-    argv: argv ?? claudeArgv(st.setup?.profile ?? st.profile),
+    argv,
     ...(task ? { task } : {}),
   });
 }
