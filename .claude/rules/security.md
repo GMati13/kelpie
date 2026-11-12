@@ -40,6 +40,4 @@ Kelpie runs commands, holds a Jira sign-in and starts Claude agents on a person'
 
 Where the code doesn't meet these rules yet (fix them with tests, then remove the line):
 
-- Ticket keys from a Jira board's main load aren't checked against the key pattern (kept stories' are, in board.js, and a GitHub Project's are made and checked in project.js). `runCommand()` (config.js) then puts `{key}` into a profile command unquoted.
 - Add to chat (`pasteToChat()`, `mods/kelpie-artifacts/main.js`) pastes a file path into an agent's terminal with `terminal.paste`, without `sendToClaude()`'s check that the terminal really runs Claude. It presses no Enter, so nothing runs by itself.
-- `~/.cache/kelpie/sessions.json` (sessions.py) and the Web panel's folders (`~/.local/share/kelpie/web/<profile>/`, main.js) are created with the default permissions, not private.
