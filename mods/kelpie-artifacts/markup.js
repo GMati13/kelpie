@@ -83,13 +83,15 @@ magick "$src" "$@" "$out" && printf '%s' "$out"`;
 
 // Flattens the marks for attaching, away from the session's images so nothing shows in the gallery
 // or piles up: Claude reads the file when it's attached, and anything over a day old is removed.
-// Run as: sh -c FLATTEN_SCRIPT sh <source> <draw args...>
+// Each copy goes in a private folder of its own (`mktemp -d`, only you can enter it), never a fixed
+// one another user could make first; the clean-up takes only folders of that shape that are yours,
+// and no links. Run as: sh -c FLATTEN_SCRIPT sh <source> <draw args...>
 export const FLATTEN_SCRIPT = `
 PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 src="$1"; shift
-dir="\${TMPDIR:-/tmp}/herdr-markup"
-mkdir -p "$dir" && find "$dir" -type f -mmin +1440 -delete
-out="$(mktemp "$dir/edit.XXXXXX")" || exit 1
-rm -f "$out"
-out="$out.png"
-magick "$src" "$@" "$out" && printf '%s' "$out"`;
+tmp="\${TMPDIR:-/tmp}"; tmp="\${tmp%/}"
+find "$tmp/" -mindepth 1 -maxdepth 1 -type d -name 'herdr-markup.??????' -user "$(id -u)" -mmin +1440 -exec rm -rf {} + 2>/dev/null
+dir="$(mktemp -d "$tmp/herdr-markup.XXXXXX")" || exit 1
+out="$dir/edit.png"
+magick "$src" "$@" "$out" && printf '%s' "$out" && exit 0
+rm -rf "$dir"; exit 1`;
