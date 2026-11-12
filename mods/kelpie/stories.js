@@ -448,7 +448,14 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
     // reassigned, to the people its subtasks are assigned to, else the story's assignee.
     const names = (list) => [...new Set(list.map((c) => c.fields?.assignee?.displayName).filter(Boolean))];
     const gone = kept.has(key) && !mine.has(key) && !own.length;
+    // When its part was handed over (#141): the latest move of your subtasks past the handover column
+    // (or done), else the story's own, as `sunk` goes by them; and when it was done, the latest move of
+    // the story or any subtask. Null when the board doesn't say.
+    const latest = (list) => list.map((x) => movedOf(x.fields)).filter(Boolean).reduce((a, b) => (!a || b.at > a.at ? b : a), null);
+    const passed = (c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id);
+    const handed = own.length ? latest(own.filter(passed)) : passed(raw) ? latest([raw]) : null;
     return {
+      handed, doneAt: f?.status?.statusCategory?.key === "done" ? latest([raw, ...children]) : null,
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key,
       closed: typeof raw.closed === "boolean" ? raw.closed : null, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: mine.has(key),
       priority: rankOf(f?.priority),
@@ -511,10 +518,20 @@ function reassignedWords(it) {
 // last 14 days'), as that's all the load holds.
 // One build gives both (#37: the list and its Done group each built every story again, every render):
 // `items` the list's, in its order, `done` the Done group's, `all` every story (the leftovers check's).
+// The Done group's order (#141): the most recently done first, those with no time after, as they were.
+export const byDone = (list) => // exported for the tests
+  list.map((it, i) => ({ it, i })).sort((a, b) => (b.it.doneAt?.at ?? -Infinity) - (a.it.doneAt?.at ?? -Infinity) || a.i - b.i).map((x) => x.it);
+// When a story's part was handed over, or it was done, in words for its row's tooltip (#141): "Handed
+// over 2h ago"; a time the board only guesses at (a Jira ticket's last change) says "about".
+function whenWords(what, m, now = Date.now()) {
+  if (!m) return null;
+  const a = ago(m.at, now);
+  return `${what} ${m.exact ? "" : "about "}${a === "now" ? "just now" : `${a} ago`}`;
+}
 function storyLists(data, profile, handover, byAgent = agentsByKey(profile)) {
   const left = leftStories(profile);
   const all = build(data, byAgent, pausedIn(profile), storySpaces(profile), handover, { left, all: true });
-  return { all, items: ordered(all.filter((it) => !settled(it, left)), priorityOf(profile).order), done: all.filter((it) => settled(it, left)).map((it) => ({ it, n: need(it) })) };
+  return { all, items: ordered(all.filter((it) => !settled(it, left)), priorityOf(profile).order), done: byDone(all.filter((it) => settled(it, left))).map((it) => ({ it, n: need(it) })) };
 }
 
 // Where the board's current work is, for a sentence: "in Sprint 24", or on a board without sprints
@@ -1099,7 +1116,11 @@ function ordered(items, byPriority = false) {
   const level = (x) => (byPriority && (group(x) === 0 || toDo(x)) ? x.it.priority?.rank ?? Infinity : 0);
   // What needs you, ordering on: by urgency (need()'s rank) first, then priority among equals.
   const urgency = (x) => (byPriority && group(x) === 0 ? x.n[0] : 0);
-  return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || urgency(a) - urgency(b) || (level(a) === level(b) ? 0 : level(a) < level(b) ? -1 : 1) || a.i - b.i);
+  // The sunk ones (Built / Waiting on others), always: the most recently handed over first, as what
+  // was just finished is what's checked next; those the board gives no time for after, in its order.
+  const handed = (x) => (group(x) === 2 ? -(x.it.handed?.at ?? -Infinity) : 0);
+  return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || urgency(a) - urgency(b) || (level(a) === level(b) ? 0 : level(a) < level(b) ? -1 : 1)
+    || (handed(a) === handed(b) ? 0 : handed(a) < handed(b) ? -1 : 1) || a.i - b.i);
 }
 
 const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "blocked"], ERROR: ["Checks failing", "blocked"], PENDING: ["Checks running", "working"], EXPECTED: ["Checks running", "working"] };
@@ -1221,12 +1242,24 @@ const priorityLevel = (p) => {
   const name = tagName(p?.name);
   return name ? { id: String(p?.id ?? name).slice(0, 40), name } : null;
 };
+// When a ticket last moved (#141), as kept: { at: ms, exact }. A Project's load says it (its Status
+// value's time); a Jira ticket's is its status category's change when it's done (exact), else when it
+// last changed at all (a column move within a category, In progress to In review, changes no category,
+// so that time is a guess). Strangers' text: only a date that parses, and not in the future, is kept.
+export function movedOf(f, now = Date.now()) { // exported for the tests
+  const pick = f?.moved && typeof f.moved === "object" ? f.moved
+    : f?.status?.statusCategory?.key === "done" && f?.statuscategorychangedate ? { at: f.statuscategorychangedate, exact: true }
+      : f?.updated ? { at: f.updated, exact: false } : null;
+  const at = typeof pick?.at === "number" ? pick.at : Date.parse(String(pick?.at ?? ""));
+  return Number.isFinite(at) && at > 0 && at <= now + 5 * 60e3 ? { at, exact: pick.exact === true } : null;
+}
 // Only what the views use, so the shared copy stays small.
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}),
   ...(typeof i.id === "string" ? { id: i.id } : {}), ...(typeof i.closed === "boolean" ? { closed: i.closed } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...((p) => (p ? { priority: p } : {}))(priorityLevel(i.fields?.priority)),
+  ...((m) => (m ? { moved: m } : {}))(movedOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
 const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefName ? { headRefName: p.headRefName } : {}), ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
@@ -1708,7 +1741,8 @@ function withMoved(data) {
   const fix = (i) => {
     const m = movedNow(i.key);
     if (!m || i.fields?.status?.name === m.status) return i;
-    return { ...i, fields: { ...i.fields, status: { id: m.id ?? i.fields?.status?.id ?? null, name: m.status, statusCategory: { key: m.category ?? null } } } };
+    // Moved from Kelpie: it moved then (#141), so a story handed over this way goes to the top at once.
+    return { ...i, fields: { ...i.fields, status: { id: m.id ?? i.fields?.status?.id ?? null, name: m.status, statusCategory: { key: m.category ?? null } }, ...(m.at ? { moved: { at: m.at, exact: true } } : {}) } };
   };
   return { ...data, parents: data.parents.map(fix), children: (data.children ?? []).map(fix) };
 }
@@ -3008,7 +3042,7 @@ export class Stories extends Source {
     const buttons = acts.length - (tasks.length > 0 ? 1 : 0) + tasks.length;
     return decor("rowDecor", t, h_flex().id(`story-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
-      .on_click(() => selectStory(this.profile, it)).tooltip(line)
+      .on_click(() => selectStory(this.profile, it)).tooltip(quiet && it.handed ? `${line}\n${whenWords("Handed over", it.handed)}` : line)
       .when(Boolean(st), (el) => el.on_hover((over, cx) => {
         const was = this.hoverRow;
         // The row left may report after the row entered: only its own leaving clears it.
@@ -4631,7 +4665,7 @@ export class StoryList extends Stories {
         this.hoverRow = over ? it.key : was === it.key ? null : was;
         if (this.hoverRow !== was) cx.notify();
       })
-      .on_click(() => selectStory(st.profile, it)).tooltip(`Done on the board · ${progress(it)}. Show its details, pull requests and earlier sessions`)
+      .on_click(() => selectStory(st.profile, it)).tooltip(`${it.doneAt ? whenWords("Done", it.doneAt) : "Done on the board"} · ${progress(it)}. Show its details, pull requests and earlier sessions`)
       .child(div().flex_none().mt(1).child(sign ?? mark(t, "done", 16)))
       .child(v_flex().flex_1().min_w(0).gap(2)
         .child(skinFont(div(), "ui").truncate().font_medium().text_color(t.muted).child(it.title))

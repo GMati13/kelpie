@@ -23,6 +23,7 @@ export const isDemo = (x) => Boolean(x?.demo);
 
 let FIXTURE = null; // the last fixture read, for the few readers that can't wait (the footer, argv)
 const MOVED = {}; // key -> status name, after a transition in the demo
+const MOVED_AT = {}; // key -> when it moved there, as the board would say
 const CLOSED = new Set(); // keys of the GitHub Project demo's issues closed from Kelpie (KelpieClose)
 
 const UNITS = { m: 60e3, h: 3600e3, d: 864e5 };
@@ -54,6 +55,10 @@ function fields(f, i, { withParent = true } = {}) {
     status: jiraStatus(statusNamed(f, MOVED[i.key] ?? i.status)),
     labels: i.labels ?? [],
   };
+  // When it last moved (fixture `moved`, relative), as Jira gives it: the status category's change and
+  // the last change, the same moment here.
+  const moved = movedAt(i);
+  if (moved) out.statuscategorychangedate = out.updated = moved;
   // Its priority by the fixture's level name (fixture `priorities`, highest first); none when unset.
   const level = (f.priorities ?? []).find((l) => l.name === i.priority);
   if (level) out.priority = { id: level.id, name: level.name };
@@ -65,6 +70,8 @@ function fields(f, i, { withParent = true } = {}) {
   if (withParent && parent) out.parent = { key: parent.key, fields: fields(f, parent, { withParent: false }) };
   return out;
 }
+// When the fixture's ticket last moved (its `moved`, or a move made in the demo), as an ISO date; null when unset.
+const movedAt = (i) => (MOVED_AT[i.key] ? new Date(MOVED_AT[i.key]).toISOString() : i.moved ? new Date(when(i.moved)).toISOString() : null);
 const asIssue = (f, i) => ({ key: i.key, fields: fields(f, i) });
 
 // A description written as light Markdown (# headings, - and 1. lists, `code`, **bold**, blank lines
@@ -118,6 +125,7 @@ export async function demoJira(args) {
     const s = statuses(f).find((x) => x.id === String(b));
     if (!s) return { site: f.profile.site, code: 400, body: { errorMessages: ["No such transition in the demo."] } };
     MOVED[a] = s.name;
+    MOVED_AT[a] = Date.now();
     return { site: f.profile.site, code: 204, authed: true, body: null };
   }
   if (what !== "get") return { site: f.profile.site, code: 400, body: { errorMessages: [`The demo doesn't answer ${what}.`] } };
@@ -143,6 +151,7 @@ export async function demoMoveTo(key, column) {
   const c = (await demoFixture()).board.columns.find((x) => x.name === column);
   if (!c?.statuses?.length) throw new Error(`The demo has no column ${column}.`);
   MOVED[key] = c.statuses[0].name;
+  MOVED_AT[key] = Date.now();
 }
 
 // --- GitHub Project ---------------------------------------------------------------------------
@@ -175,13 +184,13 @@ function ghIssue(f, i, withPriority = null) {
   const parent = i.parent && issueById(f).get(i.parent);
   return {
     id: nodeId(i.key), number: numberOf(i.key), title: i.summary, url: `https://github.com/${repo}/issues/${numberOf(i.key)}`,
-    state: closed ? "CLOSED" : "OPEN", closedAt: closed ? new Date(when("-2d")).toISOString() : null, repository: { nameWithOwner: repo },
+    state: closed ? "CLOSED" : "OPEN", closedAt: closed ? movedAt(i) ?? new Date(when("-2d")).toISOString() : null, updatedAt: movedAt(i), repository: { nameWithOwner: repo },
     assignees: { nodes: who ? [{ login: i.mine ? f.profile.me : login(who), name: who, avatarUrl: null }] : [] },
     // A label's colour is the fixture's project.labels', as a repo gives each of its labels one.
     labels: { nodes: (i.labels ?? []).map((name) => ({ name, color: f.project.labels?.[name] ?? "ededed" })) },
     parent: parent ? { id: nodeId(parent.key), number: numberOf(parent.key), repository: { nameWithOwner: repo } } : null,
     closedByPullRequestsReferences: { nodes: f.pulls.filter((p) => p.closes === i.key).map((p) => ({ url: prUrl(f, p) })) },
-    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name },
+    projectItems: { nodes: [{ id: `PVTI_${i.key}`, project: { id: PROJECT_ID }, fieldValueByName: { optionId: `opt-${column}`, name: f.board.columns[column].name, updatedAt: movedAt(i) },
       ...(withPriority ? { priority: priorityValue(f, i) } : {}) }] },
   };
 }

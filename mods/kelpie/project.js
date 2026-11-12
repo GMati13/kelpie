@@ -30,12 +30,12 @@ const DEMO_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
 
 // What Kelpie reads of every issue: enough to dress it as Jira's, find its status in this Project and
 // the pull requests that close it.
-const ISSUE = `id number title url state closedAt repository { nameWithOwner }
+const ISSUE = `id number title url state closedAt updatedAt repository { nameWithOwner }
   assignees(first: 10) { nodes { login name avatarUrl(size: 48) } }
   labels(first: 10) { nodes { name color } }
   parent { id number repository { nameWithOwner } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { url } }
-  projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } }
+  projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name updatedAt } }
     priority: fieldValueByName(name: $priority) @include(if: $withPriority) { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } } } }`;
 // The Project: its Status options, its iteration fields and a page of your items in its order. The
 // filter is a constant: `@me` is the account gh runs as, Jira's currentUser().
@@ -245,6 +245,10 @@ export async function loadProject(board, keep = {}) {
         // As GitHub gives them; cleaned and checked where they're kept (labelsOf() in stories.js).
         labels: (i.labels?.nodes ?? []).filter(Boolean).map((l) => ({ name: l.name, color: l.color })),
         ...(level ? { priority: level } : {}),
+        // When it last moved (#141): its Status value's own time, else when it closed, both exact;
+        // else when the issue last changed at all, a guess (stories.js movedOf() cleans it).
+        ...((moved) => (moved ? { moved } : {}))(own?.fieldValueByName?.updatedAt ? { at: own.fieldValueByName.updatedAt, exact: true }
+          : closed && i.closedAt ? { at: i.closedAt, exact: true } : i.updatedAt ? { at: i.updatedAt, exact: false } : null),
         ...(who ? { assignee: { displayName: who.name || who.login, avatarUrls: { "48x48": who.avatarUrl ?? null } } } : {}),
       },
     };
