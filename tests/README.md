@@ -210,7 +210,7 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
-  read incrementally, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
+  read incrementally and kept private, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
 - `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
   the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
   placeholders, so the agents' guide keeps up with the profile's settings.
