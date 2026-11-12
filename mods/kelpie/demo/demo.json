@@ -853,6 +853,13 @@
       ]
     }
   ],
+  "deskPaused": [
+    {
+      "id": "demo-desk-1",
+      "name": "Idea: tidy the docs",
+      "at": "-50m"
+    }
+  ],
   "paused": {
     "ACME-138": [
       {

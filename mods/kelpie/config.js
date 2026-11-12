@@ -225,6 +225,9 @@ export async function newSpace() {
 // space, so it stays the profile's wherever its terminals go. Closed (its last tab), it opens again
 // from the sidebar or ⌥⌘D.
 const DESK = "kelpie.desk"; // { profile id: space id }
+// The Desk's paused agents (desk.js pauseDesk): { profile id: [{ sessionId, cwd, name, at, config }] },
+// offered again when the Desk opens.
+export const DESK_PAUSED = "kelpie.desk.paused";
 export const DESK_NAME = "Desk";
 export function deskOf(profile) {
   if (!profile) return null;
@@ -322,6 +325,7 @@ export function saveProfile(id, profile) {
   if (!profile && (shared(DESK) ?? {})[id]) { const desks = { ...shared(DESK) }; delete desks[id]; setShared(DESK, desks); }
   // The sessions seen on its Desk (desk.js DESK_SESSIONS), for the Desk's Screenshots.
   if (!profile && (shared("kelpie.desk.sessions") ?? {})[id]) { const seen = { ...shared("kelpie.desk.sessions") }; delete seen[id]; setShared("kelpie.desk.sessions", seen); }
+  if (!profile && (shared(DESK_PAUSED) ?? {})[id]) { const paused = { ...shared(DESK_PAUSED) }; delete paused[id]; setShared(DESK_PAUSED, paused); }
 }
 
 export const newProfileId = (name) => {
