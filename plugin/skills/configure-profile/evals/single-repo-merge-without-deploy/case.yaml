@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: single-repo-merge-without-deploy
+expected_outcome: |
+  One repo, nothing to deploy, the person merges their own pull requests. It saves a github.mergePrompt fitted to that, through save_profile: it keeps the {ticket}, {summary} and {prs} placeholders, checks the pull requests are ready (checks green, up to date, no conflicts), and has no deploy, roll back or cross-repository ordering steps, still merging nothing until the person says so. It doesn't save the ticket or review prompts (the person said those defaults are fine), names no tool for reaching GitHub, and tells the person the prompt waits for their yes in Kelpie.

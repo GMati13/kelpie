@@ -4,7 +4,8 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, exec, readTextFile, run } from "herdr";
+import { exec, readTextFile } from "herdr";
+import { agents, run } from "./host.js";
 import { skinTheme } from "./skins/index.js";
 import { SMALL, ago, chrome, claudeSession, icon, modFile, resumeArgv } from "./ui.js";
 import { Source, empty, frame, startAgent } from "./source.js";
@@ -34,8 +35,10 @@ function day(at, now = new Date()) {
 }
 
 export class Sessions extends Source {
-  constructor() {
+  // `wanted`: whether it's drawn now (Source.wanted()).
+  constructor(wanted = () => true) {
     super("sessions", 60 * 1000);
+    this.wanted = wanted;
   }
 
   keyOf(setup) {

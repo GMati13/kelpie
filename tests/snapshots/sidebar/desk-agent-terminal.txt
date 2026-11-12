@@ -1,0 +1,27 @@
+h_flex
+  div #desk-head {click} tip="Show the Desk ⌥⌘D"
+    div
+      div [font="DM Sans" fg=muted]
+        "DESK"
+      div [font="DM Mono" fg=dim]
+        "1"
+      div
+        div #desk-terminals-wrap {down:left click}
+          h_flex #desk-terminals [fg=dim hover(bg=hover)] {click} tip="1 terminal on the Desk (Terminal): click to show it"
+            svg chrome:terminal
+            "1"
+      div
+        div
+          div [bg=dim/f2] ×32 … [bg=dim/1a]
+  h_flex
+    div #desk-pause [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Pause the Desk ⌥⌘P: keeps its agents' sessions, to resume when it opens again"
+      svg own:pause
+    Popup.new "desk-new-menu"
+      div #desk-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal on the Desk"
+        svg chrome:plus
+h_flex #desk-agent-a0-0 [hover(bg=hover)] {click down:left} tip="Claude Code · idle"
+  div
+    div
+      div [border=muted]
+  div
+    "Why is the web bundle 2 MB?"

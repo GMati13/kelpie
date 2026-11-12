@@ -51,15 +51,18 @@ export function chosenWho(who, picked) {
 }
 
 // What's asked about, for a file of the Changes view: its path and where it is, a pull request's
-// address or an uncommitted repo's folder. `others`: whether it's from a pull request, whose paths
-// and code anyone who pushed to it wrote.
+// address, else its folder on disk and whether it's committed on a branch with no pull request yet
+// (a group of its own in Changes) or not committed. `others`: whether it's from a pull request,
+// whose paths and code anyone who pushed to it wrote.
 export function fileAbout(f, key) {
   const g = f.group;
   const path = promptValue("path", f.path), repo = promptValue("repo", g.repo);
   const story = key ? ` (${promptValue("key", key)})` : "";
-  if (g.url) return { name: f.path.split("/").pop(), text: `About the file ${path} in ${repo}${story}, in the pull request ${promptValue("url", g.url)} (its changes: ${promptValue("url", g.url)}/files).`, others: true, kind: "file" };
-  const full = g.path ? `${g.path}/${f.path}` : f.path;
-  return { name: f.path.split("/").pop(), text: `About the file ${path} in ${repo}${story}, not committed yet: ${promptValue("path", full)}.`, others: false, kind: "file" };
+  const name = f.path.split("/").pop();
+  if (g.url) return { name, text: `About the file ${path} in ${repo}${story}, in the pull request ${promptValue("url", g.url)} (its changes: ${promptValue("url", g.url)}/files).`, others: true, kind: "file" };
+  const full = promptValue("path", g.path ? `${g.path}/${f.path}` : f.path);
+  const state = g.committed ? `committed on ${promptValue("branch", g.committed.branch)}, no pull request yet` : "not committed yet";
+  return { name, text: `About the file ${path} in ${repo}${story}, ${state}: ${full}.`, others: false, kind: "file" };
 }
 
 // The suggestions for a kind of thing asked about: a file has them all.
