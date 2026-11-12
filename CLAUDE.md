@@ -52,7 +52,7 @@ scripts/e2e-demo.sh            # end-to-end check in a second Herdr window on a 
 - Driving the UI from outside (`herdr-app do kelpie.profile-<id>`, `kelpie.preview-<KEY>`, `pane.split`…): put the screen back as it was afterwards (profile, panel, sidebar width). `pane.split` once came out doubled: check `herdr-app ls` and close only the panes you made
 - Mods have no readable console: debug with a temporary `setShared("kelpie.debug.<role>", {...})`, written only on change (a write per render can loop), and read `~/.config/herdr-app/shared.json`. Herdr owns that file, stray keys can't be deleted by hand, so keep debug names obvious
 - `!`-prefixed commands get no TTY: anything interactive (`claude /login`) runs in a real Herdr terminal
-- `.claude/settings.json` is the shared permission list (Herdr's, git's and gh's reading commands, `node --check`, web searches and github.com pages, though `gh api` is allowed whole, writes too: a known gap in `.claude/rules/security.md`; `hc kill`/`hc rm` always ask); personal permissions go in `.claude/settings.local.json` (git-ignored)
+- `.claude/settings.json` is the shared permission list (Herdr's, git's and gh's reading commands, `node --check`, web searches and github.com pages; not `gh api`, which asks each time, as no prefix rule tells its reads from its writes (`-X`, `-f`/`-F`, `--input`, a GraphQL mutation); `hc kill`/`hc rm` always ask; `tests/js/settings.test.mjs` keeps it so); personal permissions go in `.claude/settings.local.json` (git-ignored)
 
 ## Herdr notes
 
