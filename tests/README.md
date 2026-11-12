@@ -224,6 +224,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `shared-writes.test.mjs`: writes of shared state that change nothing are skipped (#39), as each one
   rewrites Herdr's whole `shared.json` and redraws every copy. A deleted profile's entries going with the
   next load is in `views-sidebar.test.mjs`.
+- `memory.test.mjs`: what the story views keep per key or per patch stays bounded over a long session (#41):
+  only the last stories' Changes, descriptions (never one still loading), and under 8 million characters of
+  patches in each cache keyed by them.
 - `agent-marks.test.mjs`: an agent's state has one mark (`agentMark()`, #101): the tab bar, a split pane's
   header, the sidebar's agent rows and a subtask's slot draw the same for each state in both layouts, no two
   states alike (unknown isn't idle), motion only for working and needs you, a Claude's tab never its icon
