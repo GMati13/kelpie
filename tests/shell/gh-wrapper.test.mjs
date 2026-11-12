@@ -110,7 +110,9 @@ describe("Kelpie's gh finding the real one", () => {
     assert.equal(r.stdout.trim(), "bob", r.stderr);
   });
   test("no other gh: says so instead of looping", () => {
-    const r = sh(join(BIN, "gh"), ["api", "user"], { env: { PATH: `${BIN}:/usr/bin:/bin`, KELPIE_GH_ACCOUNT: "bob" } });
+    // An empty folder, not /usr/bin: CI's Linux runners have a real gh there. The wrapper needs no
+    // program but sh's builtins to get this far.
+    const r = sh(join(BIN, "gh"), ["api", "user"], { env: { PATH: `${BIN}:${tempDir()}`, KELPIE_GH_ACCOUNT: "bob" } });
     assert.equal(r.code, 127);
     assert.match(r.stderr, /found no other gh/);
   });
