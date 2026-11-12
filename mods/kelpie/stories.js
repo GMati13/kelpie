@@ -1068,11 +1068,17 @@ const storyBlock = (role, it) => ({ role, now: new Date(), story: it ?? null, st
 
 // The list's order: what needs you, then the rest, then what's sunk; each in the board's order (the
 // order build() keeps), so a story only moves when what it needs from you changes. With `n`, its need.
-// `byPriority` (the profile's, priorityOf()): within each of those, the highest priority first, then
-// the board's order; a story with none after the lowest. Next's queue keeps this order among equals.
+// `byPriority` (the profile's, priorityOf()): To do's stories (the rest, not under way) by priority,
+// highest first, then the board's order, a story with none after the lowest; and what needs you too,
+// so Next's queue, which sorts by urgency and keeps this order among equals, takes the highest first.
+// Not In progress or the sunk ones: those are worked through by time, not priority (#220).
 function ordered(items, byPriority = false) {
-  const tier = (x) => (x.n[0] <= NEEDS_YOU ? 0 : sunk(x.it, x.n) ? 2 : 1);
-  const level = (x) => (byPriority ? x.it.priority?.rank ?? Infinity : 0);
+  const group = (x) => (x.n[0] <= NEEDS_YOU ? 0 : sunk(x.it, x.n) ? 2 : 1);
+  const toDo = (x) => group(x) === 1 && !underWay(x.it);
+  // Ordering on, To do goes after In progress within the rest (as the list draws them), so the sort
+  // stays consistent with only To do ranked.
+  const tier = (x) => group(x) * 2 + (byPriority && toDo(x) ? 1 : 0);
+  const level = (x) => (byPriority && (group(x) === 0 || toDo(x)) ? x.it.priority?.rank ?? Infinity : 0);
   return items.map((it, i) => ({ it, n: need(it), i })).sort((a, b) => tier(a) - tier(b) || (level(a) === level(b) ? 0 : level(a) < level(b) ? -1 : 1) || a.i - b.i);
 }
 

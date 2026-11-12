@@ -36,30 +36,47 @@ describe("a ticket's priority", () => {
 });
 
 describe("ordering by priority", () => {
-  // AA-1 Low, BB-1 Highest, CC-1 none, DD-1 High: all in progress; EE-1 Low with an agent waiting.
+  // To do: AA-1 Low, BB-1 Highest, CC-1 none, DD-1 High. In progress: FF-1 Lowest, GG-1 Highest.
+  // EE-1 Low and HH-1 Highest each have an agent waiting (needs you, equally urgent).
   const board = () => data({
-    mine: ["AA-1", "BB-1", "CC-1", "DD-1", "EE-1"],
-    parents: [withPriority(issue("AA-1", "doing"), "4"), withPriority(issue("BB-1", "doing"), "1"), issue("CC-1", "doing"), withPriority(issue("DD-1", "doing"), "2"), withPriority(issue("EE-1", "doing"), "4")],
+    mine: ["AA-1", "BB-1", "CC-1", "DD-1", "EE-1", "FF-1", "GG-1", "HH-1"],
+    parents: [
+      withPriority(issue("AA-1"), "4"), withPriority(issue("BB-1"), "1"), issue("CC-1"), withPriority(issue("DD-1"), "2"),
+      withPriority(issue("EE-1", "doing"), "4"), withPriority(issue("FF-1", "doing"), "5"), withPriority(issue("GG-1", "doing"), "1"),
+      withPriority(issue("HH-1", "doing"), "1"),
+    ],
   });
-  const list = (byPriority) => ordered(build({ ...board(), priorities: LEVELS }, new Map([["EE-1", { status: "blocked" }]])), byPriority);
+  const waiting = () => new Map([["EE-1", { status: "blocked" }], ["HH-1", { status: "blocked" }]]);
+  const list = (byPriority, d = board()) => ordered(build({ ...d, priorities: LEVELS }, waiting()), byPriority);
+  const toDo = (l) => keysOf(l).filter((k) => ["AA-1", "BB-1", "CC-1", "DD-1"].includes(k));
+  const going = (l) => keysOf(l).filter((k) => ["FF-1", "GG-1"].includes(k));
 
   test("off, the board's order stays (what needs you first)", () => {
-    assert.deepEqual(keysOf(list(false)), ["EE-1", "AA-1", "BB-1", "CC-1", "DD-1"]);
+    assert.deepEqual(keysOf(list(false)), ["EE-1", "HH-1", "AA-1", "BB-1", "CC-1", "DD-1", "FF-1", "GG-1"]);
   });
-  test("on, the highest first in each group, tickets with none last; what needs you stays first", () => {
-    assert.deepEqual(keysOf(list(true)), ["EE-1", "BB-1", "DD-1", "AA-1", "CC-1"]);
+  test("on, To do by priority, the highest first, tickets with none last", () => {
+    assert.deepEqual(toDo(list(true)), ["BB-1", "DD-1", "AA-1", "CC-1"]);
+  });
+  test("on, In progress keeps the board's order, whatever its priority", () => {
+    assert.deepEqual(going(list(true)), ["FF-1", "GG-1"]);
+  });
+  test("on, what needs you stays first, the highest first among equally urgent", () => {
+    assert.deepEqual(keysOf(list(true)).slice(0, 2), ["HH-1", "EE-1"]);
   });
   test("equal priorities keep the board's order", () => {
-    const d = data({ mine: ["AA-1", "BB-1", "CC-1"], parents: [withPriority(issue("AA-1", "doing"), "3"), withPriority(issue("BB-1", "doing"), "3"), withPriority(issue("CC-1", "doing"), "1")] });
+    const d = data({ mine: ["AA-1", "BB-1", "CC-1"], parents: [withPriority(issue("AA-1"), "3"), withPriority(issue("BB-1"), "3"), withPriority(issue("CC-1"), "1")] });
     assert.deepEqual(keysOf(ordered(build({ ...d, priorities: LEVELS }, new Map()), true)), ["CC-1", "AA-1", "BB-1"]);
   });
-  test("a board without priority is unchanged by the setting", () => {
+  test("a board without priority is unchanged by the setting, within each group", () => {
     const d = board();
-    assert.deepEqual(keysOf(ordered(build(d, new Map([["EE-1", { status: "blocked" }]])), true)), keysOf(list(false)));
+    const on = ordered(build(d, waiting()), true), off = list(false);
+    assert.deepEqual(toDo(on), toDo(off));
+    assert.deepEqual(going(on), going(off));
+    assert.deepEqual(keysOf(on).slice(0, 2), keysOf(off).slice(0, 2));
   });
-  test("what's sunk stays after the rest, whatever its priority", () => {
-    const d = data({ mine: ["AA-1", "BB-1"], parents: [withPriority(issue("AA-1", "qa"), "1"), withPriority(issue("BB-1", "doing"), "5")] });
-    assert.deepEqual(keysOf(ordered(build({ ...d, priorities: LEVELS }, new Map()), true)), ["BB-1", "AA-1"]);
+  test("what's sunk stays after the rest in the board's order, whatever its priority", () => {
+    const d = data({ mine: ["AA-1", "BB-1", "CC-1"], parents: [withPriority(issue("AA-1", "qa"), "5"), withPriority(issue("BB-1", "qa"), "1"), withPriority(issue("CC-1"), "5")] });
+    assert.deepEqual(keysOf(ordered(build({ ...d, priorities: LEVELS }, new Map()), true)), ["CC-1", "AA-1", "BB-1"]);
   });
 });
 
@@ -186,7 +203,7 @@ describe("the story list's rows", async () => {
     assert.ok(on.includes("prio-ACME-175"), "Highest is marked");
     assert.ok(!on.includes("prio-ACME-160"), "Medium, the middle, isn't");
   });
-  test("are ordered by priority within a group while ordering is on", async () => {
+  test("To do is ordered by priority while ordering is on", async () => {
     const rows = (list) => list.filter((id) => /^story-ACME-\d+$/.test(id));
     const off = rows(await drawn({})), on = rows(await drawn({ byPriority: true }));
     assert.deepEqual([...on].sort(), [...off].sort(), "the same stories");

@@ -681,7 +681,7 @@ export class Setup {
         levels?.length ? hint(`Its levels, highest first: ${levels.join(", ")}.`) : onJira && !jiraLevels ? hint("Check the connection to see the site's priority levels.") : null,
         none ? hint(onJira ? "Jira gave no priority levels for this site, so there's nothing to order or show." : "Without a priority field there's nothing to order or show.") : null,
         toggle("setup-by-priority", "Order stories by priority", this.byPriority, (_e, cx) => { this.byPriority = !this.byPriority; cx.notify(); },
-          this.byPriority ? "In each group, the highest priority first, then the board's order; tickets with none come last. What needs you still comes first." : "Off: stories keep the board's order (what needs you first)."),
+          this.byPriority ? "To do's stories by priority, the highest first, then the board's order; tickets with none come last. What needs you still comes first, and In progress keeps its order." : "Off: stories keep the board's order (what needs you first)."),
         toggle("setup-show-priority", "Show priority", this.showPriority, (_e, cx) => { this.showPriority = !this.showPriority; cx.notify(); },
           this.showPriority ? "A small mark after each ticket's key: up for the levels above the middle, the highest in amber, down for those below; the middle level shows none." : "Off: no priority marks on the rows."),
       ];

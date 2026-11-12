@@ -181,8 +181,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   `tagColor()`), and the demo's tags on the list's rows, the title row and subtask rows, on Jira and on a
   GitHub Project.
 - `priority.test.mjs`: working by priority (#122): a ticket's level ranked by the board's own levels
-  (`priorityRanks()`), the list ordered by it only while `byPriority` is on (what needs you first, none
-  last, equal ones in the board's order), the row marks (`priorityLook()`, only with `showPriority`), the
+  (`priorityRanks()`), To do ordered by it only while `byPriority` is on (what needs you first, the highest first
+  among them, In progress and sunk stories untouched, none last, equal ones in the board's order), the row marks (`priorityLook()`, only with `showPriority`), the
   settings (true/false, saved at once), the demo's Jira levels and a Project's priority field (its name
   only a GraphQL variable, not asked for while unused), Check's single-select fields, What next?'s snapshot.
 - `config.test.mjs`: `profileOf` (deepest folder, ownership, an agent's `cd`), `spacesOf`, `deskOf`,

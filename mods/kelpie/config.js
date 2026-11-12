@@ -13,7 +13,7 @@
 //            `solo` (true/false) when the person works alone on it: the stories past that column then
 //            wait on them, not on others, and the list says so (sunkWords); `moveToDone` false hides
 //            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise;
-//            `byPriority` (true/false) orders each group's stories by their priority, and `showPriority`
+//            `byPriority` (true/false) orders To do's stories by their priority, and `showPriority`
 //            (true/false) marks rows with it (priorityOf()), both off unless set
 //   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority, priorityField }: a GitHub
 //            Project as the board instead of Jira (a profile has one or the other): its address
