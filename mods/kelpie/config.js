@@ -825,6 +825,9 @@ export function buildProfile(id, set) {
     if (!next.demo && !next.jira.keychain && !next.jira.tokenCommand) throw new Error("jira: needs keychain, or tokenCommand with email.");
     if (next.jira.tokenCommand && !next.jira.email) throw new Error("jira.email: needed with tokenCommand.");
     if (next.jira.email && !validEmail(next.jira.email)) throw new Error("jira.email: an email address, without quotes, backslashes or spaces.");
+    // It goes into the Keychain command the Board page gives to copy, where a line break would start
+    // a command of its own.
+    if (next.jira.keychain && /[\x00-\x1f\x7f]/.test(next.jira.keychain)) throw new Error("jira.keychain: a Keychain item's name, on one line.");
   }
   if (next.project) {
     // The owner, its kind and the number come from the address, as Jira's site and board do.

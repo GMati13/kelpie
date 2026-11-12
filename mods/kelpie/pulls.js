@@ -41,7 +41,8 @@ const LIGHT = `query($q: String!) { rateLimit { remaining limit resetAt } search
 export const gh = (account, args) => guarded(account, args, (a) => exec("sh", [modFile("gh.sh"), account ?? "", ...a]));
 // The GitHub accounts gh is signed in to on this machine, for the profile dialog's choice.
 export async function githubAccounts() {
-  const r = await exec("gh", ["auth", "status", "--hostname", "github.com"]);
+  // Every account gh has, never only the one an inherited KELPIE_GH_ACCOUNT would make it act as.
+  const r = await exec("env", ["-u", "KELPIE_GH_ACCOUNT", "gh", "auth", "status", "--hostname", "github.com"]);
   const found = `${r.stdout}\n${r.stderr}`.matchAll(/Logged in to github\.com account ([A-Za-z0-9-]+)/g);
   return [...new Set([...found].map((m) => m[1]))];
 }

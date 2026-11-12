@@ -410,11 +410,20 @@ export async function claudeSession(address) {
 // A GitHub login: letters, digits and single hyphens, not starting with one (gh.sh checks it too).
 export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
 // The environment telling a profile's agents and terminals its GitHub account: KELPIE_GH_ACCOUNT, a
-// name, never a token. Kelpie can't make their gh use it (shell startup puts gh's own folder first in
-// PATH, and a shell function doesn't reach programs started from it): a gh() function in the person's
-// own shell setup reads it (README, "Several accounts"; the profile dialog's GitHub page has it to
-// copy). None set: nothing, so gh acts as it always has.
-export const githubEnv = (account) => (account && GITHUB_LOGIN.test(account) ? [`KELPIE_GH_ACCOUNT=${account}`] : []);
+// name, never a token, and KELPIE_GH_BIN, the folder of Kelpie's own gh (bin/gh), which asks for that
+// account's token on each run. Kelpie can't put that folder first in PATH itself (shell startup puts
+// gh's own folder first again): a line at the end of the person's shell setup does (GH_SHELL_LINE in
+// setup.js, README "Several accounts"), and then every program started there finds it too. None set:
+// nothing, so gh acts as it always has. The folder only when absolute, with no colon or line break, as
+// it goes into PATH (the shell setup line checks it too).
+// No account (Default): KELPIE_GH_ACCOUNT set empty, which Kelpie's gh takes as none, as one inherited
+// from where Herdr was started (a profile's terminal) would make gh act as that profile's account
+// instead of gh's active one. An assignment, not `-u`: env takes options only before the first one.
+export function githubEnv(account) {
+  if (!account || !GITHUB_LOGIN.test(account)) return ["KELPIE_GH_ACCOUNT="];
+  const bin = modFile("bin");
+  return [`KELPIE_GH_ACCOUNT=${account}`, ...(/^\/[^:\n\r]*$/.test(bin) ? [`KELPIE_GH_BIN=${bin}`] : [])];
+}
 // The argv that resumes a Claude session, on the account (config folder) it ran on, with the profile's
 // GitHub account (githubEnv). No config (the session is in Claude's own ~/.claude): no
 // CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids
