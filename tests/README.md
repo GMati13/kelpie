@@ -66,7 +66,8 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
 
 - `mock.reset()`: everything back to empty (call it in `beforeEach`).
 - `mock.state`: what Herdr would report. `shared` (a Map behind `shared()`/`setShared()`; values are
-  copied in and out as JSON, as Herdr's store does), `spaces`, `agents`, `panes`, `terminals`, `layout`,
+  copied in and out as JSON, as Herdr's store does, and every read is handed out frozen: Kelpie keeps a
+  read for the whole render, `mods/kelpie/host.js`, so a mod changing one in place fails), `spaces`, `agents`, `panes`, `terminals`, `layout`,
   `focused`, `props` (an overlay's or block's props), `theme`, `window` (`platform: "macos"`), `settings`,
   `appHome` and `home` (non-existent paths by default: set them to a `tempDir()` when a test writes files).
 - `mock.calls`: every call made, in order, as `{ fn, args }`; `mock.of("exec")` gives the argument lists of
@@ -81,7 +82,7 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
   repo's `mods/` (used by `readTextFile` and `realExec`).
 - `mock.sharedValue(key)`: a shared value without recording a call.
 - `mock.reads`: how many times a render read each host value (`spaces`, `agents`, `panes`, `terminals`,
-  `focused`, `shared:<key>`); set it to `{}` before the render to count.
+  `focused`, `layout`, `shared:<key>`); set it to `{}` before the render to count.
 - `nextCommand()` and `watchFolder()` never resolve, so a mod's command loop just waits.
 
 ### `gpui-kit` and `gpui-base`
@@ -93,6 +94,7 @@ does; `.when_some()` and `.when_else()` throw, as Herdr's elements don't have th
 isn't drawn: "unknown element method"). State handles (`InputState.new(cx)`,
 `TextareaState.new(...)`, `VirtualListScrollHandle.new()`) keep `set_value()`/`value()` and record the rest.
 `.map(fn)` runs `fn` on the element, as gpui's does.
+Each element counts the parents it was put into (`nodeOf(el).parents`, by `child()`/`children()`): in Herdr an element is drawn once, so one put into two trees, one of them thrown away, isn't drawn where it was meant to be.
 `View` is a plain base class (`this.props`).
 
 For inspecting what a view rendered (import from `"gpui-kit"`):
@@ -172,6 +174,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `budget.test.mjs`: what one full story load may ask of GitHub (#150): a realistic Project profile against a
   fake gh that counts requests, how many run at once and their points by GitHub's own prices (written in
   the test, from `rateLimit(dryRun: true)`: measure again when a query changes), and the hour that makes.
+- `load-times.test.mjs`: where a story load's time goes (#108): each part (the board, the three pull request
+  searches, the sessions) timed on its own, a slow one not counted against the others (the tests' clock
+  moved on by hand), and the freshness line's tooltip saying them for a load of a second or more.
+- `jira-load.test.mjs`: how many round trips a Jira board's load waits on (#40), against a fake jira.sh that
+  answers after a moment and notes each request's round: the kept stories asked beside the stories' own
+  search, yours told by their assignee when jira.sh names the account, still asked when it doesn't.
 - `ghlimit.test.mjs`: GitHub's API limits (#129, ghlimit.js around pulls.js `gh()`): a refused call stops
   the rest of its kind (GraphQL or REST) as that account until the reset or a secondary limit's wait,
   said in plain words with the time; side-by-side refusals counting once; a description that mentions
@@ -198,7 +206,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   token's scopes from `X-OAuth-Scopes` (`project`, `read:project`, none, no header), the command it
   offers to add the scope, an unreadable Project, the demo's answered from the fixture.
 - `prompts`, `profile-apply`, `send`, `cleanup`, `browser`: what Kelpie tells Claude and the safety rules
-  around it. `configure`: Let me configure it for you, and the plugin check and install behind it.
+  around it. `settings`: the shared permission list allows only gh commands that read, never `gh api`.
+  `configure`: Let me configure it for you, and the plugin check and install behind it.
 - Stories over time: `moved` (a ticket's new status shown at once, until a load agrees), `quick` (pull
   requests read again when an agent's turn ends, and one an agent just opened shown at once), `reload` (a reload asked for mid-load isn't dropped),
   `reassigned` (a story given to someone else stays while something of it is here), `leftovers` (the
@@ -211,11 +220,18 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   scroll position).
 - `views-changes.test.mjs`: the Changes view on a big pull request never spends a whole render on its
   patches. `harness` and `snapshot`: the stubs and the snapshot helper themselves.
+- `kanban.test.mjs`: a Jira board without sprints (Kanban, or team-managed with sprints off): `activeSprints()`
+  falling back to the board, `boardScope()`'s filter JQL, a load on a fake jira.sh. `signin.test.mjs`: Jira
+  sign-in through a token command, `jira()` to the real jira.sh with a fake curl, and the profile dialog's
+  sign-in on Linux (no Keychain). `platform.test.mjs`: opening links and folders per system (macOS, Linux,
+  Windows), and the shell lines that ask the machine (the footer's CPU and memory, `STAT_MTIME`,
+  `CLAUDE_TMP`, the full name) run for real, so CI's Linux job runs them on Linux.
 - `tests/shell/`: jira.sh, gh.sh (the profile's GitHub account), the shell `gh()` function the README
-  gives and Check my shell, avatar.sh, install.sh with the icon and art copies, and e2e-demo.sh's guards.
+  gives and Check my shell, avatar.sh, stdin.sh (What next?'s task on stdin), install.sh with the icon and art copies, e2e-demo.sh's guards, and the
+  Artifacts panel's mark-up and thumbnail scripts (private `mktemp -d` folders, the clean-up's limits).
   `tests/python/`: kittyfix.py, changes.py (ticket
   folders, branches, worktrees, renames, untracked files), sessions.py (titles, keys, accounts, the index
-  read incrementally, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
+  read incrementally and kept private, in a fake HOME), plugin/server.py (its tools, with a fake `herdr-app`).
 - `skills.test.mjs`: the plugin's configure-profile skill against config.js: every setting that waits for
   the person's yes, what's saved at once and carried over between boards, the scopes, button messages and
   placeholders, so the agents' guide keeps up with the profile's settings.
@@ -226,6 +242,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `render-cost.test.mjs`: each view (the story list, a story's title row and details, the tab bar, the
   footer, the profile menu) reads Herdr's lists as often with 60 other spaces open as with 30 (#104);
   `spaceProfiles()` reads each list once.
+- `shared-writes.test.mjs`: writes of shared state that change nothing are skipped (#39), as each one
+  rewrites Herdr's whole `shared.json` and redraws every copy. A deleted profile's entries going with the
+  next load is in `views-sidebar.test.mjs`.
+- `memory.test.mjs`: what the story views keep per key or per patch stays bounded over a long session (#41):
+  only the last stories' Changes, descriptions (never one still loading), and under 8 million characters of
+  patches in each cache keyed by them.
 - `agent-marks.test.mjs`: an agent's state has one mark (`agentMark()`, #101): the tab bar, a split pane's
   header, the sidebar's agent rows and a subtask's slot draw the same for each state in both layouts, no two
   states alike (unknown isn't idle), motion only for working and needs you, a Claude's tab never its icon
