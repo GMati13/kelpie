@@ -26,6 +26,7 @@ import { adfLines, findPassage, markdownBlocks } from "./adf.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
+import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -1063,6 +1064,21 @@ const CHECKS = { SUCCESS: ["Checks pass", "done"], FAILURE: ["Checks failing", "
 // Said where pull requests would be (a story's details, Your pull requests) when they didn't load.
 const PULLS_FAILED = "Pull requests didn't load: Refresh to try again.";
 const REVIEW = { APPROVED: ["Approved", "done"], CHANGES_REQUESTED: ["Changes requested", "blocked"], REVIEW_REQUIRED: ["Waiting for review", "muted"] };
+
+// Where a load's time went (#108), for the freshness line's tooltip: every part runs at once and the
+// list waits for the slowest, so each is said with how long it took. Said only for a load that took
+// LOAD_SAID or longer: a quick one has nothing to explain. `drawn`: putting the list together on this
+// draw, in this copy. Exported for the tests.
+export const LOAD_SAID = 1000;
+const LOAD_PARTS = [["board", "the board"], ["open", "your open pull requests"], ["merged", "your merged ones"], ["reviews", "reviews for you"], ["sessions", "Claude sessions"], ["sort", "sorting it out"]];
+const duration = (ms) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
+export function loadTimes(timing, drawn = null) {
+  if (!timing || !(timing.total >= LOAD_SAID)) return null;
+  const parts = LOAD_PARTS.filter(([k]) => typeof timing[k] === "number").map(([k, words]) => `${words} ${duration(timing[k])}`);
+  if (typeof drawn === "number") parts.push(`drawing the list ${duration(drawn)}`);
+  const slowest = LOAD_PARTS.filter(([k]) => k !== "sort" && typeof timing[k] === "number").sort((a, b) => timing[b[0]] - timing[a[0]])[0];
+  return `The last load took ${duration(timing.total)}${slowest ? `, most of it waiting on ${slowest[1]}` : ""}:\n${parts.join(" · ")}`;
+}
 
 // Several copies show stories (the sidebar list, the story header, the story view, the tab bar), and
 // each copy runs in its own JavaScript context. So the list alone loads, and puts a trimmed copy of
@@ -2292,21 +2308,28 @@ export class Stories extends Source {
   // closing changes them, not what Jira or GitHub say. Asked for while a full load or another read
   // runs, it isn't dropped: that one read the sessions when it began, maybe before the tab changed,
   // so they're read again once it ends (`sessionsAgain`, state()).
-  loadSessions(cx) {
+  //   `why`: what asked for it, for the load record (debug.js).
+  loadSessions(cx, { why = "an agent tab opened or closed" } = {}) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !this.cache[ctx.key]?.data) return;
-    if (this.sessionsBusy || this.busy.has(ctx.key)) { this.sessionsAgain = true; return; }
+    const job = `sessions:${ctx.profile.id}`;
+    debugAsked(job, why);
+    if (this.sessionsBusy || this.busy.has(ctx.key)) { this.sessionsAgain = true; waits(job, `${why}, behind ${this.sessionsBusy ? "another sessions read" : "a full load"}`, cx); return; }
     this.sessionsAgain = false;
     this.sessionsBusy = true;
+    began(job, why, cx);
     cx.spawn(async (cx) => {
+      let error = null;
       try {
         const sessions = await this.fetchSessions(ctx);
         const entry = this.cache[ctx.key];
-        if (!sessions || !entry?.data || this.busy.has(ctx.key)) return;
+        if (!sessions) { error = "the sessions didn't load"; return; }
+        if (!entry?.data || this.busy.has(ctx.key)) { error = "not used: a full load began meanwhile"; return; }
         this.cache[ctx.key] = { ...entry, data: { ...entry.data, sessions } };
         this.loaded(ctx);
       } finally {
         this.sessionsBusy = false;
+        ended(job, error, cx);
         cx.notify();
       }
     });
@@ -2314,6 +2337,10 @@ export class Stories extends Source {
 
   async fetch({ space, setup, key }) {
     const began = Date.now();
+    // How long each part took (#108), shown in the freshness line's tooltip (loadTimes()): they all
+    // run at once and the list waits for the slowest, so this says which one that is.
+    const took = {};
+    const timed = (part, p) => p.finally(() => { took[part] = Date.now() - began; });
     const owner = setup.github?.owner;
     const demo = Boolean(setup.github?.demo);
     const account = setup.github?.account ?? null;
@@ -2322,31 +2349,34 @@ export class Stories extends Source {
     // their pull requests, and the frame says why.
     let prError = null;
     const pulls = owner
-      ? Promise.all([searchPulls(`user:${owner} is:pr is:open author:@me`, { demo, account }), searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo, account })])
+      ? Promise.all([timed("open", searchPulls(`user:${owner} is:pr is:open author:@me`, { demo, account })), timed("merged", searchPulls(`user:${owner} is:pr is:merged author:@me merged:>=${since}`, { light: true, demo, account }))])
         .catch((e) => { prError = `Pull requests didn't load: ${String(e?.message ?? e)}`; return [[], []]; })
       : Promise.resolve([[], []]);
     // What doesn't wait on Jira runs beside it.
-    const reviewsP = owner ? searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account }).catch(() => []) : Promise.resolve([]);
-    const sessionsP = this.fetchSessions({ space, setup });
+    const reviewsP = owner ? timed("reviews", searchPulls(`user:${owner} is:pr is:open review-requested:@me`, { demo, account })).catch(() => []) : Promise.resolve([]);
+    const sessionsP = timed("sessions", this.fetchSessions({ space, setup }));
     // A GitHub Project's load also says which pull requests close its issues, which repo each key's
     // issues are in, and the Project itself (board.js); Jira's has none of those.
     // A story of yours stays while something of it is here, even once the board gives it to someone
     // else (hereKeys()): the board is asked for those by key too.
     const prior = this.cache?.[key]?.data ?? null;
     const keep = { keys: hereKeys(setup.profile, prior), projects: prior ? [...projectsOf(prior)] : [], repos: prior?.repos ?? {} };
-    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await loadBoard(boardOf(setup), keep);
+    const { site, columns, sprints, mine, parents, children, links, repos, project, kept } = await timed("board", loadBoard(boardOf(setup), keep));
     const [openPrs, mergedPrs] = await pulls;
     const reviews = await reviewsP;
     const sessions = (await sessionsP) ?? [];
     // GitHub's limit refusing the pull requests isn't them gone: the last ones stay, and the
     // list's card says why (limitCard()).
     const limited = owner && (demo ? demoLimit()?.until : blockedFor(account)) && prior;
-    return settleMoved(settlePulls({
+    const sorted = Date.now();
+    const data = settleMoved(settlePulls({
       site, columns, sprints, mine: mine.map((i) => ({ key: i.key })), parents: parents.map(issue), children: children.map(issue), prError: limited ? null : prError,
       ...(links ? { links } : {}), ...(repos ? { repos } : {}), ...(project ? { project } : {}), ...(kept?.length ? { kept } : {}),
       sessions, reviews: limited ? prior.reviews ?? [] : reviews.map(pull),
       prs: limited ? prior.prs ?? [] : [...openPrs.map((p) => pull({ ...p, merged: false })), ...mergedPrs.map((p) => pull({ ...p, merged: true }))],
     }, began, setup.profile?.id));
+    const end = Date.now();
+    return { ...data, timing: { ...took, sort: end - sorted, total: end - began } };
   }
 
   // The quick read (the list's copy): its open pull requests and reviews read again by id, straight
@@ -2356,19 +2386,25 @@ export class Stories extends Source {
   //   `direct`: asked for because something just happened (an agent's turn ending), not by the 20 s
   // timer. Reacting to that is what the quick read is for, so while GitHub's budget runs low only the
   // full loads and the timer's reads give way (#131); used up, nothing asks, as GitHub refuses anyway.
-  quickPulls(cx, { direct = false } = {}) {
+  //   `why`: what asked for it, for the load record (debug.js).
+  quickPulls(cx, { direct = false, why = direct ? "an agent's turn ended" : "timer: something in flight" } = {}) {
     const ctx = this.context();
     if (!this.loader || !this.ready(ctx) || !ctx.setup.github?.owner) return;
+    const job = `quick:${ctx.profile.id}`;
+    debugAsked(job, why);
     const account = ctx.setup.github.account;
-    if (ctx.setup.github.demo ? demoLimit() : blockedFor(account) || (!direct && lowFor(account))) return;
-    if (this.quickBusy) { this.quickAgain = this.quickAgain === "direct" || direct ? "direct" : true; return; }
+    if (ctx.setup.github.demo ? demoLimit() : blockedFor(account)) return skipped(job, `${why}: GitHub's limit is used up`, cx);
+    if (!ctx.setup.github.demo && !direct && lowFor(account)) return skipped(job, `${why}: GitHub's budget is low, only an agent's turn ending reads`, cx);
+    if (this.quickBusy) { this.quickAgain = this.quickAgain === "direct" || direct ? "direct" : true; waits(job, why, cx); return; }
     this.quickAgain = false;
     const data = this.cache[ctx.key]?.data;
-    if (!data) return;
+    if (!data) return skipped(job, `${why}: nothing loaded yet`, cx);
     const ids = [...(data.prs ?? []).filter((p) => !p.merged), ...(data.reviews ?? [])].map((p) => p.id).filter(Boolean);
     const known = new Set([...(data.prs ?? []), ...(data.reviews ?? [])].map((p) => p.url));
     this.quickBusy = true;
+    began(job, why, cx);
     cx.spawn(async (cx) => {
+      let error = null;
       try {
         const at = Date.now();
         const found = await readPulls(ids, { demo: Boolean(ctx.setup.github?.demo), account: ctx.setup.github?.account ?? null, owner: ctx.setup.github.owner });
@@ -2377,10 +2413,12 @@ export class Stories extends Source {
           FRESH[n.url] = { pr: { ...pull({ ...n, merged: n.state === "MERGED" }), ...(n.state === "CLOSED" ? { closed: true } : {}) }, at, ...(opened ? { opened } : {}) };
         }
         if (found.length) patchLoaded(ctx.profile, (d) => withFresh(d, ctx.profile.id));
-      } catch {
+      } catch (e) {
         // the next load or read brings it
+        error = String(e?.message ?? e);
       } finally {
         this.quickBusy = false;
+        ended(job, error, cx);
         cx.notify();
       }
     });
@@ -2422,9 +2460,9 @@ export class Stories extends Source {
       // (#37), on every draw.
       const e = this.cache[ctx.key] ? null : sharedData(ctx);
       if (e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
-      if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx);
-      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct" });
-      if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx);
+      if (this.cache[ctx.key] && Date.now() - this.cache[ctx.key].at > this.every) this.load(cx, { why: "stale: older than the timer" });
+      if (this.quickAgain && !this.quickBusy) this.quickPulls(cx, { direct: this.quickAgain === "direct", why: "asked again while one ran" });
+      if (this.sessionsAgain && !this.sessionsBusy && !this.busy.has(ctx.key)) this.loadSessions(cx, { why: "asked again while one ran" });
       const st = super.state(cx);
       // A failed load (GitHub's limit, say, which lasts) shows how old the stories shown are, not
       // when it failed: the shared copy keeps their age.
@@ -2447,7 +2485,11 @@ export class Stories extends Source {
     const e = sharedData(ctx);
     if (!this.cache[ctx.key] && e?.data) this.cache[ctx.key] = { data: e.data, error: null, at: e.at };
     const board = this.ready(ctx) ? boardOf(ctx.setup) : null;
-    if (board?.kind === "project" && !board.cfg.demo && lowFor(board.account) && this.cache[ctx.key] && Date.now() - (this.fullAt ?? 0) < LOW_EVERY) return;
+    if (board?.kind === "project" && !board.cfg.demo && lowFor(board.account) && this.cache[ctx.key] && Date.now() - (this.fullAt ?? 0) < LOW_EVERY) {
+      const why = opts?.why ?? "asked";
+      debugAsked(this.job(ctx), why);
+      return skipped(this.job(ctx), `${why}: GitHub's budget is low, at most a load every ${LOW_EVERY / 60000} minutes`, cx);
+    }
     this.fullAt = Date.now();
     super.load(cx, opts);
   }
@@ -4361,8 +4403,10 @@ export class StoryList extends Stories {
     // When this copy was first drawn, whatever it showed (picksArrived()): an "All clear" Next
     // whose run brings picks still opens on them.
     this.queueBorn ??= Date.now();
+    const drawing = Date.now();
     const { st, t, early, items, reviews, shown, done, all } = this.prepare(cx);
     if (early) return early;
+    this.drawMs = Date.now() - drawing; // putting the list together, for the freshness line's tooltip
     orderAgents(st.profile, items);
     // Every finished story the board has, not just the ones listed: one that's left only leftovers
     // behind is listed once they're found (the stories' own build: what's finished doesn't depend on
@@ -4498,7 +4542,7 @@ export class StoryList extends Stories {
     const error = limit && st.error === githubNote(st.setup) ? null : st.error;
     const fresh = skinFont(h_flex().id("stories-fresh").flex_none().h(20).gap(6).items_center().cursor_pointer()
       .text_color(!st.loading && (stale || error) ? t.working : t.dim), "fresh", SMALL).hover((x) => x.text_color(t.foreground))
-      .tooltip("Load the stories again").on_click(() => setShared(REFRESH, Date.now()))
+      .tooltip(["Load the stories again", loadTimes(st.data?.timing, this.drawMs)].filter(Boolean).join("\n")).on_click(() => setShared(REFRESH, Date.now()))
       .when(st.loading, (el) => el.child(icon(chrome("spinner"), 11).spin(900)))
       .child(skinText(st.loading ? (st.data ? `Updating… showing what was loaded ${ago(st.at) === "now" ? "just now" : `${ago(st.at)} ago`}` : "Loading…")
         : age == null ? "Not loaded yet" : stale ? `From ${ago(st.at)} ago: click to update` : `Updated ${ago(st.at) === "now" ? "just now" : `${ago(st.at)} ago`} ↻`, "fresh"))
