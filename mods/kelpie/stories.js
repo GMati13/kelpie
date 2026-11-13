@@ -2178,16 +2178,38 @@ const sameFile = (path, asked) => path === asked || (!asked.startsWith("/") && p
 const summaryOf = (data, key) => (key ? [...(data?.parents ?? []), ...(data?.children ?? [])].find((x) => x.key === key)?.fields?.summary ?? null : null);
 const parentOf = (data, key) => (data?.children ?? []).find((x) => x.key === key)?.fields?.parent?.key ?? null;
 
-// What each agent's Claude session is about (by address): { title, first, files: [{ path, at }] }.
-// A demo profile's from its fixture; the rest from their sessions (claudeSession: the terminal's
-// own Claude process's record), read by agent-work.py where the agent runs, one run per machine.
+// The Claude agent itself, from its session record (claudeSession), so another Claude can reach it
+// with Claude's own messaging between sessions: { name, address, session }. `name` is what Claude
+// names the session (what other sessions message it by), `address` its messaging socket as
+// `uds:<path>` (only an agent on this machine: the socket is a local file), `session` its session id.
+// Each kept only when it has the expected shape, as the record is a file on disk: a name of printable
+// characters, a socket path of plain characters ending in its own process id, an id of letters,
+// digits and dashes. Null when none of them is there (an older Claude, a stand-in).
+// Exported for the tests.
+export function claudeOf(rec, local) {
+  if (!rec || typeof rec !== "object") return null;
+  const name = typeof rec.name === "string" && !/[\u0000-\u001f\u007f]/.test(rec.name) ? rec.name.trim().slice(0, 80) : "";
+  const path = typeof rec.messagingSocketPath === "string" ? rec.messagingSocketPath : "";
+  const address = local && Number.isInteger(rec.pid) && /^\/[A-Za-z0-9._/-]{1,200}$/.test(path) && !path.includes("..") && path.endsWith(`/${rec.pid}.sock`) ? `uds:${path}` : "";
+  const session = typeof rec.sessionId === "string" && /^[A-Za-z0-9-]{8,64}$/.test(rec.sessionId) ? rec.sessionId : "";
+  const out = Object.fromEntries(Object.entries({ name, address, session }).filter(([, v]) => v));
+  return Object.keys(out).length ? out : null;
+}
+
+// What each agent's Claude session is about (by address): { claude, title, first, files: [{ path, at }] }.
+// A demo profile's from its fixture (its agents are stand-ins: no Claude to reach); the rest from
+// their sessions (claudeSession: the terminal's own Claude process's record, which also names the
+// agent, claudeOf()), read by agent-work.py where the agent runs, one run per machine.
 async function agentWork(list) {
   const out = new Map();
   const real = [];
   await Promise.all(list.map(async ({ a, profile }) => {
     if (isDemo(profile)) { const w = await demoAgentWork(profile.folder, a.tab_name).catch(() => null); if (w) out.set(a.address, w); return; }
     const rec = await claudeSession(a.address).catch(() => null);
-    if (rec?.sessionId) real.push({ a, id: String(rec.sessionId), config: rec.config ?? "" });
+    if (!rec?.sessionId) return;
+    const claude = claudeOf(rec, !a.address.includes("/"));
+    if (claude) out.set(a.address, { claude });
+    real.push({ a, id: String(rec.sessionId), config: rec.config ?? "" });
   }));
   if (!real.length) return out;
   const code = await readTextFile(modFile("agent-work.py")).catch(() => null);
@@ -2201,14 +2223,14 @@ async function agentWork(list) {
     const run = await exec("python3", ["-I", "-c", code, ...rs.flatMap((r) => [r.config, r.id])], on ? { on } : {}).catch(() => null);
     let found = {};
     try { found = run?.code === 0 ? JSON.parse(run.stdout || "{}") : {}; } catch { /* nothing read */ }
-    for (const r of rs) if (found[r.id]) out.set(r.a.address, found[r.id]);
+    for (const r of rs) if (found[r.id]) out.set(r.a.address, { ...found[r.id], ...out.get(r.a.address) });
   }));
   return out;
 }
 
 // kelpie.find-agents (the plugin's find_agents): the agents Kelpie knows, every profile's (or, with
-// `here`, the asking agent's profile's, else the shown one's), each { id, tab, space, profile, key,
-// story, ticket, state, folder, title, first, changed, you }, filtered by `key` (its own or its
+// `here`, the asking agent's profile's, else the shown one's), each { id, claude, tab, space, profile,
+// key, story, ticket, state, folder, title, first, changed, you }, filtered by `key` (its own or its
 // story's), `folder` (it works in it, or under it, or the folder is in its), `file` (its session
 // changed it) and `words` (all found in its names, title, ticket or first message).
 export function findAgentsRequest() {
@@ -2240,12 +2262,12 @@ export function findAgentsRequest() {
     let found = list.map((x) => {
       const w = work.get(x.a.address) ?? {};
       const files = Array.isArray(w.files) ? w.files.filter((f) => typeof f?.path === "string") : [];
-      return { ...x, title: sessionTitle(x.a.title) ?? w.title ?? null, first: typeof w.first === "string" ? w.first : null, ticket: summaryOf(x.d, x.key) ?? summaryOf(x.d, x.story), files };
+      return { ...x, claude: w.claude ?? null, title: sessionTitle(x.a.title) ?? w.title ?? null, first: typeof w.first === "string" ? w.first : null, ticket: summaryOf(x.d, x.key) ?? summaryOf(x.d, x.story), files };
     });
     if (file) found = found.filter((x) => x.files.some((f) => sameFile(f.path, file)));
-    if (words.length) found = found.filter((x) => { const hay = [x.a.tab_name, x.space.name, x.title, x.first, x.ticket, x.key].filter(Boolean).join(" ").toLowerCase(); return words.every((w) => hay.includes(w)); });
+    if (words.length) found = found.filter((x) => { const hay = [x.a.tab_name, x.space.name, x.claude?.name, x.title, x.first, x.ticket, x.key].filter(Boolean).join(" ").toLowerCase(); return words.every((w) => hay.includes(w)); });
     const agentsOut = found.map((x) => Object.fromEntries(Object.entries({
-      id: x.a.address, tab: x.a.tab_name, space: x.space.name, profile: x.profile?.name ?? null, key: x.key, story: x.story !== x.key ? x.story : null,
+      id: x.a.address, claude: x.claude, tab: x.a.tab_name, space: x.space.name, profile: x.profile?.name ?? null, key: x.key, story: x.story !== x.key ? x.story : null,
       ticket: x.ticket, state: agentWords(x.a.status), folder: x.folder, title: x.title, first: x.first,
       changed: (file ? x.files.filter((f) => sameFile(f.path, file)) : x.files.slice(0, CHANGED_SHOWN)).map((f) => ({ path: f.path, ...(f.at ? { at: f.at } : {}) })),
       you: typeof req?.terminal === "string" && req.terminal === x.a.address,
