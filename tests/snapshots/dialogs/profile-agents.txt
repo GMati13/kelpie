@@ -67,7 +67,7 @@ div #work-setup-fit [bg=#00000080]
               div [fg=muted]
                 "Messages"
               div [fg=dim]
-                "13 changed"
+                "15 changed"
           h_flex #setup-tab-commands [hover(bg=hover)] {click}
             div [fg=dim]
               svg chrome:terminal

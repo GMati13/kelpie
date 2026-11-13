@@ -87,7 +87,7 @@ describe("what Ask Claude sends", () => {
   });
   test("each kind's suggestions are messages of the Messages page's Ask Claude group, none with a placeholder", () => {
     assert.deepEqual(suggestionsFor("file").map((s) => s.label), ["Explain this", "Review this change", "Fix this", "Write a test for it"]);
-    assert.deepEqual(suggestionsFor("story").map((s) => s.label), ["What's left?", "Explain this"]);
+    assert.deepEqual(suggestionsFor("story").map((s) => s.label), ["Catch me up", "What's left?", "Plan this", "Explain this"]);
     const used = new Set(["file", "story", "sub", "pr"].flatMap((k) => suggestionsFor(k).map((s) => s.id)));
     assert.deepEqual([...used].sort(), [...ASK_CLAUDE].sort(), "every suggestion is in the group, and the group holds only suggestions");
     for (const id of ASK_CLAUDE) assert.doesNotMatch(ASK_PROMPTS.find((a) => a.id === id).text, /\{\w+\}/, id);
@@ -284,4 +284,15 @@ test("a copied passage: cleaned, fenced, cut, and said to be from the descriptio
   assert.equal(a.others, true);
   assert.match(textAbout("x", it).text, /which I copied while looking at the story ABC-1/);
   assert.ok(textAbout("y".repeat(5000), it).text.length < PASSAGE_MAX + 200);
+});
+
+// KELPIE-230: Plan this's new Claude starts in plan mode: it reads and changes nothing until approved.
+test("Plan this starts its new Claude in plan mode", async () => {
+  mock.reset();
+  const profile = { id: "w", name: "W", folder: "/work/acme", jira: { site: "https://acme.atlassian.net", board: 1 } };
+  askClaude({ profile, setup: profile, data: {} }, { ...story, space: null }, "ABC-1", { id: "new" }, fileAbout(prFile, "ABC-1"), { suggestion: "plan" });
+  await new Promise((r) => setImmediate(r));
+  const [[, args]] = mock.of("run").filter(([n]) => n === "space.new");
+  const argv = args.argv.join(" ");
+  assert.match(argv, /claude.*--permission-mode plan/);
 });

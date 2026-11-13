@@ -259,7 +259,7 @@ test("the details end with the Ask line, about the story, to a new Claude", asyn
   assert.equal(askedAbout(el), "ACME-142 · the story");
   assert.match(toLabel(el), /^New Claude/);
   assert.match(texts(byId(el, "ask-hint")).join(" "), /whole story goes to a new Claude/);
-  assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-left", "ask-suggest-explain"]);
+  assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-catchup", "ask-suggest-left", "ask-suggest-plan", "ask-suggest-explain"]);
 });
 test("a subtask's title points the Ask line at it; a Claude waiting for you can't take it", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
@@ -375,4 +375,43 @@ test("Ask about what you copied with nothing copied says so, and points nothing"
   const { el, view, cx } = await body({ space: "ACME-142" });
   press(el, "ask-copied", { ...cx, read_from_clipboard: () => undefined });
   assert.equal(askedAbout(view.render(cx)), "ACME-142 · the story");
+});
+
+// KELPIE-223 / KELPIE-230: Catch me up goes to the Claude already on the story; Plan this to a new
+// one in plan mode; once answered both stay pinned, and a plan has Go ahead.
+test("Catch me up goes to the story's own Claude, not a new one", async () => {
+  const { el, cx } = await body({ space: "ACME-171" });
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  mock.calls.length = 0;
+  press(el, "ask-suggest-catchup", cx);
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1, "sent to the open Claude");
+  assert.match(sent[0][0].at(-1), /Catch me up on this story/);
+  assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0, "no new Claude");
+});
+test("Plan this starts a new Claude, and a plan answered stays pinned with Go ahead", async () => {
+  const { el, view, cx } = await body({ space: "ACME-171" });
+  mock.calls.length = 0;
+  press(el, "ask-suggest-plan", cx);
+  await new Promise((r) => setImmediate(r));
+  assert.ok(mock.of("run").some(([n]) => n === "space.new" || n === "tab.new"), "a new Claude");
+  const [e] = mock.state.shared.get("kelpie.ask.thread")[DEMO]["ACME-171"];
+  assert.equal(e.pin, "plan");
+  // Answered, then two more asks: the plan stays shown.
+  const later = (n) => ({ id: `later${n}xx`, at: Date.now() + n, story: "ACME-171", about: "x", q: `Q${n}`, to: "Dark mode tokens", status: "sent", address: "a3-0" });
+  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-171": [{ ...e, status: "answered", answer: "1. Tokens\n2. Toggle", address: "a3-0" }, later(1), later(2)] } });
+  const shown = view.render(cx);
+  const words = texts(byId(shown, "ask-thread")).join(" | ");
+  assert.match(words, /Plan this/);
+  assert.match(words, /Q2/);
+  assert.doesNotMatch(words, /Q1/);
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  mock.calls.length = 0;
+  press(shown, `ask-approve-${e.id}`, cx);
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1);
+  assert.match(sent[0][0].at(-1), /The plan is approved/);
+  assert.equal(byId(view.render(cx), `ask-approve-${e.id}`), null, "Go ahead once");
 });

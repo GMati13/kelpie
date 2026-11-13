@@ -171,7 +171,7 @@ export function blocksText(blocks, max = ABOUT_DESC_MAX) {
 
 // The suggestions for a kind of thing asked about, each a profile message (the Messages page's Ask
 // Claude group): a file's are about its code, a ticket's about where it stands.
-const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], lines: ["explain", "check", "fixit"], text: ["explain", "left"], story: ["left", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
+const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], lines: ["explain", "check", "fixit"], text: ["explain", "left"], story: ["catchup", "left", "plan", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
 export const suggestionsFor = (kind) => (SUGGESTIONS[kind] ?? []).map((id) => ({ id, label: ASK_PROMPTS.find((a) => a.id === id).label }));
 
 // The message: what it's about, then the suggestion (the profile's wording) or what was typed, then,
@@ -194,11 +194,14 @@ export const handBack = (id) => `After answering, also hand Kelpie a short answe
 // control characters but line breaks, no more than ANSWER_LINES lines and ANSWER_MAX characters.
 export const ANSWER_MAX = 1200;
 export const ANSWER_LINES = 12;
-export function cleanAnswer(text) {
+// A plan's answer (KELPIE-230) is its steps and checkpoints: longer.
+export const PLAN_MAX = 4000;
+export const PLAN_LINES = 40;
+export function cleanAnswer(text, { lines: most = ANSWER_LINES, max = ANSWER_MAX } = {}) {
   const lines = String(text ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").split("\n")
     .map((l) => l.replace(/\s+/g, " ").trim());
-  const kept = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim().split("\n").slice(0, ANSWER_LINES).join("\n");
-  return kept.length > ANSWER_MAX ? `${kept.slice(0, ANSWER_MAX - 1).trimEnd()}…` : kept;
+  const kept = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim().split("\n").slice(0, most).join("\n");
+  return kept.length > max ? `${kept.slice(0, max - 1).trimEnd()}…` : kept;
 }
 
 // The question as the thread shows it: a suggestion's label, or what was typed (cleaned).
@@ -224,7 +227,7 @@ export function entryWords(e, now = Date.now()) {
 // one sent at once or dropped, `sendNow(id, cx)`, `drop(id, cx)`; a sent one's answer shown in its
 // Claude's tab, `show(id, cx)`); the whole line is its tip. `more`: how many earlier ones are folded
 // away (`unfold(cx)`).
-export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, expanded = null, toggle }) {
+export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, expanded = null, toggle, approve = null }) {
   if (!entries.length) return null;
   // An answered ask's line gives its answer's first line where the others say what they were about,
   // and a click opens the whole answer under it (and closes it): the details' block is short while a
@@ -244,6 +247,9 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
     .when(e.status === "held", (el) => el
       .child(textButton(t, `ask-now-${e.id}`, "Send now", (_e, cx) => sendNow(e.id, cx), { dim: true, tip: "Typed in while it works, it may change what it's doing" }))
       .child(textButton(t, `ask-drop-${e.id}`, "Cancel", (_e, cx) => drop(e.id, cx), { dim: true })))
+    // A plan answered: Go ahead tells its Claude to start, a step at a time (KELPIE-230).
+    .when(e.pin === "plan" && e.status === "answered" && Boolean(approve) && !e.approved, (el) => el
+      .child(textButton(t, `ask-approve-${e.id}`, "Go ahead", (_e, cx) => approve(e.id, cx), { tip: "Tell its Claude the plan is approved: build it a step at a time, stopping at each checkpoint" })))
     .when((e.status === "sent" || e.status === "answered") && Boolean(e.address), (el) => el
       .child(textButton(t, `ask-show-${e.id}`, e.status === "answered" ? "Show its Claude" : "Show its answer", (_e, cx) => show(e.id, cx), { dim: true, tip: e.status === "answered" ? "Its full answer is in its tab" : "The answer is in its tab" })));
   // An answer opened: its line, then the short answer under it, in the reading colour.
@@ -276,7 +282,7 @@ export function askLine(t, { about, input, to, send, suggest, clear, hint, isSto
       .child(div().flex_none().text_size(SMALL).text_color(t.muted).child("to"))
       .child(to)
       .child(textButton(t, "ask-send", "Send", (_e, cx) => send(cx))))
-    .child(h_flex().gap(4).items_center().pl(22).min_w(0)
+    .child(h_flex().flex_wrap().gap(4).items_center().pl(22).min_w(0)
       .children(suggestionsFor(about.kind).map((s) => textButton(t, `ask-suggest-${s.id}`, s.label, (_e, cx) => suggest(s.id, cx), { dim: true, tip: "Ask it this (the wording is the profile's, on its Messages page)" })))
       // A story's tasks (KELPIE-228: Merge, Request approval), as its header's menus offered them.
       .children(tasks.map((x) => textButton(t, `ask-task-${x.id}`, x.label, (_e, cx) => task(x.id, cx), { dim: true, tip: x.tip })))

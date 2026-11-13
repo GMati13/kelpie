@@ -603,9 +603,13 @@ export const ASK_PROMPTS = [
   { id: "fixit", label: "Fix this", text: "Find what's wrong here and fix it, then tell me what you changed." },
   { id: "test", label: "Write a test for it", text: "Write a test for this, in the style of the tests around it, and tell me what it covers." },
   { id: "left", label: "What's left?", text: "What's left before this is done, and what's in the way? Answer briefly; don't change anything." },
+  // Catch me up (KELPIE-223), to the Claude already on the story, and Plan this (KELPIE-230), to a new
+  // Claude in plan mode; their answers come back pinned on the story's thread.
+  { id: "catchup", label: "Catch me up", text: "Catch me up on this story in a few short lines: what's done, what you're doing now, what's next, anything that needs me, and how I can try it. Don't change anything for this." },
+  { id: "plan", label: "Plan this", text: "Plan how to build this before writing any code. Read the ticket, its subtasks and the code, and change nothing. Give the parts in order, each with what it looks like and how it behaves; a checkpoint after each where you stop for me; the open questions only I can answer; and what could go wrong." },
 ];
 // The messages Ask Claude offers as suggestions, in ASK_PROMPTS.
-export const ASK_CLAUDE = ["explain", "check", "fixit", "test", "left"];
+export const ASK_CLAUDE = ["explain", "check", "fixit", "test", "left", "catchup", "plan"];
 
 export function askText(profile, id, fields = {}) {
   const template = profile?.prompts?.[id]?.trim() || ASK_PROMPTS.find((a) => a.id === id).text;

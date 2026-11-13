@@ -255,8 +255,12 @@ div
             h_flex #ask-send [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
               "Send"
           h_flex
+            h_flex #ask-suggest-catchup [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+              "Catch me up"
             h_flex #ask-suggest-left [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
               "What's left?"
+            h_flex #ask-suggest-plan [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+              "Plan this"
             h_flex #ask-suggest-explain [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
               "Explain this"
             h_flex #ask-task-merge [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Check its 2 pull requests are ready to merge and write a merge and deploy plan"

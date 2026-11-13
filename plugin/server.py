@@ -232,7 +232,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "id": {"type": "string", "description": "The ask's id, as the message gave it."},
-                "answer": {"type": "string", "description": "The gist of your answer in a few plain lines, under 1200 characters."},
+                "answer": {"type": "string", "description": "The gist of your answer in a few plain lines, under 1200 characters (a plan asked for: its steps and checkpoints, under 4000)."},
             },
             "required": ["id", "answer"],
             "additionalProperties": False,
@@ -552,7 +552,7 @@ def answer_ask(args):
         return "id: the ask's id, as the message you were asked in gave it.", True
     text = args.get("answer") if isinstance(args.get("answer"), str) else ""
     # Line breaks kept (Kelpie cleans and cuts it again), every other control character dropped.
-    answer = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]+", " ", text).strip()[:1500]
+    answer = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]+", " ", text).strip()[:4500]
     if not answer:
         return "answer: the gist of your answer, a few plain lines.", True
     reply_ = ask("ask-answer", {**origin(), "id": ask_id, "answer": answer}, "ask-answer")
@@ -735,7 +735,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.9.0"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.9.1"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":
