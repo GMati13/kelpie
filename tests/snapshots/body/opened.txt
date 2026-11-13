@@ -319,7 +319,7 @@ div
                     Popup.new "sub-menu-ACME-145-menu"
                       div #sub-menu-ACME-145-at
       h_flex
-        v_flex #ask-line [border=border]
+        v_flex #ask-line [border=accent/40 bg=accent/0d]
           h_flex
             svg own:sparkles [fg=accent]
             div [fg=muted]
