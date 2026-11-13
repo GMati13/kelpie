@@ -24,13 +24,19 @@ const story = (key) => storyItems().items.map((x) => x.it).find((x) => x.key ===
 // It writes to the board for each ticket, so it's the person's click: any agent can run a kelpie.*
 // command (herdr-app do), so none moves a story; only the confirm dialog's own button does.
 test("only the confirm dialog's button moves a story to done; no kelpie.* command does", () => {
-  assert.doesNotMatch(bodyOf(readRepo("mods/kelpie/main.js"), "async function command(c) {"), /moveStoryToDone|done-story/);
+  assert.doesNotMatch(bodyOf(readRepo("mods/kelpie/main.js"), "async function command(c) {"), /moveStor(y|ies)ToDone|done-story/);
   for (const f of ["main.js", "work.js", "workside.js", "setup.js", "desk.js", "demo.js", "source.js", "ui.js", "sprint.js", "pulls.js", "panes.js", "config.js"]) {
-    assert.doesNotMatch(readRepo("mods/kelpie", f), /moveStoryToDone/, f);
+    assert.doesNotMatch(readRepo("mods/kelpie", f), /moveStor(y|ies)ToDone/, f);
   }
-  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /await moveStoryToDone\(ask\)/);
+  // The dialog's button runs one story's (doneStory) or Next's Ready for Done (doneStories), nothing else.
+  const yes = bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {");
+  assert.match(yes, /const move = doneStory \? moveStoryToDone : moveStoriesToDone;/);
+  assert.match(yes, /await move\(ask\)/);
+  // stories.js defines both; one story's is called only by Next's run of several, itself called nowhere.
   const stories = readRepo("mods/kelpie/stories.js");
-  assert.equal(stories.match(/moveStoryToDone\(/g).length, 1, "stories.js only defines it");
+  assert.equal(stories.match(/moveStoryToDone\(/g).length, 2, "defined, and called by moveStoriesToDone()");
+  assert.match(bodyOf(stories, "export async function moveStoriesToDone("), /await moveStoryToDone\(/);
+  assert.equal(stories.match(/moveStoriesToDone\(/g).length, 1, "stories.js only defines it");
 });
 
 describe("donePlan: what Move to Done would move", () => {

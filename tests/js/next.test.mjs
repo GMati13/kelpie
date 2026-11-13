@@ -109,6 +109,46 @@ describe("needQueueOf: what Next goes through", () => {
   });
 });
 
+// Ready for Done (KELPIE-88, readyForDone()): one item for every story whose work is finished but
+// isn't Done yet, just before the clean-up. DD-1 is in QA (the handover column), yours, nothing open.
+describe("needQueueOf: the stories ready for Done", () => {
+  const merged = pr("DD-1 x", { merged: true, number: 9 });
+  const list = ({ prs = [merged], agents = new Map() } = {}) => ordered(build({ ...board(), prs: [...board().prs, ...prs] }, new Map([["BB-1", { status: "blocked" }], ...agents]), {}, new Map([["EE-1", { id: "s-ee" }]])));
+  const finish = (q) => q.find((x) => x.key === "finish")?.finish.map((it) => it.key) ?? null;
+  test("one item, just before the clean-up, for a handed-over story whose pull request merged", () => {
+    const q = needQueueOf(profile, list(), []);
+    assert.deepEqual(keys(q), ["BB-1", "AA-1", "finish", "clean"]);
+    assert.deepEqual(finish(q), ["DD-1"]);
+    assert.equal(q[2].column, "Done", "the board's done column, for its words");
+  });
+  test("on a team's board, nothing merged means it's the testers' to move: no item", () => {
+    assert.equal(finish(needQueueOf(profile, list({ prs: [] }), [])), null);
+  });
+  test("worked alone, a handed-over story is the person's to close, pull request or not", () => {
+    const alone = { ...profile, jira: { ...profile.jira, solo: true } };
+    assert.deepEqual(finish(needQueueOf(alone, list({ prs: [] }), [])), ["DD-1"]);
+  });
+  test("not while a pull request of it is open, or an agent of it works or waits", () => {
+    assert.equal(finish(needQueueOf(profile, list({ prs: [merged, pr("DD-1 y", { number: 10 })] }), [])), null);
+    assert.equal(finish(needQueueOf(profile, list({ agents: [["DD-1", { status: "working" }]] }), [])), null);
+  });
+  test("none with the board's Move to Done turned off", () => {
+    const off = { ...profile, jira: { ...profile.jira, moveToDone: false } };
+    assert.equal(finish(needQueueOf(off, list(), [])), null);
+  });
+  test("not while it's being moved or cleaned up, nor while Ready for Done runs", () => {
+    const busy = (name, kind = "done", keys = []) => mock.state.shared.set("kelpie.busy", { [name]: { kind, keys, step: "x", at: Date.now(), until: Date.now() + 60e3 } });
+    busy("DD-1");
+    assert.equal(finish(needQueueOf(profile, list(), [])), null);
+    busy("move:DD-1", "move", ["DD-1"]);
+    assert.equal(finish(needQueueOf(profile, list(), [])), null, "its chip moving");
+    busy("done-all:w");
+    assert.equal(finish(needQueueOf(profile, list(), [])), null);
+    busy("done-all:other");
+    assert.deepEqual(finish(needQueueOf(profile, list(), [])), ["DD-1"], "another profile's run doesn't count");
+  });
+});
+
 describe("nextIn: the item after the one shown", () => {
   const q = [{ key: "a" }, { key: "b" }, { key: "c" }];
   test("goes on, and wraps around", () => {

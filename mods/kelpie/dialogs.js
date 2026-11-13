@@ -13,7 +13,7 @@ import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { closeOverlay, openOverlay, props } from "herdr";
 import { run } from "./host.js";
 import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, mark, primaryButton, textButton, tint } from "./ui.js";
-import { closeStories, moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
+import { closeStories, moveStoriesToDone, moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
 import { applyPendingProfile, installPlugin } from "./config.js";
 
@@ -158,7 +158,9 @@ export class Confirm {
   // Installing runs in a task of this dialog's, which closes the dialog once the Desk's terminal is
   // open: a closed dialog's tasks are cancelled, so closing first left Install it doing nothing.
   // `doneStory` ({ profile, key }): Move to Done's tickets moved on the board by this button (stories.js
-  // moveStoryToDone()), the dialog staying open, its button saying Moving…, until they're done.
+  // moveStoryToDone()), the dialog staying open, its button saying Moving…, until they're done;
+  // `doneStories` ({ profile, keys }) the same for Next's Ready for Done, story after story
+  // (moveStoriesToDone()).
   // `runPicks` ({ profile }): Run all's picks started by this button (stories.js runPicks()), the ones
   // still ticked, the dialog staying open as Starting… until the last has opened: no command does it,
   // as any agent can run one and this starts agents.
@@ -167,7 +169,7 @@ export class Confirm {
   // line marked as it goes (closing, closed, or why not) and the button counting, as a long run that
   // only said Closing… looked stuck.
   yes(command = props().command, cx = null) {
-    const { overlay, installPlugin: install, installThen: then = null, doneStory, runPicks: picks, closeStories: closing } = props();
+    const { overlay, installPlugin: install, installThen: then = null, doneStory, doneStories, runPicks: picks, closeStories: closing } = props();
     if (closing) {
       if (this.busy) return;
       this.busy = true;
@@ -190,13 +192,14 @@ export class Confirm {
       cx.spawn(async () => { await runPicks(ask).catch(() => null); closeOverlay(overlay); });
       return;
     }
-    if (doneStory) {
+    if (doneStory || doneStories) {
       if (this.busy) return;
       this.busy = true;
-      const ask = { ...doneStory, clean: props().check ? this.checked : null };
-      if (!cx) return moveStoryToDone(ask).catch(() => null).finally(() => closeOverlay(overlay));
+      const ask = { ...(doneStory ?? doneStories), clean: props().check ? this.checked : null };
+      const move = doneStory ? moveStoryToDone : moveStoriesToDone;
+      if (!cx) return move(ask).catch(() => null).finally(() => closeOverlay(overlay));
       cx.notify?.();
-      cx.spawn(async () => { await moveStoryToDone(ask).catch(() => null); closeOverlay(overlay); });
+      cx.spawn(async () => { await move(ask).catch(() => null); closeOverlay(overlay); });
       return;
     }
     if (install) {
