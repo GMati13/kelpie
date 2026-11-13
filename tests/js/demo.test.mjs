@@ -211,7 +211,7 @@ describe("demo.json holds together", () => {
       assert.ok(issues.has(s.key) || s.url || s.idea, JSON.stringify(s));
     }
   });
-  test("its links can't reach anyone: only jira.example.com and the kelpie--demo GitHub owner", () => {
+  test("its links can't reach anyone: only jira.example.com, the kelpie--demo GitHub owner and Artifacts named demo-…", () => {
     assert.equal(new URL(FIXTURE.profile.site).host, "jira.example.com");
     assert.equal(FIXTURE.profile.owner, "kelpie--demo");
     // Outside file contents (code in a diff may name anything), every address.
@@ -225,7 +225,9 @@ describe("demo.json holds together", () => {
     assert.ok(found.length >= 2);
     for (const [path, url] of found) {
       const u = new URL(url);
-      const ok = u.host === "jira.example.com" || (u.host === "github.com" && u.pathname.startsWith("/kelpie--demo/")) || u.hostname === "localhost";
+      // A Claude Artifact's link only with an id of the demo's own, which no Artifact has.
+      const ok = u.host === "jira.example.com" || (u.host === "github.com" && u.pathname.startsWith("/kelpie--demo/")) || u.hostname === "localhost"
+        || (u.host === "claude.ai" && /^\/artifact\/demo-[a-z-]+$/.test(u.pathname));
       assert.ok(ok, `${path}: ${url}`);
     }
   });

@@ -1,0 +1,39 @@
+v_flex #artifact-list-ACME-190
+  div
+    div [font="DM Sans" fg=muted]
+      "CLAUDE ARTIFACTS"
+    div [font="DM Mono" fg=dim]
+      "2"
+    div
+      div
+        div [bg=dim/f2] ×32 … [bg=dim/1a]
+  h_flex #artifact-ACME-190-0 [hover(bg=hover)] tip="Saved filters: what a new search reads back\nhttps://claude.ai/artifact/demo-filters-flow\nMade on the Claude account in ~/.claude"
+    v_flex
+      div
+        "Saved filters: what a new search reads back"
+      div [fg=muted]
+        "A diagram of the filters a new search takes from the last one, and from where."
+      div [fg=dim]
+        "By Read the last filters back on a new search · published 3 times, last 20h ago"
+    h_flex
+      h_flex #artifact-ACME-190-0-open [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Open it in this profile's Web panel"
+        svg own:globe
+        "Open"
+      div #artifact-ACME-190-0-out [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in your browser"
+        svg own:external-link
+  h_flex #artifact-ACME-190-1 [hover(bg=hover)] tip="Filter edge cases\nhttps://claude.ai/artifact/demo-filters-cases\nMade on the Claude account in ~/.claude-personal"
+    v_flex
+      div
+        "Filter edge cases"
+      div [fg=muted]
+        "Every combination tried, with what each search showed."
+      div [fg=dim]
+        "By Read the last filters back on a new search · published 1d ago"
+      div [fg=working]
+        "Made on another Claude account (~/.claude-personal): the Web panel shows it once signed in to claude.ai on that one."
+    h_flex
+      h_flex #artifact-ACME-190-1-open [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Open it in this profile's Web panel"
+        svg own:globe
+        "Open"
+      div #artifact-ACME-190-1-out [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Open in your browser"
+        svg own:external-link

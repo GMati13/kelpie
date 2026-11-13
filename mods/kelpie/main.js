@@ -1,7 +1,7 @@
 // Kelpie's own pieces: a macOS-style sidebar and a plain toolbar. Roles, from the layout:
 //   top      window-button space and the sidebar toggle
 //   sidebar  spaces and agents, and a footer: the time, CPU, memory and the focused agent's Claude limits
-//   toolbar  tabs, and the side panels as icons (Files, Changes, Artifacts, Web); in the Kelpie layout, where the space
+//   toolbar  tabs, and the side panels as icons (Files, Changes, Screenshots, Web); in the Kelpie layout, where the space
 //            shows stories, the selected story's tabs, its Claude and Terminal, Changes and Screenshots;
 //            elsewhere, Claude and Terminal open a tab in the shown space
 //   footer   the sidebar's footer on its own (the Kelpie layout's sidebar is workside.js), with the Claude account and
@@ -13,7 +13,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { appHome, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
 import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
 import { toggleDebug } from "./debug.js";
-import { CONTROL, MOD, ROW, modFile, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
+import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
@@ -255,6 +255,7 @@ function track(role) {
   }
   syncTracking();
   syncPanel();
+  syncWebOpen();
   syncSkin();
 }
 
@@ -357,6 +358,7 @@ function toolbar(cx) {
   const has = (n) => typeof n === "number" && n > 0;
   const changes = !work?.preview || has(work?.prs) || has(work?.files);
   const shots = !work?.preview || has(work?.shots);
+  const made = !work?.preview || has(work?.artifacts);
   const shownTabs = work?.preview || profileElsewhere() ? [] : (space?.tabs ?? []).map((c) => ({ ...c, active: c.active && (!views || views.view === "agent") }));
   // The sidebar hidden (cmd-b): a button to bring it back, after room for the window buttons when the
   // tab bar is the top block (no story header above it).
@@ -387,16 +389,17 @@ function toolbar(cx) {
         .when(!work.review, (x) => x
           .child(create("A Claude agent for this story with no task, in the profile's folder", "A plain shell for this story")))
         // The line between the tabs (and +) and the views; a pull request on its own has nothing before them.
-        .when((changes || shots) && !work.review, (x) => x.child(div().w(1).h(16).mx(4).flex_none().bg(t.border)))
+        .when((changes || shots || made) && !work.review, (x) => x.child(div().w(1).h(16).mx(4).flex_none().bg(t.border)))
         .when(changes, (x) => x.child(view("changes", "Changes", work.files)))
-        .when(shots && !work.review, (x) => x.child(view("shots", "Screenshots", work.shots)))))
+        .when(shots && !work.review, (x) => x.child(view("shots", "Screenshots", work.shots)))
+        .when(made && !work.review, (x) => x.child(view("artifacts", "Artifacts", work.artifacts)))))
     // In the Kelpie layout, a space whose Hub shows nothing keeps a way back to its setup.
     .when(hubHidden(), (el) => el.child(h_flex().id("hub-setup").h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
       .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(`Choose what ${space?.name ?? "this space"}'s Hub shows`)
       .on_mouse_down("left", stop).on_click(() => openSetup(space)).child("Hub")))
     .child(h_flex().flex_none().gap(2).items_center()
       .children([panelButton("files", chrome("folder"), "Files"), panelButton("changes", chrome("git-compare"), "Changes"),
-        panelButton("artifacts", chrome("layers"), "Artifacts"), panelButton("web", own("globe"), "Web ⌘⇧S")].filter(Boolean))
+        panelButton("artifacts", chrome("layers"), "Screenshots"), panelButton("web", own("globe"), "Web ⌘⇧S")].filter(Boolean))
       // While the profile's browser shows: restart it when stuck, or sign it out of every site.
       .when(Boolean(panel && !panel.hidden) && body?.active === webChild(root), (el) => el.child(menuButton(toolbarMenu, t, "web", "", [
         { label: "Restart browser", tip: "For a stuck page: stops this profile's browser and opens it again on a blank page. Sign-ins stay.", action: () => resetBrowser(false).catch(() => {}) },
@@ -618,6 +621,54 @@ function syncPanel(baseline = false) {
   const child = want?.open ? (isSlot(want.child) ? webChild(root) : find(body, want.child) ? want.child : null) : null;
   if (child) showPanel(child, webSlots(body).length).catch(() => {});
   else if (!panel.hidden) run("layout.hide", { id: "panel" });
+}
+
+// A Claude Artifact asked to open in the Web panel (stories.js openArtifact): taken once by the copy
+// that leads (cleared before acting, so no other copy or later draw takes it again), only for the
+// profile shown, within 30 s, and only an Artifact's own link. Exported for the tests.
+export function syncWebOpen() {
+  const ask = shared(WEB_OPEN);
+  if (!ask) return;
+  setShared(WEB_OPEN, null);
+  if (ask.profile !== profileKey() || !(Date.now() - ask.at < 30000) || !ARTIFACT_LINK.test(ask.url ?? "")) return;
+  openInWeb(ask.url).catch(() => {});
+}
+
+// terminal-browser as the shown profile's browser runs (browserCommand: its own folder, so its own
+// daemon), with "$@" after the folder's name; the link and key reach it as arguments, never as script.
+const PROFILE_BROWSER = 'd="$HOME/.local/share/kelpie/web/$1"; shift; XDG_RUNTIME_DIR="$d/run" TERMINAL_BROWSER_APPDATA="$d/data" XDG_DATA_HOME="$d/share" exec terminal-browser "$@"';
+const profileBrowser = (...args) => exec("sh", ["-c", PROFILE_BROWSER, "sh", profileDir(), ...args]);
+// The key of the profile's browser once it runs (`terminal-browser ls`), or null.
+async function browserKey() {
+  const r = await profileBrowser("ls", "--all", "--json").catch(() => null);
+  try {
+    const key = JSON.parse(r?.stdout || "{}").browsers?.[0]?.key;
+    return typeof key === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(key) ? key : null;
+  } catch { return null; }
+}
+// Opens a link as a new tab of the shown profile's browser, its panel shown (and the browser started
+// on its start page first, when it isn't running). Without terminal-browser, or a slot, or when the
+// tab doesn't open, it opens in the person's own browser and says why. Exported for the tests.
+export async function openInWeb(url) {
+  const root = layout();
+  const slots = webSlots(find(root, "panel-body")).length;
+  const child = slots ? webChild(root, true) : null;
+  const has = (await exec("sh", ["-c", "command -v terminal-browser >/dev/null && echo b; true"]).catch(() => ({ stdout: "" }))).stdout.includes("b");
+  const elsewhere = (body) => { openExternal(url); notify({ title: "Opened in your browser", body, level: "info", timeout: 6000 }); };
+  if (!has) return elsewhere("The Web panel needs terminal-browser.");
+  if (!child) return elsewhere(slots ? `Every Web panel slot is taken: the layout has ${slots}, each kept by a profile.` : "This layout has no Web panel.");
+  await showPanel(child, slots);
+  // A browser just started takes a few seconds to answer.
+  for (let i = 0; i < 10; i++) {
+    const key = await browserKey();
+    if (key) {
+      const r = await profileBrowser("new-tab", "--browser", key, url).catch(() => null);
+      if (r?.code === 0) return;
+      break;
+    }
+    await exec("sleep", ["1"]);
+  }
+  elsewhere("The Web panel's browser didn't open it.");
 }
 
 let lastCommand = {}; // { c, at }: the last key command this copy ran

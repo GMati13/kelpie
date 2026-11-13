@@ -421,6 +421,18 @@ export async function demoAgentWork(folder, tab) {
   return { title: t.title ?? null, first: t.work.prompt ?? null,
     files: (t.work.edits ?? []).map((e) => ({ path: `${folder}/${e.path}`, at: new Date(when(e.at, now)).toISOString() })) };
 }
+
+// artifacts.py for a demo profile: the Claude Artifacts the given sessions published (the fixture's
+// `artifacts`), newest first, shaped as the script prints them.
+export async function demoArtifacts(ids) {
+  const f = await demoFixture();
+  const now = Date.now();
+  return (f.artifacts ?? []).filter((a) => ids.includes(a.session)).map((a) => ({
+    url: a.url, title: a.title ?? null, description: a.description ?? null, path: null, session: a.session,
+    count: a.published ?? 1, first: when(a.first ?? a.updated, now), last: when(a.updated, now),
+    config: a.account ? `/home/demo/${a.account}` : null,
+  })).sort((a, b) => b.last - a.last);
+}
 // Whether the demo's browser plays sound (its globe turns into moving bars): the fixture's web.playing.
 export const demoPlaying = () => Boolean(FIXTURE?.web?.playing);
 // GitHub's limit as the demo plays it (ghlimit.js): the fixture's github.limit, "used" (refused until

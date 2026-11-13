@@ -25,12 +25,17 @@ h_flex {down:left}
         "Screenshots"
       div [fg=dim]
         "2"
+    h_flex #view-artifacts [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      div
+        "Artifacts"
+      div [fg=dim]
+        "1"
   h_flex
     div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
       svg chrome:folder
     div #panel-changes [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Changes"
       svg chrome:git-compare
-    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Artifacts"
+    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Screenshots"
       svg chrome:layers
     div #panel-web [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Web ⌘⇧S"
       svg own:globe
