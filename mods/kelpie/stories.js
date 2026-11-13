@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { ASK_ID, askId, askLine, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -2752,7 +2752,9 @@ export function askClaude(st, it, key, row, about, ask) {
   const q = questionOf(ask);
   // Its id goes in the message, so its Claude can hand a short answer back (answerAskRequest()).
   const id = askId();
-  const entry = (more) => ({ id, at: Date.now(), story: it.key, about: about.label ?? about.name, q, ...more });
+  // Catch me up and Plan this are pinned on the thread once answered (KELPIE-223, KELPIE-230).
+  const pin = ask.suggestion === "catchup" ? "brief" : ask.suggestion === "plan" ? "plan" : null;
+  const entry = (more) => ({ id, at: Date.now(), story: it.key, about: about.label ?? about.name, q, ...(pin ? { pin } : {}), ...more });
   if (row?.agent) {
     // Named as the Ask line's menu names it: its session's name, else its tab's.
     const a = row.agent, name = row.label ?? a.tab_name ?? "Claude";
@@ -2775,7 +2777,8 @@ export function askClaude(st, it, key, row, about, ask) {
   if (!then || lonePr(it) || cleaningNow(it.key, profile)) return;
   const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
   setThread(profile, it.key, (list) => withEntry(list, entry({ to: "a new Claude", status: "started" })));
-  once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv: claudeArgv(profile), task: ticketTask(st, it, key, null, then) }));
+  const argv = pin === "plan" ? claudeArgv(profile, "--permission-mode", "plan") : claudeArgv(profile);
+  once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv, task: ticketTask(st, it, key, null, then) }));
   say(said, `Asked a new Claude in ${it.key}'s space about ${about.name}.`);
 }
 
@@ -2789,8 +2792,8 @@ export function answerAskRequest() {
   return answerRequest("ask-answer", (req) => {
     const id = typeof req?.id === "string" ? req.id.trim() : "";
     if (!ASK_ID.test(id)) throw new Error("id: the ask's id, from the message you were asked in.");
-    const answer = cleanAnswer(req?.answer);
-    if (!answer) throw new Error("answer: a few plain lines.");
+    const raw = req?.answer;
+    if (!cleanAnswer(raw)) throw new Error("answer: a few plain lines.");
     const all = shared(ASK_THREAD) ?? {};
     let found = null;
     for (const [pid, stories] of Object.entries(all)) for (const [key, list] of Object.entries(stories ?? {})) {
@@ -2799,6 +2802,8 @@ export function answerAskRequest() {
     }
     if (!found) throw new Error("no ask with that id here: it may be more than a day old.");
     const { pid, key, e } = found;
+    // A plan's answer is its steps and checkpoints: it may be longer (KELPIE-230).
+    const answer = e.pin === "plan" ? cleanAnswer(raw, { lines: PLAN_LINES, max: PLAN_MAX }) : cleanAnswer(raw);
     const agent = typeof req?.terminal === "string" ? agents().find((a) => a.address === req.terminal) : null;
     const space = agent && spaces().find((x) => x.id === agent.space);
     const ours = e.address ? agent?.address === e.address : Boolean(space && space.name === key);
@@ -5375,7 +5380,7 @@ export class StoryBody extends Stories {
     const who = askWho({ story: it, key, open: openClaudes(it, agents(), tabKey), keyOf, names });
     const chosen = chosenWho(who, this.askPick, about.kind);
     const row = who.find((r) => r.id === chosen);
-    this.askTarget = { st, it, key, about, row };
+    this.askTarget = { st, it, key, about, row, who };
     const rows = who.map((r) => (r.waiting ? { header: `${r.label} · waiting for you, answer it first` }
       : { label: r.label, hint: r.hint, tip: r.tip, action: (cx) => { this.askPick = r.id; cx.notify(); } }));
     const to = this.menuButton(t, "ask-to", `${row.label} ▾`, rows, row.tip, { width: 320 });
@@ -5383,7 +5388,10 @@ export class StoryBody extends Stories {
       : row.busy ? `${row.label} is mid-task: your question waits until its turn ends` : `${row.label} gets it now`;
     const profile = st.profile;
     const entries = threadOf(profile, it.key);
-    const shownEntries = this.askOpen ? entries.slice(-5) : entries.slice(-1);
+    // The latest Catch me up and plan stay shown (pinned, first), with the latest ask.
+    const pinned = ["brief", "plan"].map((k) => entries.filter((e) => e.pin === k).at(-1)).filter(Boolean);
+    const recent = this.askOpen ? entries.slice(-5) : entries.slice(-1);
+    const shownEntries = [...pinned, ...recent.filter((e) => !pinned.includes(e))];
     const thread = askThread(t, {
       entries: shownEntries, more: entries.length - shownEntries.length,
       sendNow: (id, cx) => { const e = threadOf(profile, it.key).find((x) => x.id === id); if (e) sendEntry(profile, it.key, e); cx.notify(); },
@@ -5394,6 +5402,15 @@ export class StoryBody extends Stories {
         if (a) { run("space.select", { id: a.space }); run("pane.focus", { pane: a.pane }); }
       },
       unfold: (cx) => { this.askOpen = true; cx.notify(); },
+      approve: (id, cx) => {
+        const e = threadOf(profile, it.key).find((x) => x.id === id);
+        if (!e?.address) return;
+        patchEntry(profile, it.key, id, { approved: true });
+        sendToClaude(e.address, "The plan is approved. Go ahead, one step at a time, and stop at each checkpoint for me.", { onHeld: () => held({ profile, keys: it.key }, "the go-ahead", e.to) })
+          .then(() => say({ profile, keys: it.key }, `Told ${e.to} to go ahead with the plan.`))
+          .catch((err) => say({ profile, keys: it.key }, `Couldn't tell ${e.to}: ${String(err?.message ?? err)}.`));
+        cx.notify();
+      },
       expanded: this.askExpanded, toggle: (id, cx) => { this.askExpanded = this.askExpanded === id ? null : id; cx.notify(); },
     });
     const line = askLine(t, {
@@ -5453,7 +5470,12 @@ export class StoryBody extends Stories {
   askSend(ask, cx) {
     const x = this.askTarget;
     if (!x || (!ask.suggestion && !String(ask.note ?? "").trim())) return;
-    askClaude(x.st, x.it, x.key, x.row, x.about, ask);
+    // Catch me up goes to a Claude already on the story (a new one knows nothing of it yet); Plan this
+    // always to a new one, in plan mode, which reads and changes nothing (KELPIE-223, KELPIE-230).
+    let row = x.row;
+    if (ask.suggestion === "catchup" && row.id === "new") row = x.who.find((r) => r.agent && !r.waiting) ?? row;
+    if (ask.suggestion === "plan") row = x.who.find((r) => r.id === "new");
+    askClaude(x.st, x.it, x.key, row, x.about, ask);
     this.askInput.set_value("");
     cx.notify();
   }

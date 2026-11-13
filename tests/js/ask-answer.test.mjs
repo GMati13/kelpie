@@ -104,3 +104,17 @@ test("the demo's asks: one answered from ACME-160's Claude, one held for ACME-17
   assert.equal(t["ACME-175"][0].status, "held");
   assert.equal(agentOf("ACME-175").status, "working", "held for a Claude that's working");
 });
+
+// KELPIE-230: a plan's answer is its steps and checkpoints, so it may be longer than other answers.
+test("a plan's answer may be longer than other answers", async () => {
+  const asked = agentOf("ACME-175");
+  const long = Array.from({ length: 30 }, (_, i) => `${i + 1}. step`).join("\n");
+  seed(entry({ address: asked.address, pin: "plan" }));
+  request({ id: "abc123xyz", answer: long, terminal: asked.address });
+  assert.equal((await answerAskRequest()).ok, true);
+  assert.equal(thread()[0].answer.split("\n").length, 30);
+  seed(entry({ address: asked.address }));
+  request({ id: "abc123xyz", answer: long, terminal: asked.address });
+  await answerAskRequest();
+  assert.equal(thread()[0].answer.split("\n").length, ANSWER_LINES);
+});

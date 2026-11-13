@@ -199,7 +199,7 @@
           },
           "answer": {
             "type": "string",
-            "description": "The gist of your answer in a few plain lines, under 1200 characters."
+            "description": "The gist of your answer in a few plain lines, under 1200 characters (a plan asked for: its steps and checkpoints, under 4000)."
           }
         },
         "required": [

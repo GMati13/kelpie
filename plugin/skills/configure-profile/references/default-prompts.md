@@ -183,3 +183,15 @@ Write a test for this, in the style of the tests around it, and tell me what it 
 ```text
 What's left before this is done, and what's in the way? Answer briefly; don't change anything.
 ```
+
+### Catch me up (Ask Claude) (`catchup`)
+
+```text
+Catch me up on this story in a few short lines: what's done, what you're doing now, what's next, anything that needs me, and how I can try it. Don't change anything for this.
+```
+
+### Plan this (Ask Claude) (`plan`)
+
+```text
+Plan how to build this before writing any code. Read the ticket, its subtasks and the code, and change nothing. Give the parts in order, each with what it looks like and how it behaves; a checkpoint after each where you stop for me; the open questions only I can answer; and what could go wrong.
+```

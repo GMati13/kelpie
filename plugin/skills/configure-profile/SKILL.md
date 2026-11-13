@@ -212,6 +212,8 @@ Sent to an agent already working on a pull request when a button is pressed (`pr
 | `fixit` | Ask Claude's "Fix this", the same way |
 | `test` | Ask Claude's "Write a test for it", the same way |
 | `left` | Ask Claude's "What's left?" on a story or a subtask, the same way |
+| `catchup` | Ask Claude's "Catch me up" on a story: sent to the Claude already on it, its answer pinned on the story's thread |
+| `plan` | Ask Claude's "Plan this" on a story: sent to a new Claude in plan mode (reads, changes nothing), its plan pinned on the story's thread with Go ahead |
 
 `prompts.configure` is the message that started you (`{name} {id} {scope} {about} {home}`); leave it alone unless asked.
 
