@@ -80,8 +80,8 @@ v_flex [fg=foreground]
               div #sub-cols-zoom-probe {size_change}
               div #prs-story [fg=muted]
                 "On the story itself"
-              h_flex
-                h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click down:right} tip="In review, checks pass · ACME-142 Offline mode: how saved trips sync · right-click to ask Claude about it"
+              h_flex #pr-row-docs#61 {down:right}
+                h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-142 Offline mode: how saved trips sync · right-click for more"
                   div
                     div
                       svg own:git-pull-request [fg=accent]
@@ -96,6 +96,9 @@ v_flex [fg=foreground]
                         "In review"
                       div [fg=dim]
                         "now"
+                div
+                  Popup.new "pr-menu-docs#61-menu"
+                    div #pr-menu-docs#61-at
                 h_flex
                   h_flex #sub-pr-ask-cell-docs#61 {size_change}
               div #subs-mine [fg=muted]
@@ -126,8 +129,11 @@ v_flex [fg=foreground]
                         div #sub-status-ACME-143-more [hover(bg=hover)] {down:left click} tip="Change the status"
                           div [bg=accent/26 fg=accent]
                             "In progress"
-                h_flex
-                  h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click down:right} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use · right-click to ask Claude about it"
+                div
+                  Popup.new "sub-menu-ACME-143-menu"
+                    div #sub-menu-ACME-143-at
+                h_flex #pr-row-web#418 {down:right}
+                  h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use · right-click for more"
                     div
                       div
                         svg own:git-pull-request [fg=accent]
@@ -142,6 +148,9 @@ v_flex [fg=foreground]
                           "In review"
                         div [fg=dim]
                           "now"
+                  div
+                    Popup.new "pr-menu-web#418-menu"
+                      div #pr-menu-web#418-at
                   h_flex
                     h_flex #sub-pr-ask-cell-web#418 {size_change}
               v_flex #sub-row-ACME-144 [border=border hover(bg=hover)] {hover down:right}
@@ -164,6 +173,9 @@ v_flex [fg=foreground]
                         div #sub-status-ACME-144-more [hover(bg=hover)] {down:left click} tip="Change the status"
                           div [bg=raised fg=muted]
                             "To do"
+                div
+                  Popup.new "sub-menu-ACME-144-menu"
+                    div #sub-menu-ACME-144-at
               div #subs-others [fg=muted]
                 "Everyone else"
               v_flex #sub-row-ACME-145 [border=border hover(bg=hover)] {hover down:right}
@@ -183,6 +195,9 @@ v_flex [fg=foreground]
                         div #sub-status-ACME-145-more [hover(bg=hover)] {down:left click} tip="Change the status"
                           div [bg=done/26 fg=done]
                             "Done"
+                div
+                  Popup.new "sub-menu-ACME-145-menu"
+                    div #sub-menu-ACME-145-at
     h_flex
       v_flex #ask-line [border=border]
         h_flex

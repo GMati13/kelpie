@@ -33,6 +33,9 @@ div #story-overview-view {size_change}
                         div
                           div
                             div [border=dim]
+            div
+              Popup.new "sub-menu-ACME-181-menu"
+                div #sub-menu-ACME-181-at
           div #subs-others [fg=muted]
             "Everyone else"
           v_flex #sub-row-ACME-182 [border=border hover(bg=hover)] {hover down:right}
@@ -55,5 +58,8 @@ div #story-overview-view {size_change}
                         div
                           div
                             div [border=dim]
+            div
+              Popup.new "sub-menu-ACME-182-menu"
+                div #sub-menu-ACME-182-at
   div
     div [bg=background/17] ×10 … [bg=background/e6]
