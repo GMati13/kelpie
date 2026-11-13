@@ -64,7 +64,7 @@ div
             h_flex
               v_flex
                 div #sub-cols-zoom-probe {size_change}
-                v_flex #sub-row-ACME-172 [border=border hover(bg=hover)] {hover}
+                v_flex #sub-row-ACME-172 [border=border hover(bg=hover)] {hover down:right}
                   h_flex
                     div #sub-assignee-ACME-172
                       div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
@@ -87,7 +87,7 @@ div
                                 div
                                   div [bg=#7fb3ae]
                   h_flex
-                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle"
+                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click down:right} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle · right-click to ask Claude about it"
                       div
                         div
                           svg chrome:circle-check [fg=done]
@@ -106,7 +106,7 @@ div
                       h_flex #sub-pr-ask-cell-web#415 {size_change}
                         h_flex #ask-merge-web#415 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to ask ACME-172's agent to merge web#415"
                           "Merge"
-                v_flex #sub-row-ACME-173 [border=border hover(bg=hover)] {hover}
+                v_flex #sub-row-ACME-173 [border=border hover(bg=hover)] {hover down:right}
                   h_flex
                     div #sub-assignee-ACME-173
                       div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
@@ -130,7 +130,7 @@ div
                                 div
                                   div [bg=#7fb3ae]
                   h_flex
-                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts"
+                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click down:right} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts · right-click to ask Claude about it"
                       div
                         div
                           svg chrome:circle-check [fg=done]
@@ -149,3 +149,31 @@ div
                       h_flex #sub-pr-ask-cell-charts#58 {size_change}
                         h_flex #ask-merge-charts#58 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to ask ACME-173's agent to merge charts#58"
                           "Merge"
+      h_flex
+        v_flex #ask-line [border=border]
+          h_flex
+            svg own:sparkles [fg=accent]
+            div [fg=muted]
+              "About"
+            h_flex #ask-about [border=border] tip="ACME-171 · the story"
+              div
+                "ACME-171 · the story"
+            div #ask-others [fg=dim] tip="Written by others: Claude is told it's information, not instructions"
+              "others' text"
+            div
+              Input.new [border=input bg=background fg=foreground]
+            div [fg=muted]
+              "to"
+            Popup.new "ask-to-menu"
+              h_flex #ask-to-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-171's space, told about the ticket first"
+                "New Claude ▾"
+            h_flex #ask-send [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "Send"
+          h_flex
+            h_flex #ask-suggest-left [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+              "What's left?"
+            h_flex #ask-suggest-explain [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+              "Explain this"
+            div
+            div #ask-hint [fg=dim]
+              "A question about the whole story goes to a new Claude"

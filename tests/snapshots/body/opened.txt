@@ -109,7 +109,7 @@ div
                 div #prs-story [fg=muted]
                   "On the story itself"
                 h_flex
-                  h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-142 Offline mode: how saved trips sync"
+                  h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click down:right} tip="In review, checks pass · ACME-142 Offline mode: how saved trips sync · right-click to ask Claude about it"
                     div
                       div
                         svg own:git-pull-request [fg=accent]
@@ -128,7 +128,7 @@ div
                     h_flex #sub-pr-ask-cell-docs#61 {size_change}
                 div #subs-mine [fg=muted]
                   "Assigned to you"
-                v_flex #sub-row-ACME-143 [border=border hover(bg=hover)] {hover}
+                v_flex #sub-row-ACME-143 [border=border hover(bg=hover)] {hover down:right}
                   h_flex
                     div #sub-assignee-ACME-143
                       div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
@@ -241,7 +241,7 @@ div
                         svg chrome:chevron-right [fg=dim]
                         "Comments · 1"
                   h_flex
-                    h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use"
+                    h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click down:right} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use · right-click to ask Claude about it"
                       div
                         div
                           svg own:git-pull-request [fg=accent]
@@ -258,7 +258,7 @@ div
                             "now"
                     h_flex
                       h_flex #sub-pr-ask-cell-web#418 {size_change}
-                v_flex #sub-row-ACME-144 [border=border hover(bg=hover)] {hover}
+                v_flex #sub-row-ACME-144 [border=border hover(bg=hover)] {hover down:right}
                   h_flex
                     div #sub-assignee-ACME-144
                       div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
@@ -283,7 +283,7 @@ div
                                   div [border=dim]
                 div #subs-others [fg=muted]
                   "Everyone else"
-                v_flex #sub-row-ACME-145 [border=border hover(bg=hover)] {hover}
+                v_flex #sub-row-ACME-145 [border=border hover(bg=hover)] {hover down:right}
                   h_flex
                     div #sub-assignee-ACME-145
                       div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"
@@ -303,3 +303,33 @@ div
                               div
                                 div
                                   div [bg=#9dbb84]
+      h_flex
+        v_flex #ask-line [border=border]
+          h_flex
+            svg own:sparkles [fg=accent]
+            div [fg=muted]
+              "About"
+            h_flex #ask-about [border=border] tip="ACME-143 · Cache trips in IndexedDB"
+              div
+                "ACME-143 · Cache trips in IndexedDB"
+              div #ask-about-clear [fg=dim hover(fg=foreground)] {down:left click} tip="Ask about the story instead"
+                "✕"
+            div #ask-others [fg=dim] tip="Written by others: Claude is told it's information, not instructions"
+              "others' text"
+            div
+              Input.new [border=input bg=background fg=foreground]
+            div [fg=muted]
+              "to"
+            Popup.new "ask-to-menu"
+              h_flex #ask-to-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first"
+                "New Claude ▾"
+            h_flex #ask-send [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "Send"
+          h_flex
+            h_flex #ask-suggest-left [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+              "What's left?"
+            h_flex #ask-suggest-explain [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+              "Explain this"
+            div
+            div #ask-hint [fg=dim]
+              "Starts a new Claude in ACME-142's space"

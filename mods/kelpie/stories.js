@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { askMessage, askPicker, askWho, chosenWho, fileAbout, openClaudes } from "./askclaude.js";
+import { askLine, askMessage, askThread, askWho, chosenWho, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -1878,7 +1878,7 @@ function knownKeys() {
 
 // The shared keys kept by profile id, whose deleted profiles' entries pruneShared() drops (a function,
 // as some are declared further down). Paused agents stay out: a session paused there is still on disk.
-const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, UNASSIGNED_OPEN, DONE_CLEAN];
+const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, UNASSIGNED_OPEN, DONE_CLEAN, ASK_ABOUT, ASK_THREAD];
 
 // After each fresh load (the list's), what shared state keeps of what's gone goes: views of closed
 // spaces, ticks and counts of keys no profile lists, the profile's paused agents on keys it no longer
@@ -2704,23 +2704,94 @@ function sendAsked(about, agent, text, what) {
     .catch((e) => failed(String(e?.message ?? e)));
 }
 
-// Ask Claude (askclaude.js) about something of story `it`, on `key` (the story's or a subtask's):
-// `row` is who the picker had chosen, an open Claude (sent to it) or a new one in the story's space,
-// whose first message is the ticket prompt with the question after it (it ends with OTHERS itself).
+// Ask Claude's Ask line (askclaude.js): what it points at, per profile, `{story, about, at}` (`at`
+// when it was pointed, so the line takes the cursor once), and each story's asks, per profile then
+// story key (its thread). Shared state, as the Changes view (another copy) points the line drawn in
+// the story's details.
+const ASK_ABOUT = "kelpie.ask.about";
+const ASK_THREAD = "kelpie.ask.thread";
+export function pointAsk(profile, story, about) {
+  const all = shared(ASK_ABOUT) ?? {};
+  setShared(ASK_ABOUT, { ...all, [profile.id]: { story, about, at: Date.now() } });
+}
+// What story `it`'s Ask line is about: what was pointed at in it, else the story itself.
+function askAboutOf(profile, it, data) {
+  const p = (shared(ASK_ABOUT) ?? {})[profile?.id];
+  if (p?.story === it.key && p.about) return { about: p.about, at: p.at ?? 0 };
+  return { about: ticketAbout(it, "story", null, { url: ticketUrl(boardOf(profile), data, it.key) }), at: 0 };
+}
 // Exported for the tests.
+export const threadOf = (profile, key) => ((shared(ASK_THREAD) ?? {})[profile?.id] ?? {})[key] ?? [];
+function setThread(profile, key, fn) {
+  const all = shared(ASK_THREAD) ?? {};
+  const mine = all[profile.id] ?? {};
+  setShared(ASK_THREAD, { ...all, [profile.id]: { ...mine, [key]: fn(mine[key] ?? []) } });
+}
+const patchEntry = (profile, key, id, patch) => setThread(profile, key, (list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+// Sends a thread entry's question to its Claude now; why it didn't go stays on the entry.
+function sendEntry(profile, key, e) {
+  patchEntry(profile, key, e.id, { status: "sent", at: Date.now(), waiting: false });
+  return sendToClaude(e.address, e.text, { onHeld: () => held({ profile, keys: key }, "your question", e.to) })
+    .catch((err) => patchEntry(profile, key, e.id, { status: "failed", why: String(err?.message ?? err) }));
+}
+
+// Ask Claude from a story's Ask line about `about` (askclaude.js fileAbout()/ticketAbout()), on `key`
+// (the story's or a subtask's), to `row` (an open Claude, or a new one in the story's space), with a
+// suggestion or a typed question (`ask`). The person stays where they are. An open Claude gets it at
+// once, or, mid-task, once its turn ends (held: releaseHeld()), as typed into a working Claude it
+// could steer the work under way; one waiting for the person's answer gets nothing. A new one gets
+// the ticket prompt first, the question after it (that prompt ends with OTHERS itself). Either way
+// it goes on the story's thread. Exported for the tests.
 export function askClaude(st, it, key, row, about, ask) {
   const profile = st.profile;
   const said = { profile, keys: key };
   clearPoint(profile, it.key);
+  const q = questionOf(ask);
+  const entry = (more) => ({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), about: about.label ?? about.name, q, ...more });
   if (row?.agent) {
+    // Named as the Ask line's menu names it: its session's name, else its tab's.
+    const a = row.agent, name = row.label ?? a.tab_name ?? "Claude";
     const text = askMessage(profile, about, ask);
-    return text ? sendAsked(said, row.agent, text, "your question") : undefined;
+    if (!text) return;
+    const failed = (why) => {
+      say(said, `Couldn't send it to ${name}. ${capitalize(why)}.`);
+      notify({ title: `Couldn't send it to ${name}`, body: `${capitalize(why)}.`, level: "warning", timeout: 8000 });
+    };
+    if (a.status === "blocked") return failed("it's waiting for your answer: answer it first");
+    const e = entry({ to: name, address: a.address, text, status: holdFor(a) ? "held" : "sent" });
+    setThread(profile, it.key, (list) => withEntry(list, e));
+    if (e.status === "held") return say(said, `Holding your question for ${name}: it's mid-task, and gets it when its turn ends.`);
+    say(said, `Sending your question to ${name}…`);
+    return sendToClaude(a.address, text, { onHeld: () => held(said, "your question", name) })
+      .then(() => say(said, `Sent your question to ${name}.`))
+      .catch((err) => { const why = String(err?.message ?? err); patchEntry(profile, it.key, e.id, { status: "failed", why }); failed(why); });
   }
   const then = askMessage(profile, { ...about, others: false }, ask);
   if (!then || lonePr(it) || cleaningNow(it.key, profile)) return;
   const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
+  setThread(profile, it.key, (list) => withEntry(list, entry({ to: "a new Claude", status: "started" })));
   once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv: claudeArgv(profile), task: ticketTask(st, it, key, null, then) }));
   say(said, `Asked a new Claude in ${it.key}'s space about ${about.name}.`);
+}
+
+// Held questions go out once their Claude rests (its turn over), from the copy that follows what's
+// shown (syncTracking()), so once; one whose tab closed meanwhile says so, and one whose Claude now
+// waits for the person's answer says that. Written only on a change.
+export function releaseHeld() {
+  const all = shared(ASK_THREAD);
+  if (!all) return;
+  const live = new Map(agents().map((a) => [a.address, a]));
+  for (const [pid, stories] of Object.entries(all)) {
+    const profile = profiles().find((p) => p.id === pid) ?? { id: pid };
+    for (const [key, list] of Object.entries(stories ?? {})) for (const e of list ?? []) {
+      if (e.status !== "held") continue;
+      const agent = live.get(e.address);
+      const what = releaseOf(agent);
+      if (what === "go") sendEntry(profile, key, e);
+      else if (what === "gone") patchEntry(profile, key, e.id, { status: "failed", why: "its tab was closed" });
+      else if (Boolean(agent.status === "blocked") !== Boolean(e.waiting)) patchEntry(profile, key, e.id, { waiting: agent.status === "blocked" });
+    }
+  }
 }
 
 // A pull request as the Merge and Request approval tasks list it.
@@ -3526,7 +3597,9 @@ export class Stories extends Source {
     const title = String(p.title ?? "").replace(/^\s*(?:\[[^\]]*\]|[A-Z][A-Z0-9_]*-\d+)[\s:\u2014-]*/, "") || name;
     return h_flex().gap(10).items_center().min_w(0).text_size(SMALL)
       .child(h_flex().id(`pr-${name}`).flex_1().min_w(0).h(CONTROL).gap(8).items_center().cursor_pointer().rounded(6).hover((x) => x.text_color(t.accent))
-        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${words} · ${p.title}`).on_click(() => open(p.url))
+        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${words} · ${p.title} · right-click to ask Claude about it`).on_click(() => open(p.url))
+        // A right-click points the story's Ask line at it (askclaude.js).
+        .when(!it.pr, (el) => el.on_mouse_down("right", (_e, cx) => { pointAsk(st.profile, it.key, ticketAbout(it, "pr", p, { url: p.url, name })); cx.stop_propagation(); }))
         .child(div().flex_none().child(mark(t, state, 14)))
         .child(div().flex_1().min_w(0).truncate().text_size(TEXT).child(title))
         .child(this.column("pr-where", name, h_flex().flex_none().text_color(t.dim).child(name)))
@@ -3977,7 +4050,12 @@ export class Stories extends Source {
     const showPriority = priorityOf(st.setup).show;
     const title = (s) => skinFont(div(), "ui").id(`sub-title-${s.key}`).flex_1().min_w(0).truncate().cursor_pointer().text_color(s.category === "done" ? t.muted : t.foreground).hover((x) => x.text_color(t.accent))
       .tooltip(opened(s) ? "Hide the description" : "Show the description")
-      .on_click((_e, cx) => { if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key); cx.notify(); }).child(s.title);
+      .on_click((_e, cx) => {
+        if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key);
+        // Looking at a subtask points the story's Ask line at it (askclaude.js).
+        pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketUrl(boardOf(st.profile), st.data, s.key) }));
+        cx.notify();
+      }).child(s.title);
     // A subtask's row: its key, title, state and agent buttons, then its pull requests. A ticket with
     // no subtasks has no row: its state and actions are the header's, only its pull requests show.
     this.colRows = new Set([...it.subs.map((s) => s.key), ...allPrs(it).map(prName)]);
@@ -4002,6 +4080,8 @@ export class Stories extends Source {
     };
     const sub = (s, about = opened(s) ? this.description(t, st, s.key, cx, { id: `sub-desc-${s.key}` }) : null, talk = opened(s) ? this.comments(t, st, s.key, cx, { id: `sub-talk-${s.key}` }) : null, list = acts(s)) => v_flex().id(`sub-row-${s.key}`).flex_none().gap(4).px(8).py(8).border_t_1().border_color(t.border).hover((x) => x.bg(t.hover))
       .on_hover(hover(s.key))
+      // A right-click points the story's Ask line at the subtask (askclaude.js).
+      .on_mouse_down("right", () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketUrl(boardOf(st.profile), st.data, s.key) })))
       .child(h_flex().gap(10).items_center().min_w(0)
         // Who it's assigned to leads the row: the first thing looked for.
         .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.you, s.avatar))
@@ -4077,7 +4157,9 @@ export class Stories extends Source {
       .when(Boolean(point), (el) => el.child(h_flex().flex_none().w_full().justify_center().child(this.pointBox(t, st, it, point, cx))))
       .when(Boolean(line), (el) => el.child(line))
       .when(Boolean(note), (el) => el.child(note))
-      .child(view);
+      .child(view)
+      // Under them, always in view: the story's asks so far and the Ask line (askclaude.js).
+      .when(Boolean(this.askInput) && !it.pr, (el) => el.children(this.askPart(t, st, it)));
   }
 
   // What Next pointed at (pointFor), in one box over the details, marked as a passage is (an accent
@@ -4695,8 +4777,7 @@ export class Stories extends Source {
     // The list's one click handler: a file's header folds or unfolds it, a band's button opens its gap.
     const clickRow = (key, cx) => {
       const e = entries[Number(key)];
-      // A press on Ask Claude's picker, laid over the list, isn't a press on the row under it.
-      if (!e || this.pressOnBar) return;
+      if (!e) return;
       const f = all[e.fi];
       if (e.r.kind === "group") { if (f.group.url) open(f.group.url); return; }
       if (e.r.kind === "file") {
@@ -4712,13 +4793,8 @@ export class Stories extends Source {
         }
         if (act === "github") return open(`${f.group.url}/files`);
         if (act === "reveal") return reveal(fullPath(f));
-        if (act === "ask") {
-          const id = `diff:${f.id}`;
-          this.sending = this.sending === id ? null : id;
-          this.asking = f.id;
-          if (this.sending) { this.askPick = null; this.note.set_value(""); this.note.focus(); }
-          DIFF.version++; cx.notify(); return;
-        }
+        // Ask Claude points the story's Ask line, in its details, at this file (askclaude.js).
+        if (act === "ask") { pointAsk(st.profile, it.key, fileAbout(f, f.group.key ?? it.key)); return; }
         if (act) return;
         if (whole) { DIFF.folds[fileKey(f)] = !isFolded(f); DIFF.version++; cx.notify(); }
         return;
@@ -4789,7 +4865,7 @@ export class Stories extends Source {
               .when(!ticked, (el) => el.border_1().border_color(t.dim)))
             .child("Viewed"))
           .child(h_flex().flex_none().gap(ACT_GAP).items_center().children(headActs(f).map((a) => {
-            const on = (a.kind === "ask" && this.sending === `diff:${f.id}`) || (a.kind === "copy" && this.copied === fullPath(f));
+            const on = (a.kind === "ask" && pointed === `file:${f.id}`) || (a.kind === "copy" && this.copied === fullPath(f));
             const box = h_flex().flex_none().w(a.w).h(24).gap(5).items_center().justify_center().rounded(6)
               .text_size(SMALL).text_color(on ? t.foreground : t.dim).when(on, (el) => el.bg(t.hover));
             if (a.kind === "copy") return box.child(icon(this.copied === fullPath(f) ? chrome("check") : own("copy"), 14));
@@ -4853,7 +4929,8 @@ export class Stories extends Source {
       if (by && this.stepFile(it.key, by)) { this.changeAt = null; if (whole) this.pendingJump = this.file[it.key]; cx.stop_propagation(); cx.notify(); }
     };
     const progress = all.filter(seen).length;
-    const ask = this.askBar(t, st, it, all), askShown = ask.length > 0;
+    // The file the story's Ask line points at, its Ask Claude lit (askclaude.js).
+    const pointed = (() => { const p = (shared(ASK_ABOUT) ?? {})[st.profile?.id]; return p?.story === it.key ? p.about?.id : null; })();
     const keycap = (k) => div().flex_none().min_w(16).h(16).px(4).rounded(4).border_1().border_color(t.border).text_size(10.5).line_height("14px").text_center().text_color(t.muted).child(k);
     // Each side scrolls on its own: the files in their column, the diff both ways. Every box down
     // to the scrolling ones has a definite height (h_full / flex_1 with min_h(0)). The file list's
@@ -4917,9 +4994,6 @@ export class Stories extends Source {
             .child(div().w_full().min_w(width).h_full()
               .when(Boolean(this.diffFocus), (el) => el.track_focus(this.diffFocus).on_key_down(keys(false)))
               .on_mouse_down("left", (e) => {
-                // Over Ask Claude's picker (laid on top of the list, and as drawn too): the bar's, not the list's.
-                this.pressOnBar = askShown && (e.local_position?.y ?? Infinity) < (this.askBarH ?? 0);
-                if (this.pressOnBar) return;
                 this.pressX = e.local_position ? e.local_position.x / (this.diffZoom || 1) : null;
                 this.diffFocus?.focus();
               })
@@ -4936,10 +5010,7 @@ export class Stories extends Source {
                   return drawn <= DRAW_FIRST ? line(e) : div().w_full().h(view.sizes[range.start + k] ?? ROW);
                 });
               }).size_full().on_item_click(clickRow).when(Boolean(scroller), (el) => el.track_scroll(scroller)))))
-          .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0())
-          // Asking the agent about a file: a bar naming it, while it's open, laid over the top of the
-          // diff, so opening or closing it doesn't move the page.
-          .children(ask))));
+          .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0()))));
   }
 
   // On the page of all files, after a scroll: the file at the top of what was last drawn becomes
@@ -5118,10 +5189,68 @@ export class Stories extends Source {
 export class StoryBody extends Stories {
   init(cx) {
     super.init(cx);
+    // The Ask line's question (askclaude.js): Enter sends it.
+    this.askInput = InputState.new({ placeholder: "Ask Claude… (Enter sends it)" });
+    this.askInput.on("submit", (_e, cx) => this.askSend({ note: this.askInput.value() }, cx));
+    this.askPick = null; // who the person picked: "new" or an agent's address, for what's pointed at now
+    this.askFor = null; // what that pick was for (the about's id)
+    this.askFocused = 0; // the last pointing the line took the cursor for
+    this.askOpen = false; // the thread unfolded
     this.readerScroll = VirtualListScrollHandle.new(); // the passage reader, scrolled to the passage
     // The details' place, per story or pull request shown (ui.js ScrollPool).
     this.detailScrolls = new ScrollPool(() => ({ box: ScrollHandle.new(), top: null }), (h) => { h.box.scroll_to_item(0); h.top = null; });
   }
+  // The story's thread and its Ask line (askclaude.js): what it's about (pointed at, else the story),
+  // who it goes to (the person's pick, else by what it's about: chosenWho()) and the question.
+  askPart(t, st, it) {
+    const { about, at } = askAboutOf(st.profile, it, st.data);
+    if (at > this.askFocused) { this.askFocused = at; try { this.askInput.focus(); } catch { /* the line still shows what it points at */ } }
+    if (this.askFor !== about.id) { this.askFor = about.id; this.askPick = null; }
+    const key = about.kind === "story" ? it.key : about.key ?? it.key;
+    const names = new Map(spaces().map((s) => [s.id, s.name]));
+    const who = askWho({ story: it, key, open: openClaudes(it, agents(), tabKey), keyOf, names });
+    const chosen = chosenWho(who, this.askPick, about.kind);
+    const row = who.find((r) => r.id === chosen);
+    this.askTarget = { st, it, key, about, row };
+    const rows = who.map((r) => (r.waiting ? { header: `${r.label} · waiting for you, answer it first` }
+      : { label: r.label, hint: r.hint, tip: r.tip, action: (cx) => { this.askPick = r.id; cx.notify(); } }));
+    const to = this.menuButton(t, "ask-to", `${row.label} ▾`, rows, row.tip, { width: 320 });
+    const hint = row.id === "new" ? (about.kind === "story" ? "A question about the whole story goes to a new Claude" : `Starts a new Claude in ${it.key}'s space`)
+      : row.busy ? `${row.label} is mid-task: your question waits until its turn ends` : `${row.label} gets it now`;
+    const profile = st.profile;
+    const entries = threadOf(profile, it.key);
+    const shownEntries = this.askOpen ? entries.slice(-5) : entries.slice(-1);
+    const thread = askThread(t, {
+      entries: shownEntries, more: entries.length - shownEntries.length,
+      sendNow: (id, cx) => { const e = threadOf(profile, it.key).find((x) => x.id === id); if (e) sendEntry(profile, it.key, e); cx.notify(); },
+      drop: (id, cx) => { setThread(profile, it.key, (list) => list.filter((x) => x.id !== id)); cx.notify(); },
+      show: (id) => {
+        const e = threadOf(profile, it.key).find((x) => x.id === id);
+        const a = e && agents().find((x) => x.address === e.address);
+        if (a) { run("space.select", { id: a.space }); run("pane.focus", { pane: a.pane }); }
+      },
+      unfold: (cx) => { this.askOpen = true; cx.notify(); },
+    });
+    const line = askLine(t, {
+      about, input: this.askInput, to, hint, isStory: about.kind === "story",
+      send: (cx) => this.askSend({ note: this.askInput.value() }, cx),
+      suggest: (id, cx) => this.askSend({ suggestion: id }, cx),
+      clear: () => pointAsk(profile, it.key, null),
+    });
+    // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
+    // the question box ran far from what it's about and from Send.
+    return [thread, line].filter(Boolean).map((el) => h_flex().flex_none().w_full().justify_center().child(el.w_full().max_w(ROWS)));
+  }
+
+  // Asks what the Ask line holds: a suggestion, or the typed question.
+  askSend(ask, cx) {
+    const x = this.askTarget;
+    if (!x || (!ask.suggestion && !String(ask.note ?? "").trim())) return;
+    askClaude(x.st, x.it, x.key, x.row, x.about, ask);
+    this.askInput.set_value("");
+    cx.notify();
+  }
+
   render(cx) {
     const { st, t, early, shown } = this.prepare(cx);
     if (early) return early;
@@ -5686,68 +5815,12 @@ export class StoryList extends Stories {
 export class StoryView extends Stories {
   init(cx) {
     super.init(cx);
-    // Ask Claude about a file (its header's Ask Claude): who, then a typed question (Enter sends) or a suggestion.
-    this.note = InputState.new({ placeholder: "Type what to ask (Enter sends it, Esc closes)" });
-    this.note.on("submit", (_e, cx) => this.send({ note: this.note.value() }, cx));
-    this.sending = null; // the file whose picker is open, "diff:<id>"
-    this.askPick = null; // who it picked: "new" or an agent's address
-    this.target = null; // what a send goes with: { id, st, it, key, about, who, chosen }
     this.filesFocus = cx.focus_handle(); // the Changes view's file list, for ↑ / ↓
     // Per story shown (ui.js ScrollPool): the all-files page (to jump to a file), one file at a time
     // (for n / p; `oneFile` the file it holds, which opens at its top), and the file list.
     this.diffScrolls = new ScrollPool(() => ({ all: VirtualListScrollHandle.new(), one: VirtualListScrollHandle.new(), files: ScrollHandle.new(), oneFile: null }),
       (h) => { h.all.scroll_to_item(0, "top"); h.one.scroll_to_item(0, "top"); h.files.scroll_to_item(0); h.oneFile = null; }, 8);
     this.diffFocus = cx.focus_handle(); // the diff itself, for n / p, ] / [ and v
-  }
-
-  // While a file's Ask Claude (in its header) is open, its picker over the top of the diff
-  // (askclaude.js): who to ask, the question or a suggestion; what the latest ask led to shows under
-  // it. It's laid over the list (absolute), so it takes no room and the page stays where it was; its
-  // height as drawn (`this.askBarH`) tells a press on it from one on the list under it.
-  askBar(t, st, it, all) {
-    const f = this.sending?.startsWith("diff:") ? all.find((x) => `diff:${x.id}` === this.sending) : null;
-    const n = storyNote(st.profile, it);
-    const flash = n && n.at >= (this.sentAt ?? Infinity) ? n : null;
-    const bar = () => v_flex().id("ask-bar").absolute().top(0).left(0).right(0).px(10).py(8).bg(t.background)
-      .border_b_1().border_l_2().border_color(tint(t.accent, "66"))
-      .on_size_change((size) => { this.askBarH = size.height; });
-    if (!f) {
-      this.target = null;
-      // Once asked, what it led to ("Sent…", or why not) stays over the diff, as the old bar's did.
-      return flash ? [bar().child(h_flex().gap(6).items_center()
-        .child(icon(own("sparkles"), 13).text_color(t.accent))
-        .child(div().id("ask-claude-note").flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.muted).tooltip(flash.full ?? flash.text).child(flash.text))
-        .child(textButton(t, "ask-claude-note-close", "Close", (_e, cx) => { this.sentAt = null; DIFF.version++; cx.notify(); }, { dim: true })))] : [];
-    }
-    const key = f.group.key ?? it.key;
-    const about = fileAbout(f, key);
-    const names = new Map(spaces().map((s) => [s.id, s.name]));
-    const who = askWho({ story: it, key, open: openClaudes(it, agents(), tabKey), keyOf, names });
-    const chosen = chosenWho(who, this.askPick);
-    this.target = { id: this.sending, st, it, key, about, who, chosen };
-    const close = (cx) => { this.sending = null; this.sentAt = null; DIFF.version++; cx.notify(); };
-    return [bar()
-      .on_key_down((e, cx) => { if (e.key === "escape") { close(cx); cx.stop_propagation(); } })
-      .child(askPicker(t, {
-        about, who, chosen, input: this.note,
-        note: flash,
-        pick: (id, cx) => { this.askPick = id; DIFF.version++; cx.notify(); },
-        suggest: (id, cx) => this.send({ suggestion: id }, cx),
-        close,
-      }))];
-  }
-
-  // Asks who the picker has chosen: a suggestion, or the typed question.
-  send(ask, cx) {
-    const x = this.target;
-    if (!x || this.sending !== x.id) return;
-    if (!ask.suggestion && !String(ask.note ?? "").trim()) return;
-    this.sentAt = Date.now();
-    askClaude(x.st, x.it, x.key, x.who.find((r) => r.id === x.chosen), x.about, ask);
-    this.note.set_value("");
-    this.sending = null;
-    DIFF.version++;
-    cx.notify();
   }
 
   render(cx) {
@@ -5782,6 +5855,7 @@ let lastProfile = null; // the profile shown at the last call
 export function syncTracking(baseline = false) {
   keepProfileOnClose(baseline);
   settleAsks();
+  releaseHeld();
   settleTalking();
   const ctx = READER.context();
   noteActivity(ctx);

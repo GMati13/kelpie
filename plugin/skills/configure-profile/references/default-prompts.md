@@ -177,3 +177,9 @@ Find what's wrong here and fix it, then tell me what you changed.
 ```text
 Write a test for this, in the style of the tests around it, and tell me what it covers.
 ```
+
+### What's left? (Ask Claude) (`left`)
+
+```text
+What's left before this is done, and what's in the way? Answer briefly; don't change anything.
+```
