@@ -7,6 +7,7 @@ import { handlers, isElement, nodeOf, texts, walk } from "gpui-kit";
 import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { StoryList, StoryView, changeGroups, diffRows } from "../../mods/kelpie/stories.js";
 import { mock } from "herdr";
+import { byId as deepById } from "../lib/snapshot.mjs";
 
 const KEY = "review:web#421";
 let stories;
@@ -332,4 +333,37 @@ test("changes: committed work's hidden lines come from the branch's last commit"
 test("changes: the stories keep each pull request's branch, which tells Changes whose commits it shows", () => {
   const prs = JSON.stringify(stories.data);
   assert.match(prs, /"url":"https:\/\/github\.com\/kelpie--demo\/web\/pull\/418"[^}]*"headRefName":"ACME-143-trip-cache"/);
+});
+
+// KELPIE-227: a right-click on a line of code opens its menu: ask about that line, the change it's
+// in, or the lines from the one right-clicked before; the Ask line then holds those lines, fenced.
+function rightClickLine(s, item, y) {
+  const el = s.view.render(s.cx);
+  const list = virtualList(el);
+  list.calls.find(([m]) => m === "on_item_secondary_click")[1][0](String(item), { local_position: { x: 10, y } }, s.cx);
+  const box = walk(el).find((n) => n.calls.some(([m, a]) => m === "on_mouse_down" && a[0] === "right") && n.calls.some(([m]) => m === "on_scroll_wheel"));
+  box.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({ local_position: { x: 300, y: 120 } }, s.cx);
+  return texts(deepById(s.view.render(s.cx), "line-menu-menu-list"));
+}
+test("changes: a right-click on a line of code asks about that line, or the change it's in", async () => {
+  const s = await storyChanges([prGroup]);
+  const item = s.view.diffView.entries.findIndex((e) => e.lines?.some((r) => r.kind === "del"));
+  const at = s.view.diffView.entries[item].lines.findIndex((r) => r.kind === "del");
+  const words = rightClickLine(s, item, at * 20 + 5);
+  assert.equal(s.view.menu, "line-menu");
+  for (const w of ["Ask Claude about this line", "Ask Claude about this change", "Copy the line"]) assert.ok(words.includes(w), w);
+  handlers(s.view.render(s.cx)).find((h) => h.id === "line-menu-row-0").fn({}, s.cx);
+  const about = mock.state.shared.get("kelpie.ask.about")[DEMO].about;
+  assert.match(about.id, /^lines:/);
+  assert.equal(about.others, true, "a pull request's code is others' work");
+  assert.match(about.text, /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
+  assert.match(about.text, /--- the lines, as written there ---\n\s+\d+ - const value6000_0 = old\(0\);\n--- end of the lines ---/);
+});
+test("changes: a second right-click in the same file offers the lines from the first", async () => {
+  const s = await storyChanges([prGroup]);
+  const item = s.view.diffView.entries.findIndex((e) => e.lines?.length > 3);
+  rightClickLine(s, item, 5);
+  s.view.menu = null;
+  const words = rightClickLine(s, item, 3 * 20 + 5);
+  assert.ok(words.some((w) => /^Ask Claude about lines \d+–\d+$/.test(w)), words.join(" | "));
 });

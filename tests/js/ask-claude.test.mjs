@@ -7,7 +7,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { ABOUT_DESC_MAX, askMessage, askWho, blocksText, chosenWho, entryWords, fileAbout, holdFor, openClaudes, releaseOf, suggestionsFor, ticketAbout, withEntry, THREAD_FOR, THREAD_KEEP } from "../../mods/kelpie/askclaude.js";
+import { ABOUT_DESC_MAX, LINES_MAX, askMessage, linesAbout, askWho, blocksText, chosenWho, entryWords, fileAbout, holdFor, openClaudes, releaseOf, suggestionsFor, ticketAbout, withEntry, THREAD_FOR, THREAD_KEEP } from "../../mods/kelpie/askclaude.js";
 import { ASK_CLAUDE, ASK_PROMPTS, OTHERS } from "../../mods/kelpie/config.js";
 import { askClaude, releaseHeld, threadOf } from "../../mods/kelpie/stories.js";
 // A string as a literal in a RegExp.
@@ -260,4 +260,16 @@ describe("what a question about a ticket carries", () => {
     assert.doesNotMatch(ticketAbout(it, "story").text, /description/);
     assert.equal(blocksText([]), null);
   });
+});
+
+// KELPIE-227: lines of a pull request's file are anyone's code: each line cleaned, fenced, cut.
+test("lines of a change: cleaned, numbered with + and -, fenced, and cut", () => {
+  const rows = [{ kind: "del", old: 7, new: null, text: "a\u001b[2J" }, { kind: "add", old: null, new: 7, text: "b\rc" }];
+  const a = linesAbout(prFile, "ABC-1", rows, "the change at line 7");
+  assert.match(a.text, /About the change at line 7 of it/);
+  assert.match(a.text, /--- the lines, as written there ---\n {3}7 - a\[2J\n {3}7 \+ bc\n--- end of the lines ---/);
+  assert.doesNotMatch(a.text, /[\u0000-\u0009\u000b-\u001f\u007f]/);
+  assert.equal(a.others, true);
+  const many = linesAbout(prFile, "ABC-1", Array.from({ length: LINES_MAX + 5 }, (_, i) => ({ kind: "ctx", old: i, new: i, text: "x" })), "lines 0-84");
+  assert.match(many.text, /… and 5 lines more/);
 });
