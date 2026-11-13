@@ -3462,6 +3462,7 @@ export class Stories extends Source {
   // An element's own menu (KELPIE-225), opened by a right-click on `el` (its trigger) and laid under
   // it: Ask Claude about it first (it points the story's Ask line there and puts the cursor in it),
   // then what that element offers. The same look and keys as the other menus (menuButton()).
+  // Wide enough (340) for its longest row and hint, "Ask Claude about this change · lines 550–555", whole.
   // It opens at the pointer, where the right-click landed (a one-pixel anchor laid over the element
   // there, so the element's own layout is left as it is), else `top` below its left edge.
   // `openMenu(id)` is the right-click that opens it: the press comes as drawn, zoom included, so its
@@ -3469,7 +3470,7 @@ export class Stories extends Source {
   elementMenu(t, id, rows, top) {
     const at = this.menuAt?.id === id ? this.menuAt : null;
     return div().absolute().left(at ? at.x : 8).top(at ? at.y : top).w(1).h(1)
-      .child(this.menuButton(t, id, "", rows, null, { anchor: "top_left", width: 260, trigger: () => div().id(`${id}-at`).w(1).h(1) }));
+      .child(this.menuButton(t, id, "", rows, null, { anchor: "top_left", width: 340, trigger: () => div().id(`${id}-at`).w(1).h(1) }));
   }
   openMenu(id) {
     return (e, cx) => {
