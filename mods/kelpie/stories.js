@@ -4255,7 +4255,7 @@ export class StoryList extends Stories {
     const when = st.data.sprints?.[0]?.kanban ? "in the last 14 days" : "this sprint";
     return [div().id("stories-done").flex_none().cursor_pointer().on_click(flip)
       .tooltip(`${open ? "Fold" : "Show"} the stories finished ${when}`)
-      .child(groupHeader(t, "Done", done.length, icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim))),
+      .child(groupHeader(t, "Done", done.length, () => icon(chrome(open ? "chevron-down" : "chevron-right"), 12).text_color(t.dim))),
     ...done.filter(({ it }) => open || it.key === shown?.key).map(({ it }) => this.doneRow(t, it, it.key === shown?.key, st))];
   }
 
@@ -4295,7 +4295,11 @@ export class StoryList extends Stories {
     // To do's and In progress's work by their time estimates, To do's weighed against the sprint's
     // time left (estimates.js): beside their counts, muted, To do's amber when it's more than fits.
     const sums = sprintSums(toDo.map((x) => x.it), going.map((x) => x.it), st.data.sprints, hoursPerDay(boardOf(st.setup)));
-    const sumOf = (id, s) => (s ? skinFont(div().id(id).flex_none().mr(8).text_color(s.over ? t.working : t.dim), "count").tooltip(s.tip).child(skinText(s.text, "count")) : null);
+    // A clock before the time and a wide gap before the count, so "13h 30m" and the count of stories
+    // don't read as one number. A function: the heading makes it again for a skin's (groupHeader()).
+    const sumOf = (id, s) => (s ? () => h_flex().id(id).flex_none().mr(14).gap(4).items_center().text_color(s.over ? t.working : t.dim).tooltip(s.tip)
+      .child(icon(chrome("clock"), 11).text_color(s.over ? t.working : t.dim))
+      .child(skinFont(div(), "count").child(skinText(s.text, "count"))) : null);
     // `badge`: a chip after the title (an approved pull request's).
     // `lead`: what goes before the title instead of the skin's mark (a pull request's state, an avatar).
     const plain = (id, on, color, title, line, onClick, square, badge = null, lead = null) => h_flex().id(id).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()

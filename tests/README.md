@@ -92,7 +92,9 @@ returns the same element, so any chain a view builds works. `.when(cond, fn)` ru
 does; `.when_some()` and `.when_else()` throw, as Herdr's elements don't have them (a view calling one
 isn't drawn: "unknown element method"). State handles (`InputState.new(cx)`,
 `TextareaState.new(...)`, `VirtualListScrollHandle.new()`) keep `set_value()`/`value()` and record the rest.
-`.map(fn)` runs `fn` on the element, as gpui's does.
+`.map(fn)` runs `fn` on the element, as gpui's does. An element goes into one parent only: a second
+`.child()` or `.children()` of the same element in another parent throws, as Herdr's does (a skin's hook
+handed an element already in the view's heading failed so, and quietly fell back to the plain heading).
 `View` is a plain base class (`this.props`).
 
 For inspecting what a view rendered (import from `"gpui-kit"`):
@@ -179,6 +181,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   never days (`hoursText()`), the remaining estimate first, a story's own over its subtasks', only unfinished
   work of yours, tickets without one counted apart, the working days left × hours a day, To do weighed against
   what In progress leaves free and amber when it's more, no end date the sum alone, `hoursPerDay` a number.
+- `group-header.test.mjs`: a group heading with a fold arrow or a time estimate beside its count keeps its
+  skin's look (`groupHeader()` hands the skin functions making them, not elements already used).
 - `labels.test.mjs`: what kind of work a ticket is (#53): labels kept clean and small (`labelsOf()`: control
   characters, length, a colour only as six hex digits), the tags a row shows (`tagsOf()`: the usual type
   hidden, a bug first and once on either board), colours readable on dark and light themes (`legible()`,

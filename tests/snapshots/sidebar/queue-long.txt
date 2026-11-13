@@ -180,8 +180,10 @@ v_flex #work-side-list-demo
   div
     div [font="DM Sans" fg=muted]
       "IN PROGRESS"
-    div #stories-sum-going [fg=dim font="DM Mono"] tip="13h 30m still to do on 8 stories in progress; 4 tickets not estimated"
-      "13h 30m"
+    h_flex #stories-sum-going [fg=dim] tip="13h 30m still to do on 8 stories in progress; 4 tickets not estimated"
+      svg chrome:clock [fg=dim]
+      div [font="DM Mono"]
+        "13h 30m"
     div [font="DM Mono" fg=dim]
       "8"
     div
@@ -474,8 +476,10 @@ v_flex #work-side-list-demo
   div
     div [font="DM Sans" fg=muted]
       "TO DO"
-    div #stories-sum-todo [fg=dim font="DM Mono"] tip="8h of work in To do. About 24h of working time left until Fri 13 Nov (4 working days × 6h, Monday to Friday, today included); 13h 30m of it goes to what's in progress, about 10h 30m is free for To do"
-      "8h of 10h 30m free"
+    h_flex #stories-sum-todo [fg=dim] tip="8h of work in To do. About 24h of working time left until Fri 13 Nov (4 working days × 6h, Monday to Friday, today included); 13h 30m of it goes to what's in progress, about 10h 30m is free for To do"
+      svg chrome:clock [fg=dim]
+      div [font="DM Mono"]
+        "8h of 10h 30m free"
     div [font="DM Mono" fg=dim]
       "1"
     div

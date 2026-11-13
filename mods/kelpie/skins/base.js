@@ -14,7 +14,7 @@
 //   statusMark(t, state, o)      the mark for a state (o: { where, size, color, agent })     base: null (Kelpie's own)
 //   blockDecor(t, el, o)         a Kelpie block's root (o: { role, now, story, state, working }) base: el
 //   rowDecor(t, el, o)           a sidebar story row (o: { selected, state, story, now })     base: el
-//   groupDecor(t, el, o)         a list's group heading (o: { label, count, trail, aside })  base: el
+//   groupDecor(t, el, o)         a list's group heading (o: { label, count, trail(), aside() })  base: el
 //   tabDecor(t, el, o)           a tab-bar tab (o: { tab, active, state, agentTab, now })     base: el
 //   controlDecor(t, el, o)       a button or chip (o: { kind, id, label, on })               base: el
 //   sidebarFoot(t, o)            a scene above the footer's lines (o: { now })              base: null

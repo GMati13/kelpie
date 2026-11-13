@@ -181,7 +181,13 @@ test("the Desk closed, and open without an agent", async () => {
 
 // The top of the list: the freshness line and the counts (its root's first child, pinned), then Next
 // (the list's first item, as it scrolls with the list, #125), drawn together.
-const head = (el) => v_flex().child(nodeOf(el).calls.find(([m]) => m === "child")[1][0]).child(byId(el, "story-next-wrap"));
+// Both are already in the list, and the stub refuses an element in a second parent as Herdr does, so
+// they're recorded as the box's children without being put in it (the snapshot reads the same).
+const head = (el) => {
+  const box = v_flex();
+  nodeOf(box).calls.push(["child", [nodeOf(el).calls.find(([m]) => m === "child")[1][0]]], ["child", [byId(el, "story-next-wrap")]]);
+  return box;
+};
 const putShared = (key, value) => mock.state.shared.set(key, JSON.parse(JSON.stringify(value)));
 // A copy of the list that only reads the shared stories, as every copy but the loader does: the
 // loader keeps what it loaded in the module (and would load the whole fixture again), so a test that
