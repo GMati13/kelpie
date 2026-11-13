@@ -596,15 +596,16 @@ export const ASK_PROMPTS = [
   { id: "idea", label: "Start an idea (What next?)", text: "An idea for making things better, found while nothing else needed doing:\n\n{idea}\n\nWhere: {where}\nWhy: {why}\n\nLook into it with me first: is it worth doing, and how big is it? Don't change anything until I say so; if we go ahead, a ticket for it may come first." },
   { id: "picked", label: "Run a pick (What next?)", text: "Claude suggested this as what I should do next: {action}\nWhy: {why}\n\nStart with that." },
   { id: "changes", label: "Request changes (review)", text: "Submit your review on {prs} now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted." },
-  // Ask Claude's suggestions (askclaude.js): each follows what's asked about (a file, its pull request
-  // or repo), so they need no placeholders.
+  // Ask Claude's suggestions (askclaude.js): each follows what's asked about (a story, a subtask, a
+  // pull request, a file), so they need no placeholders.
   { id: "explain", label: "Explain this", text: "Explain what this does and why it's there, in plain words. Don't change anything." },
   { id: "check", label: "Review this change", text: "Review this change: is it correct, and is anything missing or risky? Tell me what you find; don't change anything yet." },
   { id: "fixit", label: "Fix this", text: "Find what's wrong here and fix it, then tell me what you changed." },
   { id: "test", label: "Write a test for it", text: "Write a test for this, in the style of the tests around it, and tell me what it covers." },
+  { id: "left", label: "What's left?", text: "What's left before this is done, and what's in the way? Answer briefly; don't change anything." },
 ];
 // The messages Ask Claude offers as suggestions, in ASK_PROMPTS.
-export const ASK_CLAUDE = ["explain", "check", "fixit", "test"];
+export const ASK_CLAUDE = ["explain", "check", "fixit", "test", "left"];
 
 export function askText(profile, id, fields = {}) {
   const template = profile?.prompts?.[id]?.trim() || ASK_PROMPTS.find((a) => a.id === id).text;

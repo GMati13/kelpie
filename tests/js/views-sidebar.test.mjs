@@ -691,3 +691,13 @@ test("once its agent is quiet (never seen talking), it's back with the handed-ov
   assert.equal(byId(el, "talk-ACME-126"), null);
   assert.ok(words.indexOf("Sign out after a while idle") > words.indexOf("Waiting on others"), "under Waiting on others");
 });
+
+// The Ask line's pointing and each story's asks (KELPIE-84) are a profile's: a deleted one's go too.
+test("a deleted profile's Ask line and asks are pruned with the next load", async () => {
+  setupDemoWorld({ stories });
+  putShared("kelpie.ask.about", { [DEMO]: { story: "ACME-142", about: null, at: NOW }, gone: { story: "X-1", about: null, at: NOW } });
+  putShared("kelpie.ask.thread", { [DEMO]: { "ACME-142": [] }, gone: { "X-1": [] } });
+  await draw(new StoryList());
+  assert.deepEqual(Object.keys(mock.sharedValue("kelpie.ask.about")), [DEMO]);
+  assert.deepEqual(Object.keys(mock.sharedValue("kelpie.ask.thread")), [DEMO]);
+});

@@ -207,10 +207,11 @@ Sent to an agent already working on a pull request when a button is pressed (`pr
 | `changes` | Request changes (on a review) |
 | `idea` | One of What next?'s improvement ideas: starts a Claude on the Desk. `{idea}` the brief, `{where}` the file or area, `{why}` why it pays off |
 | `picked` | Run all in Next: added after the ticket prompt for each of Claude's picks it starts. `{action}` what Claude suggests, `{why}` why now |
-| `explain` | Ask Claude's "Explain this" suggestion. Kelpie puts what's asked about (a file, its pull request or repo) before it, so no placeholders |
+| `explain` | Ask Claude's "Explain this" suggestion. Kelpie puts what's asked about (a story, a subtask, a pull request or a file) before it, so no placeholders |
 | `check` | Ask Claude's "Review this change", the same way |
 | `fixit` | Ask Claude's "Fix this", the same way |
 | `test` | Ask Claude's "Write a test for it", the same way |
+| `left` | Ask Claude's "What's left?" on a story or a subtask, the same way |
 
 `prompts.configure` is the message that started you (`{name} {id} {scope} {about} {home}`); leave it alone unless asked.
 

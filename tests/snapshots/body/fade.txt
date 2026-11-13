@@ -13,7 +13,7 @@ div #story-overview-view {size_change}
           div #sub-cols-zoom-probe {size_change}
           div #subs-mine [fg=muted]
             "Assigned to you"
-          v_flex #sub-row-ACME-181 [border=border hover(bg=hover)] {hover}
+          v_flex #sub-row-ACME-181 [border=border hover(bg=hover)] {hover down:right}
             h_flex
               div #sub-assignee-ACME-181
                 div [bg=ansi3/33 fg=ansi3] tip="Assigned to Alex Morgan (you)"
@@ -35,7 +35,7 @@ div #story-overview-view {size_change}
                             div [border=dim]
           div #subs-others [fg=muted]
             "Everyone else"
-          v_flex #sub-row-ACME-182 [border=border hover(bg=hover)] {hover}
+          v_flex #sub-row-ACME-182 [border=border hover(bg=hover)] {hover down:right}
             h_flex
               div #sub-assignee-ACME-182
                 div [bg=ansi4/33 fg=ansi4] tip="Assigned to Tomás Ruiz"

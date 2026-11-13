@@ -182,6 +182,8 @@ async function storyChanges(groups, { all = true } = {}) {
   shown(view, cx);
   return { view, cx, clip };
 }
+// What the story's Ask line points at (askclaude.js), by its id; null while it's the story's own.
+const pointed = () => mock.state.shared.get("kelpie.ask.about")?.[DEMO]?.about?.id ?? null;
 const byId = (el, id) => walk(el).find((n) => n.calls.some(([m, a]) => m === "id" && a[0] === id));
 const call = (n, method) => n.calls.find(([m]) => m === method)?.[1].find((v) => typeof v === "function");
 // Herdr at `zoom`: the probe reports its size as drawn, then a press at `x` and `y` (as laid out, at
@@ -209,7 +211,7 @@ for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
       clickAt(s, zoom, CENTRE.copy, headerOf(s.view, 0));
       assert.deepEqual(s.clip, ["src/file6000.ts"]);
       assert.equal(rowCount(s), rows, "the file didn't fold");
-      assert.equal(s.view.sending ?? null, null);
+      assert.equal(pointed(), null);
     });
     test(`changes: at zoom ${zoom} in ${mode}, Open on GitHub only opens the pull request's files`, async () => {
       const s = await storyChanges([prGroup], { all });
@@ -228,12 +230,12 @@ for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
       assert.ok(mock.of("exec").some(([, args]) => args.some((a) => String(a).includes("/home/test/acme/api/src/file6002.ts"))), "it showed the file");
       assert.equal(rowCount(s), rows, "the file didn't fold");
     });
-    test(`changes: at zoom ${zoom} in ${mode}, Ask Claude only opens its picker`, async () => {
+    test(`changes: at zoom ${zoom} in ${mode}, Ask Claude only points the Ask line at the file`, async () => {
       const s = await storyChanges([prGroup], { all });
       const rows = rowCount(s);
       // Near its right end too, which a press not divided by the zoom missed past zoom 1.
       clickAt(s, zoom, CENTRE.ask + 38, headerOf(s.view, 0));
-      assert.equal(s.view.sending, `diff:${prGroup.files[0].id}`);
+      assert.equal(pointed(), `file:${prGroup.files[0].id}`);
       assert.equal(rowCount(s), rows, "the file didn't fold");
       assert.deepEqual(s.clip, []);
     });
@@ -246,7 +248,7 @@ for (const zoom of [0.8, 1, 1.2, 1.5, 2]) {
       clickAt(s, zoom, CENTRE.viewed + 30, headerOf(s.view, 0));
       assert.equal(ticked(), !was, "the tick changed");
       assert.deepEqual(s.clip, []);
-      assert.equal(s.view.sending ?? null, null);
+      assert.equal(pointed(), null);
     });
   }
 }
@@ -261,72 +263,23 @@ test("changes: a press just beside a header's actions doesn't fold the file", as
     assert.equal(rowCount(s), rows, `a press at ${x} didn't fold the file`);
   }
   assert.deepEqual(s.clip, []);
-  assert.equal(s.view.sending ?? null, null);
+  assert.equal(pointed(), null);
   // Elsewhere on the header (its name) still folds it.
   clickAt(s, 1, 400, headerOf(s.view, 0));
   assert.ok(rowCount(s) < rows, "a press on the name folds it");
 });
 
-// Ask Claude's picker is laid over the top of the diff: opening it takes no room above the list, so the
-// page doesn't move; and a press on it isn't a press on the row under it.
-test("changes: Ask Claude's picker is laid over the diff, not above it", async () => {
+// A file's Ask Claude points the story's Ask line (in its details) at the file, and stays lit while it
+// does; nothing is laid over the diff, so the page doesn't move (KELPIE-84).
+test("changes: Ask Claude points the story's Ask line at the file, lit while it does, over nothing", async () => {
   const s = await storyChanges([prGroup]);
-  // The diff's side of the split: the box holding the list (and, before, the bar above it).
-  const pane = (el) => {
-    const split = walk(el).find((n) => n.kind === "h_resizable");
-    const panel = nodeOf(split.calls.filter(([m]) => m === "child")[1][1][0]);
-    return nodeOf(panel.calls.find(([m]) => m === "child")[1][0]);
-  };
-  const kids = (n) => n.calls.filter(([m]) => m === "child" || m === "children").flatMap(([m, a]) => (m === "children" ? [...a[0]] : [a[0]]));
-  const before = kids(pane(s.view.render(s.cx))).length;
-  clickAt(s, 1.2, CENTRE.ask, headerOf(s.view, 0));
-  const el = s.view.render(s.cx);
-  assert.match(texts(el).join(" "), /Ask Claude about file6000\.ts/);
-  assert.equal(kids(pane(el)).length, before, "nothing above the list");
-  const bar = byId(el, "ask-bar");
-  assert.ok(bar && bar.calls.some(([m]) => m === "absolute"), "the bar is laid over the list");
-  // The bar is 60 tall as drawn: a press in it is the bar's, one under it the list's.
-  call(bar, "on_size_change")({ width: 600, height: 60 * 1.2 }, s.cx);
-  const rows = rowCount(s);
-  clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 30);
-  assert.deepEqual(s.clip, [], "a press on the bar doesn't reach the header under it");
-  assert.equal(rowCount(s), rows, "nor fold it");
-  clickAt(s, 1.2, CENTRE.copy, headerOf(s.view, 0), 100);
-  assert.deepEqual(s.clip, ["src/file6000.ts"]);
-});
-
-// Ask Claude from a file's header (KELPIE-84): the picker offers a new Claude in the story's space
-// and the story's open Claudes; a suggestion asks the one picked, with the file it's about.
-test("changes: a suggestion in Ask Claude's picker asks the Claude picked about the file", async () => {
-  const s = await storyChanges([prGroup]);
-  mock.state.spaces = [...mock.state.spaces, { id: "s-ask", name: "Elsewhere", tabs: [] }];
-  mock.state.agents = [...mock.state.agents,
-    { address: "t-ask", tab_name: `${STORY} claude`, space: "s-ask", pane: "p-ask", status: "idle", title: "" },
-    { address: "t-other", tab_name: "ACME-999", space: "s-ask", pane: "p-other", status: "idle", title: "" },
-    // Reviewing the story's pull requests by others (KELPIE-118): not the story's own Claude.
-    { address: "t-review", tab_name: `Review ${STORY}`, space: "s-ask", pane: "p-review", status: "idle", title: "" }];
-  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   clickAt(s, 1, CENTRE.ask, headerOf(s.view, 0));
+  const about = mock.state.shared.get("kelpie.ask.about")[DEMO];
+  assert.equal(about.story, STORY);
+  assert.match(about.about.text, /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
+  assert.equal(about.about.others, true, "a pull request's file is others' work");
   const el = s.view.render(s.cx);
-  const words = texts(el).join(" ");
-  assert.match(words, /New Claude in ACME-184's space/);
-  assert.match(words, new RegExp(`${STORY} claude`), "the story's open Claude is offered");
-  assert.doesNotMatch(words, /ACME-999/, "another story's Claude isn't");
-  assert.doesNotMatch(words, new RegExp(`Review ${STORY}`), "nor the agent reviewing the story's pull requests");
-  assert.equal(s.view.target.chosen, "t-ask", "the Claude on the story's key is picked");
-  mock.calls.length = 0;
-  handlers(el).find((h) => h.id === "ask-claude-suggest-explain").fn({}, s.cx);
-  await new Promise((r) => setImmediate(r));
-  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0][0].at(-2), "t-ask");
-  assert.match(sent[0][0].at(-1), /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
-  assert.equal(s.view.sending, null, "the picker closed");
-  // What it led to stays over the diff until closed.
-  const after = s.view.render(s.cx);
-  assert.match(texts(after).join(" "), /Sent your question to ACME-184 claude\./);
-  handlers(after).find((h) => h.id === "ask-claude-note-close").fn({}, s.cx);
-  assert.equal(byId(s.view.render(s.cx), "ask-bar"), undefined, "closed, nothing is laid over the diff");
+  assert.equal(byId(el, "ask-bar"), undefined, "nothing is laid over the diff");
 });
 
 // Commits on a story's branch with no pull request yet are a group of their own, between the

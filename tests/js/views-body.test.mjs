@@ -6,7 +6,7 @@ import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { handlers, texts, tree } from "gpui-kit";
+import { handlers, texts, tree, walk } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -247,4 +247,64 @@ test("pull request lines: title, where, state and age, open ones first", async (
   const story = (await body({ preview: "ACME-142" })).el;
   assert.deepEqual(texts(byId(story, "prs-story")), ["On the story itself"]);
   assert.ok(texts(byId(story, "pr-docs#61")).includes("Offline mode: how saved trips sync"));
+});
+
+// The Ask line (KELPIE-84): a story's details end with it, about the story until something else is
+// pointed at; who it goes to follows what it's about; only the story's own Claudes are offered.
+const askedAbout = (el) => texts(byId(el, "ask-about")).join(" ");
+const toLabel = (el) => texts(byId(el, "ask-to-more")).join(" ");
+test("the details end with the Ask line, about the story, to a new Claude", async () => {
+  const { el } = await body({ space: "ACME-142" });
+  assert.ok(byId(el, "ask-line"), "the Ask line is there");
+  assert.equal(askedAbout(el), "ACME-142 · the story");
+  assert.match(toLabel(el), /^New Claude/);
+  assert.match(texts(byId(el, "ask-hint")).join(" "), /whole story goes to a new Claude/);
+  assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-left", "ask-suggest-explain"]);
+});
+test("a subtask's title points the Ask line at it; a Claude waiting for you can't take it", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  press(el, "sub-title-ACME-143", cx);
+  const after = view.render(cx);
+  assert.match(askedAbout(after), /^ACME-143 · /);
+  // ACME-143's own Claude waits for an answer: a new one is picked, and it's listed as waiting.
+  assert.match(toLabel(after), /^New Claude/);
+  view.menu = "ask-to";
+  assert.match(texts(view.render(cx)).join(" "), /waiting for you, answer it first/);
+});
+test("a right-click on a pull request points the Ask line at it", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  const line = walk(el).find((n) => n.calls.some(([m, a]) => m === "on_mouse_down" && a[0] === "right") && n.calls.some(([m, a]) => m === "id" && /^pr-/.test(a[0])));
+  line.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({}, { stop_propagation() {} });
+  assert.match(askedAbout(view.render(cx)), /#\d+/);
+  assert.equal(mock.state.shared.get("kelpie.ask.about")[DEMO].about.others, true, "a pull request's title is others' text");
+});
+// Another story's Claude, or the one reviewing the story's pull requests by others (KELPIE-118),
+// isn't offered: only the story's own.
+test("the Ask line offers only the story's own Claudes", async () => {
+  const { view, cx } = await body({ space: "ACME-142" });
+  mock.state.agents = [...mock.state.agents,
+    { address: "t-other", tab_name: "ACME-999", space: "s-x", pane: "p-other", status: "idle", title: "" },
+    { address: "t-review", tab_name: "Review ACME-142", space: "s-x", pane: "p-review", status: "idle", title: "" }];
+  view.menu = "ask-to";
+  const words = texts(view.render(cx)).join(" ");
+  assert.match(words, /New Claude/);
+  assert.doesNotMatch(words, /ACME-999/);
+  assert.doesNotMatch(words, /Review ACME-142/);
+});
+test("a suggestion asks the Claude on the subtask's key, and goes on the story's thread", async () => {
+  const { el, view, cx } = await body({ space: "ACME-171" });
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  press(el, "sub-title-ACME-172", cx);
+  const pointed = view.render(cx);
+  assert.match(toLabel(pointed), /▾$/);
+  assert.doesNotMatch(toLabel(pointed), /^New Claude/, "its own Claude, idle, is picked");
+  mock.calls.length = 0;
+  press(pointed, "ask-suggest-explain", cx);
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1);
+  assert.match(sent[0][0].at(-1), /^About the subtask ACME-172 /);
+  assert.deepEqual(mock.of("run").filter(([n]) => n === "space.select"), [], "the person stays where they are");
+  const thread = view.render(cx);
+  assert.match(texts(byId(thread, "ask-thread")).join(" "), /Explain this/);
 });
