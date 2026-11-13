@@ -167,6 +167,50 @@ describe("kelpie.find-agents: the agents Kelpie knows", () => {
   });
 });
 
+describe("kelpie.find-agents by a ticket key nobody of its own works on (#237)", () => {
+  const tabs = (r) => r.agents.map((x) => x.tab);
+  test("a subtask with its own tab's agent: only that one, not marked", async () => {
+    const r = await find({ key: "ACME-143" });
+    assert.deepEqual(tabs(r), ["ACME-143"]);
+    assert.equal(r.agents[0].via, undefined);
+    assert.equal(r.nobody, undefined);
+  });
+  test("a story's key: every agent of its space, as before", async () => {
+    const r = await find({ key: "ACME-142" });
+    assert.deepEqual(tabs(r), ["ACME-143"]);
+    assert.equal(r.agents[0].via, undefined);
+  });
+  test("a subtask without: its story's agents, each marked as the story's", async () => {
+    const r = await find({ key: "ACME-144" });
+    assert.deepEqual(tabs(r), ["ACME-143"]);
+    assert.equal(r.agents[0].via, "story");
+    assert.equal(r.agents[0].note, "On the story ACME-142, not on ACME-144 itself.");
+    assert.equal(r.nobody, undefined);
+  });
+  test("nobody on the subtask or its story: said so, with its earlier session to resume", async () => {
+    const r = await find({ key: "ACME-181" });
+    assert.deepEqual(r.agents, []);
+    assert.equal(r.nobody, "Nobody is working on ACME-181 or its story ACME-180 right now.");
+    assert.deepEqual(r.resumable.map((x) => [x.kind, x.key, x.title]), [["session", "ACME-181", "Sketch the PDF itinerary layout"]]);
+    assert.match(r.resumable[0].at, /^\d{4}-\d\d-\d\dT/);
+  });
+  test("a paused agent on the story counts, listed once with its session's title", async () => {
+    const r = await find({ key: "ACME-139" });
+    assert.deepEqual(r.resumable.map((x) => [x.kind, x.key, x.title]), [["paused", "ACME-138", "Token bucket per API key"]]);
+  });
+  test("nobody and nothing to resume: only said so", async () => {
+    const r = await find({ key: "ACME-182" });
+    assert.equal(r.nobody, "Nobody is working on ACME-182 or its story ACME-180 right now.");
+    assert.equal(r.resumable, undefined);
+  });
+  test("a key the board doesn't know: no story to fall back on, none", async () => {
+    const r = await find({ key: "ACME-999" });
+    assert.deepEqual(r.agents, []);
+    assert.equal(r.nobody, "Nobody is working on ACME-999 right now.");
+    assert.equal(r.resumable, undefined);
+  });
+});
+
 describe("kelpie.show-agent: an agent's pane shown", () => {
   test("its space selected and its pane focused, no other profile picked over it, no preview covering it", async () => {
     mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });

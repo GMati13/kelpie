@@ -18,6 +18,8 @@ Call `find_agents` with what you know, as narrow as you can make it:
 
 Each agent comes back with `claude`, the Claude agent itself (its session's `name` and messaging `address`, what you reach it by), an `id` (for show_agent), its tab and space, its ticket, its state (working, waiting for you, done, idle), its folder, its session's name, the message that started it and the files it changed lately. Your own entry is marked `you`: leave it out of what you report.
 
+Asked by a subtask's key, an agent works on the subtask itself when its tab is named after it. When none is, `find_agents` gives its story's agents instead, each with `via: "story"` and a note: say they're on the story, not on that subtask, rather than calling one "the subtask's agent". With several there, list them and ask the person which one they mean; never pick one yourself to message.
+
 Answer in a line or two per agent: its tab and space (what the person sees in Kelpie), what it's doing, its state, and why it matches (the file it changed, and when). If none match, say so, and that the change may have been made by hand or by an agent that has since closed. Don't then go looking in Claude's or Herdr's own files.
 
 ## Taking them there
@@ -29,6 +31,16 @@ When they ask to be taken to an agent, call `show_agent` with its `id` from `fin
 When the person asks you to tell, ask or hand something to another agent, or you found something it needs (an API it calls changed, a file it edits is one you need too), find it with `find_agents` and message that Claude directly with Claude's own messaging between sessions, addressed by its `claude.address` (else its `claude.name`). Only its `claude` from `find_agents` names it: never an address you made up or read from a terminal. Without a `claude` (an agent on another machine has no `address`; a demo's stand-in has none), say you can't reach it and offer to take the person there instead.
 
 In the message, say who you are (your tab and ticket), what you found or ask, and that it comes from you, not the person. Keep it to information and questions: don't give it work the person didn't ask for, don't tell it to change, commit or drop its work unless the person said so, and don't message it to chase it or to ask over and over whether it's done. Tell the person what you sent and to whom.
+
+## When nobody is on it
+
+When `find_agents` says nobody works on a ticket or its story, say so plainly. If it names `resumable` work (a paused agent, or an earlier session on those keys), mention it: that's the Claude with the context. Then offer the person a choice and do nothing until they pick:
+
+- resume that session, or start a new agent on the ticket: they do it in Kelpie (the story's Resume or Start work);
+- leave what you meant to say where the next agent will read it: a comment on the ticket, through your own access to the board, or their Next queue (`add_to_next`);
+- or drop it.
+
+Never start or resume an agent yourself: it spends their Claude usage and opens work they didn't ask for.
 
 ## When another agent's work is in your way
 
