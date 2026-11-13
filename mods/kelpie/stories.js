@@ -2758,7 +2758,9 @@ export function askClaude(st, it, key, row, about, ask) {
   if (row?.agent) {
     // Named as the Ask line's menu names it: its session's name, else its tab's.
     const a = row.agent, name = row.label ?? a.tab_name ?? "Claude";
-    const text = askMessage(profile, about, ask, id);
+    // No line asking for a short answer back: the person reads the Claude's one answer, in its chat
+    // (a second, shorter version shown in Kelpie read differently and misled).
+    const text = askMessage(profile, about, ask);
     if (!text) return;
     const failed = (why) => {
       say(said, `Couldn't send it to ${name}. ${capitalize(why)}.`);
@@ -2773,7 +2775,7 @@ export function askClaude(st, it, key, row, about, ask) {
       .then(() => say(said, `Sent your question to ${name}.`))
       .catch((err) => { const why = String(err?.message ?? err); patchEntry(profile, it.key, e.id, { status: "failed", why }); failed(why); });
   }
-  const then = askMessage(profile, { ...about, others: false }, ask, id);
+  const then = askMessage(profile, { ...about, others: false }, ask);
   if (!then || lonePr(it) || cleaningNow(it.key, profile)) return;
   const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
   setThread(profile, it.key, (list) => withEntry(list, entry({ to: "a new Claude", status: "started" })));
@@ -5396,13 +5398,12 @@ export class StoryBody extends Stories {
     // Said only when it matters: the Claude picked is mid-task, so the question waits.
     const hint = row.busy ? "It's mid-task: your question waits until its turn ends" : null;
     const profile = st.profile;
+    // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
+    // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.
     const entries = threadOf(profile, it.key);
-    // The latest Catch me up and plan stay shown (pinned, first), with the latest ask.
-    const pinned = ["brief", "plan"].map((k) => entries.filter((e) => e.pin === k).at(-1)).filter(Boolean);
-    const recent = this.askOpen ? entries.slice(-5) : entries.slice(-1);
-    const shownEntries = [...pinned, ...recent.filter((e) => !pinned.includes(e))];
+    const shownEntries = entries.filter((e) => e.status === "held");
     const thread = askThread(t, {
-      entries: shownEntries, more: entries.length - shownEntries.length,
+      entries: shownEntries, more: 0,
       sendNow: (id, cx) => { const e = threadOf(profile, it.key).find((x) => x.id === id); if (e) sendEntry(profile, it.key, e); cx.notify(); },
       drop: (id, cx) => { setThread(profile, it.key, (list) => list.filter((x) => x.id !== id)); cx.notify(); },
       show: (id) => {

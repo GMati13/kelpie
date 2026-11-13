@@ -217,7 +217,7 @@ describe("the Ask line's thread", () => {
     await new Promise((r) => setImmediate(r));
     assert.equal(sends().length, 1);
     assert.ok(mock.of("hc").some(([a]) => a[0] === "get" && a[1] === "t1"), "it looked at what the terminal runs");
-    assert.match(sends()[0][0].at(-1), new RegExp(`Why\\?\\n\\nAfter answering, also hand Kelpie a short answer[^\\n]*\\n\\n${escape(OTHERS)}$`));
+    assert.ok(sends()[0][0].at(-1).endsWith(`Why?\n\n${OTHERS}`));
     assert.equal(threadOf(profile, "ABC-1")[0].status, "sent");
   });
   test("a held question whose Claude closed says so; one whose Claude now waits for you says that", async () => {

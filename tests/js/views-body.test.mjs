@@ -313,7 +313,7 @@ test("the Ask line offers only the story's own Claudes", async () => {
   assert.doesNotMatch(words, /ACME-999/);
   assert.doesNotMatch(words, /Review ACME-142/);
 });
-test("a suggestion asks the Claude on the subtask's key, and goes on the story's thread", async () => {
+test("a suggestion asks the Claude on the subtask's key, and leaves no history in the story", async () => {
   const { el, view, cx } = await body({ space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   press(el, "sub-title-ACME-172", cx);
@@ -327,8 +327,8 @@ test("a suggestion asks the Claude on the subtask's key, and goes on the story's
   assert.equal(sent.length, 1);
   assert.match(sent[0][0].at(-1), /^About the subtask ACME-172 /);
   assert.deepEqual(mock.of("run").filter(([n]) => n === "space.select"), [], "the person stays where they are");
-  const thread = view.render(cx);
-  assert.match(texts(byId(thread, "ask-thread")).join(" "), /Explain this/);
+  // Sent, it leaves no line in the story: its answer is the Claude's own, in its chat.
+  assert.equal(byId(view.render(cx), "ask-thread"), null);
 });
 // On a wide screen the Ask line keeps to the subtask rows' width, centred, rather than stretching.
 test("the Ask line is at most as wide as the subtask rows", async () => {
@@ -336,22 +336,19 @@ test("the Ask line is at most as wide as the subtask rows", async () => {
   const line = nodeOf(byId(el, "ask-line-card"));
   assert.ok(line.calls.some(([m, a]) => m === "max_w" && a[0] === 760), "ROWS wide at most");
 });
-// An answer handed back (answerAskRequest()) shows on its question's line, its first line only, so it
-// never squeezes the Ask line out of the short details block; a click opens the whole of it.
-test("an answered ask shows its answer's first line, and the whole of it once clicked", async () => {
+// No history of asks (the person's call: a short answer shown in Kelpie read differently from the
+// Claude's own and misled): only a question still held for a Claude mid-task shows.
+test("only a held question shows over the Ask line; sent and answered ones don't", async () => {
   setupDemoWorld({ stories, shown: "ACME-142" });
-  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-142": [{ id: "abc123xyz", at: Date.now(), story: "ACME-142", about: "ACME-142 · the story", q: "What's left?", to: "Cache trips", status: "answered", answer: "Two things.\nThe replay, and a review.", address: "a0-0" }] } });
-  const { el, view, cx } = await draw(new StoryBody());
+  const e = (id, status, more = {}) => ({ id, at: Date.now(), story: "ACME-142", about: "ACME-142 · the story", q: `Q ${id}`, to: "Cache trips", status, address: "a0-0", ...more });
+  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-142": [e("sentaaaa", "sent"), e("answeredx", "answered", { answer: "A summary." }), e("heldaaaa", "held")] } });
+  const { el } = await draw(new StoryBody());
   const words = texts(byId(el, "ask-thread")).join(" | ");
-  assert.match(words, /What's left\? \| Two things\./);
-  assert.doesNotMatch(words, /The replay/, "folded to its first line");
-  assert.match(words, /answered/);
-  assert.doesNotMatch(words, /Show its/, "no button that only opens the chat");
-  press(el, "ask-entry-abc123xyz", cx);
-  const open = texts(byId(view.render(cx), "ask-thread")).join(" | ");
-  assert.match(open, /Two things\. \| The replay, and a review\./);
+  assert.match(words, /Q heldaaaa/);
+  assert.match(words, /Send now/);
+  assert.doesNotMatch(words, /Q sentaaaa|Q answeredx|A summary/);
 });
-// The menu opens where the right-click landed (as drawn, divided by the zoom), not at the row's edge.
+
 test("a right-click menu opens at the pointer, at any zoom", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
   const probe = nodeOf(byId(el, "sub-cols-zoom-probe"));
@@ -393,35 +390,14 @@ test("Catch me up goes to the story's own Claude, not a new one", async () => {
   assert.match(sent[0][0].at(-1), /Catch me up on this story/);
   assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0, "no new Claude");
 });
-test("Plan this starts a new Claude, and a plan answered stays pinned with Go ahead", async () => {
-  const { el, view, cx } = await body({ space: "ACME-171" });
+test("Plan this starts a new Claude", async () => {
+  const { el, cx } = await body({ space: "ACME-171" });
   mock.calls.length = 0;
   press(el, "ask-suggest-plan", cx);
   await new Promise((r) => setImmediate(r));
   assert.ok(mock.of("run").some(([n]) => n === "space.new" || n === "tab.new"), "a new Claude");
-  const [e] = mock.state.shared.get("kelpie.ask.thread")[DEMO]["ACME-171"];
-  assert.equal(e.pin, "plan");
-  // Answered, then two more asks: the plan stays shown.
-  const later = (n) => ({ id: `later${n}xx`, at: Date.now() + n, story: "ACME-171", about: "x", q: `Q${n}`, to: "Dark mode tokens", status: "sent", address: "a3-0" });
-  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-171": [{ ...e, status: "answered", answer: "1. Tokens\n2. Toggle", address: "a3-0" }, later(1), later(2)] } });
-  const shown = view.render(cx);
-  const words = texts(byId(shown, "ask-thread")).join(" | ");
-  assert.match(words, /Plan this/);
-  assert.match(words, /Q2/);
-  assert.doesNotMatch(words, /Q1/);
-  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
-  mock.calls.length = 0;
-  press(shown, `ask-approve-${e.id}`, cx);
-  await new Promise((r) => setImmediate(r));
-  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
-  assert.equal(sent.length, 1);
-  assert.match(sent[0][0].at(-1), /The plan is approved/);
-  assert.equal(byId(view.render(cx), `ask-approve-${e.id}`), null, "Go ahead once");
 });
 
-// On a wide screen the room beside the Ask line is the details' own, so the wheel scrolls them there:
-// the line lies over the details' bottom, inside their view, and their content keeps that much room
-// under it so its end scrolls clear of the line.
 test("the Ask line lies over the details' bottom, and the details leave room under them for it", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
   assert.ok(byId(byId(el, "story-overview-view"), "ask-line"), "inside the details' view");

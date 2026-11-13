@@ -161,12 +161,12 @@ describe("Ask Claude about a pull request's file", () => {
   test("an open Claude gets it with the note at its end", async () => {
     askClaude(st, it, "ABC-1", { id: "t7", agent }, fileAbout(pr), { note: "why?" });
     const send = await until(() => mock.of("hc").find(([a]) => a[0] === "send"));
-    assert.match(send[0].at(-1), new RegExp(`why\\?\\n\\nAfter answering, also hand Kelpie a short answer[^\\n]*\\n\\n${escape(OTHERS)}$`), send[0].at(-1));
+    assert.ok(send[0].at(-1).endsWith(`why?\n\n${OTHERS}`), send[0].at(-1));
   });
   test("a new Claude gets it after the ticket prompt, the note once at the end", async () => {
     askClaude(st, it, "ABC-1", { id: "new" }, fileAbout(pr), { note: "why?" });
     const [, args] = await until(() => mock.of("run").find(([n]) => n === "space.new" || n === "tab.new"));
-    assert.match(args.task, new RegExp(`why\\?\\n\\nAfter answering, also hand Kelpie a short answer[^\\n]*\\n\\n${escape(OTHERS)}$`), args.task);
+    assert.ok(args.task.endsWith(`why?\n\n${OTHERS}`), args.task);
     assert.equal(args.task.split(OTHERS).length, 2);
   });
   test("a question about the person's own uncommitted file is sent as it is", async () => {

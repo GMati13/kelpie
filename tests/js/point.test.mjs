@@ -150,8 +150,8 @@ test("Next (⌘⇧J) points at the step of the story it opens", async () => {
   assert.match(p.key, /^ACME-\d+$/);
   assert.ok(["peek", "comments", "fix", "merge"].includes(p.kind));
 });
-// The Ask line's Merge asks who it has chosen: a new Claude here, with the merge task, and on the thread.
-test("the Ask line's Merge starts a new Claude with the merge task, and goes on the thread", async () => {
+// The Ask line's Merge asks who it has chosen: a new Claude here, with the merge task.
+test("the Ask line's Merge starts a new Claude with the merge task", async () => {
   const { el, view, cx } = await show(StoryBody, { space: "ACME-171" });
   mock.calls.length = 0;
   handlers(el).find((h) => h.id === "ask-task-merge").fn({}, cx);
@@ -159,5 +159,5 @@ test("the Ask line's Merge starts a new Claude with the merge task, and goes on 
   const started = mock.of("run").find(([n]) => n === "tab.new" || n === "space.new");
   assert.ok(started, "a new Claude");
   assert.match(String(started[1].task ?? ""), /merge/i);
-  assert.match(texts(byId(view.render(cx), "ask-thread")).join(" "), /Merge/);
+  assert.equal(byId(view.render(cx), "ask-thread"), null, "no history of asks shown");
 });
