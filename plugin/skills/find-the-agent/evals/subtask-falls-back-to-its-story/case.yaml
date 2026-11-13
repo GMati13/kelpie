@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: subtask-falls-back-to-its-story
+expected_outcome: |
+  find_agents for ACME-144 gives no agent of its own, only its story ACME-142's two agents, marked via story. The reply says nobody works on ACME-144 itself, that these two are on the story, lists both and asks which one the person means. No message is sent yet.

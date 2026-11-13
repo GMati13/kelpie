@@ -4,6 +4,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
+import { until } from "../lib/helpers.mjs";
 import { sendStoryTask } from "../../mods/kelpie/stories.js";
 
 const profile = { id: "w", name: "W", folder: "/work/acme", github: { owner: "acme" } };
@@ -63,5 +64,30 @@ describe("sending a story's Merge to an open Claude", () => {
   test("the Desk's pull requests with no ticket say so in the note", async () => {
     await sendStoryTask("merge", profile, { key: "", title: "" }, prs, { ...agent, tab_name: "Claude Code" });
     assert.equal(note(), "Sent the merge to Claude Code.");
+  });
+  // KELPIE-120: hc held the send behind a "draft" the person couldn't see (a prompt cleared with Esc
+  // Esc, a menu answered with a key) and nothing on screen said so: picks seemed to do nothing.
+  test("a send still held after 5 s says so at once, with the key that lets it go, as a toast too", async () => {
+    let finish;
+    mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : new Promise((r) => { finish = r; }));
+    const now = Date.now;
+    mock.on.exec = (c, a) => { if (c === "sleep") { const later = now() + Number(a[0]) * 1000; Date.now = () => later; } };
+    try {
+      const done = sendStoryTask("merge", profile, story, prs, agent);
+      await until(() => mock.of("notify").length === 1);
+      assert.equal(note(), "Waiting to send ABC-1's merge to ABC-1 fix the form: click in it and press Ctrl+U to let it go.");
+      // Why, in the note's tooltip: the prompt may look empty.
+      assert.match(mock.sharedValue("kelpie.stories.note").w.full, /even if its prompt looks empty.*Esc counts/);
+      const [[n]] = mock.of("notify");
+      assert.equal(n.title, "Waiting to send to ABC-1 fix the form");
+      assert.equal(n.body, "Click in it and press Ctrl+U to let it go.");
+      // A second pick of the same Claude meanwhile sends nothing more, and says why.
+      await sendStoryTask("merge", profile, story, prs, agent);
+      assert.equal(sends().length, 1);
+      assert.match(note(), /^Couldn't send it to ABC-1 fix the form\. The last one is still waiting: press Ctrl\+U in it\.$/);
+      finish({ code: 0, stdout: "{}", stderr: "" });
+      await done;
+      assert.equal(note(), "Sent ABC-1's merge to ABC-1 fix the form.");
+    } finally { Date.now = now; }
   });
 });

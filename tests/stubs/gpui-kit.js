@@ -18,25 +18,15 @@ export function element(kind, args = []) {
         if (prop === "when") return a[0] ? (a[1](el) ?? el) : el;
         if (prop === "when_some" || prop === "when_else") throw new Error(`unknown element method \`${prop}\`: Herdr's elements have when() and map(), not ${prop}()`);
         if (prop === "map" && typeof a[0] === "function") return a[0](el) ?? el;
-        if (prop === "child" || prop === "children") adopt(node, prop === "children" && Array.isArray(a[0]) ? a[0] : a);
         node.calls.push([prop, a]);
+        // How many parents each element was put into: in Herdr an element is drawn once, so one put
+        // into two trees (one of them thrown away) leaves a hole (`parents`, for the tests).
+        if (prop === "child" || prop === "children") for (const v of prop === "children" && Array.isArray(a[0]) ? a[0] : a) if (isElement(v)) v[NODE].parents = (v[NODE].parents ?? 0) + 1;
         return el;
       };
     },
   });
   return el;
-}
-
-// An element goes into one parent only, as in Herdr: a second `.child()` of the same element throws
-// there (a skin's hook handed an element already in the view's heading failed so, and the heading
-// fell back to the plain one), so it throws here too.
-function adopt(parent, kids) {
-  for (const k of kids) {
-    const n = nodeOf(k);
-    if (!n) continue;
-    if (n.parent && n.parent !== parent) throw new Error(`element ${n.kind} put into a second parent: make a fresh one for each`);
-    n.parent = parent;
-  }
 }
 
 export const isElement = (x) => Boolean(x && typeof x === "object" && x[NODE]);

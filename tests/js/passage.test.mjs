@@ -6,7 +6,7 @@ import { before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mock } from "herdr";
-import { handlers, texts } from "gpui-kit";
+import { handlers, nodeOf, texts, walk } from "gpui-kit";
 import { put, tempDir } from "../lib/helpers.mjs";
 import { byId, render } from "../lib/snapshot.mjs";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -85,6 +85,29 @@ test("the details show the passage bar while it's shown, and Back to the story e
   assert.equal(passage(), null);
 });
 
+// On a wide screen the bar spanned the whole details while the text below is a centred column
+// (#28): it now sits on that column, and a long note wraps rather than being cut off.
+test("the passage bar sits on the reading column and its note is never cut off", async () => {
+  const long = `What the PDF holds, ${"and more besides ".repeat(12)}`.slice(0, 200);
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-180", quote: "with confirmation numbers and addresses", note: long, at: Date.now() });
+  const { el } = await draw(new StoryBody());
+  const calls = (x) => nodeOf(x).calls;
+  const maxW = (n) => n.calls.find(([m]) => m === "max_w")?.[1][0];
+  const bar = byId(el, "passage-bar");
+  // The reading column is the rows' own width, in the invisible copy they're measured in.
+  const measure = walk(el).find((n) => n.calls.some(([m, a]) => m === "id" && String(a[0]).startsWith("story-reader-measure-")));
+  const columns = new Set(walk(measure.calls.flatMap(([, a]) => a)).map(maxW).filter(Boolean));
+  assert.equal(columns.size, 1, "the rows share one column width");
+  assert.equal(maxW(nodeOf(bar)), [...columns][0], "the bar is as wide as the reading column");
+  const holder = walk(el).find((n) => n.calls.some(([m, a]) => m === "child" && a[0] === bar));
+  assert.ok(holder.calls.some(([m]) => m === "justify_center"), "and centred on it");
+  const note = byId(bar, "passage-note");
+  assert.ok(note, "the note is drawn");
+  assert.ok(texts(note).includes(long), "the whole note is there");
+  assert.ok(!calls(note).some(([m]) => m === "truncate"), "the note wraps rather than being cut off");
+});
+
 test("a passage the description doesn't hold says so", async () => {
   mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
   mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-180", quote: "refunds go out within a week", note: "", at: Date.now() });
@@ -119,4 +142,76 @@ test("a passage of a Markdown description (a GitHub issue's): found, marked and 
   assert.equal(marked.join(""), "An edit made offline shows on another device");
   assert.equal(findPassage(blocks, "Travellers open saved trips").index, 0, "bold marks are forgiven");
   assert.equal(findPassage(blocks, "the template's hint"), null, "an HTML comment isn't part of it");
+});
+
+// A passage in a ticket's comments (#73): looked for in the description and the comments alike,
+// marked where it is, and the answer says where.
+test("findInTicket: word for word first, the description before the comments, then the newest comment", async () => {
+  const { findInTicket } = await import("../../mods/kelpie/adf.js");
+  const md = (s) => ({ blocks: markdownBlocks(s) });
+  const desc = markdownBlocks("Trips open offline within 300 ms.");
+  const talk = [md("Keep the banner short."), md("Map tiles stay out of this story."), md("Map tiles stay out of this story, for now.")];
+  assert.equal(findInTicket(desc, talk, "within 300 ms").where, "description");
+  const c = findInTicket(desc, talk, "map tiles stay out of this story");
+  assert.deepEqual([c.where, c.n, c.found.exact], ["comment", 2, true], "the newest comment saying it");
+  assert.deepEqual([findInTicket(desc, talk, "the banner should be kept short").where, findInTicket(desc, talk, "the banner should be kept short").found.exact], ["comment", false], "closest match in a comment");
+  assert.equal(findInTicket(desc, talk, "refunds within a week"), null);
+  assert.equal(findInTicket(null, null, "anything"), null);
+  // The same words in both: the description wins.
+  assert.equal(findInTicket(desc, [md("Trips open offline within 300 ms.")], "trips open offline").where, "description");
+});
+
+test("a passage in a comment: the details show the comments, mark it and say whose it is", async () => {
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-142" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-142", quote: "keep it short: \"Saved 2h ago\"", note: "", at: Date.now() });
+  const { view, cx } = await draw(new StoryBody());
+  await cx.settle();
+  const el = view.render(cx);
+  assert.deepEqual(texts(byId(el, "passage-said")), ["Here in Priya Nair's comment, 2d ago"]);
+  const shown = render(el, skinTheme());
+  assert.match(shown, /"Comments · 4"/, "the comments are under the description");
+  assert.match(shown, /"Lena Fischer"/);
+  // The marked box (the passage's tint and edge) is around Priya's comment, its words lit.
+  const lines = shown.split("\n"), boxes = [];
+  lines.forEach((l, i) => {
+    if (!/\[bg=accent\/12 border=accent\]/.test(l)) return;
+    const pad = l.search(/\S/), end = lines.findIndex((x, j) => j > i && x.search(/\S/) <= pad);
+    boxes.push(lines.slice(i, end < 0 ? undefined : end).join("\n"));
+  });
+  assert.ok(boxes.length > 0, "a passage is marked");
+  assert.ok(boxes.every((r) => /Saved/.test(r) && /bg=accent\/40/.test(r)), "only the comment holding it, its words lit");
+});
+
+test("a passage in neither: the bar says it looked in the comments too", async () => {
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-142" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-142", quote: "refunds go out within a week", note: "", at: Date.now() });
+  const { view, cx } = await draw(new StoryBody());
+  await cx.settle();
+  assert.deepEqual(texts(byId(view.render(cx), "passage-said")), ["Couldn't find this passage in the description or its comments"]);
+});
+
+test("the request's answer says where the passage is: the description, a comment (whose), or neither", async () => {
+  // The answer waits on `sleep` at most (Herdr's exec doesn't block; the stub's real one would, for
+  // the whole wait): here it never ends, so the answer is the lookup's.
+  mock.on.exec = (c, a, o) => (c === "sleep" ? new Promise(() => {}) : mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } }));
+  request({ key: "ACME-142", quote: "Saved trips open instantly from the device" });
+  assert.deepEqual(await showPassageRequest(), { ok: true, found: "description", exact: true });
+  request({ key: "ACME-142", quote: "map tiles stay out of this story" });
+  const r = await showPassageRequest();
+  assert.deepEqual({ ...r, written: typeof r.written }, { ok: true, found: "comment", exact: true, author: "Lena Fischer", written: "string" });
+  // When the comment was written, not when Kelpie answered (answerRequest() stamps its own `at`).
+  assert.equal(result().author, "Lena Fischer", "and so does the result file");
+  assert.ok(Date.now() - Date.parse(result().written) > 12 * 3600e3, `written a day ago, not now: ${result().written}`);
+  request({ key: "ACME-142", quote: "refunds go out within a week" });
+  assert.deepEqual(await showPassageRequest(), { ok: true, found: "none" });
+});
+
+test("a description that didn't load says so, not that the passage isn't in it", async () => {
+  mock.state.shared.set("kelpie.stories.preview", { [DEMO]: "ACME-180" });
+  mock.state.shared.set("kelpie.passage", { profile: DEMO, key: "ACME-180", quote: "with confirmation numbers", note: "", at: Date.now() });
+  const view = new StoryBody();
+  view.descs = { "ACME-180": { error: "Jira answered 500.", at: Date.now() } };
+  view.threads = { "ACME-180": { total: 0, list: [], at: Date.now() } };
+  const { el } = await draw(view);
+  assert.deepEqual(texts(byId(el, "passage-said")), ["The description didn't load"]);
 });

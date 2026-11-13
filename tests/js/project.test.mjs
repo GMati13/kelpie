@@ -104,7 +104,7 @@ describe("loading a GitHub Project", () => {
     assert.deepEqual(d.children.map((i) => i.key), ["WEB-11", "WEB-12", "WEB-13"]);
     const [story] = d.parents;
     assert.deepEqual(story, {
-      key: "WEB-10", url: "https://github.com/acme/web/issues/10", item: "PVTI_10",
+      key: "WEB-10", url: "https://github.com/acme/web/issues/10", item: "PVTI_10", id: "I_acme_web_10", closed: false,
       fields: { summary: "Offline mode", issuetype: { name: "Issue", subtask: false, madeUp: true }, status: { id: "o2", name: "In Progress", statusCategory: { key: "indeterminate" } }, parent: null,
         labels: [{ name: "bug", color: "d73a4a" }, { name: "mobile", color: "0e8a16" }],
         assignee: { displayName: "Priya Nair", avatarUrls: { "48x48": null } } },

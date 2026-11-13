@@ -99,6 +99,12 @@ div
                     "Show less"
             h_flex
               v_flex
+                v_flex #story-talk
+                  h_flex #story-talk-head [fg=muted hover(fg=foreground)] {click} tip="Show the comments"
+                    svg chrome:chevron-right [fg=dim]
+                    "Comments · 4"
+            h_flex
+              v_flex
                 div #sub-cols-zoom-probe {size_change}
                 div #prs-story [fg=muted]
                   "On the story itself"
@@ -147,13 +153,13 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-143 {size_change}
                         Popup.new "sub-status-ACME-143-menu"
-                          div #sub-status-ACME-143-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-143-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "In progress"
                               div
                                 div
                                   div [bg=#7fb3ae]
-                  div
+                  v_flex
                     div #sub-desc-ACME-143-body [font="Fraunces" fg=foreground/c4]
                       v_flex
                         v_flex
@@ -230,6 +236,10 @@ div
                               TextView.html "sub-desc-ACME-143-0-w-0-34" "<span>oldest</span>" [fg=foreground/c4]
                             div
                               TextView.html "sub-desc-ACME-143-0-w-0-35" "<span>first.</span>" [fg=foreground/c4]
+                    v_flex #sub-talk-ACME-143
+                      h_flex #sub-talk-ACME-143-head [fg=muted hover(fg=foreground)] {click} tip="Show the comments"
+                        svg chrome:chevron-right [fg=dim]
+                        "Comments · 1"
                   h_flex
                     h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use"
                       div
@@ -265,7 +275,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-144 {size_change}
                         Popup.new "sub-status-ACME-144-menu"
-                          div #sub-status-ACME-144-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-144-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "To do"
                               div
@@ -287,7 +297,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-145 {size_change}
                         Popup.new "sub-status-ACME-145-menu"
-                          div #sub-status-ACME-145-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-145-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=done/26 fg=done font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "Done"
                               div

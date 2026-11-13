@@ -83,7 +83,7 @@ describe("demoPulls and the local helpers", () => {
     assert.deepEqual(mine.map((p) => `${p.repository.name}#${p.number}`), ["web#418", "payments#97", "search#233", "charts#58", "web#415", "web#423", "docs#58", "docs#61"]);
     assert.deepEqual((await demoPulls("user:kelpie--demo is:pr is:merged author:@me merged:>=2026-01-01")).map((p) => p.number), [291, 409, 412, 298, 287]);
     const reviews = await demoPulls("user:kelpie--demo is:pr is:open review-requested:@me");
-    assert.deepEqual(reviews.map((p) => [p.number, p.author.login]), [[421, "priya-n"], [305, "tomas-r"]]);
+    assert.deepEqual(reviews.map((p) => [p.number, p.author.login]), [[421, "priya-n"], [308, "priya-n"], [305, "tomas-r"], [427, "sam-okafor"], [311, "sam-okafor"]]);
   });
   test("a pull request as GitHub's search gives it", async () => {
     const [p] = await demoPulls("is:open");
@@ -130,8 +130,13 @@ describe("demoPulls and the local helpers", () => {
     const [r, ...rest] = await demoLocal("/f", ["ACME-143", "ACME-144"]);
     assert.deepEqual(rest, []);
     assert.deepEqual({ ...r, files: r.files.map((f) => [f.path, f.status, f.add, f.del]) },
-      { repo: "web", path: "/f/ACME-143/web", branch: "ACME-143-trip-cache", key: "ACME-143", ticket: true, files: [["src/trips/sync-queue.ts", "added", 10, 0]] });
+      { repo: "web", path: "/f/ACME-143/web", branch: "ACME-143-trip-cache", key: "ACME-143", ticket: true, files: [["src/trips/sync-queue.ts", "added", 10, 0]], head: null, committed: null });
     assert.deepEqual(await demoLocal("/f", ["ACME-151"]), []);
+  });
+  test("a branch's commits with no pull request yet, as changes.py --committed gives them", async () => {
+    const [r] = await demoLocal("/f", ["ACME-138", "ACME-139"]);
+    assert.deepEqual([r.repo, r.branch, r.files, r.committed.base, r.committed.commits], ["api", "ACME-139-token-bucket", [], "origin/main", 2]);
+    assert.deepEqual(r.committed.files.map((f) => [f.path, f.status, f.add, f.del]), [["src/limits/bucket.ts", "added", 15, 0], ["src/server.ts", "modified", 2, 0]]);
   });
   test("the footer's limits, once the fixture is read", async () => {
     await demoFixture();
@@ -197,6 +202,8 @@ describe("demo.json holds together", () => {
       assert.ok(issues.has(key), key);
       for (const x of list) if (x.id) assert.match(x.id, /^demo-/);
     }
+    assert.ok(FIXTURE.deskPaused?.length, "the Desk has a paused agent to show");
+    for (const x of FIXTURE.deskPaused) assert.match(x.id, /^demo-/);
   });
   test("every suggestion is a key, a pull request link or an idea, with an action", () => {
     for (const s of FIXTURE.suggest) {
