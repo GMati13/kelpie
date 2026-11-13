@@ -9,7 +9,7 @@ import { StoryList } from "../../mods/kelpie/stories.js";
 import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
-import { div, handlers, nodeOf, texts } from "gpui-kit";
+import { div, handlers, nodeOf, texts, walk } from "gpui-kit";
 import { ROW_CONTROL, groupHeader } from "../../mods/kelpie/ui.js";
 import { v_flex } from "gpui-base";
 import { mock } from "herdr";
@@ -700,4 +700,20 @@ test("a deleted profile's Ask line and asks are pruned with the next load", asyn
   await draw(new StoryList());
   assert.deepEqual(Object.keys(mock.sharedValue("kelpie.ask.about")), [DEMO]);
   assert.deepEqual(Object.keys(mock.sharedValue("kelpie.ask.thread")), [DEMO]);
+});
+
+// KELPIE-225: a right-click on a story's row opens its menu: ask about it (shows it, the Ask line on
+// the story), open it on the board, copy its key, show its agent.
+test("a right-click on a story's row opens its menu", async () => {
+  setupDemoWorld({ stories });
+  const { view, cx } = await draw(new StoryList());
+  const el = view.render(cx);
+  const row = walk(el).find((n) => n.calls.some(([m, a]) => m === "id" && a[0] === "story-ACME-142"));
+  row.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({ local_position: { x: 40, y: 10 } }, { ...cx, stop_propagation() {} });
+  assert.equal(view.menu, "story-menu-ACME-142");
+  const words = texts(byId(view.render(cx), "story-menu-ACME-142-menu-list"));
+  for (const w of ["Ask Claude about this", "Open on the board", "Copy key", "Show agent"]) assert.ok(words.includes(w), w);
+  handlers(view.render(cx)).find((h) => h.id === "story-menu-ACME-142-row-0").fn({}, cx);
+  assert.equal(mock.sharedValue("kelpie.ask.about")[DEMO].story, "ACME-142");
+  assert.equal(mock.sharedValue("kelpie.stories.preview")?.[DEMO] ?? "ACME-142", "ACME-142");
 });

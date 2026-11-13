@@ -2718,8 +2718,10 @@ export function pointAsk(profile, story, about) {
 function askAboutOf(profile, it, data) {
   const p = (shared(ASK_ABOUT) ?? {})[profile?.id];
   if (p?.story === it.key && p.about) return { about: p.about, at: p.at ?? 0 };
-  // Its description goes too once it's loaded (shown in the details, DESCRIPTIONS).
-  return { about: ticketAbout(it, "story", null, { url: ticketUrl(boardOf(profile), data, it.key), description: DESCRIPTIONS[it.key]?.blocks }), at: 0 };
+  // Pointed at the story itself (a sidebar row's menu, the ✕): its own about, the cursor in the line
+  // once. Its description goes too once it's loaded (shown in the details, DESCRIPTIONS).
+  const at = p?.story === it.key ? p.at ?? 0 : 0;
+  return { at, about: ticketAbout(it, "story", null, { url: ticketUrl(boardOf(profile), data, it.key), description: DESCRIPTIONS[it.key]?.blocks }) };
 }
 // Exported for the tests.
 export const threadOf = (profile, key) => ((shared(ASK_THREAD) ?? {})[profile?.id] ?? {})[key] ?? [];
@@ -3463,7 +3465,7 @@ export class Stories extends Source {
   openMenu(id) {
     return (e, cx) => {
       cx.stop_propagation();
-      const zoom = this.colZoom || 1, p = e?.local_position;
+      const zoom = this.colZoom || (this.tagFit?.zoom ? this.tagFit.zoom / 100 : 0) || this.diffZoom || 1, p = e?.local_position;
       this.menuAt = p ? { id, x: Math.max(0, p.x / zoom), y: Math.max(0, p.y / zoom) } : null;
       this.menu = this.menu === id ? null : id;
       cx.notify();
@@ -3476,6 +3478,13 @@ export class Stories extends Source {
     const m = this.lineMenu, f = all[m.fi];
     if (!f) return [];
     const key = f.group.key ?? it.key;
+    // A file's header: ask about the file, copy its path, open it where it is.
+    const fullPath = f.group.path ? `${f.group.path}/${f.path}` : f.path;
+    if (m.file) return [
+      { label: "Ask Claude about this file", hint: f.path.split("/").pop(), action: () => pointAsk(st.profile, it.key, fileAbout(f, key)) },
+      { label: "Copy path", action: (cx) => cx.write_to_clipboard(fullPath) },
+      f.group.url ? { label: "Open on GitHub", action: () => open(`${f.group.url}/files`) } : { label: revealLabel, action: () => reveal(fullPath) },
+    ];
     const code = fileRows(f).filter((r) => r.kind === "add" || r.kind === "del" || r.kind === "ctx");
     const same = (a, b) => a.kind === b.kind && a.old === b.old && a.new === b.new;
     const at = code.findIndex((r) => same(r, m.r));
@@ -3501,6 +3510,20 @@ export class Stories extends Source {
     }
     out.push({ label: "Copy the line", hint: num(m.r) != null ? String(num(m.r)) : null, action: (cx) => cx.write_to_clipboard(m.r.text ?? "") });
     return out;
+  }
+  // A story row's in the sidebar: ask about it (shows it, the cursor in its Ask line), open it on the
+  // board, copy its key, show its agent while one runs.
+  storyMenuRows(st, it) {
+    const profile = st?.profile ?? this.profile;
+    if (!profile || lonePr(it) || it.review) return [];
+    const url = ticketUrl(boardOf(profile), st?.data ?? (shared(DATA) ?? {})[profile.id]?.data, it.key);
+    const live = allAgents(it);
+    return [
+      { label: "Ask Claude about this", hint: "its Ask line", action: () => { selectStory(profile, it); pointAsk(profile, it.key, null); } },
+      ...(url ? [{ label: boardOf(profile)?.kind === "project" ? "Open on GitHub" : "Open on the board", action: () => open(url) }] : []),
+      { label: "Copy key", hint: it.key, action: (cx) => cx.write_to_clipboard(it.key) },
+      ...(live.length ? [{ label: "Show agent", hint: agentWords(live[0].status), action: () => focusAgent(profile, it, live[0]) }] : []),
+    ];
   }
   // A subtask's: ask about it, open it on the board, copy its key, and show its agent while one runs.
   subMenuRows(st, it, s) {
@@ -3755,6 +3778,8 @@ export class Stories extends Source {
     // How many buttons that is (the pull requests' menus are one or two), for the room the title leaves.
     const buttons = acts.length - (tasks.length > 0 ? 1 : 0) + tasks.length;
     return decor("rowDecor", t, h_flex().id(`story-${it.key}`).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
+      // A right-click opens the story's menu at the pointer (KELPIE-225).
+      .relative().on_mouse_down("right", this.openMenu(`story-menu-${it.key}`)).child(this.elementMenu(t, `story-menu-${it.key}`, this.menu === `story-menu-${it.key}` ? this.storyMenuRows(st, it) : [], 30))
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .on_click(() => selectStory(this.profile, it)).tooltip(quiet && it.handed ? `${line}\n${whenWords("Handed over", it.handed)}` : !quiet && it.active && underWay(it) ? `${line}\n${whenWords("Last worked on", { at: it.active, exact: true })}` : line)
       .when(Boolean(st), (el) => el.on_hover((over, cx) => {
@@ -4893,6 +4918,8 @@ export class Stories extends Source {
     // apart), for the menu the box around the list opens (KELPIE-227).
     const lineHit = (key, e) => {
       const en = entries[Number(key)];
+      // A file's header: its own menu (KELPIE-225).
+      if (en?.r.kind === "file") { this.lineAt = { fi: en.fi, file: true }; return; }
       if (!en?.lines) { this.lineAt = null; return; }
       const i = Math.floor((e?.local_position?.y ?? 0) / (this.diffZoom || 1) / ROW);
       this.lineAt = { fi: en.fi, r: en.lines[Math.min(en.lines.length - 1, Math.max(0, i))] };
