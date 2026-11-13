@@ -580,11 +580,12 @@ export class Setup {
     const askTip = saving ? "Saves this profile, then asks a Claude on its Desk to set this up with you" : "Asks a Claude on the Desk to set this up with you";
     const open = this.profile ? deskAgents(this.profile).filter((a) => a.status !== "blocked") : [];
     const names = agentLabels(open, spaces().flatMap((s) => s.tabs ?? []));
+    // The Desk's open Claudes first, a new agent last (where to send: what's open comes first).
     const askRows = (scope) => [
-      { header: `Set up ${CONFIGURE_SCOPES[scope] ?? scope} with` },
-      { label: "New agent", hint: "on the Desk", action: (cx) => this.configure(scope, cx) },
-      { header: "Or send it to the Desk's" },
+      { header: `Set up ${CONFIGURE_SCOPES[scope] ?? scope}: send it to the Desk's` },
       ...open.map((a) => ({ label: names.get(a.address) ?? a.tab_name ?? "Claude", hint: a.status === "working" ? "working" : "", action: (cx) => this.configure(scope, cx, a) })),
+      { header: "Or start" },
+      { label: "New agent", hint: "on the Desk", action: (cx) => this.configure(scope, cx) },
     ];
     const ask = (scope, label = "Ask Claude") => open.length
       ? menuButton(this.menus, t, `setup-ask-${scope}`, label, askRows(scope), { tip: askTip, dim: true, width: 340 })

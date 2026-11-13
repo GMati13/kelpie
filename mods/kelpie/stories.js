@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, rankOf, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -2758,7 +2758,9 @@ export function askClaude(st, it, key, row, about, ask) {
   if (row?.agent) {
     // Named as the Ask line's menu names it: its session's name, else its tab's.
     const a = row.agent, name = row.label ?? a.tab_name ?? "Claude";
-    const text = askMessage(profile, about, ask, id);
+    // No line asking for a short answer back: the person reads the Claude's one answer, in its chat
+    // (a second, shorter version shown in Kelpie read differently and misled).
+    const text = askMessage(profile, about, ask);
     if (!text) return;
     const failed = (why) => {
       say(said, `Couldn't send it to ${name}. ${capitalize(why)}.`);
@@ -2773,7 +2775,7 @@ export function askClaude(st, it, key, row, about, ask) {
       .then(() => say(said, `Sent your question to ${name}.`))
       .catch((err) => { const why = String(err?.message ?? err); patchEntry(profile, it.key, e.id, { status: "failed", why }); failed(why); });
   }
-  const then = askMessage(profile, { ...about, others: false }, ask, id);
+  const then = askMessage(profile, { ...about, others: false }, ask);
   if (!then || lonePr(it) || cleaningNow(it.key, profile)) return;
   const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
   setThread(profile, it.key, (list) => withEntry(list, entry({ to: "a new Claude", status: "started" })));
@@ -2853,17 +2855,19 @@ export function storyTaskRows(t, profile, story, kind, list) {
   const prs = list.map((p) => prLine(t, p));
   const names = new Map(spaces().map((s) => [s.id, s.name]));
   const desk = !story;
-  const open = openClaudes(story, agents(), tabKey, desk ? deskAgents(profile) : []);
+  // In the person's order (askclaude.js rankOf()): the story's own ticket's Claude, its subtasks', the rest.
+  const open = openClaudes(story, agents(), tabKey, desk ? deskAgents(profile) : [])
+    .sort((a, b) => (desk ? 0 : rankOf(a, story.key, story, tabKey) - rankOf(b, story.key, story, tabKey)));
   const what = desk ? "pull requests without a ticket" : story.key;
   const took = () => { if (story) clearPoint(profile, story.key); };
+  // The open Claudes first, a new agent last (where to send: what's open comes first).
   return [
-    { header: `${TASK_LOOK[kind].label} for ${what} with` },
-    { label: "New agent", hint: desk ? "on the Desk" : `in ${story.key}'s space`, action: () => { took(); desk ? startDeskTask(kind, profile, prs) : startStoryTask(kind, profile, story, prs); } },
-    ...(open.length ? [{ header: desk ? "Or send it to the Desk's" : `Or send it to ${story.key}'s` }, ...open.map((a) => ({
+    ...(open.length ? [{ header: `${TASK_LOOK[kind].label} for ${what}: send it to ${desk ? "the Desk's" : `${story.key}'s`}` }, ...open.map((a) => ({
       label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
       hint: `${names.get(a.space) ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
       action: () => { took(); sendStoryTask(kind, profile, story ?? NO_TICKET, prs, a); },
-    }))] : []),
+    })), { header: "Or start" }] : [{ header: `${TASK_LOOK[kind].label} for ${what} with` }]),
+    { label: "New agent", hint: desk ? "on the Desk" : `in ${story.key}'s space`, action: () => { took(); desk ? startDeskTask(kind, profile, prs) : startStoryTask(kind, profile, story, prs); } },
   ];
 }
 
@@ -3053,14 +3057,14 @@ export function reviewTaskRows(profile, story, prs) {
   const own = tabNamed(storyReviewName(story.key));
   const names = new Map(prs.map((p) => [`PR ${prName(p)}`, true]));
   const open = agents().filter((a) => a.tab_name === storyReviewName(story.key) || names.has(a.tab_name));
+  // The open Claudes first, a new agent last (where to send: what's open comes first).
   return [
-    { header: `Review ${story.key}'s ${prs.length} pull requests together with` },
-    { label: own ? "Show its review" : "New agent", hint: `in the ${REVIEWS} space`, action: () => startStoryReview(profile, story, prs) },
-    ...(open.length ? [{ header: "Or send it to" }, ...open.map((a) => ({
+    ...(open.length ? [{ header: `Review ${story.key}'s ${prs.length} pull requests: send it to` }, ...open.map((a) => ({
       label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
       hint: `${a.tab_name ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
       action: () => { sendStoryReview(profile, story, prs, a); },
-    }))] : []),
+    })), { header: "Or start" }] : [{ header: `Review ${story.key}'s ${prs.length} pull requests together with` }]),
+    { label: own ? "Show its review" : "New agent", hint: `in the ${REVIEWS} space`, action: () => startStoryReview(profile, story, prs) },
   ];
 }
 
@@ -3458,6 +3462,7 @@ export class Stories extends Source {
   // An element's own menu (KELPIE-225), opened by a right-click on `el` (its trigger) and laid under
   // it: Ask Claude about it first (it points the story's Ask line there and puts the cursor in it),
   // then what that element offers. The same look and keys as the other menus (menuButton()).
+  // Wide enough (340) for its longest row and hint, "Ask Claude about this change · lines 550–555", whole.
   // It opens at the pointer, where the right-click landed (a one-pixel anchor laid over the element
   // there, so the element's own layout is left as it is), else `top` below its left edge.
   // `openMenu(id)` is the right-click that opens it: the press comes as drawn, zoom included, so its
@@ -3465,13 +3470,15 @@ export class Stories extends Source {
   elementMenu(t, id, rows, top) {
     const at = this.menuAt?.id === id ? this.menuAt : null;
     return div().absolute().left(at ? at.x : 8).top(at ? at.y : top).w(1).h(1)
-      .child(this.menuButton(t, id, "", rows, null, { anchor: "top_left", width: 260, trigger: () => div().id(`${id}-at`).w(1).h(1) }));
+      .child(this.menuButton(t, id, "", rows, null, { anchor: "top_left", width: 340, trigger: () => div().id(`${id}-at`).w(1).h(1) }));
   }
   openMenu(id) {
     return (e, cx) => {
       cx.stop_propagation();
       const zoom = this.colZoom || (this.tagFit?.zoom ? this.tagFit.zoom / 100 : 0) || this.diffZoom || 1, p = e?.local_position;
-      this.menuAt = p ? { id, x: Math.max(0, p.x / zoom), y: Math.max(0, p.y / zoom) } : null;
+      // A little up and to the left of the pointer, so the pointer lands on the menu's first row at
+      // once (not on its rounded corner) and the element's tooltip under it doesn't show.
+      this.menuAt = p ? { id, x: Math.max(0, p.x / zoom - 14), y: Math.max(0, p.y / zoom - 12) } : null;
       this.menu = this.menu === id ? null : id;
       cx.notify();
     };
@@ -3508,11 +3515,8 @@ export class Stories extends Source {
       while (b < code.length - 1 && code[b + 1].kind !== "ctx") b++;
       if (b > a) out.push({ label: "Ask Claude about this change", hint: span(code.slice(a, b + 1)), action: ask(code.slice(a, b + 1), `the change at ${span(code.slice(a, b + 1))}`) });
     }
-    const p = m.prev && all[m.prev.fi] === f ? code.findIndex((r) => same(r, m.prev.r)) : -1;
-    if (p >= 0 && p !== at) {
-      const rows = code.slice(Math.min(p, at), Math.max(p, at) + 1);
-      out.push({ label: `Ask Claude about ${span(rows)}`, hint: "from the line before", action: ask(rows, span(rows)) });
-    }
+    // No range from the line right-clicked before: nothing on screen marked it, so it read as a
+    // selection that couldn't be made (a visible one is #227's to come).
     out.push({ label: "Copy the line", hint: num(m.r) != null ? String(num(m.r)) : null, action: (cx) => cx.write_to_clipboard(m.r.text ?? "") });
     return out;
   }
@@ -4279,8 +4283,12 @@ export class Stories extends Source {
     // show one board. Next pointing at a step opens them at their top, where its box is, once per
     // pointing.
     const point = pointFor(st.profile, it);
+    // The story's asks and its Ask line (askclaude.js), laid over the details' bottom (below), and the
+    // room they take there.
+    const asks = this.askInput && !it.pr ? this.askPart(t, st, it) : [];
+    const askRoom = asks.length ? (this.askH?.thread ?? 0) + (this.askH?.line ?? 0) + 24 : 0;
     const overview = this.scrollBox(v_flex().id(point ? `story-overview-${it.key}-${point.at}` : `story-overview-${it.key}`), `${st.profile?.id}:${it.key}`, point?.at ?? null).flex_1().min_h(0).gap(0).overflow_y_scrollbar()
-      .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content"))
+      .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content")).pb(askRoom)
         .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
         .when(Boolean(talk), (el) => el.child(h_flex().flex_none().w_full().justify_center().px(40).pb(32).when(!about, (x) => x.pt(24))
           .child(v_flex().w_full().min_w(0).max_w(DOC.width).child(talk))))
@@ -4291,9 +4299,25 @@ export class Stories extends Source {
     // gradients; not quite opaque, so it sits on a skin's lit background without a seam.
     const over = (this.fit?.content ?? 0) > (this.fit?.view ?? Infinity) + 1;
     const fade = bands(Array.from({ length: 10 }, (_, i) => alpha(t.background, ((i + 1) / 10) * 0.9)), { vertical: true })
-      .absolute().left(0).right(0).bottom(0).h(36);
+      .absolute().left(0).right(0).bottom(askRoom).h(36);
+    // Behind the Ask line, from the details' bottom edge up (the person's lamp, the skin's top light
+    // turned over): the text under it darkened, as the fade does, then a warm light lit most at the
+    // bottom edge and fully see-through at its top, so scrolling never shows an edge. Bands, as mods
+    // paint no gradients.
+    const zone = askRoom + 40;
+    // It reaches the block's own edges (past the details' side inset and bottom padding, StoryBody),
+    // so no edge of it shows.
+    const shade = v_flex().absolute().left(-INSET).right(-INSET).bottom(-6).h(zone + 6)
+      .child(bands(Array.from({ length: 10 }, (_, i) => alpha(t.background, ((i + 1) / 10) * 0.9)), { vertical: true }).flex_none().h(40))
+      .child(div().flex_1().bg(alpha(t.background, 0.9)));
+    const lamp = bands(Array.from({ length: 16 }, (_, i) => alpha(t.accent, ((i + 1) / 16) ** 2 * 0.16)), { vertical: true })
+      .absolute().left(-INSET).right(-INSET).bottom(-6).h(zone + 6);
+    // The Ask line and its thread lie over the details' bottom, so the room beside them (on a wide
+    // screen) is the details' own and the wheel scrolls them there; the content keeps that much room
+    // under it so its end scrolls clear of them. The wrappers take no pointer: only the line does.
     const view = div().id("story-overview-view").relative().flex().flex_col().flex_1().min_h(0).on_size_change(this.fits("view"))
-      .child(overview).when(over, (el) => el.child(fade));
+      .child(overview).when(over && !asks.length, (el) => el.child(fade))
+      .when(asks.length > 0, (el) => el.child(shade).child(lamp).child(v_flex().absolute().left(0).right(0).bottom(10).gap(6).children(asks)));
     // Under the title row (a block of its own): the status command's line, the note, then the
     // description and subtasks.
     const line = this.statusLine(t, st, it, cx);
@@ -4302,9 +4326,7 @@ export class Stories extends Source {
       .when(Boolean(point), (el) => el.child(h_flex().flex_none().w_full().justify_center().child(this.pointBox(t, st, it, point, cx))))
       .when(Boolean(line), (el) => el.child(line))
       .when(Boolean(note), (el) => el.child(note))
-      .child(view)
-      // Under them, always in view: the story's asks so far and the Ask line (askclaude.js).
-      .when(Boolean(this.askInput) && !it.pr, (el) => el.children(this.askPart(t, st, it)));
+      .child(view);
   }
 
   // What Next pointed at (pointFor), in one box over the details, marked as a passage is (an accent
@@ -5161,7 +5183,7 @@ export class Stories extends Source {
                 this.lineMenu = { ...this.lineAt, prev: this.lineMark ?? null };
                 this.lineMark = this.lineAt;
                 this.lineAt = null;
-                this.menuAt = { id: "line-menu", x: (e.local_position?.x ?? 0) / zoom, y: (e.local_position?.y ?? 0) / zoom };
+                this.menuAt = { id: "line-menu", x: Math.max(0, (e.local_position?.x ?? 0) / zoom - 14), y: Math.max(0, (e.local_position?.y ?? 0) / zoom - 12) };
                 this.menu = "line-menu";
                 DIFF.version++; cx.notify();
               })
@@ -5383,17 +5405,17 @@ export class StoryBody extends Stories {
     this.askTarget = { st, it, key, about, row, who };
     const rows = who.map((r) => (r.waiting ? { header: `${r.label} · waiting for you, answer it first` }
       : { label: r.label, hint: r.hint, tip: r.tip, action: (cx) => { this.askPick = r.id; cx.notify(); } }));
-    const to = this.menuButton(t, "ask-to", `${row.label} ▾`, rows, row.tip, { width: 320 });
-    const hint = row.id === "new" ? (about.kind === "story" ? "A question about the whole story goes to a new Claude" : `Starts a new Claude in ${it.key}'s space`)
-      : row.busy ? `${row.label} is mid-task: your question waits until its turn ends` : `${row.label} gets it now`;
+    const short = row.label.length > 24 ? `${row.label.slice(0, 23)}…` : row.label;
+    const to = this.menuButton(t, "ask-to", `to ${short} ▾`, rows, `${row.tip}${row.id === "new" && about.kind === "story" ? "\nA question about the whole story goes to a new Claude" : ""}`, { width: 320 });
+    // Said only when it matters: the Claude picked is mid-task, so the question waits.
+    const hint = row.busy ? "It's mid-task: your question waits until its turn ends" : null;
     const profile = st.profile;
+    // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
+    // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.
     const entries = threadOf(profile, it.key);
-    // The latest Catch me up and plan stay shown (pinned, first), with the latest ask.
-    const pinned = ["brief", "plan"].map((k) => entries.filter((e) => e.pin === k).at(-1)).filter(Boolean);
-    const recent = this.askOpen ? entries.slice(-5) : entries.slice(-1);
-    const shownEntries = [...pinned, ...recent.filter((e) => !pinned.includes(e))];
+    const shownEntries = entries.filter((e) => e.status === "held");
     const thread = askThread(t, {
-      entries: shownEntries, more: entries.length - shownEntries.length,
+      entries: shownEntries, more: 0,
       sendNow: (id, cx) => { const e = threadOf(profile, it.key).find((x) => x.id === id); if (e) sendEntry(profile, it.key, e); cx.notify(); },
       drop: (id, cx) => { setThread(profile, it.key, (list) => list.filter((x) => x.id !== id)); cx.notify(); },
       show: (id) => {
@@ -5432,7 +5454,16 @@ export class StoryBody extends Stories {
     });
     // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
     // the question box ran far from what it's about and from Send.
-    return [thread, line].filter(Boolean).map((el) => h_flex().flex_none().w_full().justify_center().child(el.w_full().max_w(ROWS)));
+    // Each measured (as drawn, so divided by the zoom: colProbe()), as the details leave that much room
+    // under their content for the line laid over their bottom (detail()).
+    const measured = (key) => (size, cx) => {
+      const h = size.height / (this.colZoom || 1), was = this.askH ?? {};
+      if (Math.abs((was[key] ?? 0) - h) < 0.5) return;
+      this.askH = { ...was, [key]: h };
+      cx.notify();
+    };
+    if (!thread && this.askH?.thread) this.askH = { ...this.askH, thread: 0 };
+    return [[thread, "thread"], [line, "line"]].filter(([el]) => el).map(([el, key]) => h_flex().flex_none().w_full().justify_center().child(el.w_full().max_w(ROWS).on_size_change(measured(key))));
   }
 
   // A story's tasks on its Ask line (KELPIE-228): Merge while it has an open pull request, Request

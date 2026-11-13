@@ -52,10 +52,13 @@ test("the fade shows only while the details are taller than their block", async 
   size("story-overview-view", 300);
   size("story-overview-content", 200);
   const fits = view.render(cx);
-  assert.equal(fade(fits).length, 1, "only the details, no fade");
+  // The Ask line lies over the details' bottom, inside their view (KELPIE-224), so it's one of its children.
+  // With the Ask line, its shade and lamp take the fade's place (KELPIE-224): the details, the shade,
+  // the lamp and the line, whether they're taller than their block or not.
+  assert.equal(fade(fits).length, 4, "the details, the shade, the lamp and the Ask line");
   size("story-overview-content", 900);
   const over = view.render(cx);
-  assert.equal(fade(over).length, 2, "the details and the fade over their edge");
+  assert.equal(fade(over).length, 4, "the shade does the fade's work");
   snap("body/fade", byId(over, "story-overview-view"));
 });
 
@@ -257,8 +260,9 @@ test("the details end with the Ask line, about the story, to a new Claude", asyn
   const { el } = await body({ space: "ACME-142" });
   assert.ok(byId(el, "ask-line"), "the Ask line is there");
   assert.equal(askedAbout(el), "ACME-142 · the story");
-  assert.match(toLabel(el), /^New Claude/);
-  assert.match(texts(byId(el, "ask-hint")).join(" "), /whole story goes to a new Claude/);
+  assert.match(toLabel(el), /^to New Claude/);
+  // Where it goes is said only when it matters (a Claude mid-task); else it's the menu's tip.
+  assert.equal(byId(el, "ask-hint"), null);
   assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-catchup", "ask-suggest-left", "ask-suggest-plan", "ask-suggest-explain"]);
 });
 test("a subtask's title points the Ask line at it; a Claude waiting for you can't take it", async () => {
@@ -267,7 +271,7 @@ test("a subtask's title points the Ask line at it; a Claude waiting for you can'
   const after = view.render(cx);
   assert.match(askedAbout(after), /^ACME-143 · /);
   // ACME-143's own Claude waits for an answer: a new one is picked, and it's listed as waiting.
-  assert.match(toLabel(after), /^New Claude/);
+  assert.match(toLabel(after), /^to New Claude/);
   view.menu = "ask-to";
   assert.match(texts(view.render(cx)).join(" "), /waiting for you, answer it first/);
 });
@@ -311,13 +315,13 @@ test("the Ask line offers only the story's own Claudes", async () => {
   assert.doesNotMatch(words, /ACME-999/);
   assert.doesNotMatch(words, /Review ACME-142/);
 });
-test("a suggestion asks the Claude on the subtask's key, and goes on the story's thread", async () => {
+test("a suggestion asks the Claude on the subtask's key, and leaves no history in the story", async () => {
   const { el, view, cx } = await body({ space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   press(el, "sub-title-ACME-172", cx);
   const pointed = view.render(cx);
   assert.match(toLabel(pointed), /▾$/);
-  assert.doesNotMatch(toLabel(pointed), /^New Claude/, "its own Claude, idle, is picked");
+  assert.doesNotMatch(toLabel(pointed), /^to New Claude/, "its own Claude, idle, is picked");
   mock.calls.length = 0;
   press(pointed, "ask-suggest-explain", cx);
   await new Promise((r) => setImmediate(r));
@@ -325,31 +329,28 @@ test("a suggestion asks the Claude on the subtask's key, and goes on the story's
   assert.equal(sent.length, 1);
   assert.match(sent[0][0].at(-1), /^About the subtask ACME-172 /);
   assert.deepEqual(mock.of("run").filter(([n]) => n === "space.select"), [], "the person stays where they are");
-  const thread = view.render(cx);
-  assert.match(texts(byId(thread, "ask-thread")).join(" "), /Explain this/);
+  // Sent, it leaves no line in the story: its answer is the Claude's own, in its chat.
+  assert.equal(byId(view.render(cx), "ask-thread"), null);
 });
 // On a wide screen the Ask line keeps to the subtask rows' width, centred, rather than stretching.
 test("the Ask line is at most as wide as the subtask rows", async () => {
   const { el } = await body({ space: "ACME-142" });
-  const line = nodeOf(byId(el, "ask-line"));
+  const line = nodeOf(byId(el, "ask-line-card"));
   assert.ok(line.calls.some(([m, a]) => m === "max_w" && a[0] === 760), "ROWS wide at most");
 });
-// An answer handed back (answerAskRequest()) shows on its question's line, its first line only, so it
-// never squeezes the Ask line out of the short details block; a click opens the whole of it.
-test("an answered ask shows its answer's first line, and the whole of it once clicked", async () => {
+// No history of asks (the person's call: a short answer shown in Kelpie read differently from the
+// Claude's own and misled): only a question still held for a Claude mid-task shows.
+test("only a held question shows over the Ask line; sent and answered ones don't", async () => {
   setupDemoWorld({ stories, shown: "ACME-142" });
-  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-142": [{ id: "abc123xyz", at: Date.now(), story: "ACME-142", about: "ACME-142 · the story", q: "What's left?", to: "Cache trips", status: "answered", answer: "Two things.\nThe replay, and a review.", address: "a0-0" }] } });
-  const { el, view, cx } = await draw(new StoryBody());
+  const e = (id, status, more = {}) => ({ id, at: Date.now(), story: "ACME-142", about: "ACME-142 · the story", q: `Q ${id}`, to: "Cache trips", status, address: "a0-0", ...more });
+  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-142": [e("sentaaaa", "sent"), e("answeredx", "answered", { answer: "A summary." }), e("heldaaaa", "held")] } });
+  const { el } = await draw(new StoryBody());
   const words = texts(byId(el, "ask-thread")).join(" | ");
-  assert.match(words, /What's left\? \| Two things\./);
-  assert.doesNotMatch(words, /The replay/, "folded to its first line");
-  assert.match(words, /answered/);
-  assert.match(words, /Show its Claude/);
-  press(el, "ask-entry-abc123xyz", cx);
-  const open = texts(byId(view.render(cx), "ask-thread")).join(" | ");
-  assert.match(open, /Two things\. \| The replay, and a review\./);
+  assert.match(words, /Q heldaaaa/);
+  assert.match(words, /Send now/);
+  assert.doesNotMatch(words, /Q sentaaaa|Q answeredx|A summary/);
 });
-// The menu opens where the right-click landed (as drawn, divided by the zoom), not at the row's edge.
+
 test("a right-click menu opens at the pointer, at any zoom", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
   const probe = nodeOf(byId(el, "sub-cols-zoom-probe"));
@@ -357,9 +358,10 @@ test("a right-click menu opens at the pointer, at any zoom", async () => {
   const n = walk(view.render(cx)).find((x) => x.calls.some(([m, a]) => m === "id" && a[0] === "pr-row-web#418"));
   n.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({ local_position: { x: 300, y: 15 } }, { ...cx, stop_propagation() {} });
   const lefts = walk(view.render(cx)).filter((x) => x.calls.some(([m]) => m === "absolute")).map((x) => [x.calls.find(([m]) => m === "left")?.[1][0], x]);
-  const anchor = lefts.find(([l]) => Math.abs(l - 200) < 0.01)?.[1];
-  assert.ok(anchor, "at x 200 (300 drawn at zoom 1.5)");
-  assert.ok(anchor.calls.some(([m, a]) => m === "top" && a[0] === 10), "and y 10");
+  // A little up and to the left of the pointer (14, 12), so the pointer lands on the first row.
+  const anchor = lefts.find(([l]) => Math.abs(l - 186) < 0.01)?.[1];
+  assert.ok(anchor, "at x 186 (300 drawn at zoom 1.5, less 14)");
+  assert.ok(anchor.calls.some(([m, a]) => m === "top" && a[0] === 0), "and y 0 (10 less 12, kept on the row)");
 });
 
 // KELPIE-226: Ask about what you copied points the Ask line at the clipboard's text.
@@ -390,28 +392,18 @@ test("Catch me up goes to the story's own Claude, not a new one", async () => {
   assert.match(sent[0][0].at(-1), /Catch me up on this story/);
   assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0, "no new Claude");
 });
-test("Plan this starts a new Claude, and a plan answered stays pinned with Go ahead", async () => {
-  const { el, view, cx } = await body({ space: "ACME-171" });
+test("Plan this starts a new Claude", async () => {
+  const { el, cx } = await body({ space: "ACME-171" });
   mock.calls.length = 0;
   press(el, "ask-suggest-plan", cx);
   await new Promise((r) => setImmediate(r));
   assert.ok(mock.of("run").some(([n]) => n === "space.new" || n === "tab.new"), "a new Claude");
-  const [e] = mock.state.shared.get("kelpie.ask.thread")[DEMO]["ACME-171"];
-  assert.equal(e.pin, "plan");
-  // Answered, then two more asks: the plan stays shown.
-  const later = (n) => ({ id: `later${n}xx`, at: Date.now() + n, story: "ACME-171", about: "x", q: `Q${n}`, to: "Dark mode tokens", status: "sent", address: "a3-0" });
-  mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-171": [{ ...e, status: "answered", answer: "1. Tokens\n2. Toggle", address: "a3-0" }, later(1), later(2)] } });
-  const shown = view.render(cx);
-  const words = texts(byId(shown, "ask-thread")).join(" | ");
-  assert.match(words, /Plan this/);
-  assert.match(words, /Q2/);
-  assert.doesNotMatch(words, /Q1/);
-  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
-  mock.calls.length = 0;
-  press(shown, `ask-approve-${e.id}`, cx);
-  await new Promise((r) => setImmediate(r));
-  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
-  assert.equal(sent.length, 1);
-  assert.match(sent[0][0].at(-1), /The plan is approved/);
-  assert.equal(byId(view.render(cx), `ask-approve-${e.id}`), null, "Go ahead once");
+});
+
+test("the Ask line lies over the details' bottom, and the details leave room under them for it", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  assert.ok(byId(byId(el, "story-overview-view"), "ask-line"), "inside the details' view");
+  handlers(el, "on_size_change").find((h) => h.id === "ask-line-card").fn({ width: 700, height: 80 }, cx);
+  const content = nodeOf(byId(view.render(cx), "story-overview-content"));
+  assert.ok(content.calls.some(([m, a]) => m === "pb" && a[0] === 104), "80 for the line, and a little air");
 });

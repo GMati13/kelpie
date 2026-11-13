@@ -32,27 +32,30 @@ describe("who Ask Claude offers", () => {
     const desk = [agent("t9", "Claude Code", "desk")];
     assert.deepEqual(openClaudes(null, all, keyOf, desk), desk);
   });
-  test("a new Claude first, then the one on the asked key, then the rest; one waiting for you is marked", () => {
-    const who = askWho({ story, key: "ABC-2", open: openClaudes(story, all, keyOf), keyOf });
-    assert.deepEqual(who.map((r) => r.id), ["new", "t2", "t1", "t3"]);
-    assert.equal(who[0].hint, "in ABC-1's space");
-    assert.equal(who[1].hint, "working");
+  // The person's order (KELPIE-84): exactly the ticket's Claude, then one on the story's own ticket or
+  // one of its subtasks, then any other in the story's space; a new one last.
+  const plain = agent("t6", "Claude Code", "s1"); // in the story's space, on no key
+  test("existing Claudes first, by how close they are to what's asked; a new one last; one waiting for you marked", () => {
+    const who = askWho({ story, key: "ABC-2", open: [plain, ...openClaudes(story, all, keyOf)], keyOf });
+    assert.deepEqual(who.map((r) => r.id), ["t2", "t1", "t3", "t6", "new"]);
+    assert.equal(who[0].hint, "working");
+    assert.equal(who.at(-1).hint, "in ABC-1's space");
     assert.equal(who.find((r) => r.id === "t3").waiting, true);
     assert.equal(who.find((r) => r.id === "t3").hint, "waiting for you");
   });
   test("the Desk's new Claude says so", () => {
-    assert.equal(askWho({ story: null, key: null, open: [], keyOf })[0].hint, "on the Desk");
+    assert.equal(askWho({ story: null, key: null, open: [], keyOf }).at(-1).hint, "on the Desk");
   });
-  test("picked by default: the Claude on the key, unless it waits for you; else a new one", () => {
-    const open = openClaudes(story, all, keyOf);
-    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), null), "t1");
-    assert.equal(chosenWho(askWho({ story, key: "ABC-9", open, keyOf }), null), "new");
-    const waiting = [agent("t3", "ABC-1 merge", "s1", "blocked")];
-    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open: waiting, keyOf }), null), "new");
+  test("picked by default: exactly the ticket's, else the story's, else any in its space, else a new one", () => {
+    const open = [plain, ...openClaudes(story, all, keyOf)];
+    assert.equal(chosenWho(askWho({ story, key: "ABC-2", open, keyOf }), null), "t2", "exactly that ticket's");
+    assert.equal(chosenWho(askWho({ story, key: "ABC-9", open, keyOf }), null), "t1", "the story's own ticket's");
+    assert.equal(chosenWho(askWho({ story, key: "ABC-9", open: [plain], keyOf }), null), "t6", "any in the space");
+    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open: [agent("t3", "ABC-1 merge", "s1", "blocked")], keyOf }), null), "new", "never one waiting for you");
     // A pick that now waits for you, or is gone, isn't kept.
     assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), "t3"), "t1");
     assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), "gone"), "t1");
-    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), "t2"), "t2");
+    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), "t6"), "t6");
   });
 });
 
@@ -146,11 +149,10 @@ describe("where Ask Claude sends it", () => {
 // The Ask line (KELPIE-84, v2): who a question goes to by what it's about, and a Claude mid-task
 // isn't typed into: the question waits on the story's thread until its turn ends.
 describe("the Ask line's rules", () => {
-  test("a question about the whole story goes to a new Claude, not one busy on a subtask", () => {
+  test("a question about the whole story goes to the story's own Claude too; the person's pick wins", () => {
     const open = openClaudes(story, all, keyOf);
-    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), null, "story"), "new");
-    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), null, "sub"), "t1", "a subtask's or a file's goes to the one on its key");
-    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), "t2", "story"), "t2", "the person's pick wins");
+    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), null, "story"), "t1");
+    assert.equal(chosenWho(askWho({ story, key: "ABC-1", open, keyOf }), "t2", "story"), "t2");
   });
   test("held while its Claude works or waits for you; sent once it rests; given up when its tab is gone", () => {
     assert.equal(holdFor(agent("t", "x", "s", "working")), true);
@@ -217,7 +219,7 @@ describe("the Ask line's thread", () => {
     await new Promise((r) => setImmediate(r));
     assert.equal(sends().length, 1);
     assert.ok(mock.of("hc").some(([a]) => a[0] === "get" && a[1] === "t1"), "it looked at what the terminal runs");
-    assert.match(sends()[0][0].at(-1), new RegExp(`Why\\?\\n\\nAfter answering, also hand Kelpie a short answer[^\\n]*\\n\\n${escape(OTHERS)}$`));
+    assert.ok(sends()[0][0].at(-1).endsWith(`Why?\n\n${OTHERS}`));
     assert.equal(threadOf(profile, "ABC-1")[0].status, "sent");
   });
   test("a held question whose Claude closed says so; one whose Claude now waits for you says that", async () => {

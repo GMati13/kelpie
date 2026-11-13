@@ -55,10 +55,10 @@ describe("Review on a story's heading", () => {
     assert.deepEqual(mock.of("run").map(([n, a]) => [n, a.id]), [["space.select", "s1"], ["tab.select", "t1"]]);
     assert.deepEqual(checkouts(), []);
   });
-  test("its menu offers a new agent, or the agents already reviewing its pull requests", () => {
+  test("its menu offers the agents already reviewing its pull requests first, then a new agent", () => {
     mock.state.agents = [{ address: "a1", space: "s1", pane: "p1", tab: "t2", tab_name: "PR api#9", status: "idle" }, { address: "a2", space: "s2", pane: "p2", tab: "t3", tab_name: "ABC-1", status: "idle" }];
     const rows = reviewTaskRows(profile, story, prs);
-    assert.deepEqual(rows.map((r) => r.header ?? r.label), ["Review ABC-1's 2 pull requests together with", "New agent", "Or send it to", "PR api#9"]);
+    assert.deepEqual(rows.map((r) => r.header ?? r.label), ["Review ABC-1's 2 pull requests: send it to", "PR api#9", "Or start", "New agent"]);
   });
   test("sent to an agent reviewing one of them, the whole review goes after the checkouts", async () => {
     await sendStoryReview(profile, story, prs, { address: "a1", space: "s1", pane: "p1", tab_name: "PR api#9", status: "idle" });
