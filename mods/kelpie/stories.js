@@ -6172,7 +6172,10 @@ export async function closeStories({ profile, keys = [], onStep = () => {} }) {
   }
   const closed = [], failed = [];
   const settled = (k) => closed.includes(k) || failed.some((f) => f.key === k);
-  const step = (on = []) => onStep({ total: runs.reduce((n, r) => n + r.issues.length, 0), closed: [...closed], failed: Object.fromEntries(failed.map((f) => [f.key, f.why])), on });
+  // What it shows as it goes (the dialog's progress, the rows, the busy marks) never stops the closing:
+  // a throw there once ended the run after its first batch, the rest named as failed.
+  const shown = (fn) => { try { fn(); } catch (e) { console.log(`kelpie close: ${e}`); } };
+  const step = (on = []) => shown(() => onStep({ total: runs.reduce((n, r) => n + r.issues.length, 0), closed: [...closed], failed: Object.fromEntries(failed.map((f) => [f.key, f.why])), on }));
   const all = runs.flatMap((r) => r.issues);
   let next = 0;
   try {
@@ -6182,27 +6185,29 @@ export async function closeStories({ profile, keys = [], onStep = () => {} }) {
       for (const x of results) if (x.ok) closed.push(x.key); else failed.push({ key: x.key, why: x.why });
       // Closed shows at once: the rows lose their Close and Close all's count drops as it goes.
       const gone = new Set(results.filter((x) => x.ok).map((x) => x.key));
-      if (gone.size) {
+      if (gone.size) shown(() => {
         const mark = (l) => (l ?? []).map((i) => (gone.has(i.key) ? { ...i, closed: true } : i));
         patchLoaded(s.st.profile, (d) => ({ ...d, parents: mark(d.parents), children: mark(d.children) }));
-      }
-      for (const r of runs) {
-        const done = r.issues.filter(settled).length;
-        if (done === r.issues.length) endBusy(r.it.key, r.at);
-        else stepBusy(r.it.key, r.at, { step: `Closing on GitHub… ${done + 1} of ${r.issues.length}` });
-      }
-      if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length} of ${all.length}` });
+      });
+      shown(() => {
+        for (const r of runs) {
+          const done = r.issues.filter(settled).length;
+          if (done === r.issues.length) endBusy(r.it.key, r.at);
+          else stepBusy(r.it.key, r.at, { step: `Closing on GitHub… ${done + 1} of ${r.issues.length}` });
+        }
+        if (group) stepBusy(group, atAll, { step: `Closing on GitHub… ${closed.length + failed.length} of ${all.length}` });
+      });
       step(all.slice(next, next + CLOSE_BATCH));
     });
   } catch (e) {
-    // Nothing ran (the board can't close tickets): every issue not settled yet is named with why.
+    // The run stopped (the board can't close tickets): every issue not settled yet is named with why.
     for (const k of all) if (!settled(k)) failed.push({ key: k, why: String(e?.message ?? e).split("\n")[0].replace(/[.\s]+$/, "").slice(0, 160) });
   } finally {
     for (const r of runs) endBusy(r.it.key, r.at);
     if (group) endBusy(group, atAll);
   }
   if (closed.length) setShared(REFRESH, Date.now());
-  const text = `${closed.length ? `Closed ${keyList(closed)} on GitHub.` : "Nothing was closed."}${failed.length
+  const text = `${closed.length > 2 ? `Closed ${closed.length} issues on GitHub: ${keyList(closed)}.` : closed.length ? `Closed ${keyList(closed)} on GitHub.` : "Nothing was closed."}${failed.length
     ? ` Couldn't close ${failed.map((f) => `${f.key} (${f.why})`).join(", ")}: close ${failed.length === 1 ? "it" : "them"} by hand on GitHub.` : ""}${skipped.length
     ? ` ${keyList(skipped)} ${skipped.length === 1 ? "was" : "were"} busy, so left as ${skipped.length === 1 ? "it was" : "they were"}.` : ""}`;
   const full = failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null;

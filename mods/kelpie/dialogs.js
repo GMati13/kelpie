@@ -171,10 +171,12 @@ export class Confirm {
     if (closing) {
       if (this.busy) return;
       this.busy = true;
-      const ask = { ...closing, onStep: (p) => { this.progress = p; cx?.notify?.(); } };
-      if (!cx) return closeStories(ask).catch(() => null).finally(() => closeOverlay(overlay));
+      // Redrawn by the task's own cx: the click's is stale after the first await, and its throw there
+      // once stopped Close all after its first batch of 5.
+      const ask = (redraw) => ({ ...closing, onStep: (p) => { this.progress = p; redraw?.notify?.(); } });
+      if (!cx) return closeStories(ask(null)).catch(() => null).finally(() => closeOverlay(overlay));
       cx.notify?.();
-      cx.spawn(async () => { await closeStories(ask).catch(() => null); closeOverlay(overlay); });
+      cx.spawn(async (task) => { await closeStories(ask(task)).catch(() => null); closeOverlay(overlay); });
       return;
     }
     if (picks) {
