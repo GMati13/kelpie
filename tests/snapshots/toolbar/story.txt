@@ -33,12 +33,20 @@ h_flex {down:left}
       div
         div
           div [bg=#c195ab]
+    h_flex #view-artifacts [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      div
+        "Artifacts"
+      div [fg=dim font="DM Mono"]
+        "1"
+      div
+        div
+          div [bg=#7fb3ae]
   h_flex
     div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
       svg chrome:folder
     div #panel-changes [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Changes"
       svg chrome:git-compare
-    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Artifacts"
+    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Screenshots"
       svg chrome:layers
     div #panel-web [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Web ⌘⇧S"
       svg own:globe

@@ -14,10 +14,10 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeTextFile } from "herdr";
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -29,7 +29,7 @@ import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { askMessage, askPicker, askWho, chosenWho, fileAbout, openClaudes } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
-import { demoAgentWork, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
+import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
 const KEYS = new RegExp(KEY.source, "g");
@@ -1256,7 +1256,7 @@ const BUSY = new Set();
 const STARTED = {};
 const AGAIN = new Set(); // profile keys asked to load again while their load ran (Source.load)
 const DATA = STORIES; // { [profile id]: { key, data, at, error } }
-const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, repo } }
+const COUNTS = "kelpie.stories.counts"; // { [story key]: { files, shots, artifacts, artifactsAt, repo } }
 // Written only when a count changes: the Screenshots count is asked again every 5 s while a new agent
 // has no session yet, and every write of shared state redraws every copy (#39).
 export const setCounts = (key, fields) => { // exported for the tests
@@ -1411,7 +1411,8 @@ const loneOf = (data) => [...reviewsOf(data), ...pullsOf(data)];
 // The item a key names among the stories (each { it }) and the reviews.
 const findItem = (items, reviews, key) => (key ? items.find((x) => x.it.key === key)?.it ?? reviews.find((r) => r.key === key) ?? null : null);
 
-// What the main area shows for the story: "agent" (its space's terminals), "changes", "shots", or
+// What the main area shows for the story: "agent" (its space's terminals), "changes", "shots",
+// "artifacts" (the Claude Artifacts its agents published), or
 // "start" (a story not started: how to start or resume it). By story space, or by profile for a preview.
 const VIEW = "kelpie.view";
 const viewKey = (profile, it) => (it?.space ? it.space.id : `preview:${profile?.id}`);
@@ -1451,6 +1452,43 @@ function keep(store, key, value, max) {
 }
 const PICKED = { file: {}, more: new Set(), opened: new Set(), talk: new Set(), allTalk: new Set() };
 const SHOTS = {}; // story key -> { list, at, loading }: its sessions, for the Screenshots view
+// The Claude Artifacts (pages on claude.ai) a story's sessions published, read from their logs
+// (artifacts.py; a demo's from its fixture), by "<profile>:<key>": { list, at, loading, error }. Every
+// copy runs in one context, so the title row's count and the Artifacts view share one read; its end is
+// written to the story's counts with its time, so every copy draws again.
+const ARTIFACT_LISTS = {};
+const ARTIFACTS_FRESH = 30e3; // read again after this while the view shows: an agent may publish meanwhile
+
+// The Claude Artifacts these sessions ([{ id, key, terminal }], storySessions) published, newest first,
+// each with the key and terminal of the session that published it last. Only an Artifact's own
+// claude.ai link is kept: the log is Claude's, but what it says came through a tool's answer.
+export async function storyArtifacts(st, sessions) {
+  const ids = sessions.map((s) => s.id).filter(Boolean);
+  if (!ids.length) return [];
+  let list;
+  if (isDemo(st.profile)) list = await demoArtifacts(ids);
+  else {
+    const code = await readTextFile(modFile("artifacts.py"));
+    const r = await exec("python3", ["-I", "-c", code, ...ids.filter((id) => /^[0-9a-f-]{8,64}$/.test(id))], st.space?.machine ? { on: st.space.machine } : {});
+    if (r.code !== 0) throw new Error("the sessions' logs couldn't be read");
+    list = JSON.parse(r.stdout || "[]");
+  }
+  const by = new Map(sessions.map((s) => [s.id, s]));
+  return (Array.isArray(list) ? list : []).filter((a) => ARTIFACT_LINK.test(a?.url ?? ""))
+    .map((a) => ({ ...a, key: by.get(a.session)?.key ?? null, terminal: by.get(a.session)?.terminal ?? null }));
+}
+
+// Opens a Claude Artifact in the profile's Web panel. Only the copy that follows what's shown runs the
+// panel (main.js, syncWebOpen), so this asks it through shared state; a link that isn't an Artifact's
+// is never asked for.
+export function openArtifact(profile, url) {
+  if (!profile?.id || !ARTIFACT_LINK.test(url ?? "")) return;
+  setShared(WEB_OPEN, { profile: profile.id, url, at: Date.now() });
+}
+
+// The Claude account an Artifact was made on, as a folder ("~/.claude-work"; the default's "~/.claude").
+const accountLabel = (config) => `~/${config ? String(config).replace(/\/+$/, "").split("/").pop() : ".claude"}`;
+const agoWords = (at) => { const a = ago(at); return a === "now" ? "just now" : `${a} ago`; };
 
 // Diff files you have looked at, ticked in the list: by "<repo or PR>:<path>:<hash of its patch>", so
 // the ticks survive restarts and a file that changes again shows unticked. Each holds its story's
@@ -4389,6 +4427,38 @@ export class Stories extends Source {
     if (JSON.stringify(shared(ARTIFACTS)) !== JSON.stringify(next)) setShared(ARTIFACTS, next);
   }
 
+  // The story's Claude Artifacts, newest first: each its title, what it is, the agent that published it
+  // and when it last did (and how often), opened in the profile's Web panel or in the browser. One
+  // made on another Claude account than the profile's says so: claude.ai shows an Artifact only to its
+  // own account, so the panel, signed in to another, would say it can't be found.
+  artifactsView(t, st, it, e) {
+    if (!e?.list) return e?.error ? empty(t, `Couldn't read the Artifacts: ${e.error}.`, { fill: true }) : empty(t, "Gathering the Artifacts…", { fill: true });
+    if (!e.list.length) return empty(t, "No Artifacts yet. Pages this story's agents publish on claude.ai show here.", { fill: true });
+    const mine = claudeKey(claudeConfigOf(st.profile));
+    const titles = new Map((st.data.sessions ?? []).map((s) => [s.id, s.title]));
+    const row = (a, i) => {
+      const id = `artifact-${it.key}-${i}`;
+      const by = titles.get(a.session) ?? (a.key ? `an agent on ${a.key}` : "an agent of this story");
+      const when = a.count > 1 ? `published ${a.count} times, last ${agoWords(a.last)}` : `published ${agoWords(a.last)}`;
+      const other = claudeKey(a.config) !== mine;
+      return h_flex().id(id).w_full().min_w(0).px(8).py(8).gap(12).items_center().rounded(8).hover((s) => s.bg(t.hover))
+        .tooltip(`${a.title ?? "An Artifact"}\n${a.url}\nMade on the Claude account in ${accountLabel(a.config)}`)
+        .child(v_flex().flex_1().min_w(0).gap(2)
+          .child(div().truncate().font_semibold().child(a.title ?? "Untitled Artifact"))
+          .when(Boolean(a.description), (el) => el.child(div().truncate().text_size(SMALL).text_color(t.muted).child(a.description)))
+          .child(div().truncate().text_size(SMALL).text_color(t.dim).child(`By ${by} · ${when}`))
+          .when(other, (el) => el.child(div().text_size(SMALL).text_color(t.working)
+            .child(`Made on another Claude account (${accountLabel(a.config)}): the Web panel shows it once signed in to claude.ai on that one.`))))
+        .child(h_flex().flex_none().gap(2).items_center()
+          .child(textButton(t, `${id}-open`, "Open", () => openArtifact(st.profile, a.url), { tip: "Open it in this profile's Web panel", lead: icon(own("globe")) }))
+          .child(iconButton(t, `${id}-out`, own("external-link"), () => open(a.url), "Open in your browser")));
+    };
+    return h_flex().flex_1().min_h(0).w_full().justify_center()
+      .child(v_flex().id(`artifact-list-${it.key}`).w_full().max_w(ROWS).min_h(0).gap(2).overflow_y_scrollbar()
+        .child(groupHeader(t, "Claude Artifacts", e.list.length))
+        .children(e.list.map(row)));
+  }
+
   // A reload that failed keeps what was shown, under a notice saying why.
   keptOnError(t, what, extra, body) {
     if (!extra?.error) return body;
@@ -4936,6 +5006,27 @@ export class Stories extends Source {
     return { st, t, items, reviews, shown, done, all, unassigned };
   }
 
+  // The story's Claude Artifacts (ARTIFACT_LISTS), read once per load of the stories, and every
+  // ARTIFACTS_FRESH while its Artifacts view shows (`shown`); the count goes to the tab bar. A story
+  // not begun has no sessions, so nothing to read; a pull request on its own has none of its own.
+  artifactsOf(st, it, cx, { shown = false } = {}) {
+    if (lonePr(it) || !begun(it)) return { list: [], at: Date.now() };
+    const k = `${st.profile.id}:${it.key}`;
+    const e = ARTIFACT_LISTS[k];
+    if (e && (e.loading || (e.at >= st.at && !(shown && Date.now() - e.at > ARTIFACTS_FRESH)))) return e;
+    ARTIFACT_LISTS[k] = { ...(e ?? {}), loading: true, at: e?.at ?? 0 };
+    cx.spawn(async () => {
+      try {
+        const list = await storyArtifacts(st, await this.storySessions(st, it, storyKeys(it)));
+        ARTIFACT_LISTS[k] = { list, at: Date.now() };
+      } catch (err) {
+        ARTIFACT_LISTS[k] = { list: e?.list, error: String(err?.message ?? err), at: Date.now() };
+      }
+      setCounts(it.key, { artifacts: ARTIFACT_LISTS[k].list?.length ?? 0, artifactsAt: ARTIFACT_LISTS[k].at });
+    });
+    return ARTIFACT_LISTS[k];
+  }
+
   // A story previewed that has begun (sessions, pull requests) has its screenshots counted once per
   // load, so the tab bar can show Screenshots only when there are some.
   countPreviewShots(st, it, cx) {
@@ -4957,6 +5048,8 @@ export class Stories extends Source {
     if (early) return early;
     if (shown && viewOf(st.profile, shown) === "shots") this.shareShots(st, shown, cx);
     else if (shown && previewIn(st.profile) === shown.key) this.countPreviewShots(st, shown, cx);
+    // Counted for the tab bar whatever's shown: an Artifact is worth knowing about before it's looked for.
+    if (shown) this.artifactsOf(st, shown, cx);
     return decor("blockDecor", t, v_flex().size_full().min_w(0).px(INSET).when(sideHidden(layout()), (el) => el.pl(INSET + buttonsRoom())).justify_center().text_size(TEXT).text_color(t.foreground)
       .child(shown ? this.headRow(t, st, shown, headFolded(), cx) : div().text_color(t.dim).child("Pick a story on the left.")), storyBlock("stories", shown));
   }
@@ -5604,7 +5697,9 @@ export class StoryView extends Stories {
     if (mode === "changes" && (!extra || (!extra.loading && extra.at < st.at))) this.loadExtra(st, shown, cx);
     // A story not started has its details above, filling the column (work.js hides this block), and
     // its screenshots have a block of their own ("story-shots").
-    const body = mode === "changes" ? this.changesView(t, st, shown, extra, cx) : empty(t, "Its details and what can be done are above.", { fill: true });
+    const body = mode === "changes" ? this.changesView(t, st, shown, extra, cx)
+      : mode === "artifacts" ? this.artifactsView(t, st, shown, this.artifactsOf(st, shown, cx, { shown: true }))
+      : empty(t, "Its details and what can be done are above.", { fill: true });
     return decor("blockDecor", t, v_flex().size_full().min_h(0).px(INSET).py(10).text_size(TEXT).text_color(t.foreground).child(body), storyBlock("story-view", shown));
   }
 }
@@ -5655,7 +5750,7 @@ export function storyNow() {
   const counts = (shared(COUNTS) ?? {})[it.key];
   return {
     profile, story: it, preview: Boolean(preview && it.key === preview), view: viewOf(profile, it),
-    files: counts?.files, shots: counts?.shots, prs: allPrs(it).length, review: Boolean(lonePr(it)),
+    files: counts?.files, shots: counts?.shots, artifacts: counts?.artifacts, prs: allPrs(it).length, review: Boolean(lonePr(it)),
     show: (mode) => { if (!(mode === "start" && lonePr(it))) setView(profile, it, mode); },
     terminal: () => openTerminal(profile, it),
     claude: () => openClaude(profile, it),

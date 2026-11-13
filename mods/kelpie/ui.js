@@ -27,6 +27,12 @@ export const CONTROL = 28;
 // CONTROL's square would crowd the row's lines and corner (#53). Nowhere else.
 export const ROW_CONTROL = 22;
 
+// A Claude Artifact's own page on claude.ai (claude.ai/artifact/<id>, or /code/artifact/<id>), the only
+// link the story's Artifacts view opens, and the shared request to open one in the profile's Web panel
+// ({ profile, url, at }: stories.js openArtifact asks, main.js syncWebOpen opens).
+export const ARTIFACT_LINK = /^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]{1,100}$/;
+export const WEB_OPEN = "kelpie.web.open";
+
 export const chrome = (name) => `mods/workspace-chrome/${name}.svg`;
 // Lucide icons Herdr's chrome lacks (globe, external-link, refresh-cw, ellipsis, copy, send,
 // folder-open), kept in this mod's icons/ folder. Herdr draws no SVG reached through stow's symlinked
