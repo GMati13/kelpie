@@ -158,7 +158,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `find-agents.test.mjs`: the plugin's agent requests (`kelpie.find-agents`, `show-agent`): every agent
   with its story, state, folder and work (the demo's from the fixture's `work`, a real one's from its session
   through agent-work.py), the Claude agent itself (`claudeOf()`: its session's name, messaging address and id,
-  each refused in any other shape, no address for another machine's), each filter, and that only an agent in
+  each refused in any other shape, no address for another machine's), each filter, a subtask's key falling
+  back to its story's agents and, with nobody, its paused agents and earlier sessions (#237), and that only an agent in
   Herdr's own list is shown.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,

@@ -2228,11 +2228,45 @@ async function agentWork(list) {
   return out;
 }
 
+// A ticket key's place on the loaded boards: the profile whose list holds it, and its story when it's
+// a subtask (parentOf(): from the loaded data, so a key the board doesn't know has no story).
+function keyPlace(data, key, first) {
+  const ps = [first, ...profiles().filter((p) => p.id !== first?.id)].filter(Boolean);
+  for (const p of ps) {
+    const d = data[p.id]?.data;
+    const story = parentOf(d, key);
+    if (story) return { profile: p, story };
+    if ((d?.parents ?? []).some((x) => x.key === key)) return { profile: p, story: null };
+  }
+  return { profile: null, story: null };
+}
+const RESUMABLE = 5; // paused agents and earlier sessions named when nobody works on a key
+// Who could pick a key up again when no agent works on it or its story: the profile's paused agents
+// under those keys (kelpie.paused) and the earlier sessions on them (the list's loaded sessions,
+// sessionsFor()), newest first, as `{ kind: "paused" | "session", key, title, at }`. Read only: the
+// person resumes one, or starts a new agent, in Kelpie.
+function resumableOn(profile, keys, data) {
+  if (!profile) return [];
+  const iso = (t) => (Number.isFinite(t) ? new Date(t).toISOString() : null);
+  const d = data[profile.id]?.data;
+  const earlier = d ? keys.flatMap((k) => sessionsFor(d, k).map((x) => ({ kind: "session", key: k, id: x.id, title: passageText(x.title, 120) || null, t: Number(x.updated) || 0 }))) : [];
+  // A paused agent is one of those sessions too: listed once, as paused, with the session's title.
+  const titled = new Map(earlier.filter((x) => x.id && x.title).map((x) => [x.id, x.title]));
+  const paused = keys.flatMap((k) => (pausedIn(profile)[k] ?? []).map((e) => ({ kind: "paused", key: k, id: e?.sessionId, title: titled.get(e?.sessionId) ?? (passageText(e?.name, 120) || null), t: Number(e?.at) || 0 })));
+  const seen = new Set();
+  return [...paused, ...earlier].filter((x) => { const id = x.id ?? `${x.kind}:${x.key}:${x.title}`; if (seen.has(id)) return false; seen.add(id); return true; })
+    .sort((a, b) => b.t - a.t).slice(0, RESUMABLE)
+    .map(({ t, id, ...x }) => Object.fromEntries(Object.entries({ ...x, at: iso(t) }).filter(([, v]) => v !== null)));
+}
+
 // kelpie.find-agents (the plugin's find_agents): the agents Kelpie knows, every profile's (or, with
 // `here`, the asking agent's profile's, else the shown one's), each { id, claude, tab, space, profile,
 // key, story, ticket, state, folder, title, first, changed, you }, filtered by `key` (its own or its
 // story's), `folder` (it works in it, or under it, or the folder is in its), `file` (its session
-// changed it) and `words` (all found in its names, title, ticket or first message).
+// changed it) and `words` (all found in its names, title, ticket or first message). A subtask's key
+// with no agent of its own falls back to its story's agents, each `via: "story"` with a note saying
+// so, so the asking Claude doesn't take one for the subtask's; a key nobody works on, its story
+// neither, answers `nobody` and what could pick it up again (`resumable`, resumableOn()).
 export function findAgentsRequest() {
   return answerRequest("agents-find", async (req) => {
     const key = passageText(req?.key, 40).toUpperCase();
@@ -2253,7 +2287,15 @@ export function findAgentsRequest() {
         folder: paneList.find((p) => p.id === a.pane)?.cwd ?? space.folder ?? null };
     });
     if (only) list = list.filter((x) => x.profile?.id === only.id);
-    if (key) list = list.filter((x) => x.key === key || x.story === key);
+    let fallback = null, place = null;
+    if (key) {
+      const own = list.filter((x) => x.key === key || x.story === key);
+      place = own.length ? null : keyPlace(data, key, asking);
+      fallback = place?.story ?? null;
+      list = own.length ? own : fallback ? list.filter((x) => (x.key === fallback || x.story === fallback) && (!place.profile || x.profile?.id === place.profile.id)) : [];
+      if (!list.length) fallback = null;
+    }
+    const nobody = Boolean(key) && !list.length;
     if (folder) list = list.filter((x) => within(x.folder, folder) || within(folder, x.folder));
     if (asking) list = [...list.filter((x) => x.profile?.id === asking.id), ...list.filter((x) => x.profile?.id !== asking.id)];
     const more = Math.max(0, list.length - AGENTS_IN);
@@ -2271,8 +2313,13 @@ export function findAgentsRequest() {
       ticket: x.ticket, state: agentWords(x.a.status), folder: x.folder, title: x.title, first: x.first,
       changed: (file ? x.files.filter((f) => sameFile(f.path, file)) : x.files.slice(0, CHANGED_SHOWN)).map((f) => ({ path: f.path, ...(f.at ? { at: f.at } : {}) })),
       you: typeof req?.terminal === "string" && req.terminal === x.a.address,
+      via: fallback ? "story" : null, note: fallback ? `On the story ${fallback}, not on ${key} itself.` : null,
     }).filter(([, v]) => v !== null && v !== false && !(Array.isArray(v) && !v.length))));
-    return { ok: true, agents: agentsOut, ...(more ? { more } : {}), ...(only ? { profile: only.name } : {}) };
+    const story = place?.story ?? null;
+    const resumable = nobody ? resumableOn(place?.profile ?? asking, [key, story].filter(Boolean), data) : [];
+    return { ok: true, agents: agentsOut, ...(more ? { more } : {}), ...(only ? { profile: only.name } : {}),
+      ...(nobody ? { nobody: story ? `Nobody is working on ${key} or its story ${story} right now.` : `Nobody is working on ${key} right now.` } : {}),
+      ...(resumable.length ? { resumable } : {}) };
   });
 }
 
