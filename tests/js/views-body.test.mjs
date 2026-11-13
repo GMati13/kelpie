@@ -361,3 +361,18 @@ test("a right-click menu opens at the pointer, at any zoom", async () => {
   assert.ok(anchor, "at x 200 (300 drawn at zoom 1.5)");
   assert.ok(anchor.calls.some(([m, a]) => m === "top" && a[0] === 10), "and y 10");
 });
+
+// KELPIE-226: Ask about what you copied points the Ask line at the clipboard's text.
+test("Ask about what you copied points the Ask line at the copied passage", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  press(el, "ask-copied", { ...cx, read_from_clipboard: () => "Queue edits made offline" });
+  assert.match(askedAbout(view.render(cx)), /^“Queue edits made offline/);
+  const about = mock.state.shared.get("kelpie.ask.about")[DEMO].about;
+  assert.equal(about.kind, "text");
+  assert.match(about.text, /--- the passage, as written there ---/);
+});
+test("Ask about what you copied with nothing copied says so, and points nothing", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  press(el, "ask-copied", { ...cx, read_from_clipboard: () => undefined });
+  assert.equal(askedAbout(view.render(cx)), "ACME-142 · the story");
+});
