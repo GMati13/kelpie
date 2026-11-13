@@ -53,10 +53,12 @@ test("the fade shows only while the details are taller than their block", async 
   size("story-overview-content", 200);
   const fits = view.render(cx);
   // The Ask line lies over the details' bottom, inside their view (KELPIE-224), so it's one of its children.
-  assert.equal(fade(fits).length, 2, "the details and the Ask line, no fade");
+  // With the Ask line, its shade and lamp take the fade's place (KELPIE-224): the details, the shade,
+  // the lamp and the line, whether they're taller than their block or not.
+  assert.equal(fade(fits).length, 4, "the details, the shade, the lamp and the Ask line");
   size("story-overview-content", 900);
   const over = view.render(cx);
-  assert.equal(fade(over).length, 3, "the details, the fade over their edge, and the Ask line");
+  assert.equal(fade(over).length, 4, "the shade does the fade's work");
   snap("body/fade", byId(over, "story-overview-view"));
 });
 
@@ -403,5 +405,5 @@ test("the Ask line lies over the details' bottom, and the details leave room und
   assert.ok(byId(byId(el, "story-overview-view"), "ask-line"), "inside the details' view");
   handlers(el, "on_size_change").find((h) => h.id === "ask-line-card").fn({ width: 700, height: 80 }, cx);
   const content = nodeOf(byId(view.render(cx), "story-overview-content"));
-  assert.ok(content.calls.some(([m, a]) => m === "pb" && a[0] === 92), "80 for the line, and a little air");
+  assert.ok(content.calls.some(([m, a]) => m === "pb" && a[0] === 104), "80 for the line, and a little air");
 });

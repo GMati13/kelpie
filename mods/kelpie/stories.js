@@ -4288,7 +4288,7 @@ export class Stories extends Source {
     // The story's asks and its Ask line (askclaude.js), laid over the details' bottom (below), and the
     // room they take there.
     const asks = this.askInput && !it.pr ? this.askPart(t, st, it) : [];
-    const askRoom = asks.length ? (this.askH?.thread ?? 0) + (this.askH?.line ?? 0) + 12 : 0;
+    const askRoom = asks.length ? (this.askH?.thread ?? 0) + (this.askH?.line ?? 0) + 24 : 0;
     const overview = this.scrollBox(v_flex().id(point ? `story-overview-${it.key}-${point.at}` : `story-overview-${it.key}`), `${st.profile?.id}:${it.key}`, point?.at ?? null).flex_1().min_h(0).gap(0).overflow_y_scrollbar()
       .child(v_flex().id("story-overview-content").flex_none().w_full().on_size_change(this.fits("content")).pb(askRoom)
         .when(Boolean(about), (el) => el.child(div().flex_none().child(about)))
@@ -4302,12 +4302,24 @@ export class Stories extends Source {
     const over = (this.fit?.content ?? 0) > (this.fit?.view ?? Infinity) + 1;
     const fade = bands(Array.from({ length: 10 }, (_, i) => alpha(t.background, ((i + 1) / 10) * 0.9)), { vertical: true })
       .absolute().left(0).right(0).bottom(askRoom).h(36);
+    // Behind the Ask line, from the details' bottom edge up (the person's lamp, the skin's top light
+    // turned over): the text under it darkened, as the fade does, then a warm light lit most at the
+    // bottom edge and fully see-through at its top, so scrolling never shows an edge. Bands, as mods
+    // paint no gradients.
+    const zone = askRoom + 40;
+    // It reaches the block's own edges (past the details' side inset and bottom padding, StoryBody),
+    // so no edge of it shows.
+    const shade = v_flex().absolute().left(-INSET).right(-INSET).bottom(-6).h(zone + 6)
+      .child(bands(Array.from({ length: 10 }, (_, i) => alpha(t.background, ((i + 1) / 10) * 0.9)), { vertical: true }).flex_none().h(40))
+      .child(div().flex_1().bg(alpha(t.background, 0.9)));
+    const lamp = bands(Array.from({ length: 16 }, (_, i) => alpha(t.accent, ((i + 1) / 16) ** 2 * 0.16)), { vertical: true })
+      .absolute().left(-INSET).right(-INSET).bottom(-6).h(zone + 6);
     // The Ask line and its thread lie over the details' bottom, so the room beside them (on a wide
     // screen) is the details' own and the wheel scrolls them there; the content keeps that much room
     // under it so its end scrolls clear of them. The wrappers take no pointer: only the line does.
     const view = div().id("story-overview-view").relative().flex().flex_col().flex_1().min_h(0).on_size_change(this.fits("view"))
-      .child(overview).when(over, (el) => el.child(fade))
-      .when(asks.length > 0, (el) => el.child(v_flex().absolute().left(0).right(0).bottom(0).gap(4).children(asks)));
+      .child(overview).when(over && !asks.length, (el) => el.child(fade))
+      .when(asks.length > 0, (el) => el.child(shade).child(lamp).child(v_flex().absolute().left(0).right(0).bottom(10).gap(6).children(asks)));
     // Under the title row (a block of its own): the status command's line, the note, then the
     // description and subtasks.
     const line = this.statusLine(t, st, it, cx);

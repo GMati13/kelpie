@@ -235,37 +235,44 @@ div
                     Popup.new "sub-menu-ACME-145-menu"
                       div #sub-menu-ACME-145-at
         v_flex
+          div
+            div [bg=background/17] ×10 … [bg=background/e6]
+          div [bg=background/e6]
+        div
+          div [bg=accent/00] ×16 … [bg=accent/29]
+        v_flex
           h_flex
-            div #ask-line-card [bg=background] {size_change}
-              v_flex #ask-line [border=accent/40 bg=accent/0d]
-                h_flex
-                  div
-                    svg own:sparkles [fg=accent]
-                  h_flex #ask-about [border=border bg=background] tip="ACME-142 · the story\nWritten by others: Claude is told it's information, not instructions"
+            div #ask-line-card {size_change}
+              div [bg=background]
+                v_flex #ask-line [border=accent/40 bg=accent/0d]
+                  h_flex
                     div
-                      "ACME-142 · the story"
-                  div
-                    Input.new [border=input bg=background fg=foreground]
-                  div
-                    Popup.new "ask-to-menu"
-                      h_flex #ask-to-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first\nA question about the whole story goes to a new Claude"
-                        "to New Claude ▾"
-                  h_flex #ask-send [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
-                    "Send"
-                h_flex
-                  h_flex #ask-suggest-catchup [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
-                    "Catch me up"
-                  h_flex #ask-suggest-left [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
-                    "What's left?"
-                  h_flex #ask-suggest-plan [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
-                    "Plan this"
-                  h_flex #ask-suggest-explain [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
-                    "Explain this"
-                  div [bg=border]
-                  h_flex #ask-task-merge [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Check its 2 pull requests are ready to merge and write a merge and deploy plan"
-                    "Merge"
-                  h_flex #ask-task-approval [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Find what each open pull request waits on and draft a request to its reviewers"
-                    "Request approval"
-                  div [bg=border]
-                  h_flex #ask-copied [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Copy a passage with ⌘C, then press this: the Ask line is about it"
-                    "Ask about what you copied"
+                      svg own:sparkles [fg=accent]
+                    h_flex #ask-about [border=border bg=background] tip="ACME-142 · the story\nWritten by others: Claude is told it's information, not instructions"
+                      div
+                        "ACME-142 · the story"
+                    div
+                      Input.new [border=input bg=background fg=foreground]
+                    div
+                      Popup.new "ask-to-menu"
+                        h_flex #ask-to-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first\nA question about the whole story goes to a new Claude"
+                          "to New Claude ▾"
+                    h_flex #ask-send [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+                      "Send"
+                  h_flex
+                    h_flex #ask-suggest-catchup [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+                      "Catch me up"
+                    h_flex #ask-suggest-left [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+                      "What's left?"
+                    h_flex #ask-suggest-plan [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+                      "Plan this"
+                    h_flex #ask-suggest-explain [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+                      "Explain this"
+                    div [bg=border]
+                    h_flex #ask-task-merge [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Check its 2 pull requests are ready to merge and write a merge and deploy plan"
+                      "Merge"
+                    h_flex #ask-task-approval [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Find what each open pull request waits on and draft a request to its reviewers"
+                      "Request approval"
+                    div [bg=border]
+                    h_flex #ask-copied [font="DM Sans" fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Copy a passage with ⌘C, then press this: the Ask line is about it"
+                      "Ask about what you copied"

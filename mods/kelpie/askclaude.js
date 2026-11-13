@@ -283,7 +283,8 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory, copied = null, tasks = [], task = null }) {
   // Laid over the details' bottom, it's opaque: the page's background under the tint, so the text
   // scrolling under it doesn't show through.
-  return div().id("ask-line-card").flex_none().mt(4).rounded(10).bg(t.background).child(askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task }));
+  return div().id("ask-line-card").relative().flex_none().mt(4)
+    .child(div().rounded(10).bg(t.background).child(askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task })));
 }
 function askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task }) {
   // Two rows on one left edge (after the sparkles, ASK_INDENT): what it's about, the question, who, Send;
@@ -299,7 +300,7 @@ function askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory
   const rule = () => div().flex_none().w(1).h(14).mx(4).bg(t.border);
   const sugg = suggestionsFor(about.kind).map((x) => quick(`ask-suggest-${x.id}`, x.label, (_e, cx) => suggest(x.id, cx), "Ask it this (the wording is the profile's, on its Messages page)"));
   const acts = tasks.map((x) => quick(`ask-task-${x.id}`, x.label, (_e, cx) => task(x.id, cx), x.tip));
-  return v_flex().id("ask-line").flex_none().gap(6).px(10).py(8).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
+  return v_flex().id("ask-line").flex_none().gap(8).px(12).py(10).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
     .child(h_flex().gap(8).items_center().min_w(0)
       .child(div().flex_none().w(16).child(icon(own("sparkles"), 14).text_color(t.accent)))
       .child(about_)
