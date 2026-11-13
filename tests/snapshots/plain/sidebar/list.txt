@@ -27,10 +27,10 @@ v_flex [fg=foreground]
         div
           svg chrome:circle-check [fg=done]
         "1"
-      h_flex #count-review [fg=accent] tip="4 to review"
+      h_flex #count-review [fg=accent] tip="5 to review"
         div
           svg own:eye [fg=accent]
-        "4"
+        "5"
       h_flex #count-working [fg=accent] tip="1 working"
         div
           svg chrome:spinner [fg=accent] ~spin
@@ -47,7 +47,7 @@ v_flex [fg=foreground]
           div [fg=dim]
             "Next"
           div [fg=muted]
-            "10"
+            "11"
           div
           h_flex #story-next-tools {down:left click}
             div #story-queue [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Show the whole queue"
@@ -315,7 +315,7 @@ v_flex [fg=foreground]
       div [fg=muted]
         "Reviews for you"
       div [fg=dim]
-        "4"
+        "5"
     h_flex #review-story-ACME-166 [fg=dim]
       div #review-story-fold-ACME-166 [hover(bg=hover)] {down:left click} tip="Fold ACME-166's pull requests"
         svg chrome:chevron-down [fg=dim]
@@ -323,6 +323,10 @@ v_flex [fg=foreground]
         "ACME-166"
       div
         ""
+      div #review-ACME-166-wrap {down:left click}
+        Popup.new "review-ACME-166-menu"
+          div #review-ACME-166-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Review ACME-166's 2 pull requests together, with a new agent or one already reviewing them"
+            svg own:eye
     h_flex #review-web#421 [hover(bg=hover)] {click} tip="From priya-n. Preview it: its checks and files, and Start review"
       div
         div [bg=ansi4/33 fg=ansi4] tip="priya-n"
@@ -333,9 +337,16 @@ v_flex [fg=foreground]
             "ACME-166 Share a trip with a link"
         div [fg=muted]
           "web#421 · 20h"
-      div #review-row-web#421 {down:left click}
-        div #review-row-web#421-go [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Review web#421: check it out and start a review agent on it, in Acme's Reviews space"
-          svg own:eye
+    h_flex #review-api#308 [hover(bg=hover)] {click} tip="From priya-n. Preview it: its checks and files, and Start review"
+      div
+        div [bg=ansi4/33 fg=ansi4] tip="priya-n"
+          "P"
+      v_flex
+        h_flex
+          div
+            "ACME-166 Issue read-only share tokens for a trip"
+        div [fg=muted]
+          "api#308 · 21h"
     h_flex #review-story-ACME-184 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-184"
       div #review-story-fold-ACME-184 [hover(bg=hover)] {down:left click} tip="Fold ACME-184's pull requests"
         svg chrome:chevron-down [fg=dim]

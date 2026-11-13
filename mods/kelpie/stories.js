@@ -5377,22 +5377,25 @@ export class StoryList extends Stories {
       const id = g.key || "none";
       return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340, box: ROW_CONTROL }));
     };
-    // Reviews for you: a story's heading ends in Review, one agent reviewing all of its pull requests
-    // waiting for you together (a menu: a new agent, or sent to one already reviewing them; with one
-    // pull request, that one's own review, an icon). A pull request on no story of the list has a
-    // Review of its own on its row, as Start review in its header.
+    // Reviews for you: every ticket's heading ends in Review, one agent reviewing all of its pull
+    // requests waiting for you together (a menu: a new agent, or sent to one already reviewing them;
+    // with one pull request, that one's own review, an icon), whether the ticket is a story of the list
+    // or not: most reviews are of others' stories, which aren't. Only "No ticket" has a Review on each
+    // row, as nothing ties those together.
     const reviewMenu = (g) => {
       const prs = g.list.map((r) => r.review);
+      // A ticket not in the list: its key alone; its title comes from the board when the review starts.
+      const story = g.story ?? { key: g.key, title: "", subs: [] };
       const id = `review-${g.key}`;
       const wrap = (el) => div().id(`${id}-wrap`).flex_none().on_mouse_down("left", stop).on_click(stop).child(el);
       // The size of the sidebar's other row actions (rowActions()), so every icon there lines up.
       if (prs.length === 1) return wrap(this.reviewIcon(t, st, prs[0], g.key, id, { box: ROW_CONTROL }));
-      return wrap(this.menuButton(t, id, "", reviewTaskRows(st.profile, g.story, prs), `Review ${g.key}'s ${prs.length} pull requests together, with a new agent or one already reviewing them`, { iconPath: own("eye"), width: 340, box: ROW_CONTROL }));
+      return wrap(this.menuButton(t, id, "", reviewTaskRows(st.profile, story, prs), `Review ${g.key}'s ${prs.length} pull requests together, with a new agent or one already reviewing them`, { iconPath: own("eye"), width: 340, box: ROW_CONTROL }));
     };
     const reviewRow = (r) => {
       const row = plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
         () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`);
-      if (storyOf(r.review)) return row;
+      if (storyOf(r.review) || prKey(r.review, st.data, known)) return row;
       // At the story rows' actions' place (rowActions(): ACTIONS_TOP from the top), plain() rows starting 7 down.
       return row.child(div().id(`review-row-${prName(r.review)}`).flex_none().mt(ACTIONS_TOP - 7).on_mouse_down("left", stop).on_click(stop)
         .child(this.reviewIcon(t, st, r.review, r.key, `review-row-${prName(r.review)}-go`, { box: ROW_CONTROL })));
@@ -5428,7 +5431,7 @@ export class StoryList extends Stories {
         .when(shut && Boolean(worst), (el) => el.child(div().flex_none().child(countBadge(t, `${id}-sum-${g.key || "none"}`, worst[0], open.length, tip, worst[2]).when(open.length === 1, (x) => x.child("1")))))
         // Its menus for the pull requests naming no ticket (the Desk's); not for a ticket of another board.
         .when(id === "mine-story" && !g.key, (el) => el.child(div().flex_none().child(plan(g))))
-        .when(id === "review-story" && Boolean(g.story), (el) => el.child(reviewMenu(g)));
+        .when(id === "review-story" && Boolean(g.key), (el) => el.child(reviewMenu(g)));
     };
     const grouped = (list, prOf, row, id) => byStory(list, prOf).flatMap((g) => [storyHead(g, id, prOf), ...(folds[foldId(g, id)] ? [] : g.list.map(row))]);
     // The profile's spaces that aren't a story's, nor its Desk.
