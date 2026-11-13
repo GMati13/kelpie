@@ -85,6 +85,8 @@
   "sprints": [
     {
       "id": 24,
+      "startDate": "-7d",
+      "endDate": "+3d",
       "name": "Trips Sprint 24"
     }
   ],
@@ -107,6 +109,8 @@
     },
     {
       "key": "ACME-143",
+      "estimate": 6,
+      "remaining": 2,
       "priority": "Medium",
       "summary": "Cache trips in IndexedDB",
       "parent": "ACME-142",
@@ -119,6 +123,7 @@
     },
     {
       "key": "ACME-144",
+      "estimate": 3,
       "priority": "Low",
       "summary": "Queue offline edits and sync them back",
       "labels": ["sync"],
@@ -146,6 +151,8 @@
     },
     {
       "key": "ACME-152",
+      "estimate": 4,
+      "remaining": 1,
       "priority": "High",
       "summary": "Apple Pay button and merchant session",
       "parent": "ACME-151",
@@ -154,6 +161,7 @@
     },
     {
       "key": "ACME-153",
+      "estimate": 2,
       "priority": "Medium",
       "summary": "Receipts for wallet payments",
       "parent": "ACME-151",
@@ -172,6 +180,8 @@
     },
     {
       "key": "ACME-161",
+      "estimate": 2,
+      "remaining": 0.5,
       "priority": "Medium",
       "summary": "Fuzzy matching in the search service",
       "parent": "ACME-160",
@@ -234,6 +244,8 @@
     },
     {
       "key": "ACME-139",
+      "estimate": 8,
+      "remaining": 3,
       "summary": "Token bucket per API key",
       "parent": "ACME-138",
       "status": "In Progress",
@@ -250,6 +262,7 @@
     },
     {
       "key": "ACME-185",
+      "estimate": 2,
       "priority": "High",
       "summary": "Store each stop's time zone",
       "parent": "ACME-184",
@@ -276,6 +289,7 @@
     },
     {
       "key": "ACME-181",
+      "estimate": 8,
       "priority": "Medium",
       "summary": "PDF layout for itineraries",
       "parent": "ACME-180",
@@ -284,6 +298,7 @@
     },
     {
       "key": "ACME-182",
+      "estimate": 6,
       "priority": "Low",
       "assignee": "Tomás Ruiz",
       "summary": "Export from the share sheet",
@@ -336,6 +351,7 @@
     },
     {
       "key": "ACME-130",
+      "estimate": 3,
       "moved": "-3d",
       "priority": "Medium",
       "summary": "Reset email template",

@@ -3,7 +3,7 @@
 // belongs to the profile whose folder it is in (the deepest one). Each profile has:
 //   name     what it's called
 //   folder   where its agents start and whose Claude sessions show
-//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority, unassigned }: a Jira
+//   jira     { url, site, board, keychain, tokenCommand, email, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority, unassigned, hoursPerDay }: a Jira
 //            Cloud board URL pasted in setup, the Keychain item whose account is the Jira email and
 //            password the API token (macOS), or instead a shell command that prints the token, with the
 //            email beside it (any system; jira.sh keeps the token in pipes), the task
@@ -16,11 +16,13 @@
 //            Move to Done (its icon in the header and on built rows; finishes(), stories.js), on otherwise;
 //            `byPriority` (true/false) orders To do's stories by their priority, and `showPriority`
 //            (true/false) marks rows with it (priorityOf()), both off unless set; `unassigned` true also loads the sprint's work nobody
-//            has, for the list's Unassigned section (showsUnassigned()), off otherwise
-//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority, priorityField, unassigned }: a GitHub
+//            has, for the list's Unassigned section (showsUnassigned()), off otherwise;
+//            `hoursPerDay` (a number) the hours a working day has for tickets, which To do's estimates
+//            are weighed against (estimates.js; none: DEFAULT_HOURS)
+//   project  { url, owner, ownerType, number, prefixes, prompt, orchestrator, handover, solo, moveToDone, byPriority, showPriority, priorityField, unassigned, hoursPerDay }: a GitHub
 //            Project as the board instead of Jira (a profile has one or the other): its address
 //            (parseProject()), the ticket key prefix per repo (parsePrefixes(); none: the repo's
-//            name, defaultPrefix()), the same prompts, handover column, solo, moveToDone, priority and unassigned as
+//            name, defaultPrefix()), the same prompts, handover column, solo, moveToDone, priority, unassigned and hoursPerDay as
 //            Jira's, `priorityField` the name of its single-select field that holds the priority (none:
 //            no priority). Read as the github section's account, as pull requests are
 //   linear   { url, workspace, team, keychain, tokenCommand, prompt, orchestrator, handover, solo, moveToDone }: a
@@ -47,6 +49,7 @@
 import { appHome, exec, notify, openOverlay } from "herdr";
 import { hc, panes, run, setShared, shared, spaces } from "./host.js";
 import { GITHUB_LOGIN, MOD, githubEnv, modFile, placed } from "./ui.js";
+import { DEFAULT_HOURS } from "./estimates.js";
 
 const PROFILES = "kelpie.profiles";
 const OLD = "kelpie.spaces";
@@ -799,8 +802,8 @@ const SECRET = /token$|^token|password|secret/i;
 // another name through (`github.pat`). Every key here is a setting the profile dialog has (`wrapUp`
 // is the clean-up command's old name, still read); a new setting joins its section's list.
 export const SECTION_KEYS = {
-  jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "unassigned"],
-  project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "priorityField", "unassigned"],
+  jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "unassigned", "hoursPerDay"],
+  project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "priorityField", "unassigned", "hoursPerDay"],
   github: ["owner", "account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"],
   commands: ["leftovers", "cleanUp", "wrapUp", "status"],
   prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
@@ -867,7 +870,10 @@ export function buildProfile(id, set) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
       if (!SECTION_KEYS[key].includes(k)) throw new Error(`${key}.${k}: not a setting of ${key} (${SECTION_KEYS[key].join(", ")}).`);
       const flag = (key === "jira" || key === "project") && FLAGS.includes(k); // true/false only, never a string
-      const ok = v === null || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
+      // Hours a day of ticket work (estimates.js), a number only: more than 0, at most 24.
+      const hours = (key === "jira" || key === "project") && k === "hoursPerDay";
+      if (hours && v !== null && !(typeof v === "number" && v > 0 && v <= 24)) throw new Error(`${key}.${k}: a number of hours, more than 0 and at most 24, or null for the default (${DEFAULT_HOURS}).`);
+      const ok = v === null || hours || (typeof v === "string" && !flag) || (((key === "jira" && k === "board") || (key === "project" && k === "number")) && Number.isInteger(v)) || ((key === "notify" || flag) && typeof v === "boolean");
       if (!ok) throw new Error(`${key}.${k}: ${flag ? "true or false" : `a string${key === "notify" ? " or true/false" : ""}`}, or null to remove it.`);
       if (v === null) delete section[k]; else section[k] = typeof v === "string" ? v.trim() : v;
     }
@@ -916,7 +922,7 @@ export function buildProfile(id, set) {
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
-// folder, owner, handover, solo, moveToDone, the priority settings, unassigned, notify) applies at once.
+// folder, owner, handover, solo, moveToDone, the priority settings, unassigned, hoursPerDay, notify) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 // Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what

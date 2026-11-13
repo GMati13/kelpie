@@ -17,6 +17,7 @@ import { demoLimit, demoProject } from "./demo.js";
 import { limitMessage } from "./ghlimit.js";
 import { GITHUB_LOGIN, prefixFor, priorityOf } from "./config.js";
 import { projectCategory, unassignedOf } from "./board.js";
+import { iterationEnd } from "./estimates.js";
 
 const PAGES = 10; // up to 1000 of your items
 const NODES = 100; // stories asked for at once (GitHub's most for nodes(ids:))
@@ -191,7 +192,8 @@ export async function loadProject(board, keep = {}) {
   if (iterationField) {
     const now = today();
     const it = (iterationField.configuration.iterations ?? []).find((x) => dayOf(x.startDate) <= now && now < dayOf(x.startDate) + Number(x.duration ?? 0));
-    sprints = it ? [{ id: it.id, name: it.title }] : [];
+    // `end`: its last day (estimates.js iterationEnd()), for the time left in it.
+    sprints = it ? [{ id: it.id, name: it.title, ...(iterationEnd(it.startDate, it.duration) ? { end: iterationEnd(it.startDate, it.duration) } : {}) }] : [];
     inScope = (item) => Boolean(it) && (item.fieldValues?.nodes ?? []).some((v) => v?.iterationId === it.id && v.field?.id === iterationField.id);
   } else {
     sprints = [{ id: null, name: project.title, kanban: true }];

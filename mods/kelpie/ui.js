@@ -267,15 +267,20 @@ export function empty(t, text, { fill = false } = {}) {
 export const DIALOG = { pad: INSET, gap: 8, section: 16 };
 
 // A list's group heading, inside a list padded 8 (rows pad 8 more): its label, and its count at the right.
-// `trail`: an element after the count, on the heading's own line (a fold chevron).
-// The trail goes into one tree only, the skin's when it draws its own, else this one: an element
-// can be drawn once, and one put in both left the skin's heading undrawn (#133).
-export function groupHeader(t, label, n, trail = null) {
-  const head = h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
+// `trail`: an element after the count, on the heading's own line (a fold chevron). `aside`: one before
+// the count (To do's and In progress's time estimates, stories.js).
+// Each goes into one tree only, the skin's when it draws its own, else this one: an element can be
+// drawn once, and one put in both left the skin's heading undrawn (#133). So the plain heading is
+// made bare for the skin, and made again with them when the skin keeps it.
+export function groupHeader(t, label, n, trail = null, aside = null) {
+  const make = (all) => h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
     .child(skinFont(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.muted), "label").child(skinText(label, "label")))
-    .when(n != null, (el) => el.child(skinFont(div().flex_none().text_color(t.dim), "count").child(skinText(String(n), "count"))));
-  const out = decor("groupDecor", t, head, { label, count: n, trail });
-  return out !== head || !trail ? out : head.child(div().flex_none().ml(6).child(trail));
+    .when(all && Boolean(aside), (el) => el.child(aside))
+    .when(n != null, (el) => el.child(skinFont(div().flex_none().text_color(t.dim), "count").child(skinText(String(n), "count"))))
+    .when(all && Boolean(trail), (el) => el.child(div().flex_none().ml(6).child(trail)));
+  const head = make(false);
+  const out = decor("groupDecor", t, head, { label, count: n, trail, aside });
+  return out !== head || (!trail && !aside) ? out : make(true);
 }
 
 // What an agent is doing, not where it lives: a tab you named, else its own session title, else

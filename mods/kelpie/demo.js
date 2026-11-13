@@ -54,6 +54,10 @@ function fields(f, i, { withParent = true } = {}) {
     issuetype: { name: i.type ?? (subtask ? "Sub-task" : "Story"), subtask },
     status: jiraStatus(statusNamed(f, MOVED[i.key] ?? i.status)),
     labels: i.labels ?? [],
+    // Time estimates in hours in the fixture (`estimate` the original, `remaining` what's left), in
+    // seconds as Jira gives them.
+    ...(typeof i.estimate === "number" ? { timeoriginalestimate: i.estimate * 3600 } : {}),
+    ...(typeof i.remaining === "number" ? { timeestimate: i.remaining * 3600 } : {}),
   };
   // When it last moved (fixture `moved`, relative), as Jira gives it: the status category's change and
   // the last change, the same moment here.
@@ -108,6 +112,8 @@ export function adfOf(markdown) {
   return { type: "doc", version: 1, content };
 }
 
+const sprintDates = (s) => ({ ...s, ...(s.startDate ? { startDate: new Date(when(s.startDate)).toISOString() } : {}), ...(s.endDate ? { endDate: new Date(when(s.endDate)).toISOString() } : {}) });
+
 // jira(cfg, ...args) for a demo profile: the answer jira.sh would print, from the fixture.
 export async function demoJira(args) {
   const f = await demoFixture();
@@ -136,7 +142,8 @@ export async function demoJira(args) {
   if (what !== "get") return { site: f.profile.site, code: 400, body: { errorMessages: [`The demo doesn't answer ${what}.`] } };
   const path = String(a);
   if (/\/board\/\d+\/configuration$/.test(path)) return ok({ columnConfig: { columns: f.board.columns.map((c) => ({ name: c.name, statuses: c.statuses.map((s) => ({ id: s.id })) })) } });
-  if (/\/board\/\d+\/sprint\?state=active$/.test(path)) return ok({ values: f.sprints });
+  // A sprint's `startDate`/`endDate` are relative in the fixture ("+3d"), dates as Jira gives them here.
+  if (/\/board\/\d+\/sprint\?state=active$/.test(path)) return ok({ values: f.sprints.map(sprintDates) });
   if (/\/board\/\d+$/.test(path)) return ok({ id: f.profile.board, name: f.board.name, type: "scrum" });
   // The site's priority levels, highest first, as Jira Cloud lists them.
   if (path === "/rest/api/3/priority") return ok((f.priorities ?? []).map((l) => ({ id: l.id, name: l.name })));
@@ -275,7 +282,10 @@ export async function demoProject(args) {
   if (!unassigned && !ops.includes(op)) throw new Error(`The demo doesn't answer ${op ?? "that question"}.`);
   const org = op.endsWith("Org") || op.startsWith("KelpieProjectOrg"), every = op.endsWith("All");
   const sprint = f.sprints?.[0];
-  const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(when("-7d")), duration: 14 } : null;
+  // The fixture's sprint dates make the iteration's: it runs from its start through its end's day.
+  const start = when(sprint?.startDate ?? "-7d");
+  const days = sprint?.endDate ? Math.round((Date.parse(dayStr(when(sprint.endDate))) - Date.parse(dayStr(start))) / 864e5) + 1 : 14;
+  const iteration = sprint ? { id: `iter-${sprint.id}`, title: sprint.name, startDate: dayStr(start), duration: days } : null;
   const field = { id: "PVTIF_demo", name: f.project.iteration ?? "Sprint", configuration: { iterations: iteration ? [iteration] : [] } };
   const project = {
     id: PROJECT_ID, title: f.project.title, url: `https://github.com/${org ? "orgs" : "users"}/${v.owner}/projects/${v.number}`,

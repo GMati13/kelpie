@@ -209,6 +209,16 @@ div #work-setup-fit [bg=#00000080]
               "Off: no priority marks on the rows."
           h_flex [bg=border]
             div [bg=muted]
+        v_flex
+          h_flex
+            div [fg=muted]
+              "Hours a day"
+          h_flex
+            div
+              Input.new [border=input bg=background fg=foreground]
+            div
+          div [fg=dim]
+            "The hours of a working day you spend on tickets. To do's time estimates are weighed against the working time left in the sprint: its working days left (Monday to Friday, today included) × these hours. Empty: 6."
     h_flex [border=border]
       Popup.new "setup-configure-all-menu"
         h_flex #setup-configure-all-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"
