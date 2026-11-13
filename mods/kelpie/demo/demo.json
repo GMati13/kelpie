@@ -1071,6 +1071,25 @@
       ]
     },
     {
+      "name": "ACME-126",
+      "tabs": [
+        {
+          "name": "ACME-127",
+          "agent": "done",
+          "title": "Idle sign-out",
+          "screen": [
+            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
+            "\\033[2m  ~/acme\\033[0m",
+            "",
+            "\\033[2m>\\033[0m Trying it: the banner shows twice after the laptop wakes. Why?",
+            "",
+            "\\033[0m● Both the wake listener and the timer fire on wake. I'll let the timer alone show it.",
+            ""
+          ]
+        }
+      ]
+    },
+    {
       "name": "Desk",
       "tabs": [
         {
@@ -1096,25 +1115,6 @@
             "  Generated stats.html (2.04 MB total, map library 1.10 MB)",
             "",
             "\\033[32m~/acme\\033[0m $ "
-          ]
-        }
-      ]
-    },
-    {
-      "name": "ACME-126",
-      "tabs": [
-        {
-          "name": "ACME-127",
-          "agent": "done",
-          "title": "Idle sign-out",
-          "screen": [
-            "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
-            "\\033[2m  ~/acme\\033[0m",
-            "",
-            "\\033[2m>\\033[0m Trying it: the banner shows twice after the laptop wakes. Why?",
-            "",
-            "\\033[0m● Both the wake listener and the timer fire on wake. I'll let the timer alone show it.",
-            ""
           ]
         }
       ]

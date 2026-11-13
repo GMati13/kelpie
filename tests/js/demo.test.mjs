@@ -148,6 +148,12 @@ describe("demoPulls and the local helpers", () => {
 });
 
 describe("demo.json holds together", () => {
+  // kelpie.demo opens the spaces in order, and Herdr shows the last one opened. A shown agent's turn
+  // counts as seen, so a `done` agent there would come up idle: ACME-126's (KELPIE-123) would sink.
+  test("no agent finished a turn unseen in the space opened last", () => {
+    const last = FIXTURE.spaces.at(-1);
+    assert.ok(!last.tabs.some((t) => t.agent === "done"), `${last.name} is shown once the demo opens`);
+  });
   const issues = new Map(FIXTURE.issues.map((i) => [i.key, i]));
   const statuses = FIXTURE.board.columns.flatMap((c) => c.statuses);
   test("issue keys are unique, of the profile's project", () => {
