@@ -9,6 +9,9 @@
 # https://api.linear.app/graphql and nowhere else: the address is written here, not passed in. One
 # request per run; the only write linear.js asks for is an issue's state.
 
+# Never traced: bash, which is macOS's sh, takes xtrace from an exported SHELLOPTS, and a trace would
+# print the key.
+set +xv
 token=
 token_command=
 while :; do

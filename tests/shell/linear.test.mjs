@@ -84,6 +84,21 @@ describe("linear.sh: the key travels only through curl's stdin", () => {
   });
 });
 
+// bash (macOS's sh) takes xtrace from an exported SHELLOPTS; dash ignores it. A trace would print the key
+// (KELPIE-222: 9 times, before linear.sh turned tracing off).
+describe("linear.sh: never traced", () => {
+  test("never prints the key, from a token command or the Keychain", () => {
+    for (const shell of ["sh", "bash"]) {
+      for (const args of [[...byCommand(), "", REQUEST], ["linear-acme", REQUEST]]) {
+        const f = fakes();
+        const r = sh(shell, [LINEAR, ...args], { env: { PATH: f.path, FAKE_TOKEN: KEY, SHELLOPTS: "xtrace", PS4: "+ " } });
+        assert.match(r.stdout, /"code":200/, r.stderr);
+        assert.ok(!(r.stdout + r.stderr).includes(KEY), `${shell} traced the key`);
+      }
+    }
+  });
+});
+
 describe("linear.sh: the key can't add curl options", () => {
   for (const [what, v] of Object.entries({ quote: 'a"b', backslash: "a\\b", CR: "a\rb" })) {
     test(`a key (token command) with a ${what} is refused before curl runs`, () => {
