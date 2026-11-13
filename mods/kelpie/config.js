@@ -523,7 +523,7 @@ export function reviewTask(github, fields) {
 // story's heading under Reviews for you): the profile's own template (github.storyReviewPrompt), else
 // this. Placeholders: {ticket} {summary} {description} (the story, its description as text) and {prs},
 // the pull requests waiting for your review, each with its link, title, author and the folder it's
-// checked out in. Lines whose placeholders all came out empty are left out. The pull requests and the
+// checked out in, and a ticket the board can't tell about is its key alone. Lines whose placeholders all came out empty are left out. The pull requests and the
 // description sit fenced, and it ends with OTHERS whatever the template says: they're others' words.
 export const STORY_REVIEW_FIELDS = ["ticket", "summary", "description", "prs"];
 export const DEFAULT_STORY_REVIEW_PROMPT = [
@@ -536,7 +536,10 @@ export const DEFAULT_STORY_REVIEW_PROMPT = [
 ].join("\n");
 
 export function storyReviewTask(github, fields) {
-  const filled = fillLines(github?.storyReviewPrompt?.trim() ? github.storyReviewPrompt : DEFAULT_STORY_REVIEW_PROMPT, STORY_REVIEW_FIELDS,
+  const template = github?.storyReviewPrompt?.trim() ? github.storyReviewPrompt : DEFAULT_STORY_REVIEW_PROMPT;
+  // A ticket the board can't tell about (another board's) has no summary: "{ticket}: {summary}" is then
+  // the key alone, not "OPS-2: ,".
+  const filled = fillLines(String(fields.summary ?? "").trim() ? template : template.replaceAll("{ticket}: {summary}", "{ticket}"), STORY_REVIEW_FIELDS,
     { ...fields, prs: fenced("the pull requests", fields.prs), description: fenced("the ticket's description", fields.description) });
   return `${filled}\n\n${OTHERS}`;
 }

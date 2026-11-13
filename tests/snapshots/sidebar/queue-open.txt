@@ -27,10 +27,10 @@ v_flex
         div
           svg chrome:circle-check [fg=done]
         "1"
-      h_flex #count-review [fg=accent] tip="4 to review"
+      h_flex #count-review [fg=accent] tip="5 to review"
         div
           svg own:eye [fg=accent]
-        "4"
+        "5"
       h_flex #count-working [fg=accent] tip="1 working"
         div
           svg chrome:spinner [fg=accent] ~spin
@@ -45,7 +45,7 @@ v_flex
         div [fg=dim]
           "Next"
         div [fg=muted]
-          "12"
+          "13"
         div
         h_flex #story-next-tools {down:left click}
           h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="2 suggested by Claude: open the queue to see them"
@@ -121,7 +121,7 @@ v_flex
         div
           "To review"
         div [fg=muted]
-          "4"
+          "5"
       h_flex #queue-review:web#421 [hover(bg=hover)] {click} tip="web#421: Review requested by priya-n\npriya-n · ACME-166 Share a trip with a link"
         div
           div
@@ -132,6 +132,16 @@ v_flex
               "web#421: Review requested by priya-n"
           div [fg=muted]
             "priya-n · ACME-166 Share a trip with a link"
+      h_flex #queue-review:api#308 [hover(bg=hover)] {click} tip="api#308: Review requested by priya-n\npriya-n · ACME-166 Issue read-only share tokens for a trip"
+        div
+          div
+            svg own:eye [fg=accent]
+        v_flex
+          h_flex
+            div
+              "api#308: Review requested by priya-n"
+          div [fg=muted]
+            "priya-n · ACME-166 Issue read-only share tokens for a trip"
       h_flex #queue-review:api#305 [hover(bg=hover)] {click} tip="api#305: Review requested by tomas-r\ntomas-r · Bump OpenTelemetry to 1.28"
         div
           div

@@ -705,6 +705,22 @@
     },
     {
       "repo": "api",
+      "number": 308,
+      "title": "ACME-166 Issue read-only share tokens for a trip",
+      "updated": "-21h",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "priya-n",
+      "body": "Adds `POST /trips/:id/share`, which returns a read-only token that lasts 14 days. The web side is web#421.",
+      "files": [
+        {
+          "path": "internal/trips/share.go",
+          "patch": "@@ -0,0 +1,6 @@\n+// Share returns a read-only token for the trip, valid for 14 days.\n+func (s *Service) Share(ctx context.Context, id string) (Token, error) {\n+\treturn s.tokens.Issue(ctx, id, ReadOnly, 14*24*time.Hour)\n+}"
+        }
+      ]
+    },
+    {
+      "repo": "api",
       "number": 305,
       "title": "Bump OpenTelemetry to 1.28",
       "updated": "-3h",

@@ -650,3 +650,15 @@ test("a group heading's trail is drawn once, in both layouts", () => {
     assert.ok(byId(head, "trail"), `${layout}: the heading drawn holds it`);
   }
 });
+
+// KELPIE-118 (back from Testing): most reviews are of others' stories, not in the person's list. Every
+// ticket's heading under Reviews for you has the one Review, in the list or not, and its rows none;
+// only "No ticket" keeps a Review on each row.
+test("Reviews for you: one Review on every ticket's heading, an eye per row only under No ticket", async () => {
+  const el = await list();
+  assert.ok(!stories.data.mine.some((i) => i.key === "ACME-166") && !(stories.data.parents ?? []).some((i) => i.key === "ACME-166"), "ACME-166 isn't in the list");
+  assert.ok(byId(el, "review-ACME-166-more"), "a ticket not in the list: Review on its heading");
+  assert.ok(byId(el, "review-ACME-184-more"), "a story of the list: the same");
+  for (const pr of ["web#421", "api#308", "web#427", "api#311"]) assert.equal(byId(el, `review-row-${pr}`), null, `${pr}: no eye of its own`);
+  assert.ok(byId(el, "review-row-api#305-go"), "No ticket: an eye on its row");
+});
