@@ -3515,11 +3515,8 @@ export class Stories extends Source {
       while (b < code.length - 1 && code[b + 1].kind !== "ctx") b++;
       if (b > a) out.push({ label: "Ask Claude about this change", hint: span(code.slice(a, b + 1)), action: ask(code.slice(a, b + 1), `the change at ${span(code.slice(a, b + 1))}`) });
     }
-    const p = m.prev && all[m.prev.fi] === f ? code.findIndex((r) => same(r, m.prev.r)) : -1;
-    if (p >= 0 && p !== at) {
-      const rows = code.slice(Math.min(p, at), Math.max(p, at) + 1);
-      out.push({ label: `Ask Claude about ${span(rows)}`, hint: "from the line before", action: ask(rows, span(rows)) });
-    }
+    // No range from the line right-clicked before: nothing on screen marked it, so it read as a
+    // selection that couldn't be made (a visible one is #227's to come).
     out.push({ label: "Copy the line", hint: num(m.r) != null ? String(num(m.r)) : null, action: (cx) => cx.write_to_clipboard(m.r.text ?? "") });
     return out;
   }

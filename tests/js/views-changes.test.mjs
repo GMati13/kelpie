@@ -359,13 +359,13 @@ test("changes: a right-click on a line of code asks about that line, or the chan
   assert.match(about.text, /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
   assert.match(about.text, /--- the lines, as written there ---\n\s+\d+ - const value6000_0 = old\(0\);\n--- end of the lines ---/);
 });
-test("changes: a second right-click in the same file offers the lines from the first", async () => {
+test("changes: a second right-click offers no hidden range from the first", async () => {
   const s = await storyChanges([prGroup]);
   const item = s.view.diffView.entries.findIndex((e) => e.lines?.length > 3);
   rightClickLine(s, item, 5);
   s.view.menu = null;
   const words = rightClickLine(s, item, 3 * 20 + 5);
-  assert.ok(words.some((w) => /^Ask Claude about lines \d+–\d+$/.test(w)), words.join(" | "));
+  assert.ok(!words.some((w) => /^Ask Claude about lines/.test(w)), words.join(" | "));
 });
 // KELPIE-225: a right-click on a file's header opens its own menu: ask about the file, copy its path,
 // open it where it is.
