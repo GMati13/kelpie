@@ -14,7 +14,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
 import { SMALL, ago, icon, own, sessionTitle, stop, textButton } from "./ui.js";
-import { ASK_PROMPTS, OTHERS, askText, promptValue } from "./config.js";
+import { ASK_PROMPTS, OTHERS, askText, fenced, promptValue } from "./config.js";
 
 // The Claudes a story's ask may go to: those in its space, and those on one of its keys elsewhere
 // (a tab named after the key), never another story's or profile's. Outside a story (`story` null),
@@ -84,21 +84,56 @@ export function fileAbout(f, key) {
 
 // What's asked about, for a ticket of the story shown: the story itself (`kind` "story"), one of its
 // subtasks ("sub", `x` the subtask) or one of its pull requests ("pr", `x` the pull request, `name`
-// its repo#n). Titles are anyone's on the board or GitHub, so they go in cleaned, and the question
-// ends with OTHERS. `url`: the ticket's or pull request's page, when known.
-export function ticketAbout(it, kind, x = null, { url = null, name = null } = {}) {
+// its repo#n). A ticket goes with its status, a story with its subtasks (key, title, status, who has
+// it; KELPIE-231), a subtask with its story, and either with its description once it's loaded
+// (`description`, its blocks, as text), fenced. Titles, names and descriptions are anyone's on the
+// board or GitHub, so they go in cleaned, and the question ends with OTHERS. `url`: the ticket's or
+// pull request's page, when known.
+export const ABOUT_DESC_MAX = 2000;
+export function ticketAbout(it, kind, x = null, { url = null, name = null, description = null } = {}) {
   const story = promptValue("key", it.key);
   const title = promptValue("title", (kind === "story" ? it.title : x?.title) ?? "");
   const at = (words) => (url ? `, ${words}${promptValue("url", url)}` : "");
+  const status = (s) => (s ? ` Its status: ${promptValue("status", s)}.` : "");
+  const desc = (blocks) => {
+    const text = blocksText(blocks, ABOUT_DESC_MAX);
+    return text ? `\n\n${fenced("its description", text)}` : "";
+  };
   if (kind === "pr") {
     const pr = promptValue("repo", name ?? "");
     return { id: `pr:${pr}`, key: story, name: pr, label: pr, kind, others: true, text: `About the pull request ${pr} (“${title}”) of ${story}${at("")}.` };
   }
   if (kind === "sub") {
     const key = promptValue("key", x.key);
-    return { id: `sub:${key}`, key, name: key, label: `${key} · ${title}`, kind, others: true, text: `About the subtask ${key} (“${title}”) of the story ${story}${at("its ticket: ")}.` };
+    return { id: `sub:${key}`, key, name: key, label: `${key} · ${title}`, kind, others: true,
+      text: `About the subtask ${key} (“${title}”) of the story ${story} (“${promptValue("title", it.title ?? "")}”)${at("its ticket: ")}.${status(x.status)}${desc(description)}` };
   }
-  return { id: `story:${story}`, key: story, name: story, label: `${story} · the story`, kind: "story", others: true, text: `About the story ${story} (“${title}”)${at("its ticket: ")}.` };
+  const subs = (it.subs ?? []).filter((s) => s.key !== it.key).map((s) => {
+    const who = s.you ? "you" : s.assignee ? promptValue("name", s.assignee) : "nobody";
+    return `- ${promptValue("key", s.key)} “${promptValue("title", s.title ?? "")}”: ${promptValue("status", s.status ?? "no status")}, ${who}`;
+  });
+  return { id: `story:${story}`, key: story, name: story, label: `${story} · the story`, kind: "story", others: true,
+    text: `About the story ${story} (“${title}”)${at("its ticket: ")}.${status(it.status)}${subs.length ? `\n\nIts subtasks:\n${subs.join("\n")}` : ""}${desc(description)}` };
+}
+
+// A description's blocks (adf.js: paragraphs, headings, lists, code) as plain text, a line a block,
+// cut at `max` characters; null for none.
+export function blocksText(blocks, max = ABOUT_DESC_MAX) {
+  if (!Array.isArray(blocks) || !blocks.length) return null;
+  const runs = (r) => (r ?? []).map((x) => (x.br ? "\n" : x.text ?? "")).join("");
+  const lines = [];
+  const walk = (list, indent = "") => {
+    for (const b of list ?? []) {
+      if (b.kind === "code") lines.push(String(b.text ?? ""));
+      else if (b.kind === "list") (b.items ?? []).forEach((item) => { const [first, ...rest] = item; lines.push(`${indent}- ${first ? runs(first.runs) : ""}`); walk(rest, `${indent}  `); });
+      else if (b.runs) lines.push(`${indent}${runs(b.runs)}`);
+      else if (b.blocks) walk(b.blocks, indent);
+    }
+  };
+  walk(blocks);
+  const text = lines.map((l) => promptValue("description", l).replace(/\s+$/, "")).filter((l) => l.trim()).join("\n");
+  if (!text) return null;
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 }
 
 // The suggestions for a kind of thing asked about, each a profile message (the Messages page's Ask

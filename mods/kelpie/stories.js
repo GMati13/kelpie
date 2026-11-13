@@ -2718,7 +2718,8 @@ export function pointAsk(profile, story, about) {
 function askAboutOf(profile, it, data) {
   const p = (shared(ASK_ABOUT) ?? {})[profile?.id];
   if (p?.story === it.key && p.about) return { about: p.about, at: p.at ?? 0 };
-  return { about: ticketAbout(it, "story", null, { url: ticketUrl(boardOf(profile), data, it.key) }), at: 0 };
+  // Its description goes too once it's loaded (shown in the details, DESCRIPTIONS).
+  return { about: ticketAbout(it, "story", null, { url: ticketUrl(boardOf(profile), data, it.key), description: DESCRIPTIONS[it.key]?.blocks }), at: 0 };
 }
 // Exported for the tests.
 export const threadOf = (profile, key) => ((shared(ASK_THREAD) ?? {})[profile?.id] ?? {})[key] ?? [];
@@ -3472,7 +3473,7 @@ export class Stories extends Source {
   subMenuRows(st, it, s) {
     const url = ticketUrl(boardOf(st.profile), st.data, s.key);
     return [
-      { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url })) },
+      { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url, description: DESCRIPTIONS[s.key]?.blocks })) },
       ...(url ? [{ label: boardOf(st.profile)?.kind === "project" ? "Open on GitHub" : "Open on the board", action: () => open(url) }] : []),
       { label: "Copy key", hint: s.key, action: (cx) => cx.write_to_clipboard(s.key) },
       ...(s.agent ? [{ label: "Show agent", hint: agentWords(s.agent.status), action: () => focusAgent(st.profile, it, s.agent) }] : []),
@@ -4132,7 +4133,7 @@ export class Stories extends Source {
       .on_click((_e, cx) => {
         if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key);
         // Looking at a subtask points the story's Ask line at it (askclaude.js).
-        pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketUrl(boardOf(st.profile), st.data, s.key) }));
+        pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketUrl(boardOf(st.profile), st.data, s.key), description: DESCRIPTIONS[s.key]?.blocks }));
         cx.notify();
       }).child(s.title);
     // A subtask's row: its key, title, state and agent buttons, then its pull requests. A ticket with
