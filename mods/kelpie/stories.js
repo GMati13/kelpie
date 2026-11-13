@@ -3450,14 +3450,23 @@ export class Stories extends Source {
   // An element's own menu (KELPIE-225), opened by a right-click on `el` (its trigger) and laid under
   // it: Ask Claude about it first (it points the story's Ask line there and puts the cursor in it),
   // then what that element offers. The same look and keys as the other menus (menuButton()).
-  // It hangs from a point `top` below the element's top-left (a one-pixel anchor laid over it, so
-  // the element's own layout is left as it is); `openMenu(id)` is the right-click that opens it.
+  // It opens at the pointer, where the right-click landed (a one-pixel anchor laid over the element
+  // there, so the element's own layout is left as it is), else `top` below its left edge.
+  // `openMenu(id)` is the right-click that opens it: the press comes as drawn, zoom included, so its
+  // place is divided by the zoom (colProbe()).
   elementMenu(t, id, rows, top) {
-    return div().absolute().left(8).top(top).w(1).h(1)
+    const at = this.menuAt?.id === id ? this.menuAt : null;
+    return div().absolute().left(at ? at.x : 8).top(at ? at.y : top).w(1).h(1)
       .child(this.menuButton(t, id, "", rows, null, { anchor: "top_left", width: 260, trigger: () => div().id(`${id}-at`).w(1).h(1) }));
   }
   openMenu(id) {
-    return (_e, cx) => { cx.stop_propagation(); this.menu = this.menu === id ? null : id; cx.notify(); };
+    return (e, cx) => {
+      cx.stop_propagation();
+      const zoom = this.colZoom || 1, p = e?.local_position;
+      this.menuAt = p ? { id, x: Math.max(0, p.x / zoom), y: Math.max(0, p.y / zoom) } : null;
+      this.menu = this.menu === id ? null : id;
+      cx.notify();
+    };
   }
   // A subtask's: ask about it, open it on the board, copy its key, and show its agent while one runs.
   subMenuRows(st, it, s) {

@@ -349,3 +349,15 @@ test("an answered ask shows its answer's first line, and the whole of it once cl
   const open = texts(byId(view.render(cx), "ask-thread")).join(" | ");
   assert.match(open, /Two things\. \| The replay, and a review\./);
 });
+// The menu opens where the right-click landed (as drawn, divided by the zoom), not at the row's edge.
+test("a right-click menu opens at the pointer, at any zoom", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  const probe = nodeOf(byId(el, "sub-cols-zoom-probe"));
+  probe.calls.find(([m]) => m === "on_size_change")[1][0]({ width: 150, height: 0 }, cx);
+  const n = walk(view.render(cx)).find((x) => x.calls.some(([m, a]) => m === "id" && a[0] === "pr-row-web#418"));
+  n.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({ local_position: { x: 300, y: 15 } }, { ...cx, stop_propagation() {} });
+  const lefts = walk(view.render(cx)).filter((x) => x.calls.some(([m]) => m === "absolute")).map((x) => [x.calls.find(([m]) => m === "left")?.[1][0], x]);
+  const anchor = lefts.find(([l]) => Math.abs(l - 200) < 0.01)?.[1];
+  assert.ok(anchor, "at x 200 (300 drawn at zoom 1.5)");
+  assert.ok(anchor.calls.some(([m, a]) => m === "top" && a[0] === 10), "and y 10");
+});
