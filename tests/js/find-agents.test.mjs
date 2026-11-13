@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mock } from "herdr";
 import { put, tempDir } from "../lib/helpers.mjs";
-import { StoryList, findAgentsRequest, showAgentRequest } from "../../mods/kelpie/stories.js";
+import { StoryList, claudeOf, findAgentsRequest, showAgentRequest } from "../../mods/kelpie/stories.js";
 
 let stories, home, world;
 before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); });
@@ -116,14 +116,44 @@ describe("kelpie.find-agents: the agents Kelpie knows", () => {
     // Only that terminal's foreground process has a session record (ui.js claudeSession).
     mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify(args[1] === asked ? { foreground: { pid: 4242 } } : {}), stderr: "" } : undefined);
     mock.on.exec = (c, a, o) => {
-      if (c === "sh" && String(a[1]).includes("/sessions/")) return { code: 0, stdout: `\n${JSON.stringify({ sessionId: sid, cwd: "/acme" })}`, stderr: "" };
+      if (c === "sh" && String(a[1]).includes("/sessions/")) return { code: 0, stdout: `\n${JSON.stringify({ pid: 4242, sessionId: sid, cwd: "/acme", name: "acme-bundle", messagingSocketPath: "/tmp/cc-socks/4242.sock" })}`, stderr: "" };
       return mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH, HOME: fake } });
     };
     const r = await find({ file: "web/vite.config.ts" });
     assert.deepEqual(r.agents.map((x) => [x.tab, x.first, x.changed]), [["Claude", "Trim the bundle", [{ path: "/acme/web/vite.config.ts", at }]]]);
+    // The Claude agent itself, as another Claude reaches it: its session's name and messaging address.
+    assert.deepEqual(r.agents[0].claude, { name: "acme-bundle", address: "uds:/tmp/cc-socks/4242.sock", session: sid });
     const python = mock.of("exec").filter(([c]) => c === "python3");
     assert.equal(python.length, 1, "one run for the machine");
     assert.deepEqual(python[0][1].slice(3), ["", sid], "only the session's own account and id go to the script");
+    assert.deepEqual((await find({ words: "acme-bundle" })).agents.map((x) => x.tab), ["Claude"], "found by its session's name too");
+  });
+
+  test("the demo's agents are stand-ins: no Claude to reach", async () => {
+    const r = await find({ key: "ACME-172" });
+    assert.equal(r.agents[0].tab, "ACME-172");
+    assert.equal(r.agents[0].claude, undefined);
+  });
+
+  describe("claudeOf: the Claude agent from its session record, each part only in its expected shape", () => {
+    const rec = { pid: 5910, sessionId: "3bd7e161-bb18-4641-befd-8da94b9f5b68", name: "kelpie-70-0d", messagingSocketPath: "/tmp/cc-socks/5910.sock" };
+    test("name, address and session", () => {
+      assert.deepEqual(claudeOf(rec, true), { name: "kelpie-70-0d", address: "uds:/tmp/cc-socks/5910.sock", session: rec.sessionId });
+    });
+    test("an agent on another machine gets no address: its socket isn't a file here", () => {
+      assert.deepEqual(claudeOf(rec, false), { name: "kelpie-70-0d", session: rec.sessionId });
+    });
+    for (const path of ["/tmp/cc-socks/1.sock", "tmp/cc-socks/5910.sock", "/tmp/cc-socks/../x/5910.sock", "/tmp/cc socks/5910.sock", "/tmp/cc-socks/5910.sock;rm", "/tmp/cc-socks/5910.sock\n", 42]) {
+      test(`refuses the socket ${JSON.stringify(path)}`, () => {
+        assert.equal(claudeOf({ ...rec, messagingSocketPath: path }, true).address, undefined);
+      });
+    }
+    test("refuses a name with control characters and an id of other characters; nothing left is null", () => {
+      assert.equal(claudeOf({ ...rec, name: "evil\u001b]0;x\u0007" }, true).name, undefined);
+      assert.equal(claudeOf({ ...rec, sessionId: "../../x" }, true).session, undefined);
+      assert.equal(claudeOf({ pid: 1 }, true), null);
+      assert.equal(claudeOf(null, true), null);
+    });
   });
 
   for (const key of ["../../etc/passwd", "ACME-180; rm -rf ~", "acme", "-ACME-1"]) {

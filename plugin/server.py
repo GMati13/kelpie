@@ -12,8 +12,9 @@ something in Kelpie and set up their Kelpie profiles.
 - get_next / add_to_next / suggest_next: Next, the person's queue of what to do: read
   (`kelpie.get-next`), an agent's ask added to it (`kelpie.add-next`), Claude's picks for it handed
   in (`kelpie.suggest-next`, how What next? answers), mods/kelpie/stories.js.
-- find_agents / show_agent: the agents Kelpie knows (their tab, space, profile, story, state, folder,
-  what they started on and the files their sessions changed), filtered (`kelpie.find-agents`), and
+- find_agents / show_agent: the agents Kelpie knows (the Claude agent itself, by its session's name and
+  messaging address, and its tab, space, profile, story, state, folder, what it started on and the files
+  its session changed), filtered (`kelpie.find-agents`), and
   one of them shown to the person (`kelpie.show-agent`, by an id find_agents gave), stories.js.
 
 - get_story: where the agent runs (its profile, and its story or the Desk) and what Kelpie holds about a
@@ -67,7 +68,8 @@ INSTRUCTIONS = (
     "add_to_next before you finish, as well as asking in your reply: they run many agents, Kelpie flags an agent only "
     "while a permission prompt waits, so a question at the end of a turn is easily missed. Not when you're only "
     "reporting what you did. When they ask who is working on something (a file, a folder, a ticket) or to be taken to an "
-    "agent, use find_agents and show_agent rather than reading Claude's or Herdr's own files; and when another agent's "
+    "agent, or need to reach another agent, use find_agents (and show_agent) rather than reading Claude's or Herdr's "
+    "own files; and when another agent's "
     "work is in your way (its uncommitted changes, say), find it and point the person to it: never stash, revert or "
     "overwrite another agent's work."
 )
@@ -275,11 +277,13 @@ TOOLS = [
         "title": "Find the agents working on something",
         "description": (
             "Lists the Claude agents running in the person's Kelpie (their Herdr spaces and tabs), and for each: `id` (for "
-            "show_agent), its tab and space, its Kelpie profile, the ticket key it works on (`key`, and `story` when that's "
+            "show_agent), `claude` (the Claude agent itself: its session's `name` and messaging `address`, which reach it "
+            "with Claude's own messaging between sessions, and its `session` id), its tab and space, its Kelpie profile, the ticket key it works on (`key`, and `story` when that's "
             "a subtask's), the ticket's title, its state (working, waiting for you, done, idle, starting), its folder, its "
             "session's name (`title`), the message that started it (`first`), the files its session changed lately "
             "(`changed`, newest first) and `you` on your own entry. Use it whenever the person asks who or which agent is "
-            "working on, editing or touching something, or to find an agent before show_agent; and when another agent's "
+            "working on, editing or touching something, to find an agent before show_agent or before messaging it; and "
+            "when another agent's "
             "work gets in your way (uncommitted changes blocking a pull or a checkout, edits to a file you're about to "
             "change), to find whose it is before you touch anything. Filters, all optional and combined: `file` (a full path, "
             "or one relative to the repo: the agents whose sessions changed it), `folder` (a full path: agents working in it, "
@@ -678,7 +682,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.7.0"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.8.0"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":
