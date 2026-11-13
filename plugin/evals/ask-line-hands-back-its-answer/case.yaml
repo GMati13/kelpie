@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: ask-line-hands-back-its-answer
+expected_outcome: |
+  The message Kelpie's Ask line sends to a story's open Claude (stories.js askClaude, askclaude.js askMessage with the ask's id): what it's about, the question, the line asking for a short answer back with the ask's id, then the note about others' text. The Claude answers in its reply as usual and also calls answer_ask once, with that exact id and the gist in a few lines; it changes nothing.

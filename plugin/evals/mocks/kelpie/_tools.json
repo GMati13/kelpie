@@ -187,6 +187,35 @@
       }
     },
     {
+      "name": "answer_ask",
+      "title": "Hand the person a short answer in Kelpie",
+      "description": "When the person asked you something from a story's Ask line in Kelpie, the message ends asking you to hand Kelpie a short answer with the ask's id. Answer as you normally would, then call this with that id and the gist in a few plain lines (what you found, what you'd do): Kelpie shows it on the story, under the question, and in their Next queue, so they read it without opening your tab. Only for an ask whose id you were given.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ask's id, as the message gave it."
+          },
+          "answer": {
+            "type": "string",
+            "description": "The gist of your answer in a few plain lines, under 1200 characters."
+          }
+        },
+        "required": [
+          "id",
+          "answer"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "get_story",
       "title": "Read a story as Kelpie has it",
       "description": "Where you run in Kelpie (the person's profile, and the story your tab belongs to, or the Desk) and what Kelpie holds about a story: its status on the board, each subtask's status and assignee, its pull requests with their checks and review, its agents and what each is doing, what it needs from the person, the profile's status line for it, and how old that is. Use it first when the person asks about \"the story\", its status or what's left, without naming one: `key` left out means your own story (else the one Kelpie shows). With `key`, that story (a subtask's key gives its story). For what Kelpie doesn't hold, use your own access. Read-only.",

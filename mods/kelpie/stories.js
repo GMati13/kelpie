@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { askLine, askMessage, askThread, askWho, chosenWho, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, askId, askLine, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -2747,11 +2747,13 @@ export function askClaude(st, it, key, row, about, ask) {
   const said = { profile, keys: key };
   clearPoint(profile, it.key);
   const q = questionOf(ask);
-  const entry = (more) => ({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), about: about.label ?? about.name, q, ...more });
+  // Its id goes in the message, so its Claude can hand a short answer back (answerAskRequest()).
+  const id = askId();
+  const entry = (more) => ({ id, at: Date.now(), story: it.key, about: about.label ?? about.name, q, ...more });
   if (row?.agent) {
     // Named as the Ask line's menu names it: its session's name, else its tab's.
     const a = row.agent, name = row.label ?? a.tab_name ?? "Claude";
-    const text = askMessage(profile, about, ask);
+    const text = askMessage(profile, about, ask, id);
     if (!text) return;
     const failed = (why) => {
       say(said, `Couldn't send it to ${name}. ${capitalize(why)}.`);
@@ -2766,12 +2768,47 @@ export function askClaude(st, it, key, row, about, ask) {
       .then(() => say(said, `Sent your question to ${name}.`))
       .catch((err) => { const why = String(err?.message ?? err); patchEntry(profile, it.key, e.id, { status: "failed", why }); failed(why); });
   }
-  const then = askMessage(profile, { ...about, others: false }, ask);
+  const then = askMessage(profile, { ...about, others: false }, ask, id);
   if (!then || lonePr(it) || cleaningNow(it.key, profile)) return;
   const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
   setThread(profile, it.key, (list) => withEntry(list, entry({ to: "a new Claude", status: "started" })));
   once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv: claudeArgv(profile), task: ticketTask(st, it, key, null, then) }));
   say(said, `Asked a new Claude in ${it.key}'s space about ${about.name}.`);
+}
+
+// kelpie.ask-answer (the plugin's answer_ask): a Claude asked from the Ask line hands back a short
+// answer to the ask whose id its message carried. It only adds text the person reads (no command, no
+// send), so nothing waits for a yes; but only the Claude asked may answer: the one it was sent to, or,
+// for an ask that started a new Claude, one in the story's space (whose address is then kept, for Show
+// its Claude). The answer is cleaned and cut (cleanAnswer()), goes on the thread, and an "Answered"
+// line goes to Next (addAsk()), which goes once clicked or once the person talks to that Claude again.
+export function answerAskRequest() {
+  return answerRequest("ask-answer", (req) => {
+    const id = typeof req?.id === "string" ? req.id.trim() : "";
+    if (!ASK_ID.test(id)) throw new Error("id: the ask's id, from the message you were asked in.");
+    const answer = cleanAnswer(req?.answer);
+    if (!answer) throw new Error("answer: a few plain lines.");
+    const all = shared(ASK_THREAD) ?? {};
+    let found = null;
+    for (const [pid, stories] of Object.entries(all)) for (const [key, list] of Object.entries(stories ?? {})) {
+      const e = (list ?? []).find((x) => x.id === id);
+      if (e) found = { pid, key, e };
+    }
+    if (!found) throw new Error("no ask with that id here: it may be more than a day old.");
+    const { pid, key, e } = found;
+    const agent = typeof req?.terminal === "string" ? agents().find((a) => a.address === req.terminal) : null;
+    const space = agent && spaces().find((x) => x.id === agent.space);
+    const ours = e.address ? agent?.address === e.address : Boolean(space && space.name === key);
+    if (!ours) throw new Error("only the Claude it was asked of can answer it.");
+    const profile = profiles().find((p) => p.id === pid) ?? { id: pid };
+    patchEntry(profile, key, id, { status: "answered", answer, answeredAt: Date.now(), address: e.address ?? agent.address, to: e.address ? e.to : sessionTitle(agent.title) ?? agent.tab_name ?? e.to });
+    if (hasBoard(profile)) {
+      try {
+        addAsk(profile, { action: `Answered: ${e.q}`, why: answer.split("\n")[0], key, terminal: agent.address });
+      } catch { /* the thread has it; Next is only a pointer to it */ }
+    }
+    return { ok: true, profile: profile.name ?? pid, story: key };
+  });
 }
 
 // Held questions go out once their Claude rests (its turn over), from the copy that follows what's
@@ -5196,6 +5233,7 @@ export class StoryBody extends Stories {
     this.askFor = null; // what that pick was for (the about's id)
     this.askFocused = 0; // the last pointing the line took the cursor for
     this.askOpen = false; // the thread unfolded
+    this.askExpanded = null; // the answered ask whose whole answer is open
     this.readerScroll = VirtualListScrollHandle.new(); // the passage reader, scrolled to the passage
     // The details' place, per story or pull request shown (ui.js ScrollPool).
     this.detailScrolls = new ScrollPool(() => ({ box: ScrollHandle.new(), top: null }), (h) => { h.box.scroll_to_item(0); h.top = null; });
@@ -5230,6 +5268,7 @@ export class StoryBody extends Stories {
         if (a) { run("space.select", { id: a.space }); run("pane.focus", { pane: a.pane }); }
       },
       unfold: (cx) => { this.askOpen = true; cx.notify(); },
+      expanded: this.askExpanded, toggle: (id, cx) => { this.askExpanded = this.askExpanded === id ? null : id; cx.notify(); },
     });
     const line = askLine(t, {
       about, input: this.askInput, to, hint, isStory: about.kind === "story",

@@ -29,6 +29,7 @@ case "$2" in
   kelpie.find-agents) name=agents-find ;;
   kelpie.show-agent) name=agent-show ;;
   kelpie.get-story) name=story-get ;;
+  kelpie.ask-answer) name=ask-answer ;;
   kelpie.where-*) name="where-${2#kelpie.where-}" ;;
   *) name="" ;;
 esac
@@ -56,6 +57,7 @@ case "$FAKE_ANSWER" in
   closest) answer '{"ok": true, "found": "comment", "exact": false, "author": "Lena Fischer", "written": null}' ;;
   nowhere-passage) answer '{"ok": true, "found": "none"}' ;;
   odd) answer '["not", "an", "answer"]' ;;
+  answered) answer '{"ok": true, "profile": "Acme", "story": "ACME-142"}' ;;
   fail) echo "no Herdr window." >&2; exit 1 ;;
   silent) ;;
 esac
@@ -106,7 +108,7 @@ class Server(unittest.TestCase):
             self.assertEqual(init["result"]["serverInfo"]["version"], json.load(f)["version"])
         self.assertIn("tools", init["result"]["capabilities"])
         tools = {t["name"]: t for t in listed["result"]["tools"]}
-        self.assertEqual(sorted(tools), ["add_to_next", "find_agents", "get_next", "get_profile", "get_story", "open_profile_page", "save_profile", "save_status", "show_agent", "show_passage", "suggest_next"])
+        self.assertEqual(sorted(tools), ["add_to_next", "answer_ask", "find_agents", "get_next", "get_profile", "get_story", "open_profile_page", "save_profile", "save_status", "show_agent", "show_passage", "suggest_next"])
         self.assertTrue(tools["get_story"]["annotations"]["readOnlyHint"])
         self.assertEqual(tools["show_passage"]["inputSchema"]["required"], ["key", "quote"])
         self.assertEqual(tools["save_profile"]["inputSchema"]["required"], ["id", "set"])
@@ -120,6 +122,9 @@ class Server(unittest.TestCase):
         self.assertTrue(tools["find_agents"]["annotations"]["readOnlyHint"])
         self.assertFalse(tools["show_agent"]["annotations"]["readOnlyHint"])
         self.assertEqual(tools["show_agent"]["inputSchema"]["required"], ["id"])
+        # answer_ask writes what the person reads on a story, so it isn't marked read only.
+        self.assertFalse(tools["answer_ask"]["annotations"]["readOnlyHint"])
+        self.assertEqual(tools["answer_ask"]["inputSchema"]["required"], ["id", "answer"])
 
     def test_the_evals_stand_in_has_the_tools_as_the_server_lists_them(self):
         # The evals answer every Kelpie tool from plugin/evals/mocks/kelpie/, whose _tools.json is
@@ -346,6 +351,26 @@ class Server(unittest.TestCase):
             text, failed = self.call(args, tool="add_to_next", answer="next")
             self.assertTrue(failed, args)
         self.assertEqual(self.calls(), [])
+
+    # The Ask line's answers (KELPIE-84): handed back by the ask's id from the agent's terminal, with
+    # their line breaks but no other control character; Kelpie checks who may answer.
+    def test_answer_ask_hands_the_answer_back_with_the_agents_terminal(self):
+        text, failed = self.call({"id": "abc123xyz", "answer": "Two things:\n- tests\x1b[2J\n- review"}, tool="answer_ask", answer="answered", env={"HC_TERMINAL_ID": "t11n"})
+        self.assertFalse(failed)
+        self.assertEqual(text, "Kelpie shows your answer on ACME-142, in profile Acme.")
+        self.assertEqual(self.calls(), ["do kelpie.ask-answer"])
+        self.assertEqual(self.last(), {"terminal": "t11n", "id": "abc123xyz", "answer": "Two things:\n- tests [2J\n- review"})
+
+    def test_answer_ask_refuses_a_bad_id_or_no_answer_before_anything_runs(self):
+        for args in ({"id": "abc123", "answer": "  "}, {"id": "../x; rm", "answer": "fine"}, {"id": "AB", "answer": "fine"}, {}):
+            text, failed = self.call(args, tool="answer_ask", answer="answered")
+            self.assertTrue(failed, args)
+        self.assertEqual(self.calls(), [])
+
+    def test_kelpies_refusal_of_an_answer_is_an_error(self):
+        text, failed = self.call({"id": "abc123xyz", "answer": "fine"}, tool="answer_ask", answer="refuse")
+        self.assertTrue(failed)
+        self.assertTrue(text.startswith("Kelpie didn't take the answer:"), text)
 
     def test_suggest_next_hands_the_picks_in_and_says_what_was_kept_and_dropped(self):
         picks = [{"key": "ACME-2", "action": "Start it", "why": "next"}, {"key": "nope", "action": "x"}, "not a pick"]

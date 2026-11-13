@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: plain-question-no-hand-back
+expected_outcome: |
+  A plain question typed into a Claude's tab, with no ask id: the Claude answers in its reply and doesn't call answer_ask, which is only for asks from Kelpie's Ask line that carry an id.

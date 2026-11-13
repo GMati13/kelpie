@@ -15,7 +15,7 @@
 
 import { exec, readTextFile } from "herdr";
 import { agents, run, setShared, shared, spaces } from "./host.js";
-import { modFile } from "./ui.js";
+import { modFile, sessionTitle } from "./ui.js";
 import { DESK_NAME, DESK_PAUSED, profileById, saveProfile, spacesOf } from "./config.js";
 
 export const DEMO_ID = "demo";
@@ -485,6 +485,24 @@ async function waitForSpace(name, before) {
 // each from the agent of its `tab` (`terminalOf(tab)`, its terminal; left out while there's none, as
 // an ask nobody waits on goes), a story's key linking to its ticket: on Jira, or with `project` on the
 // GitHub Project's repo.
+// The fixture's asks from the Ask line (askThread: per story, the question, what it was about, the
+// tab of the Claude asked, answered or held), kept as kelpie.ask.thread keeps them, so the demo shows an
+// answered ask and one held for a Claude mid-task without anyone asking. Ids are the demo's own, of the
+// Ask line's shape (askclaude.js ASK_ID).
+export function demoAskThread(f, agentOf = () => null) {
+  const out = {};
+  (f.askThread ?? []).forEach((a, i) => {
+    const agent = agentOf(a.tab);
+    if (!agent) return;
+    const name = sessionTitle(agent.title) ?? agent.tab_name;
+    const e = { id: `demoask${i}x`, at: when(a.at ?? "-5m"), story: a.story, about: a.about, q: a.q, to: name, address: agent.address, status: a.status ?? "sent",
+      ...(a.answer ? { answer: a.answer, answeredAt: when(a.answeredAt ?? a.at ?? "-5m") } : {}),
+      ...(a.status === "held" ? { text: `About ${a.about}.\n\n${a.q}` } : {}) };
+    (out[a.story] ??= []).push(e);
+  });
+  return out;
+}
+
 export function demoAsks(f, terminalOf = () => null, project = false) {
   const link = (key) => (project ? `https://github.com/${f.project.repo}/issues/${numberOf(key)}` : `${f.profile.site}/browse/${key}`);
   return (f.asks ?? []).flatMap((a, i) => {
@@ -542,6 +560,7 @@ export async function setupDemo(board = "jira") {
   // The Desk's paused agents (desk.js), offered in its + menu: `deskPaused`, a list like a key's.
   setShared(DESK_PAUSED, { ...(shared(DESK_PAUSED) ?? {}), [DEMO_ID]: (f.deskPaused ?? []).map((x, n) => ({ sessionId: x.id ?? `demo-desk-${n}`, cwd: folder, name: x.name ?? "Claude", at: when(x.at ?? "-1h") })) });
   setShared("kelpie.next.asks", { ...(shared("kelpie.next.asks") ?? {}), [DEMO_ID]: demoAsks(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)?.address, board === "project") });
+  setShared("kelpie.ask.thread", { ...(shared("kelpie.ask.thread") ?? {}), [DEMO_ID]: demoAskThread(f, (tab) => agents().find((a) => a.tab_name === tab && owned[a.space] === DEMO_ID)) });
   setShared("kelpie.profile.chosen", { id: DEMO_ID, space: spaces().find((s) => s.active)?.id ?? null });
   setShared(DEMO_AT, Date.now());
 }
