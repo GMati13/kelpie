@@ -100,6 +100,7 @@
           "id": "details",
           "type": "column",
           "resizable": true,
+          "gap": 6,
           "children": [
             {
               "id": "story-body",
