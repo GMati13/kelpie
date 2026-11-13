@@ -367,3 +367,13 @@ test("changes: a second right-click in the same file offers the lines from the f
   const words = rightClickLine(s, item, 3 * 20 + 5);
   assert.ok(words.some((w) => /^Ask Claude about lines \d+–\d+$/.test(w)), words.join(" | "));
 });
+// KELPIE-225: a right-click on a file's header opens its own menu: ask about the file, copy its path,
+// open it where it is.
+test("changes: a right-click on a file's header asks about the file, copies its path, opens it", async () => {
+  const s = await storyChanges([prGroup]);
+  const item = s.view.diffView.entries.findIndex((e) => e.r.kind === "file");
+  const words = rightClickLine(s, item, 10);
+  assert.deepEqual(words.filter((w) => !/\.ts$/.test(w)), ["Ask Claude about this file", "Copy path", "Open on GitHub"]);
+  handlers(s.view.render(s.cx)).find((h) => h.id === "line-menu-row-0").fn({}, s.cx);
+  assert.equal(pointed(), `file:${prGroup.files[0].id}`);
+});

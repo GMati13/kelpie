@@ -1,4 +1,7 @@
-h_flex #story-ACME-126 [hover(bg=hover)] {click hover} tip="Its agent finished a turn · 1 subtask · 1 in progress"
+h_flex #story-ACME-126 [hover(bg=hover)] {down:right click hover} tip="Its agent finished a turn · 1 subtask · 1 in progress"
+  div
+    Popup.new "story-menu-ACME-126-menu"
+      div #story-menu-ACME-126-at
   div
     div
       svg chrome:check [fg=done]
