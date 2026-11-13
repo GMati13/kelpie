@@ -100,12 +100,12 @@ v_flex [fg=foreground]
     h_flex
       div [fg=muted]
         "In progress"
-      h_flex #stories-sum-going [fg=dim] tip="13h 30m still to do on 8 stories in progress; 4 tickets not estimated"
+      h_flex #stories-sum-going [fg=dim] tip="13h 30m still to do on 9 stories in progress; 4 tickets not estimated"
         svg chrome:clock [fg=dim]
         div
           "13h 30m"
       div [fg=dim]
-        "8"
+        "9"
     h_flex #story-ACME-142 [hover(bg=hover)] {click hover} tip="ACME-143's agent needs you\nLast worked on 25m ago"
       div
         div
@@ -315,6 +315,18 @@ v_flex [fg=foreground]
             "ACME-184"
         h_flex #b-subs-ACME-184 tip="Your subtasks: 0 of 1 past QA · 1 in progress\nAll: 2 subtasks · 2 in progress"
           div [bg=working/73]
+    h_flex #story-ACME-126 [hover(bg=hover)] {click hover} tip="Its agent finished a turn · 1 subtask · 1 in progress"
+      div
+        div
+          div [border=muted]
+      v_flex
+        div
+          "Sign out after a while idle"
+        h_flex
+          div #here-ACME-126 [fg=muted] tip="Open here: it has a space on this machine"
+            "ACME-126"
+        h_flex #b-subs-ACME-126 tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 1 subtask · 1 in progress"
+          div [bg=ansi4/73]
     h_flex
       div [fg=muted]
         "Reviews for you"

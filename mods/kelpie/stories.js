@@ -176,14 +176,47 @@ function profileAgents(profile) {
   }
   return list;
 }
+// Each key's agent is marked `talking` while a conversation with any agent on that key is live
+// (talkingNow()), so a story handed over or done stays at hand while the person still talks to it.
 function agentsByKey(profile) {
-  const map = new Map();
+  const map = new Map(), live = new Set();
+  const quiet = shared(TALKING) ?? {};
   for (const { agent: a, space } of profileAgents(profile)) {
     const k = tabKey(a.tab_name) ?? keyOf(space.name);
-    if (k && (!map.has(k) || RANK[a.status] < RANK[map.get(k).status])) map.set(k, a);
+    if (!k) continue;
+    if (talkingNow(a, quiet)) live.add(k);
+    if (!map.has(k) || RANK[a.status] < RANK[map.get(k).status]) map.set(k, a);
   }
+  for (const k of live) map.set(k, { ...map.get(k), talking: true });
   return map;
 }
+
+// Whether the person is still talking to an agent: it's working, waiting for them, or finished a
+// turn they haven't seen (Herdr's `done`), or it went quiet less than STILL_FOR ago. Shared
+// `kelpie.talking` notes, by agent terminal, 0 while one is seen live and the time it went quiet
+// after that (settleTalking()); an agent only ever seen quiet (a session left open from yesterday)
+// isn't talking, so a restart doesn't bring every finished story back.
+const TALKING = "kelpie.talking";
+const STILL_FOR = 15 * 60 * 1000;
+const LIVE = new Set(["working", "blocked", "done"]);
+const talkingNow = (a, quiet, now = Date.now()) => LIVE.has(a.status) || (quiet[a.address] > 0 && now - quiet[a.address] < STILL_FOR);
+// Notes when each agent went quiet, drops what's past STILL_FOR or of a terminal gone; run by the
+// copy that follows what's shown (syncTracking()), written only on a change (an agent going quiet or
+// live again), so a quiet spell ending redraws every copy. Exported for the tests.
+export function settleTalking(now = Date.now()) {
+  const was = shared(TALKING) ?? {};
+  const next = {};
+  for (const a of agents()) {
+    if (!a.address) continue;
+    if (LIVE.has(a.status)) next[a.address] = 0;
+    else if (was[a.address] === 0) next[a.address] = now;
+    else if (was[a.address] > 0 && now - was[a.address] < STILL_FOR) next[a.address] = was[a.address];
+  }
+  const same = Object.keys(next).length === Object.keys(was).length && Object.entries(next).every(([k, v]) => was[k] === v);
+  if (!same) setShared(TALKING, next);
+}
+// A story the person is still talking to, through any agent on it.
+const talking = (it) => allAgents(it).some((a) => a.talking);
 
 // A story becomes a space when work on it starts: the space is named after its key (short, so Herdr's
 // own "Close space?" dialog has room for it), and found by it. Titles show in the sidebar and header.
@@ -511,9 +544,10 @@ export function priorityRanks(levels) { // exported for the tests
 }
 // Finished stories leave the list once nothing of theirs is open (no pull request) and nothing's left
 // to clean up: no space, no paused session, no leftovers found (`left`, the story keys with some). One
-// with any of those stays, so its broom shows; the others go to the Done group, still reachable.
+// with any of those stays, so its broom shows; the others go to the Done group, still reachable. One
+// whose agent the person still talks to (talking()) stays too, out of the folded group.
 const settled = (it, left = new Set()) => it.category === "done" && !it.space && !it.subs.some((s) => s.prs.some((p) => !p.merged))
-  && allPaused(it).length === 0 && !left.has(it.key);
+  && allPaused(it).length === 0 && !left.has(it.key) && !talking(it);
 // The keys of the profile's stories something of which is here: a space named after one, a paused
 // agent on one, a story with an open pull request of yours in the last load (`prior`). The load asks
 // the board for those it doesn't give as yours (board.js loadBoard()'s `keep`): a story reassigned to
@@ -887,6 +921,8 @@ function need(it) {
   const gone = it.reassigned ? `${reassignedWords(it)} · ` : "";
   if (isPaused(it)) return [7, `${gone}Paused · ${progress(it)}`, "dim"];
   if (allAgents(it).some((a) => a.status === "working")) return [5, `${gone}Agent working · ${progress(it)}`, "accent"];
+  // Handed over or done, kept at hand as its agent is still being talked to: why it's here.
+  if (it.sunk && talking(it)) return [6, `${gone}${allAgents(it).some((a) => a.status === "done") ? "Its agent finished a turn" : "Still talking to its agent"} · ${progress(it)}`, "accent"];
   return [6, gone ? `${gone}clean up once you're done with it` : progress(it), "dim"];
 }
 
@@ -1191,8 +1227,9 @@ const queueShown = (x, shownKey) => Boolean(shownKey) && (x.key === shownKey || 
 // The one after the item shown, wrapping around; the first when the one shown isn't in it.
 const nextIn = (queue, shownKey) => queue[(queue.findIndex((x) => x.key === shownKey) + 1) % queue.length] ?? null;
 
-// Sunk, as drawn: handed over and nothing of it waiting on you.
-const sunk = (it, n = need(it)) => it.sunk && n[0] > NEEDS_YOU;
+// Sunk, as drawn: handed over, nothing of it waiting on you and no conversation with its agents
+// going on (talking()): one the person still talks to stays in In progress until it's been quiet.
+const sunk = (it, n = need(it)) => it.sunk && n[0] > NEEDS_YOU && !talking(it);
 
 // A story's state in one word, for skins (skins/index.js statusMark): what it needs from you first,
 // then what its agents do, then whether it's handed over, open or not.
@@ -5728,6 +5765,7 @@ let lastProfile = null; // the profile shown at the last call
 export function syncTracking(baseline = false) {
   keepProfileOnClose(baseline);
   settleAsks();
+  settleTalking();
   const ctx = READER.context();
   noteActivity(ctx);
   if (baseline) { lastSpace = ctx.space?.id ?? null; lastProfile = ctx.profile?.id ?? null; }
