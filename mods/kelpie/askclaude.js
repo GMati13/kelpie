@@ -82,6 +82,24 @@ export function fileAbout(f, key) {
   return { ...base, text: `About the file ${path} in ${repo}${story}, ${state}: ${full}.`, others: false };
 }
 
+// What's asked about, for lines of a file in Changes (KELPIE-227): the file as fileAbout() says it,
+// then which lines (`what`: "line 12", "lines 9-14", "the change at lines 9-14"), then the lines
+// themselves (`rows`, diffRows()'s: old/new numbers, +/− for added and removed, the text), fenced,
+// a pull request's being anyone's code. Each line cleaned (promptValue()), LINES_MAX at most.
+export const LINES_MAX = 80;
+export function linesAbout(f, key, rows, what) {
+  const file = fileAbout(f, key);
+  const shown = rows.slice(0, LINES_MAX).map((r) => {
+    const n = r.kind === "del" ? r.old : r.new ?? r.old;
+    const sign = r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ";
+    return `${String(n ?? "").padStart(4)} ${sign} ${promptValue("description", r.text ?? "")}`;
+  });
+  if (rows.length > LINES_MAX) shown.push(`… and ${rows.length - LINES_MAX} lines more`);
+  const range = promptValue("note", what);
+  return { ...file, id: `lines:${f.id ?? f.path}:${range}`, kind: "lines", label: `${file.name} ${range}`,
+    text: `${file.text}\n\nAbout ${range} of it (old and new line numbers as in the diff, + added, - removed):\n\n${fenced("the lines", shown.join("\n"))}` };
+}
+
 // What's asked about, for a ticket of the story shown: the story itself (`kind` "story"), one of its
 // subtasks ("sub", `x` the subtask) or one of its pull requests ("pr", `x` the pull request, `name`
 // its repo#n). A ticket goes with its status, a story with its subtasks (key, title, status, who has
@@ -138,7 +156,7 @@ export function blocksText(blocks, max = ABOUT_DESC_MAX) {
 
 // The suggestions for a kind of thing asked about, each a profile message (the Messages page's Ask
 // Claude group): a file's are about its code, a ticket's about where it stands.
-const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], story: ["left", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
+const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], lines: ["explain", "check", "fixit"], story: ["left", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
 export const suggestionsFor = (kind) => (SUGGESTIONS[kind] ?? []).map((id) => ({ id, label: ASK_PROMPTS.find((a) => a.id === id).label }));
 
 // The message: what it's about, then the suggestion (the profile's wording) or what was typed, then,

@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { ASK_ID, askId, askLine, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, askId, askLine, linesAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -3469,6 +3469,39 @@ export class Stories extends Source {
       cx.notify();
     };
   }
+  // A line of code's (KELPIE-227), for the line right-clicked in Changes (`this.lineMenu`): ask
+  // about the line, the change it's in (its run of added and removed lines), or the lines from the
+  // one right-clicked before in the same file; then copy it.
+  lineMenuRows(st, it, all) {
+    const m = this.lineMenu, f = all[m.fi];
+    if (!f) return [];
+    const key = f.group.key ?? it.key;
+    const code = fileRows(f).filter((r) => r.kind === "add" || r.kind === "del" || r.kind === "ctx");
+    const same = (a, b) => a.kind === b.kind && a.old === b.old && a.new === b.new;
+    const at = code.findIndex((r) => same(r, m.r));
+    if (at < 0) return [];
+    const num = (r) => (r.kind === "del" ? r.old : r.new);
+    const span = (rows) => {
+      const ns = rows.map((r) => r.new).filter((n) => n != null);
+      const [a, b] = ns.length ? [Math.min(...ns), Math.max(...ns)] : [Math.min(...rows.map((r) => r.old)), Math.max(...rows.map((r) => r.old))];
+      return a === b ? `line ${a}` : `lines ${a}–${b}`;
+    };
+    const ask = (rows, what) => () => pointAsk(st.profile, it.key, linesAbout(f, key, rows, what));
+    const out = [{ label: "Ask Claude about this line", hint: m.r.kind === "del" ? `old line ${m.r.old}` : `line ${m.r.new}`, action: ask([m.r], m.r.kind === "del" ? `old line ${m.r.old}` : `line ${m.r.new}`) }];
+    if (m.r.kind !== "ctx") {
+      let a = at, b = at;
+      while (a > 0 && code[a - 1].kind !== "ctx") a--;
+      while (b < code.length - 1 && code[b + 1].kind !== "ctx") b++;
+      if (b > a) out.push({ label: "Ask Claude about this change", hint: span(code.slice(a, b + 1)), action: ask(code.slice(a, b + 1), `the change at ${span(code.slice(a, b + 1))}`) });
+    }
+    const p = m.prev && all[m.prev.fi] === f ? code.findIndex((r) => same(r, m.prev.r)) : -1;
+    if (p >= 0 && p !== at) {
+      const rows = code.slice(Math.min(p, at), Math.max(p, at) + 1);
+      out.push({ label: `Ask Claude about ${span(rows)}`, hint: "from the line before", action: ask(rows, span(rows)) });
+    }
+    out.push({ label: "Copy the line", hint: num(m.r) != null ? String(num(m.r)) : null, action: (cx) => cx.write_to_clipboard(m.r.text ?? "") });
+    return out;
+  }
   // A subtask's: ask about it, open it on the board, copy its key, and show its agent while one runs.
   subMenuRows(st, it, s) {
     const url = ticketUrl(boardOf(st.profile), st.data, s.key);
@@ -4855,6 +4888,14 @@ export class Stories extends Source {
       }
       return null;
     };
+    // The list's right-click: which line of code it landed on (an item holds a run of lines, ROW
+    // apart), for the menu the box around the list opens (KELPIE-227).
+    const lineHit = (key, e) => {
+      const en = entries[Number(key)];
+      if (!en?.lines) { this.lineAt = null; return; }
+      const i = Math.floor((e?.local_position?.y ?? 0) / (this.diffZoom || 1) / ROW);
+      this.lineAt = { fi: en.fi, r: en.lines[Math.min(en.lines.length - 1, Math.max(0, i))] };
+    };
     // The list's one click handler: a file's header folds or unfolds it, a band's button opens its gap.
     const clickRow = (key, cx) => {
       const e = entries[Number(key)];
@@ -5072,11 +5113,24 @@ export class Stories extends Source {
           .child(div().id(`diff-x-${it.key}`).size_full().overflow_x_scrollbar()
             // Where a press lands, for the band buttons and the Viewed box (and the press gives the diff
             // the keys); a scroll asks the page which file it's on, and n / p start from where it is.
-            .child(div().w_full().min_w(width).h_full()
+            .child(div().relative().w_full().min_w(width).h_full()
               .when(Boolean(this.diffFocus), (el) => el.track_focus(this.diffFocus).on_key_down(keys(false)))
+              .when(Boolean(this.lineMenu), (el) => el.child(this.elementMenu(t, "line-menu", this.lineMenuRows(st, it, all), 0)))
               .on_mouse_down("left", (e) => {
                 this.pressX = e.local_position ? e.local_position.x / (this.diffZoom || 1) : null;
                 this.diffFocus?.focus();
+              })
+              // A right-click on a line of code opens its menu there (KELPIE-227): the list says which
+              // line (lineHit), this box where, both as drawn, so divided by the zoom.
+              .on_mouse_down("right", (e, cx) => {
+                if (!this.lineAt) return;
+                const zoom = this.diffZoom || 1;
+                this.lineMenu = { ...this.lineAt, prev: this.lineMark ?? null };
+                this.lineMark = this.lineAt;
+                this.lineAt = null;
+                this.menuAt = { id: "line-menu", x: (e.local_position?.x ?? 0) / zoom, y: (e.local_position?.y ?? 0) / zoom };
+                this.menu = "line-menu";
+                DIFF.version++; cx.notify();
               })
               .on_scroll_wheel((_e, cx) => { this.changeAt = null; if (whole && this.track(it.key)) cx.notify(); })
               .child(v_virtual_list(list, entries.length, view.sizes, (i) => String(i), (range) => {
@@ -5090,7 +5144,7 @@ export class Stories extends Source {
                   drawn += e.lines?.length ?? 1;
                   return drawn <= DRAW_FIRST ? line(e) : div().w_full().h(view.sizes[range.start + k] ?? ROW);
                 });
-              }).size_full().on_item_click(clickRow).when(Boolean(scroller), (el) => el.track_scroll(scroller)))))
+              }).size_full().on_item_click(clickRow).on_item_secondary_click(lineHit).when(Boolean(scroller), (el) => el.track_scroll(scroller)))))
           .child(Scrollbar.vertical(list).viewport_from_layout().absolute().inset_0()))));
   }
 
