@@ -15,7 +15,7 @@ import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, 
 import { toggleDebug } from "./debug.js";
 import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -716,6 +716,8 @@ export async function command(c) {
   // handed in, each from a request file (the plugin's tools; stories.js).
   if (c === "get-next") return getNextRequest();
   if (c === "add-next") return addNextRequest();
+  // ask-answer: a Claude asked from the Ask line hands back a short answer (answer_ask).
+  if (c === "ask-answer") return answerAskRequest();
   if (c === "suggest-next") return suggestNextRequest();
   // find-agents, show-agent: the agents Kelpie knows, filtered, and one of them shown (the plugin's
   // find_agents and show_agent; stories.js).

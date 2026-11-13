@@ -10,6 +10,8 @@ import { mock } from "herdr";
 import { askMessage, askWho, chosenWho, entryWords, fileAbout, holdFor, openClaudes, releaseOf, suggestionsFor, ticketAbout, withEntry, THREAD_FOR, THREAD_KEEP } from "../../mods/kelpie/askclaude.js";
 import { ASK_CLAUDE, ASK_PROMPTS, OTHERS } from "../../mods/kelpie/config.js";
 import { askClaude, releaseHeld, threadOf } from "../../mods/kelpie/stories.js";
+// A string as a literal in a RegExp.
+const escape = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const keyOf = (s) => /\b([A-Z][A-Z0-9]+-\d+)\b/.exec(s ?? "")?.[1] ?? null;
 const story = { key: "ABC-1", title: "Checkout", space: { id: "s1" }, subs: [{ key: "ABC-2", title: "Form" }] };
@@ -215,7 +217,7 @@ describe("the Ask line's thread", () => {
     await new Promise((r) => setImmediate(r));
     assert.equal(sends().length, 1);
     assert.ok(mock.of("hc").some(([a]) => a[0] === "get" && a[1] === "t1"), "it looked at what the terminal runs");
-    assert.ok(sends()[0][0].at(-1).endsWith(`Why?\n\n${OTHERS}`));
+    assert.match(sends()[0][0].at(-1), new RegExp(`Why\\?\\n\\nAfter answering, also hand Kelpie a short answer[^\\n]*\\n\\n${escape(OTHERS)}$`));
     assert.equal(threadOf(profile, "ABC-1")[0].status, "sent");
   });
   test("a held question whose Claude closed says so; one whose Claude now waits for you says that", async () => {

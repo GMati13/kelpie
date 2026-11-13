@@ -106,12 +106,31 @@ export function ticketAbout(it, kind, x = null, { url = null, name = null } = {}
 const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], story: ["left", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
 export const suggestionsFor = (kind) => (SUGGESTIONS[kind] ?? []).map((id) => ({ id, label: ASK_PROMPTS.find((a) => a.id === id).label }));
 
-// The message: what it's about, then the suggestion (the profile's wording) or what was typed, then
-// OTHERS when what it's about is others' work. Null when there's nothing to ask.
-export function askMessage(profile, about, { suggestion, note } = {}) {
+// The message: what it's about, then the suggestion (the profile's wording) or what was typed, then,
+// with the ask's `id`, the line asking for a short answer back (handBack()), then OTHERS when what it's
+// about is others' work. Null when there's nothing to ask.
+export function askMessage(profile, about, { suggestion, note } = {}, id = null) {
   const what = suggestion ? askText(profile, suggestion) : promptValue("note", note ?? "").trim();
   if (!what) return null;
-  return `${about.text}\n\n${what}${about.others ? `\n\n${OTHERS}` : ""}`;
+  return `${about.text}\n\n${what}${id ? `\n\n${handBack(id)}` : ""}${about.others ? `\n\n${OTHERS}` : ""}`;
+}
+
+// Asked from the Ask line, a Claude hands a short answer back to Kelpie, which puts it on the story's
+// thread (and in Next): the line says so by the ask's id, never naming a tool, as every prompt says what
+// to do and not how (the plugin's answer_ask is the how). Ids are Kelpie's own (askId()).
+export const ASK_ID = /^[a-z0-9]{6,24}$/;
+export const askId = (now = Date.now()) => `${now.toString(36)}${Math.random().toString(36).slice(2, 8)}`.slice(0, 24);
+export const handBack = (id) => `After answering, also hand Kelpie a short answer (a few plain lines) for the story's thread, with this ask's id: ${id}.`;
+
+// An answer as the thread keeps it: anyone's words (a Claude can be misled by what it read), so no
+// control characters but line breaks, no more than ANSWER_LINES lines and ANSWER_MAX characters.
+export const ANSWER_MAX = 1200;
+export const ANSWER_LINES = 12;
+export function cleanAnswer(text) {
+  const lines = String(text ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim());
+  const kept = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim().split("\n").slice(0, ANSWER_LINES).join("\n");
+  return kept.length > ANSWER_MAX ? `${kept.slice(0, ANSWER_MAX - 1).trimEnd()}…` : kept;
 }
 
 // The question as the thread shows it: a suggestion's label, or what was typed (cleaned).
@@ -128,6 +147,7 @@ export function entryWords(e, now = Date.now()) {
   if (e.status === "held") return e.waiting ? "held: it waits for your answer first" : "held: sends when its turn ends";
   if (e.status === "failed") return `didn't go: ${e.why ?? "it couldn't be sent"}`;
   if (e.status === "started") return `asked a new Claude · ${ago(e.at, now)}`;
+  if (e.status === "answered") return `answered · ${ago(e.answeredAt ?? e.at, now)}`;
   return `sent · ${ago(e.at, now)}`;
 }
 
@@ -147,11 +167,19 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold })
     .when(e.status === "held", (el) => el
       .child(textButton(t, `ask-now-${e.id}`, "Send now", (_e, cx) => sendNow(e.id, cx), { dim: true, tip: "Typed in while it works, it may change what it's doing" }))
       .child(textButton(t, `ask-drop-${e.id}`, "Cancel", (_e, cx) => drop(e.id, cx), { dim: true })))
-    .when(e.status === "sent" && Boolean(e.address), (el) => el
-      .child(textButton(t, `ask-show-${e.id}`, "Show its answer", (_e, cx) => show(e.id, cx), { dim: true, tip: "The answer is in its tab" })));
+    .when((e.status === "sent" || e.status === "answered") && Boolean(e.address), (el) => el
+      .child(textButton(t, `ask-show-${e.id}`, e.status === "answered" ? "Show its Claude" : "Show its answer", (_e, cx) => show(e.id, cx), { dim: true, tip: e.status === "answered" ? "Its full answer is in its tab" : "The answer is in its tab" })));
+  // An answered ask: its line, then the short answer under it, a few lines at most (the whole of it
+  // in the tip), in the reading colour.
+  const answered = (e) => v_flex().id(`ask-answered-${e.id}`).flex_none().gap(2)
+    .child(row(e))
+    .child(h_flex().gap(8).items_start().pl(2)
+      .child(icon(own("sparkles"), 12).text_color(t.accent).mt(3))
+      .child(v_flex().id(`ask-answer-${e.id}`).flex_1().min_w(0).text_size(SMALL).text_color(t.foreground).tooltip(e.answer)
+        .children(String(e.answer).split("\n").slice(0, 4).map((l, i) => div().id(`ask-answer-${e.id}-${i}`).min_w(0).truncate().child(l || " ")))));
   return v_flex().id("ask-thread").flex_none().gap(2)
     .when(more > 0, (el) => el.child(textButton(t, "ask-thread-more", `${more} earlier ${more === 1 ? "ask" : "asks"}`, (_e, cx) => unfold(cx), { dim: true })))
-    .children(entries.map(row));
+    .children(entries.map((e) => (e.status === "answered" && e.answer ? answered(e) : row(e))));
 }
 
 // The Ask line: the sparkles, what it's about (✕ goes back to the story; a word when it's others'

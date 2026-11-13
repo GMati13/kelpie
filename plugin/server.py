@@ -17,6 +17,10 @@ something in Kelpie and set up their Kelpie profiles.
   its session changed), filtered (`kelpie.find-agents`), and
   one of them shown to the person (`kelpie.show-agent`, by an id find_agents gave), stories.js.
 
+- answer_ask: a short answer to a question the person asked from a story's Ask line in Kelpie, handed
+  back by the ask's id so it shows on the story's thread and in Next (`kelpie.ask-answer`, stories.js
+  answerAskRequest).
+
 - get_story: where the agent runs (its profile, and its story or the Desk) and what Kelpie holds about a
   story: its status, subtasks, pull requests, agents and status line (`kelpie.get-story`).
 
@@ -211,6 +215,26 @@ TOOLS = [
                 "url": {"type": "string", "description": "A link to open instead: a GitHub page or the profile's Jira site."},
             },
             "required": ["action"],
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "answer_ask",
+        "title": "Hand the person a short answer in Kelpie",
+        "description": (
+            "When the person asked you something from a story's Ask line in Kelpie, the message ends asking you to hand "
+            "Kelpie a short answer with the ask's id. Answer as you normally would, then call this with that id and the "
+            "gist in a few plain lines (what you found, what you'd do): Kelpie shows it on the story, under the question, "
+            "and in their Next queue, so they read it without opening your tab. Only for an ask whose id you were given."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "The ask's id, as the message gave it."},
+                "answer": {"type": "string", "description": "The gist of your answer in a few plain lines, under 1200 characters."},
+            },
+            "required": ["id", "answer"],
             "additionalProperties": False,
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
@@ -519,6 +543,24 @@ def add_to_next(args):
     return f"Added to Next in Kelpie's profile {answer.get('profile')}: {answer.get('ask', {}).get('action', action)}.", False
 
 
+ASK_ID = re.compile(r"^[a-z0-9]{6,24}$")
+
+
+def answer_ask(args):
+    ask_id = clean(args.get("id"), 40)
+    if not ASK_ID.match(ask_id):
+        return "id: the ask's id, as the message you were asked in gave it.", True
+    text = args.get("answer") if isinstance(args.get("answer"), str) else ""
+    # Line breaks kept (Kelpie cleans and cuts it again), every other control character dropped.
+    answer = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]+", " ", text).strip()[:1500]
+    if not answer:
+        return "answer: the gist of your answer, a few plain lines.", True
+    reply_ = ask("ask-answer", {**origin(), "id": ask_id, "answer": answer}, "ask-answer")
+    if not reply_.get("ok"):
+        return refused(reply_, "take the answer")
+    return f"Kelpie shows your answer on {reply_.get('story')}, in profile {reply_.get('profile')}.", False
+
+
 def suggest_next(args):
     items = args.get("items")
     if not isinstance(items, list) or not items:
@@ -676,6 +718,7 @@ def session_start():
 CALLS = {"show_passage": show_passage, "get_profile": get_profile, "save_profile": save_profile,
          "save_status": save_status, "open_profile_page": open_profile_page,
          "get_next": get_next, "add_to_next": add_to_next, "suggest_next": suggest_next, "get_story": get_story,
+         "answer_ask": answer_ask,
          "find_agents": find_agents, "show_agent": show_agent}
 
 
@@ -692,7 +735,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.8.4"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.9.0"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":

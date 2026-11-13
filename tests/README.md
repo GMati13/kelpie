@@ -155,6 +155,9 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   and the details' folded "Comments · n", opened to the newest three with Show all, none without any.
 - `next-plugin.test.mjs`: the plugin's Next requests (`kelpie.add-next`, `suggest-next`, `get-next`): an
   agent's ask checked (key, links, caps), where it sits in the queue, when it goes, a click on it.
+- `ask-answer.test.mjs`: answers back from the Ask line (`kelpie.ask-answer`): taken only from the Claude asked (or, for an
+  ask that started a new Claude, one in the story's space), cleaned and cut, onto the story's thread and into Next; the
+  message asking for it by the ask's id, before the note about others' text, naming no tool.
 - `find-agents.test.mjs`: the plugin's agent requests (`kelpie.find-agents`, `show-agent`): every agent
   with its story, state, folder and work (the demo's from the fixture's `work`, a real one's from its session
   through agent-work.py), the Claude agent itself (`claudeOf()`: its session's name, messaging address and id,
