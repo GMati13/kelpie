@@ -25,7 +25,7 @@ test("only the confirm dialog's button closes issues; no kelpie.* command does",
   for (const f of ["main.js", "work.js", "workside.js", "setup.js", "desk.js", "source.js", "ui.js", "config.js"]) {
     assert.doesNotMatch(readRepo("mods/kelpie", f), /closeStories|closeTicket|closeIssue/, f);
   }
-  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /const ask = \{ \.\.\.closing, onStep[^}]*\} \};[\s\S]*await closeStories\(ask\)/);
+  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /const ask = \(redraw\) => \(\{ \.\.\.closing, onStep[^}]*\} \}\);[\s\S]*await closeStories\(ask\(task\)\)/);
   assert.equal(readRepo("mods/kelpie/stories.js").match(/closeStories\(/g).length, 1, "stories.js only defines it");
 });
 
@@ -204,6 +204,49 @@ describe("Close in the demo's GitHub Project", () => {
     assert.equal(byId(el, "stories-close-all-button"), null);
     hover(el, "done-ACME-118", list);
     assert.equal(byId(view.render(list), "close-ACME-118-button"), null, "its row has no Close");
+  });
+
+  // Seen in real use: Close all closed 5 issues a press, then stopped. ACME-118 gets ten more open
+  // sub-issues, done on the board, under node ids the demo knows, so one press is 12 issues, 3 requests.
+  const twelve = () => {
+    world();
+    const shared = mock.sharedValue("kelpie.stories.data");
+    const d = shared[DEMO].data, model = d.children.find((i) => i.key === "ACME-119");
+    const more = ["ACME-142", "ACME-143", "ACME-144", "ACME-145", "ACME-151", "ACME-152", "ACME-153", "ACME-160", "ACME-161", "ACME-166"]
+      .map((k, n) => ({ ...model, key: `ACME-${901 + n}`, id: `I_${k}` }));
+    mock.state.shared.set("kelpie.stories.data", { [DEMO]: { ...shared[DEMO], data: { ...d, children: [...d.children, ...more] } } });
+    return ["ACME-118", "ACME-119", ...more.map((i) => i.key)];
+  };
+
+  test("a throw in the progress shown doesn't stop the closing", async () => {
+    const keys = twelve();
+    const steps = [];
+    const r = await closeStories({ profile: DEMO, keys: ["ACME-118"], onStep: (p) => { steps.push(p.closed.length); if (p.closed.length) throw new Error("the dialog went away"); } });
+    assert.deepEqual([...r.closed].sort(), [...keys].sort(), "all 12 closed");
+    assert.deepEqual(steps, [0, 5, 10, 12], "as it starts, then after each of the 3 requests");
+    assert.deepEqual(r.failed, []);
+    assert.equal(mock.sharedValue("kelpie.busy")?.["ACME-118"], undefined);
+  });
+
+  test("Close all with 12 open issues closes all 12 in one press, its progress drawn by the task's own cx", async () => {
+    twelve();
+    mock.state.props = { role: "confirm", closeStories: { profile: DEMO, keys: ["ACME-118"] }, yes: "Close 12 issues", working: "Closing…", overlay: "o1" };
+    const dialog = new Confirm();
+    const task = fakeCx();
+    dialog.init(task);
+    // Herdr's click context is good only for the click: past an await it's stale and throws. The task's
+    // own (the one cx.spawn hands its callback) is what can redraw the dialog later.
+    let stale = false;
+    const click = { ...task, spawn: (fn) => task.spawn(fn), notify() { if (stale) throw new Error("stale context"); task.notified++; } };
+    handlers(dialog.render(task)).find((h) => h.id === "confirm-yes").fn({}, click);
+    stale = true;
+    await task.settle(20);
+    assert.deepEqual(task.errors, []);
+    assert.equal(dialog.progress.closed.length, 12, "every issue closed in one press");
+    assert.deepEqual(dialog.progress.failed, {});
+    assert.ok(task.notified >= 4, "the dialog redraws as each of the 3 batches ends");
+    assert.match(note(), /^Closed 12 issues on GitHub: ACME-118, ACME-119, ACME-901, .* and ACME-910\.$/, "how many, then which");
+    assert.deepEqual(mock.of("closeOverlay"), [["o1"]]);
   });
 
 });
