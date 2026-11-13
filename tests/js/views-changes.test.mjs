@@ -302,7 +302,9 @@ test("changes: a suggestion in Ask Claude's picker asks the Claude picked about 
   mock.state.spaces = [...mock.state.spaces, { id: "s-ask", name: "Elsewhere", tabs: [] }];
   mock.state.agents = [...mock.state.agents,
     { address: "t-ask", tab_name: `${STORY} claude`, space: "s-ask", pane: "p-ask", status: "idle", title: "" },
-    { address: "t-other", tab_name: "ACME-999", space: "s-ask", pane: "p-other", status: "idle", title: "" }];
+    { address: "t-other", tab_name: "ACME-999", space: "s-ask", pane: "p-other", status: "idle", title: "" },
+    // Reviewing the story's pull requests by others (KELPIE-118): not the story's own Claude.
+    { address: "t-review", tab_name: `Review ${STORY}`, space: "s-ask", pane: "p-review", status: "idle", title: "" }];
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   clickAt(s, 1, CENTRE.ask, headerOf(s.view, 0));
   const el = s.view.render(s.cx);
@@ -310,6 +312,7 @@ test("changes: a suggestion in Ask Claude's picker asks the Claude picked about 
   assert.match(words, /New Claude in ACME-184's space/);
   assert.match(words, new RegExp(`${STORY} claude`), "the story's open Claude is offered");
   assert.doesNotMatch(words, /ACME-999/, "another story's Claude isn't");
+  assert.doesNotMatch(words, new RegExp(`Review ${STORY}`), "nor the agent reviewing the story's pull requests");
   assert.equal(s.view.target.chosen, "t-ask", "the Claude on the story's key is picked");
   mock.calls.length = 0;
   handlers(el).find((h) => h.id === "ask-claude-suggest-explain").fn({}, s.cx);
