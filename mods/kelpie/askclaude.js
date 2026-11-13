@@ -13,7 +13,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
-import { SMALL, ago, icon, own, sessionTitle, stop, textButton } from "./ui.js";
+import { SMALL, ago, icon, own, sessionTitle, stop, textButton, tint } from "./ui.js";
 import { ASK_PROMPTS, OTHERS, askText, fenced, promptValue } from "./config.js";
 
 // The Claudes a story's ask may go to: those in its space, and those on one of its keys elsewhere
@@ -244,8 +244,10 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // The Ask line: the sparkles, what it's about (✕ goes back to the story; a word when it's others'
 // text), the question (Enter sends), who it goes to (`to`, the caller's menu) and Send; under it the
 // suggestions for that kind of thing (a click sends that one) and a word on where it goes (`hint`).
+// It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
+// accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
 export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory }) {
-  return v_flex().id("ask-line").flex_none().gap(6).pt(8).pb(2).border_t_1().border_color(t.border)
+  return v_flex().id("ask-line").flex_none().gap(6).mt(4).px(10).pt(8).pb(6).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
     .child(h_flex().gap(8).items_center().min_w(0)
       .child(icon(own("sparkles"), 14).text_color(t.accent))
       .child(div().flex_none().text_size(SMALL).text_color(t.muted).child("About"))
