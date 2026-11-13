@@ -100,6 +100,21 @@ export function linesAbout(f, key, rows, what) {
     text: `${file.text}\n\nAbout ${range} of it (old and new line numbers as in the diff, + added, - removed):\n\n${fenced("the lines", shown.join("\n"))}` };
 }
 
+// What's asked about, for a passage the person copied (KELPIE-226): Herdr doesn't tell a mod what's
+// selected, but a mod can read the clipboard, so copy, then ask. `found`: it's part of the story's
+// description (said so). Anyone's words either way: each line cleaned, PASSAGE_MAX at most, fenced.
+export const PASSAGE_MAX = 1500;
+export function textAbout(text, it, { found = false } = {}) {
+  const story = promptValue("key", it.key);
+  const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n").map((l) => promptValue("description", l).replace(/\s+$/, ""));
+  let body = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (body.length > PASSAGE_MAX) body = `${body.slice(0, PASSAGE_MAX - 1).trimEnd()}…`;
+  const head = body.replace(/\s+/g, " ");
+  return { id: `text:${head.slice(0, 60)}`, key: story, name: "the passage", kind: "text", others: true,
+    label: `“${head.length > 28 ? `${head.slice(0, 27)}…` : head}”`,
+    text: `About this passage, ${found ? `from the description of the story ${story}` : `which I copied while looking at the story ${story}`}:\n\n${fenced("the passage", body)}` };
+}
+
 // What's asked about, for a ticket of the story shown: the story itself (`kind` "story"), one of its
 // subtasks ("sub", `x` the subtask) or one of its pull requests ("pr", `x` the pull request, `name`
 // its repo#n). A ticket goes with its status, a story with its subtasks (key, title, status, who has
@@ -156,7 +171,7 @@ export function blocksText(blocks, max = ABOUT_DESC_MAX) {
 
 // The suggestions for a kind of thing asked about, each a profile message (the Messages page's Ask
 // Claude group): a file's are about its code, a ticket's about where it stands.
-const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], lines: ["explain", "check", "fixit"], story: ["left", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
+const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], lines: ["explain", "check", "fixit"], text: ["explain", "left"], story: ["left", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
 export const suggestionsFor = (kind) => (SUGGESTIONS[kind] ?? []).map((id) => ({ id, label: ASK_PROMPTS.find((a) => a.id === id).label }));
 
 // The message: what it's about, then the suggestion (the profile's wording) or what was typed, then,
@@ -246,7 +261,7 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // suggestions for that kind of thing (a click sends that one) and a word on where it goes (`hint`).
 // It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
 // accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
-export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory }) {
+export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory, copied = null }) {
   return v_flex().id("ask-line").flex_none().gap(6).mt(4).px(10).pt(8).pb(6).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
     .child(h_flex().gap(8).items_center().min_w(0)
       .child(icon(own("sparkles"), 14).text_color(t.accent))
@@ -263,6 +278,8 @@ export function askLine(t, { about, input, to, send, suggest, clear, hint, isSto
       .child(textButton(t, "ask-send", "Send", (_e, cx) => send(cx))))
     .child(h_flex().gap(4).items_center().pl(22).min_w(0)
       .children(suggestionsFor(about.kind).map((s) => textButton(t, `ask-suggest-${s.id}`, s.label, (_e, cx) => suggest(s.id, cx), { dim: true, tip: "Ask it this (the wording is the profile's, on its Messages page)" })))
+      // Copy, then ask (KELPIE-226): what was copied becomes what it's about.
+      .when(Boolean(copied), (el) => el.child(textButton(t, "ask-copied", "Ask about what you copied", (_e, cx) => copied(cx), { dim: true, tip: "Copy a passage with ⌘C, then press this: the Ask line is about it" })))
       .child(div().flex_1())
       .child(div().id("ask-hint").flex_shrink(1).min_w(0).truncate().text_size(SMALL).text_color(t.dim).child(hint)));
 }

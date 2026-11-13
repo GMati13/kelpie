@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { ASK_ID, askId, askLine, linesAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, askId, askLine, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -5373,6 +5373,14 @@ export class StoryBody extends Stories {
       send: (cx) => this.askSend({ note: this.askInput.value() }, cx),
       suggest: (id, cx) => this.askSend({ suggestion: id }, cx),
       clear: () => pointAsk(profile, it.key, null),
+      // Copy, then ask (KELPIE-226): the clipboard's text, said to be from the description when it is.
+      copied: (cx) => {
+        const text = String(cx.read_from_clipboard?.() ?? "").trim();
+        if (!text) return say({ profile, keys: it.key }, "Nothing copied yet: copy a passage with ⌘C, then press Ask about what you copied.");
+        const flat = (x) => String(x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+        const found = flat(blocksText(DESCRIPTIONS[it.key]?.blocks, 1e6)).includes(flat(text));
+        pointAsk(profile, it.key, textAbout(text, it, { found }));
+      },
     });
     // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
     // the question box ran far from what it's about and from Send.

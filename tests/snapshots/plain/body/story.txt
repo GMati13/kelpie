@@ -223,6 +223,8 @@ v_flex [fg=foreground]
             "What's left?"
           h_flex #ask-suggest-explain [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
             "Explain this"
+          h_flex #ask-copied [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Copy a passage with ⌘C, then press this: the Ask line is about it"
+            "Ask about what you copied"
           div
           div #ask-hint [fg=dim]
             "A question about the whole story goes to a new Claude"
