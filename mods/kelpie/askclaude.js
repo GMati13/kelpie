@@ -217,9 +217,9 @@ export function withEntry(list, entry, now = Date.now()) {
 export function entryWords(e, now = Date.now()) {
   if (e.status === "held") return e.waiting ? "held: it waits for your answer first" : "held: sends when its turn ends";
   if (e.status === "failed") return `didn't go: ${e.why ?? "it couldn't be sent"}`;
-  if (e.status === "started") return `asked a new Claude · ${ago(e.at, now)}`;
+  if (e.status === "started") return `new Claude · ${ago(e.at, now)}`;
   if (e.status === "answered") return `answered · ${ago(e.answeredAt ?? e.at, now)}`;
-  return `sent · ${ago(e.at, now)}`;
+  return `no answer yet · ${ago(e.at, now)}`;
 }
 
 // The thread: the last few asks (`entries`), a line each, as the details' block is short while a
@@ -233,31 +233,28 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
   // and a click opens the whole answer under it (and closes it): the details' block is short while a
   // story is at work, and answers shown open squeezed the Ask line out of it.
   const answeredLine = (e) => e.status === "answered" && Boolean(e.answer);
-  const row = (e) => h_flex().id(`ask-entry-${e.id}`).flex_none().h(24).gap(8).items_center().min_w(0).text_size(SMALL)
+  const row = (e) => h_flex().id(`ask-entry-${e.id}`).flex_none().h(24).gap(10).items_center().min_w(0).text_size(SMALL)
     .tooltip(answeredLine(e) ? (expanded === e.id ? "Hide the answer" : `${e.answer}\n\nClick to read it here`) : `${e.q} · about ${e.about} · to ${e.to} · ${entryWords(e)}`)
     .when(answeredLine(e), (el) => el.cursor_pointer().on_click((_e, cx) => toggle(e.id, cx)))
     // The question keeps up to a third of the line; what follows it gives way first.
     .child(div().flex_none().max_w(240).truncate().text_color(t.foreground).child(e.q))
-    .when(answeredLine(e), (el) => el.child(h_flex().flex_shrink(2).min_w(0).gap(6).items_center()
+    .when(answeredLine(e), (el) => el.child(h_flex().flex_1().min_w(0).gap(6).items_center()
       .child(icon(own("sparkles"), 12).text_color(t.accent))
       .child(div().min_w(0).truncate().text_color(t.muted).child(String(e.answer).split("\n")[0]))))
-    .when(!answeredLine(e), (el) => el.child(div().flex_shrink(2).min_w(0).truncate().text_color(t.dim).child(`${e.about} · ${e.to}`)))
-    .child(div().flex_1())
-    .child(div().flex_none().text_color(e.status === "failed" ? t.blocked : t.muted).child(entryWords(e)))
+    .when(!answeredLine(e), (el) => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`${e.about} · ${e.to}`)))
+    .child(div().flex_none().text_color(e.status === "failed" ? t.blocked : t.dim).child(entryWords(e)))
     .when(e.status === "held", (el) => el
       .child(textButton(t, `ask-now-${e.id}`, "Send now", (_e, cx) => sendNow(e.id, cx), { dim: true, tip: "Typed in while it works, it may change what it's doing" }))
       .child(textButton(t, `ask-drop-${e.id}`, "Cancel", (_e, cx) => drop(e.id, cx), { dim: true })))
     // A plan answered: Go ahead tells its Claude to start, a step at a time (KELPIE-230).
     .when(e.pin === "plan" && e.status === "answered" && Boolean(approve) && !e.approved, (el) => el
-      .child(textButton(t, `ask-approve-${e.id}`, "Go ahead", (_e, cx) => approve(e.id, cx), { tip: "Tell its Claude the plan is approved: build it a step at a time, stopping at each checkpoint" })))
-    .when((e.status === "sent" || e.status === "answered") && Boolean(e.address), (el) => el
-      .child(textButton(t, `ask-show-${e.id}`, e.status === "answered" ? "Show its Claude" : "Show its answer", (_e, cx) => show(e.id, cx), { dim: true, tip: e.status === "answered" ? "Its full answer is in its tab" : "The answer is in its tab" })));
+      .child(textButton(t, `ask-approve-${e.id}`, "Go ahead", (_e, cx) => approve(e.id, cx), { tip: "Tell its Claude the plan is approved: build it a step at a time, stopping at each checkpoint" })));
   // An answer opened: its line, then the short answer under it, in the reading colour.
   const opened = (e) => v_flex().id(`ask-answered-${e.id}`).flex_none().gap(2)
     .child(row(e))
     .child(v_flex().id(`ask-answer-${e.id}`).flex_none().pl(2).pb(4).min_w(0).text_size(SMALL).text_color(t.foreground)
       .children(String(e.answer).split("\n").map((l, i) => div().id(`ask-answer-${e.id}-${i}`).min_w(0).child(l || " "))));
-  return v_flex().id("ask-thread").flex_none().gap(2)
+  return v_flex().id("ask-thread").flex_none().gap(2).pl(ASK_INDENT + 11).pr(11).rounded(8).bg(t.background)
     .when(more > 0, (el) => el.child(textButton(t, "ask-thread-more", `${more} earlier ${more === 1 ? "ask" : "asks"}`, (_e, cx) => unfold(cx), { dim: true })))
     .children(entries.map((e) => (answeredLine(e) && expanded === e.id ? opened(e) : row(e))));
 }
@@ -268,26 +265,38 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
 // accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
 export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory, copied = null, tasks = [], task = null }) {
-  return v_flex().id("ask-line").flex_none().gap(6).mt(4).px(10).pt(8).pb(6).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
-    .child(h_flex().gap(8).items_center().min_w(0)
-      .child(icon(own("sparkles"), 14).text_color(t.accent))
-      .child(div().flex_none().text_size(SMALL).text_color(t.muted).child("About"))
-      .child(h_flex().id("ask-about").flex_shrink(1).min_w(0).max_w(260).h(24).px(8).gap(6).items_center().rounded(6).border_1().border_color(t.border)
-        .text_size(SMALL).tooltip(about.label)
-        .child(div().min_w(0).truncate().child(about.label))
-        .when(!isStory, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().text_color(t.dim).hover((x) => x.text_color(t.foreground))
-          .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕"))))
-      .when(about.others, (el) => el.child(div().id("ask-others").flex_none().text_size(SMALL).text_color(t.dim).tooltip("Written by others: Claude is told it's information, not instructions").child("others' text")))
-      .child(div().flex_1().min_w(120).child(Input.new(input).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
-      .child(div().flex_none().text_size(SMALL).text_color(t.muted).child("to"))
-      .child(to)
-      .child(textButton(t, "ask-send", "Send", (_e, cx) => send(cx))))
-    .child(h_flex().flex_wrap().gap(4).items_center().pl(22).min_w(0)
-      .children(suggestionsFor(about.kind).map((s) => textButton(t, `ask-suggest-${s.id}`, s.label, (_e, cx) => suggest(s.id, cx), { dim: true, tip: "Ask it this (the wording is the profile's, on its Messages page)" })))
-      // A story's tasks (KELPIE-228: Merge, Request approval), as its header's menus offered them.
-      .children(tasks.map((x) => textButton(t, `ask-task-${x.id}`, x.label, (_e, cx) => task(x.id, cx), { dim: true, tip: x.tip })))
-      // Copy, then ask (KELPIE-226): what was copied becomes what it's about.
-      .when(Boolean(copied), (el) => el.child(textButton(t, "ask-copied", "Ask about what you copied", (_e, cx) => copied(cx), { dim: true, tip: "Copy a passage with ⌘C, then press this: the Ask line is about it" })))
-      .child(div().flex_1())
-      .child(div().id("ask-hint").flex_shrink(1).min_w(0).truncate().text_size(SMALL).text_color(t.dim).child(hint)));
+  // Laid over the details' bottom, it's opaque: the page's background under the tint, so the text
+  // scrolling under it doesn't show through.
+  return div().id("ask-line-card").flex_none().mt(4).rounded(10).bg(t.background).child(askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task }));
 }
+function askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task }) {
+  // Two rows on one left edge (after the sparkles, ASK_INDENT): what it's about, the question, who, Send;
+  // then what can be asked in one click, questions first, a story's tasks after a thin rule, then copy
+  // and ask. A word on where it goes only when it matters (the Claude picked is mid-task); the rest is
+  // in tips, as the line is read at a glance.
+  const about_ = h_flex().id("ask-about").flex_shrink(1).min_w(0).max_w(240).h(28).px(9).gap(6).items_center().rounded(7).border_1().border_color(t.border).bg(t.background)
+    .text_size(SMALL).tooltip(about.others ? `${about.label}\nWritten by others: Claude is told it's information, not instructions` : about.label)
+    .child(div().min_w(0).truncate().child(about.label))
+    .when(!isStory, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().text_color(t.dim).hover((x) => x.text_color(t.foreground))
+      .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕")));
+  const quick = (id, label, fn, tip) => textButton(t, id, label, fn, { dim: true, tip });
+  const rule = () => div().flex_none().w(1).h(14).mx(4).bg(t.border);
+  const sugg = suggestionsFor(about.kind).map((x) => quick(`ask-suggest-${x.id}`, x.label, (_e, cx) => suggest(x.id, cx), "Ask it this (the wording is the profile's, on its Messages page)"));
+  const acts = tasks.map((x) => quick(`ask-task-${x.id}`, x.label, (_e, cx) => task(x.id, cx), x.tip));
+  return v_flex().id("ask-line").flex_none().gap(6).px(10).py(8).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
+    .child(h_flex().gap(8).items_center().min_w(0)
+      .child(div().flex_none().w(16).child(icon(own("sparkles"), 14).text_color(t.accent)))
+      .child(about_)
+      .child(div().flex_1().min_w(120).child(Input.new(input).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
+      .child(div().flex_none().max_w(200).child(to))
+      .child(textButton(t, "ask-send", "Send", (_e, cx) => send(cx))))
+    .child(h_flex().flex_wrap().gap(2).items_center().pl(ASK_INDENT - 8).min_w(0)
+      .children(sugg)
+      // A story's tasks (KELPIE-228: Merge, Request approval), after a thin rule: they start work.
+      .when(acts.length > 0, (el) => el.child(rule()).children(acts))
+      // Copy, then ask (KELPIE-226): what was copied becomes what it's about.
+      .when(Boolean(copied), (el) => el.child(rule()).child(quick("ask-copied", "Ask about what you copied", (_e, cx) => copied(cx), "Copy a passage with ⌘C, then press this: the Ask line is about it")))
+      .when(Boolean(hint), (el) => el.child(div().flex_1()).child(div().id("ask-hint").flex_shrink(1).min_w(0).truncate().text_size(SMALL).text_color(t.muted).child(hint))));
+}
+// Where the Ask line's rows and the thread's lines start: past the sparkles (16) and the gap (8).
+export const ASK_INDENT = 24;

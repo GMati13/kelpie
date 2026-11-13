@@ -52,10 +52,11 @@ test("the fade shows only while the details are taller than their block", async 
   size("story-overview-view", 300);
   size("story-overview-content", 200);
   const fits = view.render(cx);
-  assert.equal(fade(fits).length, 1, "only the details, no fade");
+  // The Ask line lies over the details' bottom, inside their view (KELPIE-224), so it's one of its children.
+  assert.equal(fade(fits).length, 2, "the details and the Ask line, no fade");
   size("story-overview-content", 900);
   const over = view.render(cx);
-  assert.equal(fade(over).length, 2, "the details and the fade over their edge");
+  assert.equal(fade(over).length, 3, "the details, the fade over their edge, and the Ask line");
   snap("body/fade", byId(over, "story-overview-view"));
 });
 
@@ -257,8 +258,9 @@ test("the details end with the Ask line, about the story, to a new Claude", asyn
   const { el } = await body({ space: "ACME-142" });
   assert.ok(byId(el, "ask-line"), "the Ask line is there");
   assert.equal(askedAbout(el), "ACME-142 · the story");
-  assert.match(toLabel(el), /^New Claude/);
-  assert.match(texts(byId(el, "ask-hint")).join(" "), /whole story goes to a new Claude/);
+  assert.match(toLabel(el), /^to New Claude/);
+  // Where it goes is said only when it matters (a Claude mid-task); else it's the menu's tip.
+  assert.equal(byId(el, "ask-hint"), null);
   assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-catchup", "ask-suggest-left", "ask-suggest-plan", "ask-suggest-explain"]);
 });
 test("a subtask's title points the Ask line at it; a Claude waiting for you can't take it", async () => {
@@ -267,7 +269,7 @@ test("a subtask's title points the Ask line at it; a Claude waiting for you can'
   const after = view.render(cx);
   assert.match(askedAbout(after), /^ACME-143 · /);
   // ACME-143's own Claude waits for an answer: a new one is picked, and it's listed as waiting.
-  assert.match(toLabel(after), /^New Claude/);
+  assert.match(toLabel(after), /^to New Claude/);
   view.menu = "ask-to";
   assert.match(texts(view.render(cx)).join(" "), /waiting for you, answer it first/);
 });
@@ -317,7 +319,7 @@ test("a suggestion asks the Claude on the subtask's key, and goes on the story's
   press(el, "sub-title-ACME-172", cx);
   const pointed = view.render(cx);
   assert.match(toLabel(pointed), /▾$/);
-  assert.doesNotMatch(toLabel(pointed), /^New Claude/, "its own Claude, idle, is picked");
+  assert.doesNotMatch(toLabel(pointed), /^to New Claude/, "its own Claude, idle, is picked");
   mock.calls.length = 0;
   press(pointed, "ask-suggest-explain", cx);
   await new Promise((r) => setImmediate(r));
@@ -331,7 +333,7 @@ test("a suggestion asks the Claude on the subtask's key, and goes on the story's
 // On a wide screen the Ask line keeps to the subtask rows' width, centred, rather than stretching.
 test("the Ask line is at most as wide as the subtask rows", async () => {
   const { el } = await body({ space: "ACME-142" });
-  const line = nodeOf(byId(el, "ask-line"));
+  const line = nodeOf(byId(el, "ask-line-card"));
   assert.ok(line.calls.some(([m, a]) => m === "max_w" && a[0] === 760), "ROWS wide at most");
 });
 // An answer handed back (answerAskRequest()) shows on its question's line, its first line only, so it
@@ -344,7 +346,7 @@ test("an answered ask shows its answer's first line, and the whole of it once cl
   assert.match(words, /What's left\? \| Two things\./);
   assert.doesNotMatch(words, /The replay/, "folded to its first line");
   assert.match(words, /answered/);
-  assert.match(words, /Show its Claude/);
+  assert.doesNotMatch(words, /Show its/, "no button that only opens the chat");
   press(el, "ask-entry-abc123xyz", cx);
   const open = texts(byId(view.render(cx), "ask-thread")).join(" | ");
   assert.match(open, /Two things\. \| The replay, and a review\./);
@@ -357,9 +359,10 @@ test("a right-click menu opens at the pointer, at any zoom", async () => {
   const n = walk(view.render(cx)).find((x) => x.calls.some(([m, a]) => m === "id" && a[0] === "pr-row-web#418"));
   n.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({ local_position: { x: 300, y: 15 } }, { ...cx, stop_propagation() {} });
   const lefts = walk(view.render(cx)).filter((x) => x.calls.some(([m]) => m === "absolute")).map((x) => [x.calls.find(([m]) => m === "left")?.[1][0], x]);
-  const anchor = lefts.find(([l]) => Math.abs(l - 200) < 0.01)?.[1];
-  assert.ok(anchor, "at x 200 (300 drawn at zoom 1.5)");
-  assert.ok(anchor.calls.some(([m, a]) => m === "top" && a[0] === 10), "and y 10");
+  // A little up and to the left of the pointer (14, 12), so the pointer lands on the first row.
+  const anchor = lefts.find(([l]) => Math.abs(l - 186) < 0.01)?.[1];
+  assert.ok(anchor, "at x 186 (300 drawn at zoom 1.5, less 14)");
+  assert.ok(anchor.calls.some(([m, a]) => m === "top" && a[0] === 0), "and y 0 (10 less 12, kept on the row)");
 });
 
 // KELPIE-226: Ask about what you copied points the Ask line at the clipboard's text.
@@ -414,4 +417,15 @@ test("Plan this starts a new Claude, and a plan answered stays pinned with Go ah
   assert.equal(sent.length, 1);
   assert.match(sent[0][0].at(-1), /The plan is approved/);
   assert.equal(byId(view.render(cx), `ask-approve-${e.id}`), null, "Go ahead once");
+});
+
+// On a wide screen the room beside the Ask line is the details' own, so the wheel scrolls them there:
+// the line lies over the details' bottom, inside their view, and their content keeps that much room
+// under it so its end scrolls clear of the line.
+test("the Ask line lies over the details' bottom, and the details leave room under them for it", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  assert.ok(byId(byId(el, "story-overview-view"), "ask-line"), "inside the details' view");
+  handlers(el, "on_size_change").find((h) => h.id === "ask-line-card").fn({ width: 700, height: 80 }, cx);
+  const content = nodeOf(byId(view.render(cx), "story-overview-content"));
+  assert.ok(content.calls.some(([m, a]) => m === "pb" && a[0] === 92), "80 for the line, and a little air");
 });

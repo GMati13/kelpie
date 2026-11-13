@@ -61,7 +61,7 @@ describe("kelpie.ask-answer: a Claude asked from the Ask line answers", () => {
     const inSpace = agentOf("ACME-175");
     request({ id: "abc123xyz", answer: "In its space.", terminal: inSpace.address });
     assert.equal((await answerAskRequest()).ok, true);
-    assert.equal(thread()[0].address, inSpace.address, "kept, for Show its Claude");
+    assert.equal(thread()[0].address, inSpace.address, "kept as the Claude that answered");
   });
   for (const [what, req] of [
     ["an id that isn't Kelpie's shape", { id: "../x; rm", answer: "fine" }],
