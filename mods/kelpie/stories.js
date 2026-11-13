@@ -23,6 +23,7 @@ import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardC
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
+import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { askMessage, askPicker, askWho, chosenWho, fileAbout, openClaudes } from "./askclaude.js";
@@ -450,6 +451,9 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
       category: c.fields?.status?.statusCategory?.key, statusId: c.fields?.status?.id, mine: yours(c.key), you: assignedToYou(c.key), assignee: c.fields?.assignee?.displayName ?? null, avatar: c.fields?.assignee?.avatar ?? null,
       priority: rankOf(c.fields?.priority),
       stage: stage(c.fields?.status?.statusCategory?.key, c.fields?.status?.id, c.fields?.status?.name), prs: take(c.key), agent: byAgent.get(c.key) ?? null,
+      // Its time estimate (seconds, estimates.js) and whether its work is still to do: not done, not at
+      // or past the handover column (To do's and In progress's sums count only that).
+      estimate: estimateOf(c.fields), unfinished: !past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id),
       paused: byAgent.has(c.key) ? null : paused[c.key] ?? null, last: lastOf(c.key),
       // Closed on GitHub, for a Project's issue (null: a Jira ticket, whose done status is closed).
       closed: typeof c.closed === "boolean" ? c.closed : null,
@@ -472,6 +476,7 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
       key, title: f?.summary ?? "", type: f?.issuetype?.name ?? "Issue", tags: tagsOf(f, usualStory), status: f?.status?.name, category: f?.status?.statusCategory?.key,
       closed: typeof raw.closed === "boolean" ? raw.closed : null, assignee: f?.assignee?.displayName ?? null, avatar: f?.assignee?.avatar ?? null, mine: yours(key), you: assignedToYou(key),
       priority: rankOf(f?.priority),
+      estimate: estimateOf(f), unfinished: !past(f?.status?.statusCategory?.key, f?.status?.id),
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
@@ -1356,6 +1361,8 @@ export function movedOf(f, now = Date.now()) { // exported for the tests
 const status = (f) => (f?.status ? { id: f.status.id, name: f.status.name, statusCategory: { key: f.status.statusCategory?.key } } : null);
 const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item !== undefined ? { item: i.item } : {}),
   ...(typeof i.id === "string" ? { id: i.id } : {}), ...(typeof i.closed === "boolean" ? { closed: i.closed } : {}), fields: { summary: i.fields?.summary, issuetype: i.fields?.issuetype ? { name: i.fields.issuetype.name, subtask: i.fields.issuetype.subtask, ...(i.fields.issuetype.madeUp ? { madeUp: true } : {}) } : null, status: status(i.fields), parent: i.fields?.parent ? { key: i.fields.parent.key } : null,
+  // Its time estimates, when it has them (estimates.js estimateOf()), in seconds.
+  ...Object.fromEntries(["timeestimate", "timeoriginalestimate"].filter((k) => estimateOf({ [k]: i.fields?.[k] }) != null).map((k) => [k, i.fields[k]])),
   ...((labels) => (labels.length ? { labels } : {}))(labelsOf(i.fields)),
   ...((p) => (p ? { priority: p } : {}))(priorityLevel(i.fields?.priority)),
   ...((m) => (m ? { moved: m } : {}))(movedOf(i.fields)),
@@ -5317,7 +5324,15 @@ export class StoryList extends Stories {
     const going = items.filter((x) => !sunk(x.it, x.n) && underWay(x.it));
     const toDo = items.filter((x) => !sunk(x.it, x.n) && !underWay(x.it));
     const rows = (list) => list.map(({ it }) => this.row(t, it, it.key === shown?.key, cx, st));
-    const group = (label, n) => groupHeader(t, label, n);
+    const group = (label, n, sum = null) => groupHeader(t, label, n, null, sum);
+    // To do's and In progress's work by their time estimates, To do's weighed against the sprint's
+    // time left (estimates.js): beside their counts, muted, To do's amber when it's more than fits.
+    const sums = sprintSums(toDo.map((x) => x.it), going.map((x) => x.it), st.data.sprints, hoursPerDay(boardOf(st.setup)));
+    // A clock before the time and a wide gap before the count, so "13h 30m" and the count of stories
+    // don't read as one number.
+    const sumOf = (id, s) => (s ? h_flex().id(id).flex_none().mr(14).gap(4).items_center().text_color(s.over ? t.working : t.dim).tooltip(s.tip)
+      .child(icon(chrome("clock"), 11).text_color(s.over ? t.working : t.dim))
+      .child(skinFont(div(), "count").child(skinText(s.text, "count"))) : null);
     // `badge`: a chip after the title (an approved pull request's).
     // `lead`: what goes before the title instead of the skin's mark (a pull request's state, an avatar).
     const plain = (id, on, color, title, line, onClick, square, badge = null, lead = null) => h_flex().id(id).flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
@@ -5488,14 +5503,14 @@ export class StoryList extends Stories {
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
         // "In progress": started on the board or here; shown only when there are some.
-        .when(going.length > 0, (el) => el.child(group("In progress", going.length)).children(rows(going)))
+        .when(going.length > 0, (el) => el.child(group("In progress", going.length, sumOf("stories-sum-going", sums.going))).children(rows(going)))
         .when(always || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))
           .when(reviews.length === 0, (x) => x.child(empty(t, noPulls ?? "Nothing waiting for your review.")))
           .children(grouped(reviews, (r) => r.review, reviewRow, "review-story")))
         .when(Boolean(owner && noPulls) || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
           .when(minePrs.length === 0, (x) => x.child(empty(t, noPulls ?? "No open pull requests of yours.")))
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
-        .child(group("To do", toDo.length))
+        .child(group("To do", toDo.length, sumOf("stories-sum-todo", sums.toDo)))
         .children(toDo.length ? rows(toDo) : [empty(t, noneToDo(st.data, items))])
         .when(handed.length > 0, (el) => el.child(group(words.heading, handed.length)).children(rows(handed)))
         .when(others.length > 0, (el) => el.child(group("Other spaces", others.length))

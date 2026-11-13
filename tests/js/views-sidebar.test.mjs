@@ -638,16 +638,19 @@ test("a deleted profile's stories copy and other entries are pruned with the nex
   assert.ok(DEMO in mock.sharedValue("kelpie.stories.data"), "the shown profile's copy stays");
 });
 
-// A group heading's trail (the Desk's terminals, Done's chevron) goes into one tree only: in Herdr an
-// element is drawn once, so one also put into the heading the skin replaces left Quiet Pages' Desk
-// heading undrawn, its plain look in its place (#133).
-test("a group heading's trail is drawn once, in both layouts", () => {
+// A group heading's trail (the Desk's terminals, Done's chevron) and aside (To do's and In progress's
+// time estimates, #90) go into one tree only: in Herdr an element is drawn once, so one also put into
+// the heading the skin replaces left Quiet Pages' heading undrawn, its plain look in its place (#133).
+test("a group heading's trail and aside are drawn once, in both layouts", () => {
   for (const layout of ["Kelpie", "Kelpie-Plain"]) {
-    setupDemoWorld({ stories, layout });
-    const trail = div().id("trail");
-    const head = groupHeader(skinTheme(), "Done", 3, trail);
-    assert.equal(nodeOf(trail).parents, 1, `${layout}: put into one tree`);
-    assert.ok(byId(head, "trail"), `${layout}: the heading drawn holds it`);
+    for (const [trail, aside] of [[div().id("trail"), null], [null, div().id("aside")], [div().id("trail"), div().id("aside")]]) {
+      setupDemoWorld({ stories, layout });
+      const head = groupHeader(skinTheme(), "To do", 3, trail, aside);
+      for (const [name, el] of [["trail", trail], ["aside", aside]].filter(([, el]) => el)) {
+        assert.equal(nodeOf(el).parents, 1, `${layout}: the ${name} put into one tree`);
+        assert.ok(byId(head, name), `${layout}: the heading drawn holds the ${name}`);
+      }
+    }
   }
 });
 

@@ -100,6 +100,10 @@ v_flex [fg=foreground]
     h_flex
       div [fg=muted]
         "In progress"
+      h_flex #stories-sum-going [fg=dim] tip="13h 30m still to do on 8 stories in progress; 4 tickets not estimated"
+        svg chrome:clock [fg=dim]
+        div
+          "13h 30m"
       div [fg=dim]
         "8"
     h_flex #story-ACME-142 [hover(bg=hover)] {click hover} tip="ACME-143's agent needs you\nLast worked on 25m ago"
@@ -429,6 +433,10 @@ v_flex [fg=foreground]
     h_flex
       div [fg=muted]
         "To do"
+      h_flex #stories-sum-todo [fg=dim] tip="8h of work in To do. About 24h of working time left until Fri 13 Nov (4 working days × 6h, Monday to Friday, today included); 13h 30m of it goes to what's in progress, about 10h 30m is free for To do; 2 tickets not estimated"
+        svg chrome:clock [fg=dim]
+        div
+          "8h of 10h 30m free"
       div [fg=dim]
         "3"
     h_flex #story-ACME-180 [hover(bg=hover)] {click hover} tip="2 subtasks · 2 to do"

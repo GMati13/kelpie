@@ -174,6 +174,8 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["project.solo", { project: { solo: true } }, (p) => p.project.solo === true, "gh"],
     ["project.moveToDone", { project: { moveToDone: false } }, (p) => p.project.moveToDone === false, "gh"],
     ["project.unassigned", { project: { unassigned: true } }, (p) => p.project.unassigned === true, "gh"],
+    ["jira.hoursPerDay", { jira: { hoursPerDay: 7.5 } }, (p) => p.jira.hoursPerDay === 7.5 && p.jira.keychain === "jira-acme"],
+    ["project.hoursPerDay", { project: { hoursPerDay: 5 } }, (p) => p.project.hoursPerDay === 5, "gh"],
     ["removing the Project", { project: null }, (p) => p.project === null, "gh"],
   ]) {
     test(`${what}`, async () => {
@@ -207,6 +209,9 @@ describe("apply-profile: refused outright", () => {
     ["a string for solo", { jira: { solo: "false" } }, /jira\.solo: true or false/],
     ["a string for moveToDone", { project: { moveToDone: "false" } }, /project\.moveToDone: true or false/, "gh"],
     ["a string for unassigned", { jira: { unassigned: "false" } }, /jira\.unassigned: true or false/],
+    // Hours a day weigh To do against the sprint (#90): a number of hours a day can hold.
+    ["a string for hoursPerDay", { jira: { hoursPerDay: "6" } }, /jira\.hoursPerDay: a number of hours/],
+    ["more hours than a day has", { project: { hoursPerDay: 30 } }, /project\.hoursPerDay: a number of hours/, "gh"],
     ["a list for a section", { commands: ["rm"] }, /an object/],
     ["a lookalike board", { jira: { url: "https://evil.com/x.atlassian.net/jira/boards/1" } }, /jira\.url/],
     ["a token command without email", { jira: { tokenCommand: "op read x", email: null } }, /jira\.email/],
@@ -272,7 +277,7 @@ describe("apply-profile: refused outright", () => {
     for (const a of ASK_PROMPTS) assert.ok(SECTION_KEYS.prompts.includes(a.id), `prompts.${a.id}`);
   });
   test("every known key of every section is taken", () => {
-    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB" };
+    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.hoursPerDay": 6, "project.hoursPerDay": 7.5, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB" };
     for (const [section, keys] of Object.entries(SECTION_KEYS)) for (const k of keys) {
       const id = section === "project" ? "gh" : "work";
       assert.doesNotThrow(() => buildProfile(id, { [section]: { [k]: value[`${section}.${k}`] ?? "x" } }), `${section}.${k}`);

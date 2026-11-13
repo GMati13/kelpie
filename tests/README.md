@@ -201,6 +201,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `views-github.test.mjs`: the demo on its GitHub Project board: the sidebar, a story's title row and its
   details (`tests/snapshots/github/`), the same stories as the Jira demo's but for the board's own names and
   links.
+- `estimates.test.mjs`: To do's and In progress's time estimates against the sprint (#90): hours and minutes,
+  never days (`hoursText()`), the remaining estimate first, a story's own over its subtasks', only unfinished
+  work of yours, tickets without one counted apart, the working days left × hours a day, To do weighed against
+  what In progress leaves free and amber when it's more, no end date the sum alone, `hoursPerDay` a number.
 - `labels.test.mjs`: what kind of work a ticket is (#53): labels kept clean and small (`labelsOf()`: control
   characters, length, a colour only as six hex digits), the tags a row shows (`tagsOf()`: the usual type
   hidden, a bug first and once on either board), colours readable on dark and light themes (`legible()`,
