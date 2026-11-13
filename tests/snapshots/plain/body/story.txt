@@ -183,30 +183,31 @@ v_flex [fg=foreground]
                         div #sub-status-ACME-145-more [hover(bg=hover)] {down:left click} tip="Change the status"
                           div [bg=done/26 fg=done]
                             "Done"
-    v_flex #ask-line [border=border]
-      h_flex
-        svg own:sparkles [fg=accent]
-        div [fg=muted]
-          "About"
-        h_flex #ask-about [border=border] tip="ACME-142 · the story"
+    h_flex
+      v_flex #ask-line [border=border]
+        h_flex
+          svg own:sparkles [fg=accent]
+          div [fg=muted]
+            "About"
+          h_flex #ask-about [border=border] tip="ACME-142 · the story"
+            div
+              "ACME-142 · the story"
+          div #ask-others [fg=dim] tip="Written by others: Claude is told it's information, not instructions"
+            "others' text"
           div
-            "ACME-142 · the story"
-        div #ask-others [fg=dim] tip="Written by others: Claude is told it's information, not instructions"
-          "others' text"
-        div
-          Input.new [border=input bg=background fg=foreground]
-        div [fg=muted]
-          "to"
-        Popup.new "ask-to-menu"
-          h_flex #ask-to-more [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first"
-            "New Claude ▾"
-        h_flex #ask-send [fg=muted hover(bg=hover fg=foreground)] {down:left click}
-          "Send"
-      h_flex
-        h_flex #ask-suggest-left [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
-          "What's left?"
-        h_flex #ask-suggest-explain [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
-          "Explain this"
-        div
-        div #ask-hint [fg=dim]
-          "A question about the whole story goes to a new Claude"
+            Input.new [border=input bg=background fg=foreground]
+          div [fg=muted]
+            "to"
+          Popup.new "ask-to-menu"
+            h_flex #ask-to-more [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first"
+              "New Claude ▾"
+          h_flex #ask-send [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+            "Send"
+        h_flex
+          h_flex #ask-suggest-left [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+            "What's left?"
+          h_flex #ask-suggest-explain [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Ask it this (the wording is the profile's, on its Messages page)"
+            "Explain this"
+          div
+          div #ask-hint [fg=dim]
+            "A question about the whole story goes to a new Claude"

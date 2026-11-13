@@ -6,7 +6,7 @@ import { DEMO, draw, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { handlers, texts, tree, walk } from "gpui-kit";
+import { handlers, nodeOf, texts, tree, walk } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
@@ -307,4 +307,10 @@ test("a suggestion asks the Claude on the subtask's key, and goes on the story's
   assert.deepEqual(mock.of("run").filter(([n]) => n === "space.select"), [], "the person stays where they are");
   const thread = view.render(cx);
   assert.match(texts(byId(thread, "ask-thread")).join(" "), /Explain this/);
+});
+// On a wide screen the Ask line keeps to the subtask rows' width, centred, rather than stretching.
+test("the Ask line is at most as wide as the subtask rows", async () => {
+  const { el } = await body({ space: "ACME-142" });
+  const line = nodeOf(byId(el, "ask-line"));
+  assert.ok(line.calls.some(([m, a]) => m === "max_w" && a[0] === 760), "ROWS wide at most");
 });

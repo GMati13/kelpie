@@ -5237,7 +5237,9 @@ export class StoryBody extends Stories {
       suggest: (id, cx) => this.askSend({ suggestion: id }, cx),
       clear: () => pointAsk(profile, it.key, null),
     });
-    return [thread, line].filter(Boolean);
+    // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
+    // the question box ran far from what it's about and from Send.
+    return [thread, line].filter(Boolean).map((el) => h_flex().flex_none().w_full().justify_center().child(el.w_full().max_w(ROWS)));
   }
 
   // Asks what the Ask line holds: a suggestion, or the typed question.
