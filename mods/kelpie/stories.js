@@ -4451,7 +4451,7 @@ export class StoryList extends Stories {
       const what = "pull requests without a ticket";
       const rows = storyTaskRows(t, st.profile, null, kind, list);
       const id = g.key || "none";
-      return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340 }));
+      return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340, box: ROW_CONTROL }));
     };
     // Reviews for you: a story's heading ends in Review, one agent reviewing all of its pull requests
     // waiting for you together (a menu: a new agent, or sent to one already reviewing them; with one
@@ -4461,14 +4461,16 @@ export class StoryList extends Stories {
       const prs = g.list.map((r) => r.review);
       const id = `review-${g.key}`;
       const wrap = (el) => div().id(`${id}-wrap`).flex_none().on_mouse_down("left", stop).on_click(stop).child(el);
-      if (prs.length === 1) return wrap(this.reviewIcon(t, st, prs[0], g.key, id));
-      return wrap(this.menuButton(t, id, "", reviewTaskRows(st.profile, g.story, prs), `Review ${g.key}'s ${prs.length} pull requests together, with a new agent or one already reviewing them`, { iconPath: own("eye"), width: 340 }));
+      // The size of the sidebar's other row actions (rowActions()), so every icon there lines up.
+      if (prs.length === 1) return wrap(this.reviewIcon(t, st, prs[0], g.key, id, { box: ROW_CONTROL }));
+      return wrap(this.menuButton(t, id, "", reviewTaskRows(st.profile, g.story, prs), `Review ${g.key}'s ${prs.length} pull requests together, with a new agent or one already reviewing them`, { iconPath: own("eye"), width: 340, box: ROW_CONTROL }));
     };
     const reviewRow = (r) => {
       const row = plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
         () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`);
       if (storyOf(r.review)) return row;
-      return row.child(div().id(`review-row-${prName(r.review)}`).flex_none().on_mouse_down("left", stop).on_click(stop)
+      // At the story rows' actions' place (rowActions(): ACTIONS_TOP from the top), plain() rows starting 7 down.
+      return row.child(div().id(`review-row-${prName(r.review)}`).flex_none().mt(ACTIONS_TOP - 7).on_mouse_down("left", stop).on_click(stop)
         .child(this.reviewIcon(t, st, r.review, r.key, `review-row-${prName(r.review)}-go`, { box: ROW_CONTROL })));
     };
     const plan = (g) => {
