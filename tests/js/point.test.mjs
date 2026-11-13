@@ -64,10 +64,14 @@ test("the box is as wide as the subtask rows at most", async () => {
   assert.ok(nodeOf(byId(el, "point-box")).calls.some(([m, a]) => m === "max_w" && a[0] === 760));
 });
 
-test("a story waiting on reviewers offers Request approval and Merge as icons", async () => {
+// KELPIE-228: Request approval and Merge are the Ask line's, beside its suggestions, not the header's.
+test("a story waiting on reviewers offers Request approval and Merge on its Ask line, not as header icons", async () => {
   const { el } = await show(Stories, { space: "ACME-142" });
-  assert.ok(byId(el, "story-approval-more"), "Request approval");
-  assert.ok(byId(el, "story-merge-more"), "Merge");
+  assert.equal(byId(el, "story-approval-more"), null);
+  assert.equal(byId(el, "story-merge-more"), null);
+  const body = (await show(StoryBody, { space: "ACME-142" })).el;
+  assert.deepEqual(texts(byId(body, "ask-task-merge")), ["Merge"]);
+  assert.deepEqual(texts(byId(body, "ask-task-approval")), ["Request approval"]);
 });
 
 test("Next pointed at merging: one box with the step, its pull requests and Merge all; the header's lit", async () => {
@@ -145,4 +149,15 @@ test("Next (⌘⇧J) points at the step of the story it opens", async () => {
   assert.ok(p, "a pointer");
   assert.match(p.key, /^ACME-\d+$/);
   assert.ok(["peek", "comments", "fix", "merge"].includes(p.kind));
+});
+// The Ask line's Merge asks who it has chosen: a new Claude here, with the merge task, and on the thread.
+test("the Ask line's Merge starts a new Claude with the merge task, and goes on the thread", async () => {
+  const { el, view, cx } = await show(StoryBody, { space: "ACME-171" });
+  mock.calls.length = 0;
+  handlers(el).find((h) => h.id === "ask-task-merge").fn({}, cx);
+  await new Promise((r) => setImmediate(r));
+  const started = mock.of("run").find(([n]) => n === "tab.new" || n === "space.new");
+  assert.ok(started, "a new Claude");
+  assert.match(String(started[1].task ?? ""), /merge/i);
+  assert.match(texts(byId(view.render(cx), "ask-thread")).join(" "), /Merge/);
 });

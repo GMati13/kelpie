@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
-import { Stories, StoryList } from "../../mods/kelpie/stories.js";
+import { Stories, StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { demoPulls } from "../../mods/kelpie/demo.js";
 
@@ -28,7 +28,7 @@ async function header({ space = null, preview = null, view = null, shared = {}, 
   const id = mock.state.spaces.find((s) => s.name === space)?.id ?? `preview:${DEMO}`;
   if (view) mock.state.shared.set("kelpie.view", { [id]: view });
   for (const [k, v] of Object.entries(shared)) mock.state.shared.set(k, v);
-  return draw(new Stories());
+  return draw(new (opts.View ?? Stories)());
 }
 const mainAction = (el) => texts(byId(el, "story-main") ?? byId(el, "story-peek") ?? byId(el, "review-start") ?? byId(el, "story-ask-fix") ?? byId(el, "story-ask-comments") ?? byId(el, "story-ask-merge") ?? byId(el, "story-merge-all") ?? []);
 
@@ -143,12 +143,13 @@ test("header: a pull request of yours with no ticket", async () => {
   snap("header/pull-no-ticket", (await header({ preview: "pull:docs#58" })).el);
 });
 
-// Working alone (#75), nobody can approve: no Request approval, a story's or a lone pull request's.
+// Working alone (#75), nobody can approve: no Request approval, a story's (on its Ask line since
+// KELPIE-228) or a lone pull request's.
 test("header: working alone, no Request approval", async () => {
-  assert.ok(byId((await header({ space: "ACME-160" })).el, "story-approval-more"), "a team's story offers it");
-  const solo = (await header({ space: "ACME-160", profile: ALONE, stories: aloneStories })).el;
-  assert.ok(byId(solo, "story-key"), "the header is drawn");
-  assert.equal(byId(solo, "story-approval-more"), null);
+  assert.ok(byId((await header({ space: "ACME-160", View: StoryBody })).el, "ask-task-approval"), "a team's story offers it");
+  const solo = (await header({ space: "ACME-160", profile: ALONE, stories: aloneStories, View: StoryBody })).el;
+  assert.ok(byId(solo, "ask-line"), "the Ask line is drawn");
+  assert.equal(byId(solo, "ask-task-approval"), null);
   // docs#58 waiting on reviewers, nothing else to do: a team's header offers Request approval.
   const waiting = (st) => ({ ...st, data: { ...st.data, prs: st.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } });
   assert.ok(byId((await header({ preview: "pull:docs#58", stories: waiting(stories) })).el, "pull-approval"), "a team's lone pull request offers it");

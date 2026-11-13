@@ -49,12 +49,6 @@ div
               div [bg=#c195ab]
       div [bg=border]
       h_flex
-        Popup.new "story-approval-menu"
-          div #story-approval-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Request approval for its pull requests waiting on reviewers, with a new agent or an open Claude"
-            svg own:user-check
-        Popup.new "story-merge-menu"
-          div #story-merge-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge its pull requests, with a new agent or an open Claude"
-            svg own:git-merge
         div #story-finish [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move ACME-175 to Done"
           svg own:check-check
         div #story-refresh [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Refresh: load the stories again"
