@@ -3447,6 +3447,37 @@ export class Stories extends Source {
     return menuButton(this, t, id, label, rows, { tip, ...opts });
   }
 
+  // An element's own menu (KELPIE-225), opened by a right-click on `el` (its trigger) and laid under
+  // it: Ask Claude about it first (it points the story's Ask line there and puts the cursor in it),
+  // then what that element offers. The same look and keys as the other menus (menuButton()).
+  // It hangs from a point `top` below the element's top-left (a one-pixel anchor laid over it, so
+  // the element's own layout is left as it is); `openMenu(id)` is the right-click that opens it.
+  elementMenu(t, id, rows, top) {
+    return div().absolute().left(8).top(top).w(1).h(1)
+      .child(this.menuButton(t, id, "", rows, null, { anchor: "top_left", width: 260, trigger: () => div().id(`${id}-at`).w(1).h(1) }));
+  }
+  openMenu(id) {
+    return (_e, cx) => { cx.stop_propagation(); this.menu = this.menu === id ? null : id; cx.notify(); };
+  }
+  // A subtask's: ask about it, open it on the board, copy its key, and show its agent while one runs.
+  subMenuRows(st, it, s) {
+    const url = ticketUrl(boardOf(st.profile), st.data, s.key);
+    return [
+      { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url })) },
+      ...(url ? [{ label: boardOf(st.profile)?.kind === "project" ? "Open on GitHub" : "Open on the board", action: () => open(url) }] : []),
+      { label: "Copy key", hint: s.key, action: (cx) => cx.write_to_clipboard(s.key) },
+      ...(s.agent ? [{ label: "Show agent", hint: agentWords(s.agent.status), action: () => focusAgent(st.profile, it, s.agent) }] : []),
+    ];
+  }
+  // A pull request's: ask about it, open it on GitHub, copy its link.
+  prMenuRows(st, it, p, name) {
+    return [
+      { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "pr", p, { url: p.url, name })) },
+      { label: "Open on GitHub", hint: name, action: () => open(p.url) },
+      { label: "Copy link", action: (cx) => cx.write_to_clipboard(p.url) },
+    ];
+  }
+
   // A shining box's size (borderGlint() needs it) and the zoom (from shineProbe()), kept on this
   // copy; redrawn only when one changes.
   shineSize(id, size, cx) {
@@ -3632,17 +3663,19 @@ export class Stories extends Source {
     const kind = askFor(p);
     const name = prName(p);
     const title = String(p.title ?? "").replace(/^\s*(?:\[[^\]]*\]|[A-Z][A-Z0-9_]*-\d+)[\s:\u2014-]*/, "") || name;
-    return h_flex().gap(10).items_center().min_w(0).text_size(SMALL)
-      .child(h_flex().id(`pr-${name}`).flex_1().min_w(0).h(CONTROL).gap(8).items_center().cursor_pointer().rounded(6).hover((x) => x.text_color(t.accent))
-        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${words} · ${p.title} · right-click to ask Claude about it`).on_click(() => open(p.url))
-        // A right-click points the story's Ask line at it (askclaude.js).
-        .when(!it.pr, (el) => el.on_mouse_down("right", (_e, cx) => { pointAsk(st.profile, it.key, ticketAbout(it, "pr", p, { url: p.url, name })); cx.stop_propagation(); }))
+    const line = h_flex().id(`pr-${name}`).flex_1().min_w(0).h(CONTROL).gap(8).items_center().cursor_pointer().rounded(6).hover((x) => x.text_color(t.accent))
+        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${words} · ${p.title}${it.pr ? "" : " · right-click for more"}`).on_click(() => open(p.url))
         .child(div().flex_none().child(mark(t, state, 14)))
         .child(div().flex_1().min_w(0).truncate().text_size(TEXT).child(title))
         .child(this.column("pr-where", name, h_flex().flex_none().text_color(t.dim).child(name)))
         .child(this.column("pr-state", name, h_flex().flex_none().gap(6).items_center()
           .child(div().text_color(p.merged ? t.dim : color).child(PR_SHORT[state] ?? words))
-          .when(Boolean(p.updatedAt), (el) => el.child(div().text_color(t.dim).child(ago(p.updatedAt)))))))
+          .when(Boolean(p.updatedAt), (el) => el.child(div().text_color(t.dim).child(ago(p.updatedAt))))));
+    return h_flex().id(`pr-row-${name}`).gap(10).items_center().min_w(0).text_size(SMALL)
+      // A right-click opens its menu (elementMenu()); a lone pull request's own line has no Ask line to point.
+      .when(!it.pr, (el) => el.relative().on_mouse_down("right", this.openMenu(`pr-menu-${name}`)))
+      .child(line)
+      .when(!it.pr, (el) => el.child(this.elementMenu(t, `pr-menu-${name}`, this.prMenuRows(st, it, p, name), CONTROL)))
       // The button keeps a column of its own, empty on lines with none, so the columns before it line up.
       .child(this.column("pr-ask", name, h_flex().flex_none().items_center()
         .when(Boolean(kind), (el) => el.child(this.askButton(t, st, it, `ask-${kind}-${name}`, kind, [p])))));
@@ -4117,8 +4150,8 @@ export class Stories extends Source {
     };
     const sub = (s, about = opened(s) ? this.description(t, st, s.key, cx, { id: `sub-desc-${s.key}` }) : null, talk = opened(s) ? this.comments(t, st, s.key, cx, { id: `sub-talk-${s.key}` }) : null, list = acts(s)) => v_flex().id(`sub-row-${s.key}`).flex_none().gap(4).px(8).py(8).border_t_1().border_color(t.border).hover((x) => x.bg(t.hover))
       .on_hover(hover(s.key))
-      // A right-click points the story's Ask line at the subtask (askclaude.js).
-      .on_mouse_down("right", () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketUrl(boardOf(st.profile), st.data, s.key) })))
+      // A right-click on it opens its menu (elementMenu()): Ask Claude about it, then what it offers.
+      .relative().on_mouse_down("right", this.openMenu(`sub-menu-${s.key}`))
       .child(h_flex().gap(10).items_center().min_w(0)
         // Who it's assigned to leads the row: the first thing looked for.
         .child(assigned(t, `sub-assignee-${s.key}`, s.assignee, s.you, s.avatar))
@@ -4141,6 +4174,7 @@ export class Stories extends Source {
         .child(this.agentSlot(t, s))
         .child(this.column("status", s.key, h_flex().flex_none().items_center()
           .when(Boolean(s.status), (el) => el.child(this.statusChip(t, st, s.key, s.status, s.category, `sub-status-${s.key}`, cx))))))
+      .child(this.elementMenu(t, `sub-menu-${s.key}`, this.subMenuRows(st, it, s), CONTROL + 10))
       .when(Boolean(about || talk), (el) => el.child(v_flex().pl(SUB_INDENT).pb(2).gap(14).when(Boolean(about), (x) => x.child(about)).when(Boolean(talk), (x) => x.child(talk))))
       .children(s.prs.map((p) => this.pr(t, p, st, it).pl(SUB_INDENT)));
     // Yours first, then everyone else's, each under a small heading; one group alone needs none.

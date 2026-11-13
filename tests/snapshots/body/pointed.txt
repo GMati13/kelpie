@@ -86,8 +86,11 @@ div
                               div
                                 div
                                   div [bg=#7fb3ae]
-                  h_flex
-                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click down:right} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle · right-click to ask Claude about it"
+                  div
+                    Popup.new "sub-menu-ACME-172-menu"
+                      div #sub-menu-ACME-172-at
+                  h_flex #pr-row-web#415 {down:right}
+                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle · right-click for more"
                       div
                         div
                           svg chrome:circle-check [fg=done]
@@ -102,6 +105,9 @@ div
                             "Approved"
                           div [fg=dim]
                             "now"
+                    div
+                      Popup.new "pr-menu-web#415-menu"
+                        div #pr-menu-web#415-at
                     h_flex
                       h_flex #sub-pr-ask-cell-web#415 {size_change}
                         h_flex #ask-merge-web#415 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to ask ACME-172's agent to merge web#415"
@@ -129,8 +135,11 @@ div
                               div
                                 div
                                   div [bg=#7fb3ae]
-                  h_flex
-                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click down:right} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts · right-click to ask Claude about it"
+                  div
+                    Popup.new "sub-menu-ACME-173-menu"
+                      div #sub-menu-ACME-173-at
+                  h_flex #pr-row-charts#58 {down:right}
+                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts · right-click for more"
                       div
                         div
                           svg chrome:circle-check [fg=done]
@@ -145,6 +154,9 @@ div
                             "Approved"
                           div [fg=dim]
                             "now"
+                    div
+                      Popup.new "pr-menu-charts#58-menu"
+                        div #pr-menu-charts#58-at
                     h_flex
                       h_flex #sub-pr-ask-cell-charts#58 {size_change}
                         h_flex #ask-merge-charts#58 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Click again to ask ACME-173's agent to merge charts#58"

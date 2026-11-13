@@ -271,12 +271,32 @@ test("a subtask's title points the Ask line at it; a Claude waiting for you can'
   view.menu = "ask-to";
   assert.match(texts(view.render(cx)).join(" "), /waiting for you, answer it first/);
 });
-test("a right-click on a pull request points the Ask line at it", async () => {
+// KELPIE-225: a right-click on a pull request line, or a subtask's line, opens its menu: Ask Claude
+// about it first (it points the Ask line), then what it offers.
+const rightClick = (el, id, cx) => {
+  const n = walk(el).find((x) => x.calls.some(([m, a]) => m === "id" && a[0] === id) && x.calls.some(([m, a]) => m === "on_mouse_down" && a[0] === "right"));
+  n.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({}, { ...cx, stop_propagation() {} });
+};
+test("a right-click on a pull request opens its menu; Ask Claude about this points the Ask line at it", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  const line = walk(el).find((n) => n.calls.some(([m, a]) => m === "on_mouse_down" && a[0] === "right") && n.calls.some(([m, a]) => m === "id" && /^pr-/.test(a[0])));
-  line.calls.find(([m, a]) => m === "on_mouse_down" && a[0] === "right")[1][1]({}, { stop_propagation() {} });
-  assert.match(askedAbout(view.render(cx)), /#\d+/);
+  rightClick(el, "pr-row-web#418", cx);
+  assert.equal(view.menu, "pr-menu-web#418");
+  const open = view.render(cx);
+  assert.deepEqual(texts(byId(open, "pr-menu-web#418-menu-list")).filter((w) => !/#|^the /.test(w)), ["Ask Claude about this", "Open on GitHub", "Copy link"]);
+  assert.equal(askedAbout(open), "ACME-142 · the story", "nothing pointed yet");
+  press(open, "pr-menu-web#418-row-0", cx);
+  assert.match(askedAbout(view.render(cx)), /^web#418/);
   assert.equal(mock.state.shared.get("kelpie.ask.about")[DEMO].about.others, true, "a pull request's title is others' text");
+});
+test("a right-click on a subtask opens its menu: ask, open on the board, copy its key, show its agent", async () => {
+  const { el, view, cx } = await body({ space: "ACME-142" });
+  rightClick(el, "sub-row-ACME-143", cx);
+  assert.equal(view.menu, "sub-menu-ACME-143");
+  const words = texts(byId(view.render(cx), "sub-menu-ACME-143-menu-list"));
+  for (const w of ["Ask Claude about this", "Open on the board", "Copy key", "Show agent"]) assert.ok(words.includes(w), w);
+  const clip = [];
+  press(view.render(cx), "sub-menu-ACME-143-row-2", { ...cx, write_to_clipboard: (x) => clip.push(x) });
+  assert.deepEqual(clip, ["ACME-143"]);
 });
 // Another story's Claude, or the one reviewing the story's pull requests by others (KELPIE-118),
 // isn't offered: only the story's own.
