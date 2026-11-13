@@ -5233,6 +5233,7 @@ export class StoryBody extends Stories {
     this.askFor = null; // what that pick was for (the about's id)
     this.askFocused = 0; // the last pointing the line took the cursor for
     this.askOpen = false; // the thread unfolded
+    this.askExpanded = null; // the answered ask whose whole answer is open
     this.readerScroll = VirtualListScrollHandle.new(); // the passage reader, scrolled to the passage
     // The details' place, per story or pull request shown (ui.js ScrollPool).
     this.detailScrolls = new ScrollPool(() => ({ box: ScrollHandle.new(), top: null }), (h) => { h.box.scroll_to_item(0); h.top = null; });
@@ -5267,6 +5268,7 @@ export class StoryBody extends Stories {
         if (a) { run("space.select", { id: a.space }); run("pane.focus", { pane: a.pane }); }
       },
       unfold: (cx) => { this.askOpen = true; cx.notify(); },
+      expanded: this.askExpanded, toggle: (id, cx) => { this.askExpanded = this.askExpanded === id ? null : id; cx.notify(); },
     });
     const line = askLine(t, {
       about, input: this.askInput, to, hint, isStory: about.kind === "story",

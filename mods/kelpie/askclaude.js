@@ -156,12 +156,21 @@ export function entryWords(e, now = Date.now()) {
 // one sent at once or dropped, `sendNow(id, cx)`, `drop(id, cx)`; a sent one's answer shown in its
 // Claude's tab, `show(id, cx)`); the whole line is its tip. `more`: how many earlier ones are folded
 // away (`unfold(cx)`).
-export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold }) {
+export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, expanded = null, toggle }) {
   if (!entries.length) return null;
+  // An answered ask's line gives its answer's first line where the others say what they were about,
+  // and a click opens the whole answer under it (and closes it): the details' block is short while a
+  // story is at work, and answers shown open squeezed the Ask line out of it.
+  const answeredLine = (e) => e.status === "answered" && Boolean(e.answer);
   const row = (e) => h_flex().id(`ask-entry-${e.id}`).flex_none().h(24).gap(8).items_center().min_w(0).text_size(SMALL)
-    .tooltip(`${e.q} · about ${e.about} · to ${e.to} · ${entryWords(e)}`)
-    .child(div().flex_shrink(1).min_w(0).truncate().text_color(t.foreground).child(e.q))
-    .child(div().flex_shrink(2).min_w(0).truncate().text_color(t.dim).child(`${e.about} · ${e.to}`))
+    .tooltip(answeredLine(e) ? (expanded === e.id ? "Hide the answer" : `${e.answer}\n\nClick to read it here`) : `${e.q} · about ${e.about} · to ${e.to} · ${entryWords(e)}`)
+    .when(answeredLine(e), (el) => el.cursor_pointer().on_click((_e, cx) => toggle(e.id, cx)))
+    // The question keeps up to a third of the line; what follows it gives way first.
+    .child(div().flex_none().max_w(240).truncate().text_color(t.foreground).child(e.q))
+    .when(answeredLine(e), (el) => el.child(h_flex().flex_shrink(2).min_w(0).gap(6).items_center()
+      .child(icon(own("sparkles"), 12).text_color(t.accent))
+      .child(div().min_w(0).truncate().text_color(t.muted).child(String(e.answer).split("\n")[0]))))
+    .when(!answeredLine(e), (el) => el.child(div().flex_shrink(2).min_w(0).truncate().text_color(t.dim).child(`${e.about} · ${e.to}`)))
     .child(div().flex_1())
     .child(div().flex_none().text_color(e.status === "failed" ? t.blocked : t.muted).child(entryWords(e)))
     .when(e.status === "held", (el) => el
@@ -169,17 +178,14 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold })
       .child(textButton(t, `ask-drop-${e.id}`, "Cancel", (_e, cx) => drop(e.id, cx), { dim: true })))
     .when((e.status === "sent" || e.status === "answered") && Boolean(e.address), (el) => el
       .child(textButton(t, `ask-show-${e.id}`, e.status === "answered" ? "Show its Claude" : "Show its answer", (_e, cx) => show(e.id, cx), { dim: true, tip: e.status === "answered" ? "Its full answer is in its tab" : "The answer is in its tab" })));
-  // An answered ask: its line, then the short answer under it, a few lines at most (the whole of it
-  // in the tip), in the reading colour.
-  const answered = (e) => v_flex().id(`ask-answered-${e.id}`).flex_none().gap(2)
+  // An answer opened: its line, then the short answer under it, in the reading colour.
+  const opened = (e) => v_flex().id(`ask-answered-${e.id}`).flex_none().gap(2)
     .child(row(e))
-    .child(h_flex().gap(8).items_start().pl(2)
-      .child(icon(own("sparkles"), 12).text_color(t.accent).mt(3))
-      .child(v_flex().id(`ask-answer-${e.id}`).flex_1().min_w(0).text_size(SMALL).text_color(t.foreground).tooltip(e.answer)
-        .children(String(e.answer).split("\n").slice(0, 4).map((l, i) => div().id(`ask-answer-${e.id}-${i}`).min_w(0).truncate().child(l || " ")))));
+    .child(v_flex().id(`ask-answer-${e.id}`).flex_none().pl(2).pb(4).min_w(0).text_size(SMALL).text_color(t.foreground)
+      .children(String(e.answer).split("\n").map((l, i) => div().id(`ask-answer-${e.id}-${i}`).min_w(0).child(l || " "))));
   return v_flex().id("ask-thread").flex_none().gap(2)
     .when(more > 0, (el) => el.child(textButton(t, "ask-thread-more", `${more} earlier ${more === 1 ? "ask" : "asks"}`, (_e, cx) => unfold(cx), { dim: true })))
-    .children(entries.map((e) => (e.status === "answered" && e.answer ? answered(e) : row(e))));
+    .children(entries.map((e) => (answeredLine(e) && expanded === e.id ? opened(e) : row(e))));
 }
 
 // The Ask line: the sparkles, what it's about (✕ goes back to the story; a word when it's others'

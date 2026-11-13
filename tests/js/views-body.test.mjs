@@ -314,14 +314,18 @@ test("the Ask line is at most as wide as the subtask rows", async () => {
   const line = nodeOf(byId(el, "ask-line"));
   assert.ok(line.calls.some(([m, a]) => m === "max_w" && a[0] === 760), "ROWS wide at most");
 });
-// An answer handed back (answerAskRequest()) shows under its question in the story, a few lines.
-test("an answered ask shows its short answer under the question", async () => {
+// An answer handed back (answerAskRequest()) shows on its question's line, its first line only, so it
+// never squeezes the Ask line out of the short details block; a click opens the whole of it.
+test("an answered ask shows its answer's first line, and the whole of it once clicked", async () => {
   setupDemoWorld({ stories, shown: "ACME-142" });
   mock.state.shared.set("kelpie.ask.thread", { [DEMO]: { "ACME-142": [{ id: "abc123xyz", at: Date.now(), story: "ACME-142", about: "ACME-142 · the story", q: "What's left?", to: "Cache trips", status: "answered", answer: "Two things.\nThe replay, and a review.", address: "a0-0" }] } });
-  const { el } = await draw(new StoryBody());
+  const { el, view, cx } = await draw(new StoryBody());
   const words = texts(byId(el, "ask-thread")).join(" | ");
-  assert.match(words, /What's left\?/);
-  assert.match(words, /Two things\. \| The replay, and a review\./);
+  assert.match(words, /What's left\? \| Two things\./);
+  assert.doesNotMatch(words, /The replay/, "folded to its first line");
   assert.match(words, /answered/);
   assert.match(words, /Show its Claude/);
+  press(el, "ask-entry-abc123xyz", cx);
+  const open = texts(byId(view.render(cx), "ask-thread")).join(" | ");
+  assert.match(open, /Two things\. \| The replay, and a review\./);
 });
