@@ -1,0 +1,55 @@
+#!/bin/sh
+# Kelpie's gh: in a profile's agents and terminals, gh acts as the profile's GitHub account, also when
+# a program started there runs it (a script, a Makefile, a team's own CLI). Kelpie starts them with
+# KELPIE_GH_ACCOUNT (a login, never a token) and KELPIE_GH_BIN (this folder); a line at the end of the
+# person's shell setup puts this folder first in PATH (GH_SHELL_LINE in setup.js, README "Several
+# accounts"), and every program started from there inherits it. Each run asks gh for that account's
+# token by name and hands it to the real gh alone, as GH_TOKEN, so gh's active account (one per
+# machine, which any sign-in can switch) doesn't matter. Left as they are: a GH_TOKEN already set
+# (someone chose it), shells without the account, gh's own sign-in commands, help and completion.
+# Never traced: bash, which is macOS's sh, takes xtrace from an exported SHELLOPTS, and a trace would
+# print the token.
+set +xv
+case $0 in */*) here=$(cd "${0%/*}" 2>/dev/null && pwd -P) ;; *) here=$(pwd -P) ;; esac
+
+# The real gh: the first on PATH that isn't in this folder nor in another Kelpie gh's folder this run
+# came through (KELPIE_GH_SKIP: with two copies on PATH, say two clones, each would run the other for
+# ever), absolute folders only.
+skip=$here${KELPIE_GH_SKIP:+:$KELPIE_GH_SKIP}
+real=
+old_ifs=$IFS; IFS=:; set -f
+for d in $PATH; do
+  case $d in /*) ;; *) continue ;; esac
+  [ -f "$d/gh" ] && [ -x "$d/gh" ] || continue
+  case ":$skip:" in *":$(cd "$d" 2>/dev/null && pwd -P):"*) continue ;; esac
+  real=$d/gh; break
+done
+IFS=$old_ifs; set +f
+[ -n "$real" ] || { echo "gh isn't installed: Kelpie's gh found no other gh on PATH." >&2; exit 127; }
+KELPIE_GH_SKIP=$skip; export KELPIE_GH_SKIP
+
+account=${KELPIE_GH_ACCOUNT:-}
+[ -z "${GH_TOKEN:-}" ] && [ -n "$account" ] || exec "$real" "$@"
+case "${1:-} ${2:-}" in
+  " "|"auth login"|"auth logout"|"auth switch"|"auth refresh"|"auth setup-git"|"auth git-credential"|help\ *|version\ *|completion\ *|--help\ *|-h\ *|--version\ *) exec "$real" "$@" ;;
+esac
+# A GitHub login: letters, digits and single hyphens, not at either end (GITHUB_LOGIN in ui.js).
+case $account in -*|*-|*--*|*[!A-Za-z0-9-]*)
+  echo "KELPIE_GH_ACCOUNT isn't a GitHub account name, so gh doesn't run." >&2; exit 2 ;;
+esac
+# The token is github.com's, but gh also sends GH_TOKEN to GitHub's other hosts that take it (*.ghe.com,
+# github.localhost). A run aimed at another host by GH_HOST runs as it is, on gh's own sign-in for that
+# host; one naming such a host in its arguments (-R, --hostname, a URL, a clone) is refused, as passing
+# it through would act as someone else on github.com when the name was only in a text.
+case ${GH_HOST:-github.com} in [Gg][Ii][Tt][Hh][Uu][Bb].[Cc][Oo][Mm]) ;; *) exec "$real" "$@" ;; esac
+for a in "$@"; do
+  case $a in *[Gg][Hh][Ee].[Cc][Oo][Mm]*|*[Gg][Ii][Tt][Hh][Uu][Bb].[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]*)
+    echo "gh doesn't run: it names a GitHub host other than github.com, where gh would send the token of $account, this profile's account in Kelpie. For that host, run gh with KELPIE_GH_ACCOUNT unset." >&2; exit 2 ;;
+  esac
+done
+# The token is only ever assigned: no command gets it as an argument (a function named like one could).
+token=$("$real" auth token --hostname github.com --user "$account") || token=
+case $token in "") echo "gh isn't signed in as $account, this profile's GitHub account in Kelpie: gh auth login" >&2; exit 1 ;; esac
+[ "${1:-} ${2:-}" = "auth status" ] && echo "In this terminal, gh acts as $account, the Kelpie profile's GitHub account." >&2
+GH_TOKEN=$token; export GH_TOKEN
+exec "$real" "$@"

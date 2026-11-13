@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: who-is-editing-it-take-me-there
+expected_outcome: |
+  Calls find_agents with the file (web/src/theme/tokens.ts, relative or full), names both agents that changed it, then calls show_agent once with the id of the dark mode agent (w1:a3-0, tab ACME-172) and says it showed it. Reads no session transcripts or process files.

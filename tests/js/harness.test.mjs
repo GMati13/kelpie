@@ -23,7 +23,10 @@ test("herdr stub: shared state is in memory and copied in and out", () => {
   setShared("k", v);
   v.a.push(2);
   assert.deepEqual(shared("k"), { a: [1] });
-  const got = shared("k"); got.a.push(3);
+  // Handed out frozen: Kelpie keeps a read for the whole render and gives it to every caller
+  // (mods/kelpie/host.js), so a mod changing one in place fails here rather than live.
+  const got = shared("k");
+  assert.throws(() => got.a.push(3), TypeError);
   assert.deepEqual(shared("k"), { a: [1] });
   setShared("k", null);
   assert.equal(shared("k"), null);

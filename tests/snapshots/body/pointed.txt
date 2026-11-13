@@ -80,7 +80,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-172 {size_change}
                         Popup.new "sub-status-ACME-172-menu"
-                          div #sub-status-ACME-172-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-172-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "In review"
                               div
@@ -123,7 +123,7 @@ div
                     h_flex
                       h_flex #sub-status-cell-ACME-173 {size_change}
                         Popup.new "sub-status-ACME-173-menu"
-                          div #sub-status-ACME-173-more [hover(bg=hover)] {click} tip="Change the status"
+                          div #sub-status-ACME-173-more [hover(bg=hover)] {down:left click} tip="Change the status"
                             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                               "In review"
                               div

@@ -55,7 +55,7 @@
 //       the toolbar.
 //       For backgrounds, a scene image (absolute children), a lamp pool, a band.
 //   rowDecor(t, el, { selected, state, story, now }) -> el     a sidebar story row (plate, glow, firefly)
-//   groupDecor(t, el, { label, count, trail }) -> el           a list's group heading (ink rule; trail: after the count)
+//   groupDecor(t, el, { label, count, trail, aside }) -> el    a list's group heading (ink rule; trail: after the count, aside: before it)
 //   tabDecor(t, el, { tab, active, state, agentTab, now }) -> el
 //       A tab-bar tab; `agentTab` when it holds an agent, `state` its agent's (underline, sprite).
 //   controlDecor(t, el, { kind, id, label, on }) -> el
@@ -79,7 +79,8 @@
 // themes/Kelpie-<Name>.json. Shared files (this one, base.js, common.js, the views) change only to add a
 // hook every skin can use, a no-op in base (the plain Kelpie layout must look exactly as it did).
 
-import { setShared, shared, theme } from "herdr";
+import { theme } from "herdr";
+import { setShared, shared } from "../host.js";
 import base from "./base.js";
 import quietPages from "./quiet-pages.js";
 

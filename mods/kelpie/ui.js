@@ -2,7 +2,8 @@
 
 import { div, image, svg } from "gpui-kit";
 import { Avatar, AvatarFallback, AvatarImage, Popup, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, focused, hc, run, window } from "herdr";
+import { appHome, exec, window } from "herdr";
+import { agents, focused, hc, run } from "./host.js";
 import { agentState, decor, skinFont, skinText, statusMark } from "./skins/index.js";
 
 export { CLAUDE_TMP, STAT_MTIME, fullName, openExternal, platform, reveal, revealLabel } from "./platform.js";
@@ -272,12 +273,20 @@ export function empty(t, text, { fill = false } = {}) {
 export const DIALOG = { pad: INSET, gap: 8, section: 16 };
 
 // A list's group heading, inside a list padded 8 (rows pad 8 more): its label, and its count at the right.
-// `trail`: an element after the count, on the heading's own line (a fold chevron).
-export function groupHeader(t, label, n, trail = null) {
-  return decor("groupDecor", t, h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
+// `trail`: an element after the count, on the heading's own line (a fold chevron). `aside`: one before
+// the count (To do's and In progress's time estimates, stories.js).
+// Each goes into one tree only, the skin's when it draws its own, else this one: an element can be
+// drawn once, and one put in both left the skin's heading undrawn (#133). So the plain heading is
+// made bare for the skin, and made again with them when the skin keeps it.
+export function groupHeader(t, label, n, trail = null, aside = null) {
+  const make = (all) => h_flex().flex_none().px(8).pt(18).pb(6).items_center().text_size(SMALL)
     .child(skinFont(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.muted), "label").child(skinText(label, "label")))
+    .when(all && Boolean(aside), (el) => el.child(aside))
     .when(n != null, (el) => el.child(skinFont(div().flex_none().text_color(t.dim), "count").child(skinText(String(n), "count"))))
-    .when(Boolean(trail), (el) => el.child(div().flex_none().ml(6).child(trail))), { label, count: n, trail });
+    .when(all && Boolean(trail), (el) => el.child(div().flex_none().ml(6).child(trail)));
+  const head = make(false);
+  const out = decor("groupDecor", t, head, { label, count: n, trail, aside });
+  return out !== head || (!trail && !aside) ? out : make(true);
 }
 
 // What an agent is doing, not where it lives: a tab you named, else its own session title, else
@@ -412,11 +421,33 @@ export async function claudeSession(address) {
 // A GitHub login: letters, digits and single hyphens, not starting with one (gh.sh checks it too).
 export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$/;
 // The environment telling a profile's agents and terminals its GitHub account: KELPIE_GH_ACCOUNT, a
-// name, never a token. Kelpie can't make their gh use it (shell startup puts gh's own folder first in
-// PATH, and a shell function doesn't reach programs started from it): a gh() function in the person's
-// own shell setup reads it (README, "Several accounts"; the profile dialog's GitHub page has it to
-// copy). None set: nothing, so gh acts as it always has.
-export const githubEnv = (account) => (account && GITHUB_LOGIN.test(account) ? [`KELPIE_GH_ACCOUNT=${account}`] : []);
+// name, never a token, and KELPIE_GH_BIN, the folder of Kelpie's own gh (bin/gh), which asks for that
+// account's token on each run. Kelpie can't put that folder first in PATH itself (shell startup puts
+// gh's own folder first again): a line at the end of the person's shell setup does (GH_SHELL_LINE in
+// setup.js, README "Several accounts"), and then every program started there finds it too. None set:
+// nothing, so gh acts as it always has. The folder only when absolute, with no colon or line break, as
+// it goes into PATH (the shell setup line checks it too).
+// No account (Default): KELPIE_GH_ACCOUNT set empty, which Kelpie's gh takes as none, as one inherited
+// from where Herdr was started (a profile's terminal) would make gh act as that profile's account
+// instead of gh's active one. An assignment, not `-u`: env takes options only before the first one.
+export function githubEnv(account) {
+  if (!account || !GITHUB_LOGIN.test(account)) return ["KELPIE_GH_ACCOUNT="];
+  const bin = modFile("bin");
+  return [`KELPIE_GH_ACCOUNT=${account}`, ...(/^\/[^:\n\r]*$/.test(bin) ? [`KELPIE_GH_BIN=${bin}`] : [])];
+}
+// Where an agent or terminal Kelpie starts runs, for the Claude in it (the plugin's SessionStart hook
+// and get_story, plugin/server.py): KELPIE_PROFILE, the profile's id, and KELPIE_STORY, the story's
+// key, empty on the Desk and in a space that isn't a story's. Ids and keys only, each checked first
+// (a key that isn't one is left out, so the story is empty); `placed()` gives them to env as
+// arguments in front of the argv, never written into a script.
+const PROFILE_ID = /^[a-z0-9][a-z0-9-]*$/;
+const STORY_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+export const whereEnv = (profile, key = null) => (typeof profile?.id === "string" && PROFILE_ID.test(profile.id)
+  ? [`KELPIE_PROFILE=${profile.id}`, `KELPIE_STORY=${typeof key === "string" && STORY_KEY.test(key) ? key : ""}`] : []);
+export function placed(argv, profile, key = null) {
+  const env = whereEnv(profile, key);
+  return env.length && argv?.length ? ["env", ...env, ...argv] : argv;
+}
 // The argv that resumes a Claude session, on the account (config folder) it ran on, with the profile's
 // GitHub account (githubEnv). No config (the session is in Claude's own ~/.claude): no
 // CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids

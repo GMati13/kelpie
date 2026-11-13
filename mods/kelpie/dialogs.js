@@ -10,8 +10,9 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
-import { closeOverlay, openOverlay, props, run } from "herdr";
-import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, primaryButton, textButton, tint } from "./ui.js";
+import { closeOverlay, openOverlay, props } from "herdr";
+import { run } from "./host.js";
+import { DIALOG, MOD, SMALL, TEXT, TITLE, chrome, empty, icon, mark, primaryButton, textButton, tint } from "./ui.js";
 import { closeStories, moveStoryToDone, runPicks, selectStory, storyItems, storyState } from "./stories.js";
 import { decor, skinFont, skinTheme, statusMark } from "./skins/index.js";
 import { applyPendingProfile, installPlugin } from "./config.js";
@@ -162,15 +163,20 @@ export class Confirm {
   // still ticked, the dialog staying open as Starting… until the last has opened: no command does it,
   // as any agent can run one and this starts agents.
   // `closeStories` ({ profile, keys }): Close's issues closed on GitHub by this button (stories.js
-  // closeStories()), the dialog staying open as Closing… until they're done, as it writes to GitHub.
+  // closeStories()), the dialog staying open until they're done, as it writes to GitHub: each issue's
+  // line marked as it goes (closing, closed, or why not) and the button counting, as a long run that
+  // only said Closing… looked stuck.
   yes(command = props().command, cx = null) {
     const { overlay, installPlugin: install, installThen: then = null, doneStory, runPicks: picks, closeStories: closing } = props();
     if (closing) {
       if (this.busy) return;
       this.busy = true;
-      if (!cx) return closeStories(closing).catch(() => null).finally(() => closeOverlay(overlay));
+      // Redrawn by the task's own cx: the click's is stale after the first await, and its throw there
+      // once stopped Close all after its first batch of 5.
+      const ask = (redraw) => ({ ...closing, onStep: (p) => { this.progress = p; redraw?.notify?.(); } });
+      if (!cx) return closeStories(ask(null)).catch(() => null).finally(() => closeOverlay(overlay));
       cx.notify?.();
-      cx.spawn(async () => { await closeStories(closing).catch(() => null); closeOverlay(overlay); });
+      cx.spawn(async (task) => { await closeStories(ask(task)).catch(() => null); closeOverlay(overlay); });
       return;
     }
     if (picks) {
@@ -289,15 +295,19 @@ export class Confirm {
         // line when given). One with `choose` has a switch at its end, the whole row its click.
         .when(Boolean(p.items?.length), (el) => el.child(v_flex().gap(4).pl(4).children(p.items.map((x, i) => {
           const on = Boolean(x.choose) && !this.off.has(x.choose);
-          return (x.choose ? h_flex().id(`confirm-pick-${i}`) : h_flex()).gap(8).items_start()
+          // While Close runs, each issue's line says where it is: being closed, closed, or why not.
+          const run = this.progress, why = run?.failed?.[x.key];
+          const state = !run || !x.key ? null : run.closed.includes(x.key) ? "done" : why ? "failing" : run.on.includes(x.key) ? "working" : null;
+          return (x.choose ? h_flex().id(`confirm-pick-${i}`) : state ? h_flex().id(`confirm-item-${i}`) : h_flex()).gap(8).items_start()
+            .when(Boolean(why), (row) => row.tooltip(`Not closed: ${why}`))
             .when(Boolean(x.choose), (row) => row.cursor_pointer().on_click((_e, cx) => {
               if (this.busy) return;
               if (this.off.has(x.choose)) this.off.delete(x.choose); else this.off.add(x.choose);
               cx.notify();
             }))
-            .child(div().flex_none().text_color(t.dim).child("•"))
+            .child(state ? div().flex_none().mt(2).child(mark(t, state, 14)) : div().flex_none().text_color(t.dim).child("•"))
             .when(Boolean(x.key), (row) => row.child(div().flex_none().text_size(SMALL).mt(1).text_color(t.dim).child(x.key)))
-            .child(div().flex_1().min_w(0).text_color(x.choose && !on ? t.muted : t.foreground).child(x.text))
+            .child(div().flex_1().min_w(0).text_color((x.choose && !on) || state === "done" ? t.muted : t.foreground).child(x.text))
             .when(Boolean(x.choose), (row) => row.child(this.toggle(t, on, true)));
         }))))
         // `check`: a switch, as the profile dialog's (no square boxes in Kelpie), the whole row its click.
@@ -310,7 +320,8 @@ export class Confirm {
       .child(h_flex().flex_none().justify_end().gap(DIALOG.gap)
         .child(textButton(t, "confirm-no", "Cancel", () => this.no()))
         .when(Boolean(p.alt), (el) => el.child(textButton(t, "confirm-alt", p.alt.label, (_e, cx) => this.yes(p.alt.command, cx))))
-        .child(primaryButton(t, "confirm-yes", this.busy ? (p.working ?? (this.checked && p.check ? "Moving and cleaning up…" : "Moving…")) : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx))));
+        .child(primaryButton(t, "confirm-yes", this.busy ? (this.progress?.total ? `${p.working ?? "Working…"} ${this.progress.closed.length + Object.keys(this.progress.failed).length} of ${this.progress.total}`
+          : p.working ?? (this.checked && p.check ? "Moving and cleaning up…" : "Moving…")) : p.yes ?? "Confirm", (_e, cx) => this.yes(undefined, cx))));
     // The skin decorates the card, not the window around it.
     const card = decor("blockDecor", t, body, { role: "confirm", now: new Date() });
     return fit ? div().id("confirm-fit").size_full().flex().items_center().justify_center().p(CHANGE_FIT.margin).child(card) : card;

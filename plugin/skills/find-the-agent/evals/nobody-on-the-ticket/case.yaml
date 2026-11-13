@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: nobody-on-the-ticket
+expected_outcome: |
+  find_agents for ACME-181 says nobody works on it or its story ACME-180, and names an earlier session on ACME-181. The reply says so plainly, names that session, and offers the choices (resume it or start a new agent in Kelpie, leave the question as a comment or in Next, or drop it), then does nothing until the person picks: no message, no agent started or resumed, nothing added to Next.

@@ -12,6 +12,7 @@ import { SMALL, avatar, chip, chrome, icon, iconButton, modFile, openExternal, p
 import { Source, empty, frame, needsSetup, notice, startAgent } from "./source.js";
 import { jiraTask } from "./config.js";
 import { demoJira } from "./demo.js";
+import { lastDay } from "./estimates.js";
 
 // A board can run more than one sprint at a time; all of its active ones show.
 const PAGES = 10; // up to 1000 tickets, sub-tasks included
@@ -88,13 +89,15 @@ export async function jira(cfg, ...args) {
 }
 
 // A board's active sprints, as Jira answers them. A Kanban board has none (Jira refuses the
-// question), so then the board itself comes back marked `kanban` (its name is in `body.name`).
+// question), so then the board itself comes back marked `kanban` (its name is in `body.name`). So does
+// a team-managed board with sprints turned off (Jira calls its kind `simple`); a scrum board that
+// refuses it has something else wrong, which its error says.
 export async function activeSprints(cfg) {
   try {
     return await jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}/sprint?state=active`);
   } catch (e) {
     const board = await jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}`).catch(() => null);
-    if (board?.body?.type !== "kanban") throw e;
+    if (!["kanban", "simple"].includes(board?.body?.type)) throw e;
     return { ...board, kanban: true };
   }
 }
@@ -106,7 +109,8 @@ export async function activeSprints(cfg) {
 const DONE_DAYS = 14;
 export function boardScope(active, config) {
   if (!active.kanban) {
-    const sprints = (active.body?.values ?? []).map((s) => ({ id: s.id, name: s.name.replace(/\s+/g, " ") }));
+    // `end`: its last day, "YYYY-MM-DD" (estimates.js lastDay()), for the time left in it; none without an endDate.
+    const sprints = (active.body?.values ?? []).map((s) => ({ id: s.id, name: s.name.replace(/\s+/g, " "), ...(lastDay(s.endDate) ? { end: lastDay(s.endDate) } : {}) }));
     return { sprints, jql: sprints.length ? `sprint in (${sprints.map((s) => s.id).join(", ")})` : null };
   }
   const filter = config.body?.filter?.id;

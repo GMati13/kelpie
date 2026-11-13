@@ -11,7 +11,7 @@
 // (skins/quiet-pages/fonts/, loaded on Herdr's next start). Art from skins/quiet-pages/build.py.
 
 import { div, image, svg } from "gpui-kit";
-import { agents, run } from "herdr";
+import { agents, run } from "../host.js";
 import base from "./base.js";
 import { alpha, artImage, bands, byHour } from "./common.js";
 
@@ -158,11 +158,12 @@ export default {
 
   // A group heading set as a small capital label over an ink rule that fades out (the view's own is a
   // plain label; this rebuilds it with the same text and count, no controls there to keep).
-  groupDecor(t, el, { label, count, trail } = {}) {
+  groupDecor(t, el, { label, count, trail, aside } = {}) {
     const text = String(label ?? "");
     const ink = GROUP_INK[text] ?? t.dim;
     return div().relative().flex().flex_row().flex_none().items_center().px(8).pt(18).pb(8).mb(4).text_size(10.5)
       .child(div().flex_1().min_w(0).truncate().font_family("DM Sans").font_bold().text_color(t.muted).child(text.toUpperCase()))
+      .when(Boolean(aside), (x) => x.child(aside))
       .when(count != null, (x) => x.child(div().flex_none().font_family("DM Mono").text_size(11).text_color(t.dim).child(String(count))))
       .when(Boolean(trail), (x) => x.child(div().flex_none().ml(6).child(trail)))
       .child(div().absolute().left(8).right(8).bottom(0).h(2).child(inkRule(ink)));
