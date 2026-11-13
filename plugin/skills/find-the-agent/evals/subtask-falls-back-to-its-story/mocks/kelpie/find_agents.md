@@ -1,0 +1,5 @@
+2 agent(s) match. None works on that ticket itself: these are its story's agents (`via`, `note`).
+[
+  {"id": "w1:a1-0", "claude": {"name": "acme-trips-cache", "address": "uds:/tmp/cc-socks/51120.sock", "session": "9a0c3e71-2f4b-4c8d-a1e6-5b7d9f0c2e43"}, "tab": "ACME-143", "space": "ACME-142", "profile": "Acme", "key": "ACME-143", "story": "ACME-142", "ticket": "Cache trips in IndexedDB", "state": "waiting for you", "folder": "/work/acme", "title": "Cache trips for offline use", "first": "Work on Jira ACME-143: Cache trips in IndexedDB", "via": "story", "note": "On the story ACME-142, not on ACME-144 itself."},
+  {"id": "w1:a1-1", "claude": {"name": "acme-offline-banner", "address": "uds:/tmp/cc-socks/51188.sock", "session": "c4e81b2d-7a90-4f3e-8b65-0d2f1a9c7e58"}, "tab": "Claude", "space": "ACME-142", "profile": "Acme", "key": "ACME-142", "ticket": "Offline mode for saved trips", "state": "working", "folder": "/work/acme", "title": "Offline banner copy", "first": "Write the offline banner's copy for ACME-142", "via": "story", "note": "On the story ACME-142, not on ACME-144 itself."}
+]

@@ -12,3 +12,14 @@ v_flex #sp-list
         "Checks failing on ACME-152 (payments#97)"
     div [fg=dim]
       "Open here"
+  h_flex #sp-ACME-178 [hover(bg=hover)] {click} tip="ACME-178 Refund a cancelled booking\n1 subtask · 1 to do"
+    div
+      div [border=dim]
+    v_flex
+      h_flex
+        div [font="DM Mono" fg=accent]
+          "ACME-178"
+        div [font="DM Sans" fg=foreground]
+          "Refund a cancelled booking"
+      div [fg=muted]
+        "1 subtask · 1 to do"

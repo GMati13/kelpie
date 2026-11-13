@@ -95,7 +95,7 @@ describe("loading a GitHub Project", () => {
     const calls = fakeGh(sprintBoard());
     const d = await loadBoard(boardWith());
     assert.equal(d.site, "https://github.com");
-    assert.deepEqual(d.sprints, [{ id: "it-now", name: "Sprint 5" }]);
+    assert.deepEqual(d.sprints, [{ id: "it-now", name: "Sprint 5", end: day(10) }], "its last day: its start plus 14 days, less one");
     assert.deepEqual(d.columns, OPTIONS.map((o) => ({ name: o.name, statuses: [o.id] })));
     assert.deepEqual(d.project, { id: PID, statusField: "F_status", title: "Team board", url: "https://github.com/orgs/acme/projects/3" });
     assert.deepEqual(d.repos, { WEB: "acme/web" });
@@ -104,7 +104,7 @@ describe("loading a GitHub Project", () => {
     assert.deepEqual(d.children.map((i) => i.key), ["WEB-11", "WEB-12", "WEB-13"]);
     const [story] = d.parents;
     assert.deepEqual(story, {
-      key: "WEB-10", url: "https://github.com/acme/web/issues/10", item: "PVTI_10",
+      key: "WEB-10", url: "https://github.com/acme/web/issues/10", item: "PVTI_10", id: "I_acme_web_10", closed: false,
       fields: { summary: "Offline mode", issuetype: { name: "Issue", subtask: false, madeUp: true }, status: { id: "o2", name: "In Progress", statusCategory: { key: "indeterminate" } }, parent: null,
         labels: [{ name: "bug", color: "d73a4a" }, { name: "mobile", color: "0e8a16" }],
         assignee: { displayName: "Priya Nair", avatarUrls: { "48x48": null } } },
@@ -352,7 +352,7 @@ describe("the demo as a GitHub Project", () => {
   test("it loads from the fixture, running nothing, with links, repos and the Project", async () => {
     const d = await demoData(DEMO_PROJECT_PROFILE);
     assert.deepEqual(mock.of("exec"), []);
-    assert.deepEqual(d.sprints, [{ id: "iter-24", name: "Trips Sprint 24" }]);
+    assert.deepEqual(d.sprints, [{ id: "iter-24", name: "Trips Sprint 24", end: day(3) }], "the fixture sprint's end, as the Jira demo's");
     assert.deepEqual(d.repos, { ACME: "kelpie--demo/acme" });
     assert.equal(d.project.title, "Acme");
     assert.equal(d.links["https://github.com/kelpie--demo/web/pull/412"], "ACME-143");

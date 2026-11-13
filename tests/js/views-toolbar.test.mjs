@@ -1,5 +1,5 @@
 // What the tab bar draws (main.js toolbar, through its view's "toolbar" role), pinned as snapshots
-// (tests/README.md, Snapshots): a story's agent tabs, the + menu, Overview/Changes/Screenshots with
+// (tests/README.md, Snapshots): a story's agent tabs, the + menu, Overview/Changes/Screenshots/Artifacts with
 // their counts, and what a preview, a review and a plain space show instead.
 import { DEMO, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mjs";
 import { test, before } from "node:test";
@@ -17,8 +17,11 @@ before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); }
 
 // The tab bar, with the story's space shown (`space`) or a story previewed (`preview`). Its key loop
 // (nextCommand) never resolves under the stub, so its tasks aren't waited for.
-function toolbar({ space = null, preview = null, counts = {}, layout = "Kelpie" } = {}) {
+// `head`: whether the story's title row shows above it (work.js hides it with no story; the stub's
+// layout doesn't follow those commands).
+function toolbar({ space = null, preview = null, counts = {}, layout = "Kelpie", head = true } = {}) {
   setupDemoWorld({ stories, shown: space, layout, props: { role: "toolbar" } });
+  if (!head) mock.state.layout.children.find((n) => n.id === "work").children.find((n) => n.id === "story-head").hidden = true;
   if (preview) mock.state.shared.set("kelpie.stories.preview", { [DEMO]: preview });
   mock.state.shared.set("kelpie.stories.counts", counts);
   const cx = { ...fakeCx(), spawn() {} };
@@ -29,10 +32,10 @@ function toolbar({ space = null, preview = null, counts = {}, layout = "Kelpie" 
 const ids = (el, prefix) => render(el, skinTheme()).match(new RegExp(`#${prefix}[^\\s]*`, "g")) ?? [];
 
 for (const layout of ["Kelpie", "Kelpie-Plain"]) {
-  test(`${layout}: a story's space: its agent tabs, +, Changes and Screenshots with counts`, () => {
-    const { el } = toolbar({ space: "ACME-142", counts: { "ACME-142": { files: 3, shots: 2 } }, layout });
+  test(`${layout}: a story's space: its agent tabs, +, Changes, Screenshots and Artifacts with counts`, () => {
+    const { el } = toolbar({ space: "ACME-142", counts: { "ACME-142": { files: 3, shots: 2, artifacts: 1 } }, layout });
     assert.deepEqual(ids(el, "tab-"), ["#tab-list", "#tab-t0-0", "#tab-t0-1"]);
-    assert.deepEqual(ids(el, "view-"), ["#view-changes", "#view-shots"]);
+    assert.deepEqual(ids(el, "view-"), ["#view-changes", "#view-shots", "#view-artifacts"]);
     snap(`${layout === "Kelpie" ? "toolbar" : "plain/toolbar"}/story`, el);
   });
 }
@@ -48,7 +51,7 @@ test("the + menu open", () => {
   click({}, cx); // closed again for the next test
 });
 
-test("a story previewed: Overview, and Changes or Screenshots only when they hold something", () => {
+test("a story previewed: Overview, and Changes, Screenshots or Artifacts only when they hold something", () => {
   const bare = toolbar({ preview: "ACME-180" });
   assert.deepEqual(ids(bare.el, "view-"), ["#view-start"]);
   assert.deepEqual(ids(bare.el, "tab-t"), [], "no tabs of a space");
@@ -56,6 +59,8 @@ test("a story previewed: Overview, and Changes or Screenshots only when they hol
   const some = toolbar({ preview: "ACME-138", counts: { "ACME-138": { shots: 4 } } });
   assert.deepEqual(ids(some.el, "view-"), ["#view-start", "#view-shots"]);
   snap("toolbar/preview-shots", some.el);
+  const made = toolbar({ preview: "ACME-138", counts: { "ACME-138": { artifacts: 1 } } });
+  assert.deepEqual(ids(made.el, "view-"), ["#view-start", "#view-artifacts"]);
 });
 
 test("a review previewed: Changes alone, no +", () => {
@@ -65,9 +70,9 @@ test("a review previewed: Changes alone, no +", () => {
   snap("toolbar/review", el);
 });
 
-test("the Desk: its tabs and + (no story)", () => {
-  const { el } = toolbar({ space: "Desk" });
-  assert.deepEqual(ids(el, "view-"), []);
+test("the Desk: its tabs, + and Screenshots (no story)", () => {
+  const { el } = toolbar({ space: "Desk", head: false });
+  assert.deepEqual(ids(el, "view-"), ["#view-shots"]);
   snap("toolbar/desk", el);
 });
 

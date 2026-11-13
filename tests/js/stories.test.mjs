@@ -3,7 +3,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, settleTalking, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, askFor, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, settleTalking, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
 import { sunkWords } from "../../mods/kelpie/config.js";
 import { prState } from "../../mods/kelpie/ui.js";
 import { COLUMNS, DEMO_PROFILE, DEMO_PROJECT_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
@@ -363,6 +363,20 @@ describe("progress: where a story's subtasks are", () => {
   });
 });
 
+describe("askFor: what a pull request's button asks its agent", () => {
+  test("changes requested comes before failing checks, as in need() and the marks", () => {
+    const both = pr("AB-2: x", { checks: "FAILURE", review: "CHANGES_REQUESTED" });
+    assert.equal(askFor(both), "comments");
+    // The header's main action is need()'s kind, and only pull requests asking for it get the button:
+    // one in both states once left the header with no main action.
+    const [it] = build(data({ parents: [issue("AB-1", "doing")], children: [issue("AB-2", "doing", "AB-1")], mine: ["AB-2"], prs: [both] }), new Map());
+    assert.match(need(it)[1], /^Changes requested/);
+    assert.equal(askFor(pr("AB-2: x", { checks: "FAILURE" })), "fix");
+    assert.equal(askFor(pr("AB-2: x", { checks: "SUCCESS", review: "APPROVED" })), "merge");
+    assert.equal(askFor(pr("AB-2: x", { checks: "FAILURE", review: "CHANGES_REQUESTED", merged: true })), null);
+  });
+});
+
 describe("prState: a pull request's mark", () => {
   const t = mock.state.theme;
   const state = (o) => prState(t, { merged: false, isDraft: false, reviewDecision: null, ...o }, o.checks ?? null)[0];
@@ -390,11 +404,12 @@ describe("the demo's stories, as the list builds them", () => {
     const list = ordered(build(d, new Map(), {}, new Map(), null));
     assert.deepEqual(list.map((x) => [x.it.key, x.n[0], sunk(x.it, x.n)]), [
       ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
-      ["ACME-142", 6, false], ["ACME-175", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false],
+      // In progress by last activity (#141): ACME-175's pull request changed most recently.
+      ["ACME-175", 6, false], ["ACME-142", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false], ["ACME-176", 6, false], ["ACME-178", 6, false],
       ["ACME-129", 6, true], ["ACME-126", 6, true],
     ]);
   });
-  // ACME-126 is handed over (its subtask in QA, its pull request merged), but its agent finished a
+  // ACME-126 is handed over (its subtask of yours in QA), but its agent finished a
   // turn the person hasn't seen yet: it stays among the stories in progress.
   test("a handed-over story whose agent finished a turn stays in progress", async () => {
     const d = await demoData();
@@ -478,7 +493,7 @@ describe("underWay: the sidebar's In progress and To do", () => {
       assert.ok(it, "the fixture's story in progress with nothing here");
       assert.equal(it.space, null);
       assert.equal(underWay(it), true);
-      assert.deepEqual(list.filter((x) => !sunk(x.it, x.n) && !underWay(x.it)).map((x) => x.it.key), ["ACME-180"], "only the story nobody started is to do");
+      assert.deepEqual(list.filter((x) => !sunk(x.it, x.n) && !underWay(x.it)).map((x) => x.it.key), ["ACME-180", "ACME-176", "ACME-178"], "only the stories nobody started are to do");
     });
   }
 });

@@ -1,4 +1,4 @@
-h_flex
+h_flex {down:left}
   h_flex #tab-list {hover up:left}
     h_flex #view-start [bg=selected fg=foreground bg=#00000000 border=qpRule] {down:left click}
       div
@@ -26,7 +26,7 @@ h_flex
       svg chrome:folder
     div #panel-changes [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Changes"
       svg chrome:git-compare
-    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Artifacts"
+    div #panel-artifacts [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Screenshots"
       svg chrome:layers
     div #panel-web [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Web ⌘⇧S"
       svg own:globe

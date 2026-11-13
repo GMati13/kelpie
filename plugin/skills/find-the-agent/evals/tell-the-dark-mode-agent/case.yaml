@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: tell-the-dark-mode-agent
+expected_outcome: |
+  Calls find_agents for ACME-172 (key or words), then sends one message with Claude's messaging between sessions to that agent's claude.address (uds:/tmp/cc-socks/48213.sock) or its name (acme-dark-mode), saying who it's from and that the Desk's bundle work also changed tokens.ts, as information, not an order. Tells the person it sent it. Doesn't show_agent instead, and reads no session or socket files.

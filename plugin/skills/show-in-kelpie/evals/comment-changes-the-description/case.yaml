@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: comment-changes-the-description
+expected_outcome: |
+  Sees that Priya Nair's latest comment (a scope change: conflicts keep the newest change, the trip's history says which edit won, no merge dialog, the losing edit kept in tripHistory) is the current word, calls show_passage for ACME-142 with a quote copied from that comment, and tells the person the plan, that it's in that comment, and how it relates to the description's criterion 3.
+context:
+  scaffold_script: place-files.sh

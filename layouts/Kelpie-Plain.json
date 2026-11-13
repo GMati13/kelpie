@@ -83,6 +83,7 @@
         {
           "id": "story-head",
           "type": "block",
+          "window_drag": true,
           "size": {
             "px": 50
           },
@@ -134,10 +135,6 @@
                   "size": {
                     "px": 42
                   },
-                  "padding": [
-                    0,
-                    4
-                  ],
                   "window_drag": true,
                   "content": {
                     "mod": "kelpie",
@@ -224,10 +221,6 @@
           "size": {
             "px": 42
           },
-          "padding": [
-            0,
-            4
-          ],
           "window_drag": true,
           "content": {
             "mod": "kelpie",

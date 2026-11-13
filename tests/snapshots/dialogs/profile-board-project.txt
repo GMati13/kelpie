@@ -150,7 +150,7 @@ div #work-setup-fit [bg=#00000080]
             div
               "I work alone"
             div [fg=dim]
-              "Off: the stories past your part are listed as waiting on others."
+              "Off: only the stories assigned to you show, and those past your part are listed as waiting on others."
           h_flex [bg=border]
             div [bg=muted]
         h_flex #setup-move-to-done {click}
@@ -161,6 +161,55 @@ div #work-setup-fit [bg=#00000080]
               "A double check in the story's header, and on each story past your part in the list, moves your subtasks and then the story to the board's last column in one go."
           h_flex [bg=accent]
             div [bg=accent_foreground]
+        h_flex #setup-unassigned {click}
+          v_flex
+            div
+              "Show unassigned work"
+            div [fg=dim]
+              "Off: the list shows only what's assigned to you."
+          h_flex [bg=border]
+            div [bg=muted]
+        v_flex
+          h_flex [border=border]
+            div
+              "Priority"
+        v_flex
+          h_flex
+            div [fg=muted]
+              "Priority field"
+          h_flex
+            h_flex #setup-priority-field-0 [font="DM Sans" bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="Its tickets have no priority"
+              "None"
+            h_flex #setup-priority-field-1 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
+              "Priority"
+          div [fg=dim]
+            "The Project's single-select field that holds a ticket's priority: its options, top to bottom, are the levels, highest first."
+        h_flex #setup-by-priority {click}
+          v_flex
+            div
+              "Order stories by priority"
+            div [fg=dim]
+              "Off: stories keep the board's order (what needs you first)."
+          h_flex [bg=border]
+            div [bg=muted]
+        h_flex #setup-show-priority {click}
+          v_flex
+            div
+              "Show priority"
+            div [fg=dim]
+              "Off: no priority marks on the rows."
+          h_flex [bg=border]
+            div [bg=muted]
+        v_flex
+          h_flex
+            div [fg=muted]
+              "Hours a day"
+          h_flex
+            div
+              Input.new [border=input bg=background fg=foreground]
+            div
+          div [fg=dim]
+            "The hours of a working day you spend on tickets. To do's time estimates are weighed against the working time left in the sprint: its working days left (Monday to Friday, today included) × these hours. Empty: 6."
     h_flex [border=border]
       Popup.new "setup-configure-all-menu"
         h_flex #setup-configure-all-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Asks a Claude on the Desk to set this up with you"

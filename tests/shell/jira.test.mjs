@@ -165,6 +165,14 @@ describe("jira.sh: transition", () => {
     const { fields } = JSON.parse(argv[argv.indexOf("--data") + 1]);
     assert.ok(fields.includes("issuetype") && fields.includes("labels"), fields.join(", "));
   });
+  // To do's and In progress's sums count the tickets' time estimates, remaining first (#90).
+  test("a search asks for each issue's remaining and original time estimates", () => {
+    const f = fakes();
+    jira(f, [...byCommand(), SITE, "", "search", "project = ABC", ""]);
+    const { argv } = f.calls("curl")[0];
+    const { fields } = JSON.parse(argv[argv.indexOf("--data") + 1]);
+    assert.ok(fields.includes("timeestimate") && fields.includes("timeoriginalestimate"), fields.join(", "));
+  });
   test("an unknown action is refused", () => {
     const f = fakes();
     assert.equal(jira(f, [...byCommand(), SITE, "", "delete", "/rest/api/3/issue/ABC-1"]).json?.error, "usage");
@@ -193,6 +201,20 @@ describe("jira.sh: the token travels only through curl's stdin", () => {
   }
 });
 
+describe("jira.sh: a trace turned on from outside", () => {
+  // bash (macOS's sh) takes xtrace from an exported SHELLOPTS; dash ignores it.
+  test("never prints the token, from a token command or the Keychain", () => {
+    for (const shell of ["sh", "bash"]) {
+      for (const args of [[...byCommand(), SITE, "", "get", "/rest/api/3/myself"], [SITE, "jira-item", "get", "/rest/api/3/myself"]]) {
+        const f = fakes();
+        const r = sh(shell, [JIRA, ...args], { env: { PATH: f.path, FAKE_TOKEN: TOKEN, FAKE_ACCT: EMAIL, SHELLOPTS: "xtrace", PS4: "+ " } });
+        assert.match(r.stdout, /"code":200/, r.stderr);
+        assert.ok(!(r.stdout + r.stderr).includes(TOKEN), `${shell} traced the token`);
+      }
+    }
+  });
+});
+
 describe("jira.sh: the token command's errors", () => {
   test("a failing token command's stderr isn't passed on", () => {
     const f = fakes();
@@ -213,5 +235,29 @@ describe("jira.sh: the token command's errors", () => {
     const r = jira(f, ["--email", EMAIL, "--token-command", "true", SITE, "", "get", "/rest/api/3/myself"]);
     assert.equal(r.json?.error, "command");
     assert.deepEqual(f.calls("curl"), []);
+  });
+});
+
+// KELPIE-40: the signed-in account's id comes back too, so a load tells your issues by their assignee
+// without asking Jira again (board.js keptJira()). Only an id: anything else in that header is dropped.
+describe("jira.sh: the signed-in account", () => {
+  const withHeader = (line) => fakeBin().add("curl", `out=; hdr=
+while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift ;; -D) hdr=$2; shift ;; esac; shift; done
+printf '{"ok":true}' > "$out"
+printf 'HTTP/2 200\\r\\n%s\\r\\n' '${line}' > "$hdr"
+printf 200`);
+  test("its id, as Jira names it", () => {
+    const r = jira(withHeader("X-AAccountId: 5b10a2844c20165700ede21g"), [...byCommand(), SITE, "", "get", "/rest/api/3/myself"]);
+    assert.equal(r.json?.authed, true);
+    assert.equal(r.json?.account, "5b10a2844c20165700ede21g");
+  });
+  test("none when Jira named nobody", () => {
+    const r = jira(withHeader("x-other: 1"), [...byCommand(), SITE, "", "get", "/rest/api/3/myself"]);
+    assert.equal(r.json?.authed, false);
+    assert.equal(r.json?.account, "");
+  });
+  test("a value that isn't an id is dropped", () => {
+    const r = jira(withHeader("x-aaccountid: a b\"c<script>"), [...byCommand(), SITE, "", "get", "/rest/api/3/myself"]);
+    assert.equal(r.json?.account, "");
   });
 });

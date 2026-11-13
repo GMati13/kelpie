@@ -11,7 +11,7 @@ import { GITHUB_LOGIN } from "./ui.js";
 
 const FIELDS = `title url viewerCanUpdate
       status: field(name: "Status") { ... on ProjectV2SingleSelectField { options { id name } } }
-      fields(first: 50) { nodes { __typename ... on ProjectV2IterationField { name } } }
+      fields(first: 50) { nodes { __typename ... on ProjectV2IterationField { name } ... on ProjectV2SingleSelectField { name options { name } } } }
       repositories(first: 20) { nodes { nameWithOwner } }`;
 // Exported for the tests.
 export const CHECK_USER = `query KelpieCheckUser($owner: String!, $number: Int!) { owner: user(login: $owner) { projectV2(number: $number) {
@@ -24,8 +24,10 @@ export const CHECK_ORG = `query KelpieCheckOrg($owner: String!, $number: Int!) {
 // `active` after; with `active` unknown, gh auth switch with no account goes back when two are signed
 // in, and asks which when there are more.
 const REFRESH = "gh auth refresh -h github.com -s project";
+// A named account that isn't a GitHub login gets no command at all, as it would go into it.
 export function scopeCommand(account, active = null) {
   if (!account || account === active) return REFRESH;
+  if (!GITHUB_LOGIN.test(account)) return null;
   const back = active && GITHUB_LOGIN.test(active) ? ` -u ${active}` : "";
   return `gh auth switch -h github.com -u ${account}\n${REFRESH}\ngh auth switch -h github.com${back}`;
 }
@@ -50,7 +52,8 @@ export function scopesOf(response) {
 // The scope check, then the Project itself: { ok, text, fix?, project? }. `ok` false: it couldn't be
 // read (`text` says why plainly); `fix` is a command for the person to run themselves; `project` is
 // { title, url, canUpdate, options: [{ id, name }], iteration (its field's name or null), repos:
-// ["owner/repo"], scopes }.
+// ["owner/repo"], scopes, selects: [{ name, levels: [option names] }] (its single-select fields but
+// Status: where a priority can come from) }.
 export async function checkProject(cfg, { account = null, demo = false, name = "" } = {}) {
   if (demo) return demoCheck(name);
   const who = account ? `the GitHub account ${account}` : "the account gh has active";
@@ -72,9 +75,18 @@ export async function checkProject(cfg, { account = null, demo = false, name = "
     title: p.title ?? "", url: p.url ?? "", canUpdate: p.viewerCanUpdate !== false,
     options: (p.status?.options ?? []).map((o) => ({ id: o.id, name: o.name })),
     iteration: (p.fields?.nodes ?? []).find((f) => f?.__typename === "ProjectV2IterationField")?.name ?? null,
+    selects: selectsOf(p.fields?.nodes),
     repos: (p.repositories?.nodes ?? []).map((n) => n?.nameWithOwner).filter(Boolean),
     scopes: scope,
   }, fix);
+}
+
+// The single-select fields but Status, each with its options' names in order (a priority field's
+// levels, highest first). Strangers' names: one line, cut.
+const plain = (v) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+export function selectsOf(nodes) { // exported for the tests
+  return (nodes ?? []).filter((f) => f?.__typename === "ProjectV2SingleSelectField" && plain(f.name) && plain(f.name) !== "Status")
+    .map((f) => ({ name: plain(f.name), levels: (f.options ?? []).map((o) => plain(o?.name)).filter(Boolean) }));
 }
 
 // What a readable Project's check says, in plain words.
@@ -101,5 +113,6 @@ async function demoCheck(name) {
     iteration: p.iteration ?? null,
     repos: [p.repo ?? "kelpie--demo/acme"],
     scopes: "write",
+    selects: p.priority ? [{ name: p.priority, levels: (f.priorities ?? []).map((l) => l.name) }] : [],
   }, null);
 }
