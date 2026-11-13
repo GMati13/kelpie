@@ -1,4 +1,4 @@
-h_flex
+h_flex {down:left}
   h_flex #tab-list {hover up:left}
     h_flex #tab-t0-0 [bg=selected fg=foreground border=qpRule bg=#00000000] {hover down:left move up:left click down:right} tip="ACME-143"
       div

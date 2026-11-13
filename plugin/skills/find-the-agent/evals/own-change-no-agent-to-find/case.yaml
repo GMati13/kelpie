@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: own-change-no-agent-to-find
+expected_outcome: |
+  The change is the person's own, so there's no agent to find: commits README.md with a sensible message and calls neither find_agents nor show_agent.
+context:
+  scaffold_script: place-files.sh

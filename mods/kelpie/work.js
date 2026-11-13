@@ -12,10 +12,12 @@
 
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { layout, nextCommand, run, setShared, shared, theme } from "herdr";
+import { nextCommand, theme } from "herdr";
+import { layout, run, setShared, shared } from "./host.js";
 import { SMALL, TEXT, chrome, find, fullName, icon, iconButton, stop, textButton } from "./ui.js";
 import { REFRESH, count } from "./source.js";
-import { openSetup, profileElsewhere, savedSetup, setupOf, shownSpace } from "./config.js";
+import { openSetup, profileElsewhere, savedSetup, setupOf, shownProfile, shownSpace } from "./config.js";
+import { deskShown, deskView } from "./desk.js";
 import { Stories, StoryBody, StoryList, StoryView, headFolded, stackChild, storyNow } from "./stories.js";
 import { SpacePicker, WorkSide } from "./workside.js";
 import { Sprint } from "./sprint.js";
@@ -102,7 +104,10 @@ function syncStories(root) {
   if (lower?.size?.px === 42) run("layout.resize", { id: "lower", weight: 3 });
   // The Screenshots view has a block of its own (the Artifacts panel, scoped to the story).
   // Another profile's space shown under a preview: never its terminals, but Screenshots still can.
-  const want = profileElsewhere() || (now && (now.preview || now.view !== "agent")) ? (now?.view === "shots" ? stackChild("shots") : "story-view") : "main";
+  // The Desk (no story) has Screenshots too, scoped to its agents' sessions (desk.js).
+  const desk = !now && !profileElsewhere() && deskShown() && deskView(shownProfile()) === "shots";
+  const want = desk ? stackChild("shots")
+    : profileElsewhere() || (now && (now.preview || now.view !== "agent")) ? (now?.view === "shots" ? stackChild("shots") : "story-view") : "main";
   // Also when this copy last asked for something else: the layout it reads can lag behind a select.
   if (!unstarted && find(root, "main-stack") && (find(root, "main-stack").active !== want || lastWant !== want)) {
     lastWant = want;

@@ -27,10 +27,10 @@ v_flex
         div
           svg chrome:circle-check [fg=done]
         "1"
-      h_flex #count-review [fg=accent] tip="2 to review"
+      h_flex #count-review [fg=accent] tip="5 to review"
         div
           svg own:eye [fg=accent]
-        "2"
+        "5"
       h_flex #count-working [fg=accent] tip="1 working"
         div
           svg chrome:spinner [fg=accent] ~spin
@@ -45,7 +45,7 @@ v_flex
         div [fg=dim]
           "Next"
         div [fg=muted]
-          "9"
+          "12"
         div
         h_flex #story-next-tools {down:left click}
           h_flex #story-next-picks [fg=accent hover(bg=accent/24)] {click} tip="Claude is looking for what to do next"

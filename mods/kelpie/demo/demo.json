@@ -1,5 +1,5 @@
 {
-  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list; one with `opens` ({after, found}) is opened by an agent `after` seconds in and found by GitHub's search only `found` seconds in. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
+  "_about": "Kelpie's demo (mods/kelpie/demo.js). `herdr-app do kelpie.demo` makes the Acme profile and opens these spaces; edit this file and press Refresh to change what it shows; `herdr-app do kelpie.demo-github` shows the same issues as a GitHub Project (`project`), `kelpie.demo` puts Jira back; `herdr-app do kelpie.demo-remove` takes it all away. Times are relative: -25m, -3h, -2d. A tab's `work` ({prompt, edits: [{path, at}]}, paths under the profile's folder) is what its agent started on and the files it changed, as the plugin's find_agents reads them from a session; two agents here changed web/src/theme/tokens.ts in the same folder. A pull request's `later` ({after: seconds, checks…}) takes its place that long after kelpie.demo ran, so a change can be watched reaching the list; one with `opens` ({after, found}) is opened by an agent `after` seconds in and found by GitHub's search only `found` seconds in. Its links can't reach anyone: Jira at jira.example.com (reserved for examples), GitHub as kelpie--demo (GitHub allows no double hyphen in a name).",
   "profile": {
     "name": "Acme",
     "folder": "~/.local/share/kelpie/demo/acme",
@@ -8,7 +8,8 @@
     "board": 7,
     "owner": "kelpie--demo",
     "me": "you",
-    "meName": "Alex Morgan"
+    "meName": "Alex Morgan",
+    "unassigned": true
   },
   "board": {
     "name": "Acme Trips",
@@ -69,8 +70,18 @@
     "title": "Acme",
     "repo": "kelpie--demo/acme",
     "iteration": "Sprint",
+    "priority": "Priority",
     "labels": {"mobile": "0e8a16", "sync": "c5def5", "payments": "fbca04", "ios": "5319e7", "search": "1d76db", "frontend": "bfd4f2", "design": "e99695", "accessibility": "006b75", "charts": "f9d0c4", "bug": "d73a4a", "ci": "ededed", "security": "b60205"}
   },
+  "_moved": "An issue's `moved` (relative) is when it last moved on the board, as Jira and a Project give it: the stories handed over or done are ordered by it, the latest first (ACME-122 two hours ago, then ACME-129's subtask three days ago; Done: ACME-116, then ACME-118). Unset: the board says nothing.",
+  "_priorities": "The board's priority levels, highest first (Jira's site list, the Project's Priority field's options); each issue's `priority` names one, ACME-138 and its subtask none. The profile shows them once its board's byPriority/showPriority are on (the profile dialog's Board page, or `byPriority`/`showPriority` true in `profile` here).",
+  "priorities": [
+    {"id": "1", "name": "Highest"},
+    {"id": "2", "name": "High"},
+    {"id": "3", "name": "Medium"},
+    {"id": "4", "name": "Low"},
+    {"id": "5", "name": "Lowest"}
+  ],
   "sprints": [
     {
       "id": 24,
@@ -80,23 +91,35 @@
   "issues": [
     {
       "key": "ACME-142",
+      "priority": "High",
       "assignee": "Priya Nair",
       "summary": "Offline mode for saved trips",
       "labels": ["mobile"],
       "type": "Story",
       "status": "In Progress",
-      "description": "Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.\n\n## What we want\n\nSaved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.\n\n- Cache every trip the traveller opened in the last 30 days in `IndexedDB`\n- Queue edits made offline and replay them in order\n- Show a calm banner while offline, never a blocking error\n\n## Out of scope\n\nDownloading map tiles: that's ACME-190.\n\n## Done when\n\n1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online\n3. Conflicts keep the newest change and say so in the trip's history"
+      "description": "Travellers open saved trips on planes, trains and in roaming dead zones. Today the trip screen shows a spinner and then an error when there's no network, even for trips that were opened a minute ago.\n\n## What we want\n\nSaved trips open instantly from the device, and changes made offline (notes, reordered stops, a new booking) are kept and synced once the connection is back.\n\n- Cache every trip the traveller opened in the last 30 days in `IndexedDB`\n- Queue edits made offline and replay them in order\n- Show a calm banner while offline, never a blocking error\n\n## Out of scope\n\nDownloading map tiles: that's ACME-190.\n\n## Done when\n\n1. A trip opened once opens again in airplane mode, within 300 ms\n2. An edit made offline shows on another device a minute after going back online\n3. Conflicts keep the newest change and say so in the trip's history",
+      "comments": [
+        { "author": "Tomás Ruiz", "at": "-3d", "body": "Should the banner say how long ago the trip was saved? Travellers asked for that in the last study." },
+        { "author": "Priya Nair", "at": "-2d", "body": "Yes, but keep it short: \"Saved 2h ago\". No dates." },
+        { "author": "Lena Fischer", "at": "-1d", "body": "Product call: map tiles stay out of this story, they're **ACME-190**. Offline maps would double the cache size." },
+        { "author": "Priya Nair", "at": "-5h", "body": "Scope change after today's review: conflicts keep the newest change, and the trip's history says which edit won.\n\n- No merge dialog for now\n- Keep the losing edit in `tripHistory` so it can be put back" }
+      ]
     },
     {
       "key": "ACME-143",
+      "priority": "Medium",
       "summary": "Cache trips in IndexedDB",
       "parent": "ACME-142",
       "status": "In Progress",
       "mine": true,
-      "description": "Add a `TripCache` on top of the trips store: write a trip through on every successful load, read it first when the network fails. Keep at most 30 days of trips and drop the oldest first."
+      "description": "Add a `TripCache` on top of the trips store: write a trip through on every successful load, read it first when the network fails. Keep at most 30 days of trips and drop the oldest first.",
+      "comments": [
+        { "author": "Tomás Ruiz", "at": "-6h", "body": "Use the existing `tripsStore` keys for the cache, so the sync queue can find the trips it replays." }
+      ]
     },
     {
       "key": "ACME-144",
+      "priority": "Low",
       "summary": "Queue offline edits and sync them back",
       "labels": ["sync"],
       "parent": "ACME-142",
@@ -105,6 +128,7 @@
     },
     {
       "key": "ACME-145",
+      "priority": "Medium",
       "assignee": "Tomás Ruiz",
       "summary": "Design the offline banner",
       "parent": "ACME-142",
@@ -112,6 +136,7 @@
     },
     {
       "key": "ACME-151",
+      "priority": "Highest",
       "assignee": "Priya Nair",
       "summary": "Pay with Apple Pay at checkout",
       "labels": ["payments", "ios"],
@@ -121,6 +146,7 @@
     },
     {
       "key": "ACME-152",
+      "priority": "High",
       "summary": "Apple Pay button and merchant session",
       "parent": "ACME-151",
       "status": "In Review",
@@ -128,6 +154,7 @@
     },
     {
       "key": "ACME-153",
+      "priority": "Medium",
       "summary": "Receipts for wallet payments",
       "parent": "ACME-151",
       "status": "To Do",
@@ -135,6 +162,7 @@
     },
     {
       "key": "ACME-160",
+      "priority": "Medium",
       "assignee": "Lena Vogel",
       "summary": "Typo-tolerant search",
       "labels": ["search"],
@@ -144,13 +172,24 @@
     },
     {
       "key": "ACME-161",
+      "priority": "Medium",
       "summary": "Fuzzy matching in the search service",
       "parent": "ACME-160",
       "status": "In Review",
       "mine": true
     },
     {
+      "key": "ACME-166",
+      "assignee": "Priya Nair",
+      "summary": "Share a trip with a link",
+      "labels": ["frontend"],
+      "type": "Story",
+      "status": "In Review",
+      "description": "Travellers want to show a trip to someone who has no account. Give each trip a link that opens it read-only, without signing in.\n\n## Acceptance\n\n- The link works for 14 days, then says it has expired\n- Whoever opens it sees the trip but can't change it"
+    },
+    {
       "key": "ACME-171",
+      "priority": "Low",
       "assignee": "Tomás Ruiz",
       "summary": "Dark mode for the dashboard",
       "labels": ["frontend", "design", "accessibility"],
@@ -160,6 +199,7 @@
     },
     {
       "key": "ACME-172",
+      "priority": "Low",
       "summary": "Theme tokens and the dark mode toggle",
       "parent": "ACME-171",
       "status": "In Review",
@@ -167,6 +207,7 @@
     },
     {
       "key": "ACME-173",
+      "priority": "Lowest",
       "summary": "Dark colours for the dashboard charts",
       "labels": ["charts"],
       "parent": "ACME-171",
@@ -175,6 +216,7 @@
     },
     {
       "key": "ACME-175",
+      "priority": "Highest",
       "summary": "Fix the flaky login test",
       "labels": ["bug", "ci"],
       "type": "Bug",
@@ -199,6 +241,7 @@
     },
     {
       "key": "ACME-184",
+      "priority": "Medium",
       "assignee": "Sam Okafor",
       "summary": "Show times in each stop's time zone",
       "type": "Story",
@@ -207,6 +250,7 @@
     },
     {
       "key": "ACME-185",
+      "priority": "High",
       "summary": "Store each stop's time zone",
       "parent": "ACME-184",
       "status": "In Progress",
@@ -214,6 +258,7 @@
     },
     {
       "key": "ACME-186",
+      "priority": "Medium",
       "assignee": "Sam Okafor",
       "summary": "Label times with their zone",
       "labels": ["frontend"],
@@ -222,6 +267,7 @@
     },
     {
       "key": "ACME-180",
+      "priority": "High",
       "assignee": "Priya Nair",
       "summary": "Export an itinerary as PDF",
       "type": "Story",
@@ -230,6 +276,7 @@
     },
     {
       "key": "ACME-181",
+      "priority": "Medium",
       "summary": "PDF layout for itineraries",
       "parent": "ACME-180",
       "status": "To Do",
@@ -237,13 +284,50 @@
     },
     {
       "key": "ACME-182",
+      "priority": "Low",
       "assignee": "Tomás Ruiz",
       "summary": "Export from the share sheet",
       "parent": "ACME-180",
       "status": "To Do"
     },
     {
+      "key": "ACME-176",
+      "priority": "Low",
+      "assignee": "Sam Okafor",
+      "summary": "Group bookings by city",
+      "type": "Story",
+      "status": "To Do",
+      "description": "A long trip's bookings read better grouped by the city they're in, in the order the trip visits them."
+    },
+    {
+      "key": "ACME-177",
+      "priority": "Low",
+      "summary": "City headings in the trip view",
+      "parent": "ACME-176",
+      "status": "To Do",
+      "mine": true
+    },
+    {
+      "key": "ACME-178",
+      "priority": "Highest",
+      "assignee": "Lena Vogel",
+      "summary": "Refund a cancelled booking",
+      "labels": ["payments"],
+      "type": "Story",
+      "status": "To Do",
+      "description": "A booking the hotel cancels is refunded automatically: today support refunds each one by hand."
+    },
+    {
+      "key": "ACME-179",
+      "priority": "Highest",
+      "summary": "Refund through the payment provider",
+      "parent": "ACME-178",
+      "status": "To Do",
+      "mine": true
+    },
+    {
       "key": "ACME-129",
+      "priority": "Medium",
       "assignee": "Sam Okafor",
       "summary": "Password reset emails",
       "type": "Story",
@@ -252,6 +336,8 @@
     },
     {
       "key": "ACME-130",
+      "moved": "-3d",
+      "priority": "Medium",
       "summary": "Reset email template",
       "parent": "ACME-129",
       "status": "In QA",
@@ -259,6 +345,7 @@
     },
     {
       "key": "ACME-131",
+      "priority": "High",
       "summary": "Expiring reset links",
       "labels": ["security"],
       "parent": "ACME-129",
@@ -266,6 +353,7 @@
     },
     {
       "key": "ACME-190",
+      "priority": "Low",
       "assignee": "Priya Nair",
       "summary": "Remember the last search filters",
       "type": "Story",
@@ -274,13 +362,37 @@
     },
     {
       "key": "ACME-191",
+      "priority": "Low",
       "assignee": "Jordan Blake",
       "summary": "Save the filters with the search",
       "parent": "ACME-190",
       "status": "In Progress"
     },
     {
+      "key": "ACME-195",
+      "assignee": "Jordan Blake",
+      "summary": "Share a trip with a link",
+      "type": "Story",
+      "status": "To Do",
+      "description": "Someone who plans a trip wants to show it to the people coming along. Make a link that opens the trip read only, and a way to turn the link off."
+    },
+    {
+      "key": "ACME-196",
+      "summary": "Read-only trip page for shared links",
+      "parent": "ACME-195",
+      "status": "To Do"
+    },
+    {
+      "key": "ACME-198",
+      "summary": "Remove the old onboarding feature flags",
+      "type": "Task",
+      "status": "To Do",
+      "description": "The new onboarding shipped to everyone a month ago. Remove its feature flags and the old screens behind them."
+    },
+    {
       "key": "ACME-122",
+      "moved": "-2h",
+      "priority": "Medium",
       "assignee": "Sam Okafor",
       "summary": "Upgrade the services to Node 22",
       "type": "Story",
@@ -289,6 +401,8 @@
     },
     {
       "key": "ACME-123",
+      "moved": "-2h",
+      "priority": "Medium",
       "summary": "Node 22 base images and CI",
       "parent": "ACME-122",
       "status": "Done",
@@ -296,6 +410,9 @@
     },
     {
       "key": "ACME-118",
+      "moved": "-5d",
+      "priority": "Medium",
+      "open": true,
       "assignee": "Priya Nair",
       "summary": "Show prices in the traveller's currency",
       "type": "Story",
@@ -304,6 +421,9 @@
     },
     {
       "key": "ACME-119",
+      "moved": "-5d",
+      "priority": "Medium",
+      "open": true,
       "summary": "Convert prices in the price service",
       "parent": "ACME-118",
       "status": "Done",
@@ -311,6 +431,8 @@
     },
     {
       "key": "ACME-116",
+      "moved": "-1d",
+      "priority": "Medium",
       "assignee": "Priya Nair",
       "summary": "Move error reports to the new tracker",
       "type": "Story",
@@ -319,10 +441,60 @@
     },
     {
       "key": "ACME-117",
+      "moved": "-1d",
+      "priority": "Medium",
       "summary": "Report API errors to the new tracker",
       "parent": "ACME-116",
       "status": "Done",
       "mine": true
+    },
+    {
+      "key": "ACME-202",
+      "summary": "Show the day's stops on a map",
+      "labels": [
+        "mobile"
+      ],
+      "type": "Story",
+      "status": "To Do",
+      "description": "The day view lists its stops one under another. Add a map above the list with a pin per stop, numbered in the day's order, so travellers see at a glance how far apart they are."
+    },
+    {
+      "key": "ACME-203",
+      "summary": "Map tiles for offline trips",
+      "parent": "ACME-202",
+      "status": "To Do"
+    },
+    {
+      "key": "ACME-204",
+      "assignee": "Lena Vogel",
+      "summary": "An accessible date picker",
+      "type": "Story",
+      "status": "In Progress",
+      "description": "The booking form's date picker can't be used without a mouse and says nothing to a screen reader. Make it work with the keyboard alone and label every day."
+    },
+    {
+      "key": "ACME-205",
+      "summary": "Keyboard navigation in the date picker",
+      "labels": [
+        "accessibility"
+      ],
+      "parent": "ACME-204",
+      "status": "To Do",
+      "description": "Arrow keys move a day, Page Up and Page Down a month, Home and End the week's first and last day, Enter picks."
+    },
+    {
+      "key": "ACME-206",
+      "assignee": "Lena Vogel",
+      "summary": "Screen reader labels for each day",
+      "parent": "ACME-204",
+      "status": "In Progress"
+    },
+    {
+      "key": "ACME-207",
+      "summary": "The trip total rounds each booking twice",
+      "type": "Bug",
+      "status": "To Do",
+      "description": "A trip's total rounds every booking to the cent and then rounds the sum again, so it can be a cent off what the bookings add up to."
     }
   ],
   "pulls": [
@@ -330,6 +502,7 @@
       "repo": "web",
       "number": 418,
       "title": "ACME-143 Cache trips in IndexedDB for offline use",
+      "branch": "ACME-143-trip-cache",
       "updated": "-25m",
       "checks": "SUCCESS",
       "files": [
@@ -532,6 +705,22 @@
     },
     {
       "repo": "api",
+      "number": 308,
+      "title": "ACME-166 Issue read-only share tokens for a trip",
+      "updated": "-21h",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "priya-n",
+      "body": "Adds `POST /trips/:id/share`, which returns a read-only token that lasts 14 days. The web side is web#421.",
+      "files": [
+        {
+          "path": "internal/trips/share.go",
+          "patch": "@@ -0,0 +1,6 @@\n+// Share returns a read-only token for the trip, valid for 14 days.\n+func (s *Service) Share(ctx context.Context, id string) (Token, error) {\n+\treturn s.tokens.Issue(ctx, id, ReadOnly, 14*24*time.Hour)\n+}"
+        }
+      ]
+    },
+    {
+      "repo": "api",
       "number": 305,
       "title": "Bump OpenTelemetry to 1.28",
       "updated": "-3h",
@@ -542,6 +731,38 @@
         {
           "path": "go.mod",
           "patch": "@@ -8,3 +8,3 @@ require (\n-\tgo.opentelemetry.io/otel v1.24.0\n+\tgo.opentelemetry.io/otel v1.28.0\n \tgo.opentelemetry.io/otel/trace v1.28.0"
+        }
+      ]
+    },
+    {
+      "repo": "web",
+      "number": 427,
+      "title": "ACME-186 Label each stop's times with its zone",
+      "updated": "-50m",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "sam-okafor",
+      "body": "Shows each stop's times in its own zone, with the zone's short name after them (`9:40 CET`). Needs the API's `timeZone` from api#311.",
+      "files": [
+        {
+          "path": "src/trip/StopTime.tsx",
+          "patch": "@@ -4,5 +4,6 @@ export function StopTime({ stop }: Props) {\n-  return <time>{format(stop.at, \"p\")}</time>;\n+  const zone = stop.timeZone ?? localZone();\n+  return <time>{format(stop.at, \"p\", { timeZone: zone })} {shortZone(zone)}</time>;\n }"
+        }
+      ]
+    },
+    {
+      "repo": "api",
+      "number": 311,
+      "title": "ACME-186 Return each stop's time zone with the itinerary",
+      "updated": "-1h",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "sam-okafor",
+      "body": "Adds `timeZone` (an IANA name) to every stop in `GET /trips/:id`, from the stored zone (ACME-185).",
+      "files": [
+        {
+          "path": "internal/trips/stop.go",
+          "patch": "@@ -12,4 +12,5 @@ type Stop struct {\n \tName string    `json:\"name\"`\n \tAt   time.Time `json:\"at\"`\n+\tTimeZone string `json:\"timeZone,omitempty\"`\n }"
         }
       ]
     }
@@ -558,6 +779,27 @@
           "patch": "@@ -0,0 +1,10 @@\n+import type { TripEdit } from \"./types\";\n+\n+// Edits made offline, replayed in order once the network is back (ACME-144).\n+export class SyncQueue {\n+  private edits: TripEdit[] = [];\n+\n+  push(edit: TripEdit) {\n+    this.edits.push(edit);\n+  }\n+}"
         }
       ]
+    },
+    {
+      "key": "ACME-139",
+      "repo": "api",
+      "branch": "ACME-139-token-bucket",
+      "files": [],
+      "committed": {
+        "base": "origin/main",
+        "commits": 2,
+        "files": [
+          {
+            "path": "src/limits/bucket.ts",
+            "status": "added",
+            "patch": "@@ -0,0 +1,14 @@\n+// A token bucket per API key: `rate` tokens a second, up to `burst` at once.\n+export class Bucket {\n+  private tokens: number;\n+  private at = Date.now();\n+\n+  constructor(private rate: number, private burst: number) {\n+    this.tokens = burst;\n+  }\n+\n+  take(now = Date.now()): boolean {\n+    this.tokens = Math.min(this.burst, this.tokens + ((now - this.at) / 1000) * this.rate);\n+    this.at = now;\n+    return this.tokens >= 1 ? (this.tokens--, true) : false;\n+  }\n+}"
+          },
+          {
+            "path": "src/server.ts",
+            "patch": "@@ -12,6 +12,8 @@ export function routes(app: App) {\n   app.use(json());\n+  // Each key's own bucket (ACME-139); 429 once it's empty.\n+  app.use(rateLimit({ rate: 10, burst: 40 }));\n   app.get(\"/health\", health);\n   app.use(\"/v1\", v1);\n }"
+          }
+        ]
+      }
     }
   ],
   "sessions": [
@@ -620,6 +862,7 @@
           "name": "ACME-143",
           "agent": "blocked",
           "title": "Cache trips for offline use",
+          "work": {"prompt": "Work on Jira ACME-143: Cache trips in IndexedDB", "edits": [{"path": "ACME-142/web/src/trips/store.ts", "at": "-4m"}, {"path": "ACME-142/web/src/trips/cache.ts", "at": "-6m"}]},
           "screen": [
             "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
             "\\033[2m  ~/acme/ACME-142/web\\033[0m",
@@ -721,6 +964,7 @@
           "name": "ACME-172",
           "agent": "idle",
           "title": "Dark mode tokens",
+          "work": {"prompt": "Work on Jira ACME-172: Dark mode colour tokens", "edits": [{"path": "web/src/theme/tokens.ts", "at": "-12m"}, {"path": "web/src/theme/dark.css", "at": "-14m"}]},
           "screen": [
             "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
             "\\033[2m  ~/acme\\033[0m",
@@ -797,6 +1041,7 @@
           "name": "Claude",
           "agent": "idle",
           "title": "Why is the web bundle 2 MB?",
+          "work": {"prompt": "Why is the web bundle 2 MB? Find what makes it big and trim it.", "edits": [{"path": "web/vite.config.ts", "at": "-3m"}, {"path": "web/src/theme/tokens.ts", "at": "-8m"}]},
           "screen": [
             "\\033[38;5;173m✻\\033[0m \\033[1mClaude Code\\033[0m",
             "\\033[2m  ~/acme\\033[0m",
@@ -806,8 +1051,25 @@
             "\\033[0m● Most of it is the map library (1.1 MB) loaded on every page. Loading it only on the trip map would take the first load down to about 700 KB.",
             ""
           ]
+        },
+        {
+          "name": "Terminal",
+          "screen": [
+            "\\033[32m~/acme\\033[0m $ npx vite-bundle-visualizer",
+            "",
+            "  Generated stats.html (2.04 MB total, map library 1.10 MB)",
+            "",
+            "\\033[32m~/acme\\033[0m $ "
+          ]
         }
       ]
+    }
+  ],
+  "deskPaused": [
+    {
+      "id": "demo-desk-1",
+      "name": "Idea: tidy the docs",
+      "at": "-50m"
     }
   ],
   "paused": {

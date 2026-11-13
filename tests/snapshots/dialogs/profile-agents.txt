@@ -59,7 +59,7 @@ div #work-setup-fit [bg=#00000080]
               div [fg=muted]
                 "Prompts"
               div [fg=dim]
-                "5 changed"
+                "6 changed"
           h_flex #setup-tab-messages [hover(bg=hover)] {click}
             div [fg=dim]
               svg own:message-square
@@ -67,7 +67,7 @@ div #work-setup-fit [bg=#00000080]
               div [fg=muted]
                 "Messages"
               div [fg=dim]
-                "8 changed"
+                "12 changed"
           h_flex #setup-tab-commands [hover(bg=hover)] {click}
             div [fg=dim]
               svg chrome:terminal

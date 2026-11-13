@@ -6,6 +6,10 @@ h_flex
           div [border=muted]
       div
         "Why is the web bundle 2 MB?"
+    h_flex #tab-t7-1 [fg=muted hover(bg=hover fg=foreground) border=#00000000] {hover down:left move up:left click down:right}
+      div
+      div
+        "Terminal"
     Popup.new "open-new-menu"
       div #open-new-more [bg=selected fg=foreground hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal"
         svg chrome:plus
@@ -21,6 +25,13 @@ h_flex
               "Terminal"
             div [fg=dim]
               "⌥⌘T"
+    div [bg=border]
+    h_flex #view-shots [fg=muted hover(bg=hover fg=foreground)] {down:left click}
+      div
+        "Screenshots"
+      div
+        div
+          div [bg=#c195ab]
   h_flex
     div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
       svg chrome:folder

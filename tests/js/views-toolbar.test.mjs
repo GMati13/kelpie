@@ -17,8 +17,11 @@ before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); }
 
 // The tab bar, with the story's space shown (`space`) or a story previewed (`preview`). Its key loop
 // (nextCommand) never resolves under the stub, so its tasks aren't waited for.
-function toolbar({ space = null, preview = null, counts = {}, layout = "Kelpie" } = {}) {
+// `head`: whether the story's title row shows above it (work.js hides it with no story; the stub's
+// layout doesn't follow those commands).
+function toolbar({ space = null, preview = null, counts = {}, layout = "Kelpie", head = true } = {}) {
   setupDemoWorld({ stories, shown: space, layout, props: { role: "toolbar" } });
+  if (!head) mock.state.layout.children.find((n) => n.id === "work").children.find((n) => n.id === "story-head").hidden = true;
   if (preview) mock.state.shared.set("kelpie.stories.preview", { [DEMO]: preview });
   mock.state.shared.set("kelpie.stories.counts", counts);
   const cx = { ...fakeCx(), spawn() {} };
@@ -65,9 +68,9 @@ test("a review previewed: Changes alone, no +", () => {
   snap("toolbar/review", el);
 });
 
-test("the Desk: its tabs and + (no story)", () => {
-  const { el } = toolbar({ space: "Desk" });
-  assert.deepEqual(ids(el, "view-"), []);
+test("the Desk: its tabs, + and Screenshots (no story)", () => {
+  const { el } = toolbar({ space: "Desk", head: false });
+  assert.deepEqual(ids(el, "view-"), ["#view-shots"]);
   snap("toolbar/desk", el);
 });
 

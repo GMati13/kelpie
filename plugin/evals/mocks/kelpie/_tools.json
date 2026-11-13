@@ -3,7 +3,7 @@
     {
       "name": "show_passage",
       "title": "Show a passage in Kelpie",
-      "description": "Opens a story in Kelpie, the person's story view (a ticket on their Jira board or GitHub Project), with a passage of its description scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description (not a summary or paraphrase; a few sentences at most, '…' for words left out). `key` is the story's own key: a subtask's description isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says whether it found the passage; tell the person what happened.",
+      "description": "Opens a story in Kelpie, the person's story view (a ticket on their board), with a passage of its description or of one of its comments scrolled into view and marked, so they read it where it is. Use it when they ask where the story says something, where someone said or decided it, which part covers a point, or to show them. `quote` must be words copied exactly from the story's description or one of its comments (not a summary or paraphrase; a few sentences at most, '…' for words left out): Kelpie looks in both. `key` is the story's own key: a subtask's isn't shown yet, and the story must be in the profile Kelpie shows. Kelpie says where it found the passage (the description, whose comment, a closest match, or nowhere); tell the person what happened.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -13,7 +13,7 @@
           },
           "quote": {
             "type": "string",
-            "description": "The passage, word for word from the description."
+            "description": "The passage, word for word from the description or a comment."
           },
           "note": {
             "type": "string",
@@ -57,7 +57,7 @@
     {
       "name": "save_profile",
       "title": "Save a change to a Kelpie profile",
-      "description": "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only what changes: name and folder replace; a section (jira, project, github, web, prompts, notify, commands, claude) given as an object is merged into the saved one; a key or section set to null is removed. A profile has one board, jira or project (a GitHub Project), not both: set the other to null. Values are strings, except jira.board and project.number (numbers, filled in from the address) and notify.pulls and either board's solo and moveToDone (true/false). An id that doesn't exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the jira sign-in and address, the project's address and key prefixes, either board's prompts, the github account and prompts) aren't saved until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at Kelpie, and call save_status once they've answered. Save only what the person agreed to.",
+      "description": "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only what changes: name and folder replace; a section (jira, project, github, web, prompts, notify, commands, claude) given as an object is merged into the saved one; a key or section set to null is removed. A profile has one board, jira or project (a GitHub Project), not both: set the other to null. Values are strings, except jira.board and project.number (numbers, filled in from the address) and notify.pulls and either board's solo, moveToDone, byPriority, showPriority and unassigned (true/false). An id that doesn't exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the jira sign-in and address, the project's address and key prefixes, either board's prompts, the github account and prompts) aren't saved until the person confirms them in Kelpie: the answer then says it's waiting; tell them to look at Kelpie, and call save_status once they've answered. Save only what the person agreed to.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -187,6 +187,27 @@
       }
     },
     {
+      "name": "get_story",
+      "title": "Read a story as Kelpie has it",
+      "description": "Where you run in Kelpie (the person's profile, and the story your tab belongs to, or the Desk) and what Kelpie holds about a story: its status on the board, each subtask's status and assignee, its pull requests with their checks and review, its agents and what each is doing, what it needs from the person, the profile's status line for it, and how old that is. Use it first when the person asks about \"the story\", its status or what's left, without naming one: `key` left out means your own story (else the one Kelpie shows). With `key`, that story (a subtask's key gives its story). For what Kelpie doesn't hold, use your own access. Read-only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "A story's or subtask's key, like ABC-123; left out, your own story."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "suggest_next",
       "title": "Hand Kelpie suggestions for Next",
       "description": "The Kelpie tool for suggestions: hands your picks of what the person could do next to Kelpie, which shows them in Next as suggested by Claude, replacing earlier ones. Use it only when asked to fill or refresh Kelpie's suggestions (What next? asks this way): a person asking you what to work on wants your answer in the chat, and calling it would replace the picks they have. All picks in one call, best first, 8 at most. Each is one of: `key`, a ticket key (a subtask's goes to its story; one pick per story); `url`, a GitHub pull request link; `idea`, a short brief for an agent, with `where` (no ticket: something to make better, 3 at most, after the rest). Each has `action`, what Next shows (a verb first, under 60 characters), and `why`, one short line on why now. Kelpie checks each and says what it kept and what it dropped, and why. It changes only what Kelpie suggests: nothing on the board, on GitHub or in any file.",
@@ -231,6 +252,67 @@
       },
       "annotations": {
         "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "find_agents",
+      "title": "Find the agents working on something",
+      "description": "Lists the Claude agents running in the person's Kelpie (their Herdr spaces and tabs), and for each: `id` (for show_agent), `claude` (the Claude agent itself: its session's `name` and messaging `address`, which reach it with Claude's own messaging between sessions, and its `session` id), its tab and space, its Kelpie profile, the ticket key it works on (`key`, and `story` when that's a subtask's), the ticket's title, its state (working, waiting for you, done, idle, starting), its folder, its session's name (`title`), the message that started it (`first`), the files its session changed lately (`changed`, newest first) and `you` on your own entry. Use it whenever the person asks who or which agent is working on, editing or touching something, to find an agent before show_agent or before messaging it; and when another agent's work gets in your way (uncommitted changes blocking a pull or a checkout, edits to a file you're about to change), to find whose it is before you touch anything. Filters, all optional and combined: `file` (a full path, or one relative to the repo: the agents whose sessions changed it), `folder` (a full path: agents working in it, under it, or with it inside theirs), `key` (a ticket key: its agents, a story's subtasks' too; a subtask with none of its own gives its story's, marked `via: story`; nobody on it or its story says so, with any paused agent or earlier session on them to resume), `words` (all found in its names, title, ticket or first message), `here` (only your own profile's agents; else every profile's). Read-only: it changes nothing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "A file: a full path, or relative to the repo, like web/src/app.ts."
+          },
+          "folder": {
+            "type": "string",
+            "description": "A folder, as a full path."
+          },
+          "key": {
+            "type": "string",
+            "description": "A ticket key, like ABC-123."
+          },
+          "words": {
+            "type": "string",
+            "description": "Words to find in an agent's names, title, ticket or first message."
+          },
+          "here": {
+            "type": "boolean",
+            "description": "Only your own profile's agents (the one of the space you run in)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "show_agent",
+      "title": "Take the person to an agent",
+      "description": "Shows the person an agent's terminal in Kelpie: its space selected (and so its profile), its pane focused. Use it when they ask to be taken to, switched to or shown an agent (\"take me there\", \"show me that agent\"), after find_agents found it. `id` is an agent's id exactly as find_agents gave it; Kelpie shows only an agent it lists. It only changes what's on their screen, nothing in the agent: it never sends the agent anything. Say which agent you showed them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agent's id, from find_agents."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
