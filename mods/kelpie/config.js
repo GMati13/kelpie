@@ -519,6 +519,28 @@ export function reviewTask(github, fields) {
   return `${filled}\n\n${OTHERS}`;
 }
 
+// The task one agent reviewing a story's pull requests together starts with (the Review menu on a
+// story's heading under Reviews for you): the profile's own template (github.storyReviewPrompt), else
+// this. Placeholders: {ticket} {summary} {description} (the story, its description as text) and {prs},
+// the pull requests waiting for your review, each with its link, title, author and the folder it's
+// checked out in. Lines whose placeholders all came out empty are left out. The pull requests and the
+// description sit fenced, and it ends with OTHERS whatever the template says: they're others' words.
+export const STORY_REVIEW_FIELDS = ["ticket", "summary", "description", "prs"];
+export const DEFAULT_STORY_REVIEW_PROMPT = [
+  "Review the pull requests of {ticket}: {summary}, together, as one change.",
+  "{prs}",
+  "",
+  "{description}",
+  "",
+  "Read each change against its base branch, and check that together they do what the ticket asks: how they fit (what one calls or needs from another), and anything left out between them. Review them by reading only: don't run, build, install or test anything from them, as it's someone else's code. Then list your findings for each pull request, most important first, each with file and line, then those about how they fit together, and draft the review comments for each pull request. Don't post anything to GitHub, approve or request changes until I say so.",
+].join("\n");
+
+export function storyReviewTask(github, fields) {
+  const filled = fillLines(github?.storyReviewPrompt?.trim() ? github.storyReviewPrompt : DEFAULT_STORY_REVIEW_PROMPT, STORY_REVIEW_FIELDS,
+    { ...fields, prs: fenced("the pull requests", fields.prs), description: fenced("the ticket's description", fields.description) });
+  return `${filled}\n\n${OTHERS}`;
+}
+
 // The task a merge agent starts with (a story's Merge, in its header and on its row): the profile's
 // own template (github.mergePrompt), else this. Placeholders: {ticket} {summary} (the story) and
 // {prs}, its open pull requests of yours, a line each: "repo#n: title (state) url". Lines whose
@@ -563,11 +585,11 @@ export const ASK_PROMPTS = [
   { id: "fix", label: "Fix checks", text: "The checks fail on {prs}. Find out why and fix them." },
   { id: "comments", label: "Address comments", text: "Address the review comments on {prs}." },
   { id: "merge", label: "Merge", text: "Merge {prs}." },
-  { id: "post", label: "Post comments (review)", text: "Post your review comments on the pull request now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted." },
-  { id: "approve", label: "Approve (review)", text: "Approve the pull request now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted." },
+  { id: "post", label: "Post comments (review)", text: "Post your review comments on {prs} now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted." },
+  { id: "approve", label: "Approve (review)", text: "Approve {prs} now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted." },
   { id: "idea", label: "Start an idea (What next?)", text: "An idea for making things better, found while nothing else needed doing:\n\n{idea}\n\nWhere: {where}\nWhy: {why}\n\nLook into it with me first: is it worth doing, and how big is it? Don't change anything until I say so; if we go ahead, a ticket for it may come first." },
   { id: "picked", label: "Run a pick (What next?)", text: "Claude suggested this as what I should do next: {action}\nWhy: {why}\n\nStart with that." },
-  { id: "changes", label: "Request changes (review)", text: "Submit your review on the pull request now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted." },
+  { id: "changes", label: "Request changes (review)", text: "Submit your review on {prs} now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted." },
   // Ask Claude's suggestions (askclaude.js): each follows what's asked about (a file, its pull request
   // or repo), so they need no placeholders.
   { id: "explain", label: "Explain this", text: "Explain what this does and why it's there, in plain words. Don't change anything." },
@@ -776,7 +798,7 @@ const SECRET = /token$|^token|password|secret/i;
 export const SECTION_KEYS = {
   jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "unassigned"],
   project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "priorityField", "unassigned"],
-  github: ["owner", "account", "reviewPrompt", "mergePrompt", "approvalPrompt"],
+  github: ["owner", "account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"],
   commands: ["leftovers", "cleanUp", "wrapUp", "status"],
   prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
   notify: ["pulls"],
@@ -892,7 +914,7 @@ export function buildProfile(id, set) {
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
 // folder, owner, handover, solo, moveToDone, the priority settings, unassigned, notify) applies at once.
-export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "mergePrompt", "approvalPrompt"] };
+export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 // Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what
 // kind of value it is: `command` runs on this machine, `prompt` steers agents, `signin` decides where
@@ -926,6 +948,7 @@ const SETTING_NAMES = {
   "project.orchestrator": ["Prompts", "Orchestrator", "prompt"],
   "github.account": ["GitHub", "GitHub account", "github"],
   "github.reviewPrompt": ["Prompts", "Review", "prompt"],
+  "github.storyReviewPrompt": ["Prompts", "Review a story", "prompt"],
   "github.mergePrompt": ["Prompts", "Merge", "prompt"],
   "github.approvalPrompt": ["Prompts", "Request approval", "prompt"],
 };
@@ -960,7 +983,7 @@ const asText = (v) => (v === null || v === undefined || v === "" ? null : String
 function promptDefault(section, k) {
   if (section === "prompts") return k === "suggest" ? SUGGEST_PROMPT : k === "configure" ? CONFIGURE_PROMPT : ASK_PROMPTS.find((a) => a.id === k)?.text ?? null;
   if ((section === "jira" || section === "project") && k === "prompt") return DEFAULT_PROMPT;
-  if (section === "github") return { reviewPrompt: DEFAULT_REVIEW_PROMPT, mergePrompt: DEFAULT_MERGE_PROMPT, approvalPrompt: DEFAULT_APPROVAL_PROMPT }[k] ?? null;
+  if (section === "github") return { reviewPrompt: DEFAULT_REVIEW_PROMPT, storyReviewPrompt: DEFAULT_STORY_REVIEW_PROMPT, mergePrompt: DEFAULT_MERGE_PROMPT, approvalPrompt: DEFAULT_APPROVAL_PROMPT }[k] ?? null;
   return null;
 }
 

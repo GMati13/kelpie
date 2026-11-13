@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readRepo } from "../lib/helpers.mjs";
 import {
   ASK_PROMPTS, CONFIGURE_SCOPES, CONFIRM_KEYS, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT,
-  DEFAULT_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, SUGGEST_FIELDS, SUGGEST_PROMPT,
+  DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, SUGGEST_FIELDS, SUGGEST_PROMPT,
 } from "../../mods/kelpie/config.js";
 
 const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
@@ -59,7 +59,7 @@ describe("configure-profile", () => {
   });
   test("lists every button message and prompt placeholder", () => {
     for (const { id } of ASK_PROMPTS) assert.match(guide, new RegExp(`^\\| \`${id}\` \\|`, "m"), id);
-    for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS, ...CONFIGURE_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
+    for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...STORY_REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS, ...CONFIGURE_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
   });
   test("goes through the prompts with the person on scope all and prompts, saving only what differs", () => {
     const prompts = guide.split("### 7. Prompts")[1].split("\n### ")[0];
@@ -73,7 +73,7 @@ describe("configure-profile", () => {
   });
   test("keeps every default prompt and message, word for word, in its reference", () => {
     const blocks = [...defaults.matchAll(/^```text\n([\s\S]*?)\n```$/gm)].map((m) => m[1]);
-    const all = [DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_APPROVAL_PROMPT, SUGGEST_PROMPT, ...ASK_PROMPTS.map((a) => a.text)];
+    const all = [DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_APPROVAL_PROMPT, SUGGEST_PROMPT, ...ASK_PROMPTS.map((a) => a.text)];
     for (const text of all) assert.ok(blocks.includes(text), `missing or changed: ${text.split("\n")[0]}`);
     assert.equal(blocks.length, all.length, "no default that Kelpie no longer has");
     for (const { id } of ASK_PROMPTS) assert.ok(defaults.includes(`(\`${id}\`)`), id);

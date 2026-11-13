@@ -717,6 +717,38 @@
           "patch": "@@ -8,3 +8,3 @@ require (\n-\tgo.opentelemetry.io/otel v1.24.0\n+\tgo.opentelemetry.io/otel v1.28.0\n \tgo.opentelemetry.io/otel/trace v1.28.0"
         }
       ]
+    },
+    {
+      "repo": "web",
+      "number": 427,
+      "title": "ACME-186 Label each stop's times with its zone",
+      "updated": "-50m",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "sam-okafor",
+      "body": "Shows each stop's times in its own zone, with the zone's short name after them (`9:40 CET`). Needs the API's `timeZone` from api#311.",
+      "files": [
+        {
+          "path": "src/trip/StopTime.tsx",
+          "patch": "@@ -4,5 +4,6 @@ export function StopTime({ stop }: Props) {\n-  return <time>{format(stop.at, \"p\")}</time>;\n+  const zone = stop.timeZone ?? localZone();\n+  return <time>{format(stop.at, \"p\", { timeZone: zone })} {shortZone(zone)}</time>;\n }"
+        }
+      ]
+    },
+    {
+      "repo": "api",
+      "number": 311,
+      "title": "ACME-186 Return each stop's time zone with the itinerary",
+      "updated": "-1h",
+      "checks": "SUCCESS",
+      "reviewer": true,
+      "author": "sam-okafor",
+      "body": "Adds `timeZone` (an IANA name) to every stop in `GET /trips/:id`, from the stored zone (ACME-185).",
+      "files": [
+        {
+          "path": "internal/trips/stop.go",
+          "patch": "@@ -12,4 +12,5 @@ type Stop struct {\n \tName string    `json:\"name\"`\n \tAt   time.Time `json:\"at\"`\n+\tTimeZone string `json:\"timeZone,omitempty\"`\n }"
+        }
+      ]
     }
   ],
   "local": [

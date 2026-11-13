@@ -185,6 +185,7 @@ Every prompt says what to look at or do, never how to reach the board or GitHub:
 | `jira.prompt` or `project.prompt` | An agent started on a ticket | `{key} {summary} {url} {type} {status} {parent} {subtasks}` |
 | `jira.orchestrator` or `project.orchestrator` | Set, a story offers Start orchestrator: one agent running all its subtasks. No default | as above |
 | `github.reviewPrompt` | Start review, with a checkout of the pull request | `{url} {repo} {number} {title} {author} {folder} {ticket} {summary} {description}` |
+| `github.storyReviewPrompt` | Review on a story's heading under Reviews for you: one agent reviewing all of the story's pull requests waiting for you, together, each checked out | `{ticket} {summary} {description} {prs}` (each pull request's link, title, author and checkout) |
 | `github.mergePrompt` | The Merge icon on a story's pull requests | `{ticket} {summary} {prs}` (a line per open pull request) |
 | `github.approvalPrompt` | Request approval, while a pull request isn't approved | as merge; `{prs}` only the unapproved |
 | `prompts.suggest` | What next? (the magic button under Next): a Claude in the background filling Next's queue | `{name} {snapshot} {board} {owner}`. It runs unattended; Kelpie adds how the picks come back (through its plugin) after this message, so the prompt needn't say it, and shouldn't ask for a JSON block or any other answer format |

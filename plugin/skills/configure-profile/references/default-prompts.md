@@ -26,6 +26,19 @@ Ticket {ticket}: {summary}
 Read the change against its base branch, and check it does what the ticket asks, when there is one. Review it by reading only: don't run, build, install or test anything from it, as it's someone else's code. Then list your findings, most important first, each with file and line, and draft the review comments. Don't post anything to GitHub, approve or request changes until I say so.
 ```
 
+## Review a story (`github.storyReviewPrompt`)
+
+Sent to one agent reviewing a story's pull requests together, from the Review menu on its heading under Reviews for you. `{prs}` is each pull request with its link, author and where it's checked out.
+
+```text
+Review the pull requests of {ticket}: {summary}, together, as one change.
+{prs}
+
+{description}
+
+Read each change against its base branch, and check that together they do what the ticket asks: how they fit (what one calls or needs from another), and anything left out between them. Review them by reading only: don't run, build, install or test anything from them, as it's someone else's code. Then list your findings for each pull request, most important first, each with file and line, then those about how they fit together, and draft the review comments for each pull request. Don't post anything to GitHub, approve or request changes until I say so.
+```
+
 ## Merge (`github.mergePrompt`)
 
 ```text
@@ -104,13 +117,13 @@ Merge {prs}.
 ### Post comments (review) (`post`)
 
 ```text
-Post your review comments on the pull request now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted.
+Post your review comments on {prs} now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted.
 ```
 
 ### Approve (review) (`approve`)
 
 ```text
-Approve the pull request now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted.
+Approve {prs} now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted.
 ```
 
 ### Start an idea (What next?) (`idea`)
@@ -138,7 +151,7 @@ Start with that.
 ### Request changes (review) (`changes`)
 
 ```text
-Submit your review on the pull request now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted.
+Submit your review on {prs} now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted.
 ```
 
 ### Explain this (Ask Claude) (`explain`)

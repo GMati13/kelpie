@@ -10,7 +10,7 @@ import { deskRows } from "../../mods/kelpie/desk.js";
 import { profileById } from "../../mods/kelpie/config.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 import { div, handlers, nodeOf, texts } from "gpui-kit";
-import { groupHeader } from "../../mods/kelpie/ui.js";
+import { ROW_CONTROL, groupHeader } from "../../mods/kelpie/ui.js";
 import { v_flex } from "gpui-base";
 import { mock } from "herdr";
 
@@ -604,6 +604,24 @@ test("a deleted profile's run note is pruned with the next load", async () => {
   putShared("kelpie.next.picked", { [DEMO]: { at: NOW - 60e3, done: NOW }, gone: { at: NOW - 60e3, done: NOW } });
   await draw(new StoryList());
   assert.deepEqual(Object.keys(mock.sharedValue("kelpie.next.picked")), [DEMO]);
+});
+
+// KELPIE-118: every icon button in the list is the story rows' actions' size (Merge, Move to Done,
+// the broom: ROW_CONTROL) and in their column, so the Review eyes, on a story's heading and on a
+// pull request's row, and the "No ticket" heading's menus line up with them.
+test("the list's icon buttons are the row actions' size, at their height", async () => {
+  const el = await list();
+  const sizeOf = (id) => nodeOf(byId(el, id)).calls.find(([m]) => m === "size")?.[1][0];
+  const rowAction = sizeOf("merge-ACME-171-more");
+  assert.equal(rowAction, ROW_CONTROL);
+  for (const id of ["review-ACME-184-more", "review-row-api#305-go", "review-row-web#421-go", "merge-none-more", "approval-none-more"]) {
+    if (byId(el, id)) assert.equal(sizeOf(id), rowAction, `${id} is as big as a row's Merge`);
+  }
+  assert.ok(byId(el, "approval-none-more") || byId(el, "merge-none-more"), "the No ticket heading has its menus");
+  // A row action sits ACTIONS_TOP (6) down; a pull request's row starts 7 down (py(7)), so its eye moves up one.
+  const top = nodeOf(byId(el, "actions-ACME-171")).calls.find(([m]) => m === "top")[1][0];
+  const lift = nodeOf(byId(el, "review-row-api#305")).calls.find(([m]) => m === "mt")?.[1][0] ?? 0;
+  assert.equal(7 + lift, top, "the row's eye at a row action's height");
 });
 
 // A deleted profile's stories copy (80 KB and more) and every other entry kept by profile went on

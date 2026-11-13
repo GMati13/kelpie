@@ -17,7 +17,7 @@ import { agents, focused, hc, layout, memo, panes, run, setShared, shared, space
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom } from "./ui.js";
 import { countShots } from "./shots.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -35,6 +35,11 @@ const KEYS = new RegExp(KEY.source, "g");
 const MERGED_DAYS = 14; // merged pull requests stay in view this long
 const open = openExternal;
 const keyOf = (text) => KEY.exec(text ?? "")?.[1] ?? null;
+// The key an agent's tab counts for. A story's review agent ("Review <KEY>", in the Reviews space)
+// reads teammates' pull requests: it isn't the story's own agent, so it counts for none.
+const REVIEW_TAB = /^Review [A-Z][A-Z0-9]+-\d+$/;
+// Exported for the tests.
+export const tabKey = (name) => (REVIEW_TAB.test(name ?? "") ? null : keyOf(name));
 
 // The board's projects, from the keys of the issues Jira gave ("ABC" of ABC-12).
 const projectsOf = (data) => new Set([...(data.mine ?? []), ...(data.parents ?? []), ...(data.children ?? [])].map((i) => i.key.split("-")[0]));
@@ -173,7 +178,7 @@ function profileAgents(profile) {
 function agentsByKey(profile) {
   const map = new Map();
   for (const { agent: a, space } of profileAgents(profile)) {
-    const k = keyOf(a.tab_name) ?? keyOf(space.name);
+    const k = tabKey(a.tab_name) ?? keyOf(space.name);
     if (k && (!map.has(k) || RANK[a.status] < RANK[map.get(k).status])) map.set(k, a);
   }
   return map;
@@ -2558,11 +2563,12 @@ const prLine = (t, p) => ({ name: prName(p), title: p.title, url: p.url, state: 
 // profile's). `story` null: pull requests with no ticket, the Desk's, so its agents. Either way
 // taking it ends what Next pointed at on the story.
 const TASK_LOOK = { merge: { label: "Merge", glyph: "git-merge" }, approval: { label: "Request approval", glyph: "user-check" } };
-function storyTaskRows(t, profile, story, kind, list) {
+// Exported for the tests.
+export function storyTaskRows(t, profile, story, kind, list) {
   const prs = list.map((p) => prLine(t, p));
   const names = new Map(spaces().map((s) => [s.id, s.name]));
   const desk = !story;
-  const open = openClaudes(story, agents(), keyOf, desk ? deskAgents(profile) : []);
+  const open = openClaudes(story, agents(), tabKey, desk ? deskAgents(profile) : []);
   const what = desk ? "pull requests without a ticket" : story.key;
   const took = () => { if (story) clearPoint(profile, story.key); };
   return [
@@ -2644,7 +2650,9 @@ async function checkoutReview(profile, p) {
 // own description ("Story KEY: summary" and the story's), as subtasks often say little themselves.
 async function reviewTicket(profile, p) {
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
-  const ticket = data ? prKey(p, data, projectsOf(data)) : keyIn(p.title, null);
+  return ticketFields(profile, data ? prKey(p, data, projectsOf(data)) : keyIn(p.title, null), data);
+}
+async function ticketFields(profile, ticket, data) {
   const board = boardOf(profile);
   if (!ticket || !board) return ticket ? { ticket } : {};
   try {
@@ -2668,14 +2676,107 @@ export function startReview(profile, p, key = null) {
     const [checkout, ticket] = await Promise.all([checkoutReview(profile, p), reviewTicket(profile, p)]);
     say(about, checkout.note);
     const task = reviewTask(profile.github, { url: p.url, repo: p.repository.name, number: p.number, title: p.title, author: p.author?.login ?? "", folder: checkout.folder ?? "", ...ticket });
-    // The agent starts in the profile's folder, never in the checkout: it's someone else's code, and
-    // Claude would take in its settings, hooks and instructions there. It reads the checkout by path.
-    const tab = { name, folder: profile.folder, argv: placed(claudeArgv(profile), profile), task };
-    const space = spacesOf(profile).find((s) => s.name === REVIEWS);
-    if (!space) return run("space.new", { name: REVIEWS, folder: tab.folder, tab: name, argv: tab.argv, task: tab.task });
-    newTab({ space: space.id, ...tab });
-    run("space.select", { id: space.id });
+    openInReviews(profile, name, task);
   });
+}
+
+// A review agent's tab in the profile's Reviews space (made on the first one). The agent starts in the
+// profile's folder, never in a checkout: it's someone else's code, and Claude would take in its
+// settings, hooks and instructions there. It reads the checkouts by path.
+function openInReviews(profile, name, task) {
+  const tab = { name, folder: profile.folder, argv: placed(claudeArgv(profile), profile), task };
+  const space = spacesOf(profile).find((s) => s.name === REVIEWS);
+  if (!space) return run("space.new", { name: REVIEWS, folder: tab.folder, tab: name, argv: tab.argv, task: tab.task });
+  newTab({ space: space.id, ...tab });
+  run("space.select", { id: space.id });
+}
+
+// A story's pull requests waiting for your review, reviewed together by one agent (the Review menu on
+// the story's heading under Reviews for you): a tab "Review <KEY>" in the Reviews space, shown again
+// when open. Each pull request is checked out as Start review does, one after another (they may share
+// a clone), and the prompt (config.js storyReviewTask) names each with its checkout. With one pull
+// request it's that one's own review. Nothing is posted: the review buttons stay on each pull
+// request's header, and Approve the person's own click.
+const storyReviewName = (key) => `Review ${key}`;
+const showTab = (tab) => { run("space.select", { id: tab.space }); run("tab.select", { id: tab.id }); };
+// A tab by name in any space, with its space's id.
+const tabNamed = (name) => {
+  for (const s of spaces()) { const c = s.tabs.find((x) => x.name === name); if (c) return { ...c, space: s.id }; }
+  return null;
+};
+// The story a pull request under review belongs to (a subtask's key counts for its story), from the
+// loaded data.
+const reviewStoryKey = (p, data) => {
+  const k = data ? prKey(p, data, projectsOf(data)) : null;
+  return k ? new Map((data.children ?? []).map((c) => [c.key, c.fields?.parent?.key])).get(k) ?? k : null;
+};
+// The tab of the agent reviewing a pull request: its own ("PR <repo>#<n>"), else its story's review.
+const reviewAgentTab = (p, data) => reviewTab(p) ?? ((k) => (k ? tabNamed(storyReviewName(k)) : null))(reviewStoryKey(p, data));
+// A review's main action (its header's, ⌘⇧R): the agent reviewing it shown, its story's review too,
+// else Start review.
+function showOrStartReview(profile, p, key) {
+  const tab = reviewAgentTab(p, (shared(STORIES) ?? {})[profile.id]?.data);
+  return tab && !reviewTab(p) ? showTab(tab) : startReview(profile, p, key);
+}
+// The story review's first message: the pull requests checked out, the story looked up. Notes the
+// pull requests that couldn't be checked out.
+async function storyReviewText(profile, story, prs) {
+  const about = { profile, keys: story.key };
+  const outs = [];
+  for (const p of prs) outs.push(await checkoutReview(profile, p));
+  const notes = outs.map((o) => o.note).filter(Boolean);
+  if (notes.length) say(about, notes.join(" "));
+  const data = (shared(STORIES) ?? {})[profile.id]?.data;
+  const ticket = await ticketFields(profile, story.key, data);
+  const list = prs.map((p, i) => [`- ${prName(p)} by ${p.author?.login ?? "someone"}: ${p.title}`, `  ${p.url}`,
+    outs[i].folder ? `  Its code, at its latest commit, is in ${outs[i].folder}: read it there.` : "  Not checked out: read it on GitHub."].join("\n")).join("\n");
+  return storyReviewTask(profile.github, { ticket: story.key, summary: ticket.summary || story.title, description: ticket.description ?? "", prs: list });
+}
+export function startStoryReview(profile, story, prs) {
+  if (prs.length === 1) return startReview(profile, prs[0], story.key);
+  const name = storyReviewName(story.key);
+  setPreview(profile, null);
+  const open = tabNamed(name);
+  if (open) return showTab(open);
+  return once(name, async () => {
+    say({ profile, keys: story.key }, `Checking out ${prs.length} pull requests of ${story.key} for review…`);
+    openInReviews(profile, name, await storyReviewText(profile, story, prs));
+  });
+}
+// Or the same review sent to one of the story's review agents already open, as its next message (not
+// while it waits for your answer). Shown at once, as the other heading menus' sends are.
+export async function sendStoryReview(profile, story, prs, agent) {
+  const name = agent.tab_name ?? "Claude";
+  const about = { profile, keys: story.key };
+  const failed = (why) => {
+    say(about, `Couldn't send it to ${name}. ${capitalize(why)}.`);
+    notify({ title: `Couldn't send it to ${name}`, body: `${capitalize(why)}.`, level: "warning", timeout: 8000 });
+  };
+  if (agent.status === "blocked") return failed("it's waiting for your answer: answer it first");
+  run("space.select", { id: agent.space });
+  run("pane.focus", { pane: agent.pane });
+  say(about, `Checking out ${story.key}'s pull requests for ${name}…`);
+  try {
+    await sendToClaude(agent.address, await storyReviewText(profile, story, prs));
+    say(about, `Sent ${story.key}'s review to ${name}.`);
+  } catch (e) { failed(String(e?.message ?? e)); }
+}
+// The Review menu's rows on a story's heading under Reviews for you: its review (a new agent, or the
+// one open shown), or the review sent to one of the agents already reviewing its pull requests.
+// Exported for the tests.
+export function reviewTaskRows(profile, story, prs) {
+  const own = tabNamed(storyReviewName(story.key));
+  const names = new Map(prs.map((p) => [`PR ${prName(p)}`, true]));
+  const open = agents().filter((a) => a.tab_name === storyReviewName(story.key) || names.has(a.tab_name));
+  return [
+    { header: `Review ${story.key}'s ${prs.length} pull requests together with` },
+    { label: own ? "Show its review" : "New agent", hint: `in the ${REVIEWS} space`, action: () => startStoryReview(profile, story, prs) },
+    ...(open.length ? [{ header: "Or send it to" }, ...open.map((a) => ({
+      label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
+      hint: `${a.tab_name ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
+      action: () => { sendStoryReview(profile, story, prs, a); },
+    }))] : []),
+  ];
 }
 
 // What the review buttons ask the review agent. Posting is yours to choose: the agent drafted, these
@@ -2745,7 +2846,7 @@ function orderAgents(profile, items) {
   const at = new Map(); // key -> [list position, needs you]
   items.forEach(({ it, n }, i) => { for (const k of storyKeys(it)) if (!at.has(k)) at.set(k, [i, n[0] <= NEEDS_YOU]); });
   const list = profileAgents(profile).map(({ agent, space }, j) => {
-    const [i, urgent] = at.get(keyOf(agent.tab_name) ?? keyOf(space.name)) ?? [items.length, false];
+    const [i, urgent] = at.get(tabKey(agent.tab_name) ?? keyOf(space.name)) ?? [items.length, false];
     return { address: agent.address, first: urgent && agent.status === "blocked" ? 0 : 1, i, j };
   }).sort((a, b) => a.first - b.first || a.i - b.i || a.j - b.j);
   const order = list.map((x) => x.address);
@@ -3531,6 +3632,14 @@ export class Stories extends Source {
     return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
 
+  // Review: one pull request's review from the list, without opening it first: its agent shown when
+  // one reviews it, else Start review.
+  reviewIcon(t, st, p, key, id, { box = CONTROL } = {}) {
+    const tab = reviewAgentTab(p, st.data);
+    return iconButton(t, id, own("eye"), () => showOrStartReview(st.profile, p, key),
+      tab ? `Show the agent reviewing ${prName(p)}` : `Review ${prName(p)}: check it out and start a review agent on it, in ${st.profile.name}'s ${REVIEWS} space`, { box });
+  }
+
   // A review previewed: start its review agent (or show the one open); headRow's open icon opens it on GitHub.
   // A review's header: Start review (or Show review), Approve (yours, straight on GitHub after a
   // second click, agent or not), and once its agent runs, what to do with the review it drafted: post
@@ -3538,7 +3647,8 @@ export class Stories extends Source {
   // Nothing is posted until one is pressed; posting yourself, leave them.
   reviewActions(t, st, it) {
     const p = it.review;
-    const tab = reviewTab(p);
+    // Its own review agent, else the one reviewing its story's pull requests together.
+    const tab = reviewAgentTab(p, st.data);
     const agent = tab ? agents().find((a) => a.tab === tab.id) ?? null : null;
     const about = { profile: st.profile, keys: it.key };
     const tell = (text) => (cx) => {
@@ -3548,7 +3658,7 @@ export class Stories extends Source {
     };
     const decide = (id, label, text, tip) => this.carefulButton(t, `review-${id}`, label, true, tell(text), { tip, confirmTip: `${tip}: click again to send it to its agent` });
     return [
-      primaryButton(t, "review-start", tab ? "Show review" : "Start review", () => startReview(st.profile, p, it.key), { tip: `${tab ? "Show its review agent" : `Check it out and start a review agent on it, in ${st.profile.name}'s ${REVIEWS} space`} ⌘⇧R` }),
+      primaryButton(t, "review-start", tab ? "Show review" : "Start review", () => showOrStartReview(st.profile, p, it.key), { tip: `${tab ? "Show its review agent" : `Check it out and start a review agent on it, in ${st.profile.name}'s ${REVIEWS} space`} ⌘⇧R` }),
       youApproved(st, p)
         ? doneButton(t, "review-approve-self", "Approved", mark(t, "pr-approved", 14), t.done, { tip: `You approved ${prName(p)} on GitHub` })
         : this.approving?.[p.url]
@@ -5196,7 +5306,27 @@ export class StoryList extends Stories {
       const what = "pull requests without a ticket";
       const rows = storyTaskRows(t, st.profile, null, kind, list);
       const id = g.key || "none";
-      return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340 }));
+      return div().id(`${kind}-wrap-${id}`).flex_none().on_mouse_down("left", stop).on_click(stop).child(this.menuButton(t, `${kind}-${id}`, "", rows, `${label} for ${what}, with a new agent or an open Claude`, { iconPath: own(glyph), width: 340, box: ROW_CONTROL }));
+    };
+    // Reviews for you: a story's heading ends in Review, one agent reviewing all of its pull requests
+    // waiting for you together (a menu: a new agent, or sent to one already reviewing them; with one
+    // pull request, that one's own review, an icon). A pull request on no story of the list has a
+    // Review of its own on its row, as Start review in its header.
+    const reviewMenu = (g) => {
+      const prs = g.list.map((r) => r.review);
+      const id = `review-${g.key}`;
+      const wrap = (el) => div().id(`${id}-wrap`).flex_none().on_mouse_down("left", stop).on_click(stop).child(el);
+      // The size of the sidebar's other row actions (rowActions()), so every icon there lines up.
+      if (prs.length === 1) return wrap(this.reviewIcon(t, st, prs[0], g.key, id, { box: ROW_CONTROL }));
+      return wrap(this.menuButton(t, id, "", reviewTaskRows(st.profile, g.story, prs), `Review ${g.key}'s ${prs.length} pull requests together, with a new agent or one already reviewing them`, { iconPath: own("eye"), width: 340, box: ROW_CONTROL }));
+    };
+    const reviewRow = (r) => {
+      const row = plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
+        () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`);
+      if (storyOf(r.review)) return row;
+      // At the story rows' actions' place (rowActions(): ACTIONS_TOP from the top), plain() rows starting 7 down.
+      return row.child(div().id(`review-row-${prName(r.review)}`).flex_none().mt(ACTIONS_TOP - 7).on_mouse_down("left", stop).on_click(stop)
+        .child(this.reviewIcon(t, st, r.review, r.key, `review-row-${prName(r.review)}-go`, { box: ROW_CONTROL })));
     };
     const plan = (g) => {
       const waiting = g.list.filter((p) => !p.merged && !p.isDraft && p.reviewDecision !== "APPROVED");
@@ -5228,7 +5358,8 @@ export class StoryList extends Stories {
         .child(div().flex_1().min_w(0).truncate().child(g.story?.title ?? ""))
         .when(shut && Boolean(worst), (el) => el.child(div().flex_none().child(countBadge(t, `${id}-sum-${g.key || "none"}`, worst[0], open.length, tip, worst[2]).when(open.length === 1, (x) => x.child("1")))))
         // Its menus for the pull requests naming no ticket (the Desk's); not for a ticket of another board.
-        .when(id === "mine-story" && !g.key, (el) => el.child(div().flex_none().child(plan(g))));
+        .when(id === "mine-story" && !g.key, (el) => el.child(div().flex_none().child(plan(g))))
+        .when(id === "review-story" && Boolean(g.story), (el) => el.child(reviewMenu(g)));
     };
     const grouped = (list, prOf, row, id) => byStory(list, prOf).flatMap((g) => [storyHead(g, id, prOf), ...(folds[foldId(g, id)] ? [] : g.list.map(row))]);
     // The profile's spaces that aren't a story's, nor its Desk.
@@ -5288,8 +5419,7 @@ export class StoryList extends Stories {
         .when(going.length > 0, (el) => el.child(group("In progress", going.length)).children(rows(going)))
         .when(always || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))
           .when(reviews.length === 0, (x) => x.child(empty(t, noPulls ?? "Nothing waiting for your review.")))
-          .children(grouped(reviews, (r) => r.review, (r) => plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
-            () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`), "review-story")))
+          .children(grouped(reviews, (r) => r.review, reviewRow, "review-story")))
         .when(Boolean(owner && noPulls) || minePrs.length > 0, (el) => el.child(group("Your pull requests", minePrs.length))
           .when(minePrs.length === 0, (x) => x.child(empty(t, noPulls ?? "No open pull requests of yours.")))
           .children(grouped(minePrs, (p) => p, myPull, "mine-story")))
@@ -5347,7 +5477,7 @@ export class StoryView extends Stories {
     const key = f.group.key ?? it.key;
     const about = fileAbout(f, key);
     const names = new Map(spaces().map((s) => [s.id, s.name]));
-    const who = askWho({ story: it, key, open: openClaudes(it, agents(), keyOf), keyOf, names });
+    const who = askWho({ story: it, key, open: openClaudes(it, agents(), tabKey), keyOf, names });
     const chosen = chosenWho(who, this.askPick);
     this.target = { id: this.sending, st, it, key, about, who, chosen };
     const close = (cx) => { this.sending = null; this.sentAt = null; DIFF.version++; cx.notify(); };
@@ -5442,7 +5572,7 @@ export function storyNow() {
     show: (mode) => { if (!(mode === "start" && lonePr(it))) setView(profile, it, mode); },
     terminal: () => openTerminal(profile, it),
     claude: () => openClaude(profile, it),
-    start: () => (it.review ? startReview(profile, it.review, it.key) : it.pull ? showPullAgent(it.pull) : startWork(s.st, it)),
+    start: () => (it.review ? showOrStartReview(profile, it.review, it.key) : it.pull ? showPullAgent(it.pull) : startWork(s.st, it)),
     pause: () => pauseFocused(profile, it),
     // A story not opened shows its details anyway: nothing to fold.
     fold: () => { if (viewOf(profile, it) !== "start") foldHead(!headFolded()); },
@@ -5491,7 +5621,7 @@ async function pauseFocused(profile, it) {
   if (lonePr(it)) return;
   const f = focused();
   const agent = agents().find((a) => a.address === f?.terminal) ?? agents().find((a) => a.pane === f?.pane);
-  const key = agent ? keyOf(agent.tab_name) ?? keyOf(spaces().find((s) => s.id === agent.space)?.name) : null;
+  const key = agent ? tabKey(agent.tab_name) ?? keyOf(spaces().find((s) => s.id === agent.space)?.name) : null;
   if (!agent || !storyKeys(it).includes(key)) {
     if (!it.space) return notify({ title: `${it.key} isn't open: nothing to pause`, level: "info", timeout: 4000 });
     const why = pauseWhy(it);
