@@ -31,19 +31,25 @@ export function openClaudes(story, all, keyOf, desk = []) {
 // until its turn ends (holdFor()). `id` is "new" or the agent's address.
 export function askWho({ story, key, open, keyOf, names = new Map() }) {
   const on = (a) => keyOf(a.tab_name) === key;
-  const agents = [...open.filter(on), ...open.filter((a) => !on(a))];
+  // An existing Claude first (the person's rule: where to send, what's open comes first), the one on
+  // the asked key before the rest; a new one last.
+  // The person's order: exactly that ticket's Claude, then one on the story's own ticket or one of its
+  // subtasks, then any other in the story's space; a new one last (rankOf()).
+  const rank = (a) => rankOf(a, key, story, keyOf);
+  const agents = [...open].sort((a, b) => rank(a) - rank(b));
+  const fresh = { id: "new", label: "New Claude", hint: story ? `in ${story.key}'s space` : "on the Desk", tip: story ? `A new Claude in ${story.key}'s space, told about the ticket first` : "A new Claude on the Desk" };
   return [
-    { id: "new", label: "New Claude", hint: story ? `in ${story.key}'s space` : "on the Desk", tip: story ? `A new Claude in ${story.key}'s space, told about the ticket first` : "A new Claude on the Desk" },
     ...agents.map((a) => {
       const waiting = a.status === "blocked";
       const busy = a.status === "working";
       const where = names.get(a.space) ?? "";
       return {
-        id: a.address, agent: a, label: sessionTitle(a.title) ?? a.tab_name ?? "Claude", waiting, busy, on: on(a),
+        id: a.address, agent: a, label: sessionTitle(a.title) ?? a.tab_name ?? "Claude", waiting, busy, on: on(a), rank: rank(a),
         hint: waiting ? "waiting for you" : busy ? "working" : on(a) ? "on it" : "",
         tip: waiting ? "It's waiting for your answer: answer it first" : `${a.tab_name ?? "Claude"}${where ? ` in ${where}` : ""}${busy ? ": mid-task, your question waits until its turn ends" : ""}`,
       };
     }),
+    fresh,
   ];
 }
 
@@ -51,10 +57,20 @@ export function askWho({ story, key, open, keyOf, names = new Map() }) {
 // about the whole story goes to a new Claude (one busy on a subtask isn't the one to ask); anything
 // else to the Claude on its key while that one isn't waiting for the person, else a new one.
 export function chosenWho(who, picked, kind = "file") {
+  // Picked by default: an existing Claude (the person's rule), the one on the asked key first, then
+  // one at rest before one mid-task; a new one only when none can take it. `kind` is kept for callers.
   const ok = (r) => r && !r.waiting;
   if (ok(who.find((r) => r.id === picked))) return picked;
-  if (kind === "story") return "new";
-  return who.find((r) => r.id !== "new" && ok(r) && r.on)?.id ?? "new";
+  // askWho() already orders them by rankOf(): the first that can take it.
+  return who.find((r) => r.id !== "new" && ok(r))?.id ?? "new";
+}
+// Where a Claude stands for a question on `key` of `story`: 0 on exactly that ticket (its tab named
+// after it), 1 on the story's own ticket or one of its subtasks, 2 any other of the story's.
+export function rankOf(a, key, story, keyOf) {
+  const k = keyOf(a.tab_name);
+  if (k && k === key) return 0;
+  const keys = story ? [story.key, ...(story.subs ?? []).map((s) => s.key)] : [];
+  return k && keys.includes(k) ? 1 : 2;
 }
 
 // A question for an open Claude mid-task waits until its turn ends: typed into a working Claude, it

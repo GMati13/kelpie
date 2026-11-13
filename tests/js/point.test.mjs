@@ -31,7 +31,7 @@ test("ready to merge across tickets: the header's main action is Merge all, a me
   assert.equal(byId(el, "story-pointed"), null, "not lit unless Next pointed at it");
   press(el, "story-merge-all", cx);
   const open = render(view.render(cx), skinTheme());
-  assert.match(open, /Merge for ACME-171 with/);
+  assert.match(open, /Merge for ACME-171: send it to ACME-171's/, "its open Claude first");
   assert.match(open, /New agent/);
 });
 
@@ -150,14 +150,16 @@ test("Next (⌘⇧J) points at the step of the story it opens", async () => {
   assert.match(p.key, /^ACME-\d+$/);
   assert.ok(["peek", "comments", "fix", "merge"].includes(p.kind));
 });
-// The Ask line's Merge asks who it has chosen: a new Claude here, with the merge task.
-test("the Ask line's Merge starts a new Claude with the merge task", async () => {
+// The Ask line's Merge asks who it has chosen: the story's open Claude (existing first), with the task.
+test("the Ask line's Merge sends the merge task to the story's open Claude", async () => {
   const { el, view, cx } = await show(StoryBody, { space: "ACME-171" });
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   mock.calls.length = 0;
   handlers(el).find((h) => h.id === "ask-task-merge").fn({}, cx);
   await new Promise((r) => setImmediate(r));
-  const started = mock.of("run").find(([n]) => n === "tab.new" || n === "space.new");
-  assert.ok(started, "a new Claude");
-  assert.match(String(started[1].task ?? ""), /merge/i);
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1, "to the open Claude");
+  assert.match(sent[0][0].at(-1), /merge/i);
+  assert.equal(mock.of("run").filter(([n]) => n === "tab.new" || n === "space.new").length, 0, "no new Claude");
   assert.equal(byId(view.render(cx), "ask-thread"), null, "no history of asks shown");
 });

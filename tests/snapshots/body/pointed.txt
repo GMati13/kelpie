@@ -175,8 +175,8 @@ div
                     Input.new [border=input bg=background fg=foreground]
                   div
                     Popup.new "ask-to-menu"
-                      h_flex #ask-to-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-171's space, told about the ticket first\nA question about the whole story goes to a new Claude"
-                        "to New Claude ▾"
+                      h_flex #ask-to-more [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="ACME-172 in ACME-171"
+                        "to Dark mode tokens ▾"
                   h_flex #ask-send [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
                     "Send"
                 h_flex

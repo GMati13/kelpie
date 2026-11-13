@@ -26,7 +26,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, rankOf, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
@@ -2855,17 +2855,19 @@ export function storyTaskRows(t, profile, story, kind, list) {
   const prs = list.map((p) => prLine(t, p));
   const names = new Map(spaces().map((s) => [s.id, s.name]));
   const desk = !story;
-  const open = openClaudes(story, agents(), tabKey, desk ? deskAgents(profile) : []);
+  // In the person's order (askclaude.js rankOf()): the story's own ticket's Claude, its subtasks', the rest.
+  const open = openClaudes(story, agents(), tabKey, desk ? deskAgents(profile) : [])
+    .sort((a, b) => (desk ? 0 : rankOf(a, story.key, story, tabKey) - rankOf(b, story.key, story, tabKey)));
   const what = desk ? "pull requests without a ticket" : story.key;
   const took = () => { if (story) clearPoint(profile, story.key); };
+  // The open Claudes first, a new agent last (where to send: what's open comes first).
   return [
-    { header: `${TASK_LOOK[kind].label} for ${what} with` },
-    { label: "New agent", hint: desk ? "on the Desk" : `in ${story.key}'s space`, action: () => { took(); desk ? startDeskTask(kind, profile, prs) : startStoryTask(kind, profile, story, prs); } },
-    ...(open.length ? [{ header: desk ? "Or send it to the Desk's" : `Or send it to ${story.key}'s` }, ...open.map((a) => ({
+    ...(open.length ? [{ header: `${TASK_LOOK[kind].label} for ${what}: send it to ${desk ? "the Desk's" : `${story.key}'s`}` }, ...open.map((a) => ({
       label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
       hint: `${names.get(a.space) ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
       action: () => { took(); sendStoryTask(kind, profile, story ?? NO_TICKET, prs, a); },
-    }))] : []),
+    })), { header: "Or start" }] : [{ header: `${TASK_LOOK[kind].label} for ${what} with` }]),
+    { label: "New agent", hint: desk ? "on the Desk" : `in ${story.key}'s space`, action: () => { took(); desk ? startDeskTask(kind, profile, prs) : startStoryTask(kind, profile, story, prs); } },
   ];
 }
 
@@ -3055,14 +3057,14 @@ export function reviewTaskRows(profile, story, prs) {
   const own = tabNamed(storyReviewName(story.key));
   const names = new Map(prs.map((p) => [`PR ${prName(p)}`, true]));
   const open = agents().filter((a) => a.tab_name === storyReviewName(story.key) || names.has(a.tab_name));
+  // The open Claudes first, a new agent last (where to send: what's open comes first).
   return [
-    { header: `Review ${story.key}'s ${prs.length} pull requests together with` },
-    { label: own ? "Show its review" : "New agent", hint: `in the ${REVIEWS} space`, action: () => startStoryReview(profile, story, prs) },
-    ...(open.length ? [{ header: "Or send it to" }, ...open.map((a) => ({
+    ...(open.length ? [{ header: `Review ${story.key}'s ${prs.length} pull requests: send it to` }, ...open.map((a) => ({
       label: sessionTitle(a.title) ?? a.tab_name ?? "Claude",
       hint: `${a.tab_name ?? ""}${a.status === "blocked" ? " · waiting for you" : ""}`,
       action: () => { sendStoryReview(profile, story, prs, a); },
-    }))] : []),
+    })), { header: "Or start" }] : [{ header: `Review ${story.key}'s ${prs.length} pull requests together with` }]),
+    { label: own ? "Show its review" : "New agent", hint: `in the ${REVIEWS} space`, action: () => startStoryReview(profile, story, prs) },
   ];
 }
 
