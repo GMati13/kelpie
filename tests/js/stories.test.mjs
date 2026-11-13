@@ -3,7 +3,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { agentsByKey, askFor, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, settleTalking, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
+import { agentsByKey, askFor, build, finished, keyIn, lastSessions, need, needQueue, noneToDo, ordered, underWay, progress, projectsOf, pullsOf, settleTalking, stillTalking, suggestSnapshot, sunk } from "../../mods/kelpie/stories.js";
 import { sunkWords } from "../../mods/kelpie/config.js";
 import { prState } from "../../mods/kelpie/ui.js";
 import { COLUMNS, DEMO_PROFILE, DEMO_PROJECT_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
@@ -235,6 +235,15 @@ describe("a handed-over story still being talked to", () => {
       assert.deepEqual(keys(ordered(items())).at(-1), "ABC-9", "not after the stories in progress");
     });
   }
+  test("Still talking holds it, unless it needs you: an agent waiting for you is in progress, first", () => {
+    mock.state.agents = [agent("done")];
+    assert.equal(stillTalking(it()), true);
+    mock.state.agents = [agent("blocked")];
+    assert.equal(stillTalking(it()), false, "needs you: with what needs you");
+    assert.equal(sunk(it()), false);
+    mock.state.agents = [agent("working")];
+    assert.equal(stillTalking(it("doing")), false, "not handed over: plain work in progress");
+  });
   test("the row says why it's here", () => {
     mock.state.agents = [agent("done")];
     const [rank, line, color] = need(it());

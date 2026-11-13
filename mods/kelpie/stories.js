@@ -217,6 +217,14 @@ export function settleTalking(now = Date.now()) {
 }
 // A story the person is still talking to, through any agent on it.
 const talking = (it) => allAgents(it).some((a) => a.talking);
+// Handed over (or done) and kept at hand only by that talk, nothing of it needing you: the sidebar's
+// Still talking group, drawn as finished, so it doesn't read as work in progress. Exported for the tests.
+export const stillTalking = (it, n = need(it)) => it.sunk && n[0] > NEEDS_YOU && talking(it);
+// The agent its row leads with, the liveliest one being talked to (one that answered first), and what
+// its key line says of it.
+const TALK_RANK = { done: 0, working: 1, idle: 2 };
+const talkAgent = (it) => allAgents(it).filter((a) => a.talking).sort((a, b) => (TALK_RANK[a.status] ?? 3) - (TALK_RANK[b.status] ?? 3))[0] ?? null;
+const TALK_WORDS = { done: "Agent replied", working: "Agent working" };
 
 // A story becomes a space when work on it starts: the space is named after its key (short, so Herdr's
 // own "Close space?" dialog has room for it), and found by it. Titles show in the sidebar and header.
@@ -3535,10 +3543,13 @@ export class Stories extends Source {
   row(t, it, on, cx, st = null) {
     const n = need(it);
     const [, line, color] = n;
-    const quiet = sunk(it, n);
+    // Kept at hand while its agent is talked to (stillTalking()): drawn as finished, as a sunk row is,
+    // led by that agent's mark and saying on its key line what the agent is doing.
+    const talk = stillTalking(it, n) ? talkAgent(it) : null;
+    const quiet = sunk(it, n) || Boolean(talk);
     const state = storyState(it, n);
     const busy = busyOf(it.key);
-    const sign = statusMark(t, state, { where: "row", size: 8, color: t[color] });
+    const sign = talk ? agentMark(t, talk.status, { where: "sub", size: 16, agent: talk }) : statusMark(t, state, { where: "row", size: 8, color: t[color] });
     // The second line is the key and its badges; the sentence of what it needs is the row's tooltip.
     const badges = storyBadges(t, it, { bar: false }), subs = subsLine(t, it);
     const tasks = st && busy?.kind !== "clean" ? this.rowTasks(t, st, it) : [];
@@ -3584,6 +3595,7 @@ export class Stories extends Source {
           .when(Boolean(it.reassigned), (el) => el.child(div().id(`gone-${it.key}`).flex_none()
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
           .children(badges)
+          .when(Boolean(talk), (el) => el.child(div().id(`talk-${it.key}`).flex_none().text_color(t.muted).child(TALK_WORDS[talk.status] ?? "Talking")))
           // What kind of work it is, at the line's end in whole words: the marks before it keep their
           // places down the list.
           .when(Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
@@ -5462,7 +5474,10 @@ export class StoryList extends Stories {
     // ordered() keeps it), to do, and the sunk ones, handed over (sunkWords), each in the list's order.
     const words = sunkWords(boardOf(st.setup));
     const handed = items.filter((x) => sunk(x.it, x.n));
-    const going = items.filter((x) => !sunk(x.it, x.n) && underWay(x.it));
+    // Finished but still being talked to: a group of their own over In progress, so In progress holds
+    // only work under way.
+    const chatting = items.filter((x) => stillTalking(x.it, x.n));
+    const going = items.filter((x) => !sunk(x.it, x.n) && !stillTalking(x.it, x.n) && underWay(x.it));
     const toDo = items.filter((x) => !sunk(x.it, x.n) && !underWay(x.it));
     const rows = (list) => list.map(({ it }) => this.row(t, it, it.key === shown?.key, cx, st));
     const group = (label, n, sum = null) => groupHeader(t, label, n, null, sum);
@@ -5643,6 +5658,8 @@ export class StoryList extends Stories {
         .when(Boolean(next), (el) => el.child(div().id("story-next-wrap").flex_none().px(INSET - 8).pb(10).child(next)))
         // The Desk, for work without a ticket: always first.
         .children(deskRows(t, this, st.profile, { on: onDesk, sessions: loose }))
+        // "Still talking": finished stories kept at hand while their agent is talked to; only with some.
+        .when(chatting.length > 0, (el) => el.child(group("Still talking", chatting.length)).children(rows(chatting)))
         // "In progress": started on the board or here; shown only when there are some.
         .when(going.length > 0, (el) => el.child(group("In progress", going.length, sumOf("stories-sum-going", sums.going))).children(rows(going)))
         .when(always || reviews.length > 0, (el) => el.child(group("Reviews for you", reviews.length))

@@ -667,3 +667,27 @@ test("Reviews for you: one Review on every ticket's heading, an eye per row only
   for (const pr of ["web#421", "api#308", "web#427", "api#311"]) assert.equal(byId(el, `review-row-${pr}`), null, `${pr}: no eye of its own`);
   assert.ok(byId(el, "review-row-api#305-go"), "No ticket: an eye on its row");
 });
+
+// KELPIE-123: a story handed over whose agent is still talked to has a group of its own over In
+// progress, so In progress holds only work under way. ACME-126's subtask of yours is in QA and its
+// agent answered (`done` in the fixture): it's drawn as finished, led by its agent's mark, saying so,
+// with a Built story's actions (Move to Done).
+test("a finished story still being talked to: Still talking, over In progress, with Built's actions", async () => {
+  const el = await list({ layout: "Kelpie-Plain" });
+  const words = texts(el);
+  assert.ok(words.includes("Still talking"), "its own group");
+  assert.ok(words.indexOf("Still talking") < words.indexOf("In progress"), "over In progress");
+  const row = byId(el, "story-ACME-126");
+  assert.ok(row, "the row is drawn");
+  assert.deepEqual(texts(byId(row, "talk-ACME-126")), ["Agent replied"]);
+  assert.ok(byId(row, "finish-ACME-126"), "Move to Done, as on a Built row");
+  assert.ok(words.indexOf("Sign out after a while idle") < words.indexOf("In progress"), "listed in it, not under In progress");
+  snap("sidebar/row-still-talking", row);
+});
+test("once its agent is quiet (never seen talking), it's back with the handed-over stories", async () => {
+  const el = await list({ layout: "Kelpie-Plain", agentOf: (space, _tab, a) => (space === "ACME-126" ? { ...a, status: "idle" } : a) });
+  const words = texts(el);
+  assert.ok(!words.includes("Still talking"), "no group");
+  assert.equal(byId(el, "talk-ACME-126"), null);
+  assert.ok(words.indexOf("Sign out after a while idle") > words.indexOf("Waiting on others"), "under Waiting on others");
+});
