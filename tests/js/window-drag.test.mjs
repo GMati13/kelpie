@@ -26,6 +26,20 @@ for (const name of LAYOUTS) {
     assert.deepEqual(dragging, ["side-top", "story-head", "toolbar", "toolbar-start"]);
   });
 
+  // #276: Herdr takes a press up to GRAB px either side of a divider's line as a drag of it (measured
+  // on Herdr 0.1.15), but the tab bar right under the details' divider keeps its presses (above), so
+  // the half of that grab over the tab bar did nothing (and before it kept them, moved the window).
+  // A gap in the details column puts the whole grab on the gap, where nothing else takes a press.
+  test(`${name}: the details' divider can be grabbed anywhere Herdr takes it, none of it over the tab bar`, () => {
+    const GRAB = 3;
+    const all = nodes(readLayout(name));
+    const details = all.find((n) => n.id === "details");
+    assert.equal(details.resizable, true, "the details' split is draggable");
+    assert.deepEqual(details.children.map((c) => c.id), ["story-body", "lower"]);
+    assert.equal(details.children[1].children[0].id, "toolbar", "the tab bar is right under the divider");
+    assert.ok((details.gap ?? 0) >= 2 * GRAB, `the details column's gap (${details.gap ?? 0}) holds the divider's grab, ${GRAB}px each side`);
+  });
+
   test(`${name}: the tab bars leave no edge of their block to drag by (their padding is the mod's)`, () => {
     for (const id of ["toolbar", "toolbar-start"]) {
       const block = nodes(readLayout(name)).find((n) => n.id === id);
