@@ -3986,8 +3986,9 @@ export class Stories extends Source {
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
     const clean = cleanable(st.profile, it).length ? this.cleanButton(t, st, it) : null;
     // Working alone, nobody can approve: no Request approval.
-    const tasks = [unapproved.length && !worksAlone(st.setup) ? taskMenu("approval", unapproved) : null, openPrs.length && !mergeAll ? taskMenu("merge", openPrs) : null,
-      finishes(st.setup) && (canMoveToDone(it) || busy?.kind === "done") ? this.finishButton(t, st, it, "story-finish", { words: true }) : null].filter(Boolean);
+    // Merge and Request approval are the Ask line's now (KELPIE-228), under the details, beside its
+    // suggestions; Merge all stays the main action here when more than one is ready.
+    const tasks = [finishes(st.setup) && (canMoveToDone(it) || busy?.kind === "done") ? this.finishButton(t, st, it, "story-finish", { words: true }) : null].filter(Boolean);
     return { actions: [main, pauseIt].filter(Boolean), tasks, clean, more: rows.length ? this.menuButton(t, "story-more", "", rows, "More for this story", { iconPath: own("ellipsis") }) : null };
   }
 
@@ -5373,6 +5374,9 @@ export class StoryBody extends Stories {
       send: (cx) => this.askSend({ note: this.askInput.value() }, cx),
       suggest: (id, cx) => this.askSend({ suggestion: id }, cx),
       clear: () => pointAsk(profile, it.key, null),
+      // About the story: its tasks (KELPIE-228), while they apply, as its header offered them.
+      tasks: about.kind === "story" ? this.askTasks(st, it) : [],
+      task: (kind, cx) => this.askTask(t, st, it, kind, cx),
       // Copy, then ask (KELPIE-226): the clipboard's text, said to be from the description when it is.
       copied: (cx) => {
         const text = String(cx.read_from_clipboard?.() ?? "").trim();
@@ -5385,6 +5389,37 @@ export class StoryBody extends Stories {
     // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
     // the question box ran far from what it's about and from Send.
     return [thread, line].filter(Boolean).map((el) => h_flex().flex_none().w_full().justify_center().child(el.w_full().max_w(ROWS)));
+  }
+
+  // A story's tasks on its Ask line (KELPIE-228): Merge while it has an open pull request, Request
+  // approval while one isn't approved (not for someone who works alone: nobody approves).
+  askTasks(st, it) {
+    if (it.pr || lonePr(it)) return [];
+    const { openPrs, unapproved } = taskPrs(it);
+    return [
+      ...(openPrs.length ? [{ id: "merge", label: "Merge", tip: `Check ${openPrs.length === 1 ? "its pull request is" : `its ${openPrs.length} pull requests are`} ready to merge and write a merge and deploy plan` }] : []),
+      ...(unapproved.length && !worksAlone(st.setup) ? [{ id: "approval", label: "Request approval", tip: "Find what each open pull request waits on and draft a request to its reviewers" }] : []),
+    ];
+  }
+  // Sends a story task to who the Ask line has chosen: a new agent in the story's space with it, or
+  // one of its open Claudes (the same paths as the menus they replace); on the thread too.
+  askTask(t, st, it, kind, cx) {
+    const x = this.askTarget;
+    if (!x) return;
+    const { openPrs, unapproved } = taskPrs(it);
+    const prs = (kind === "merge" ? openPrs : unapproved).map((p) => prLine(t, p));
+    if (!prs.length) return;
+    clearPoint(st.profile, it.key);
+    const label = kind === "merge" ? "Merge" : "Request approval";
+    const entry = { id: askId(), at: Date.now(), story: it.key, about: `${it.key} · the story`, q: label };
+    if (x.row?.agent) {
+      setThread(st.profile, it.key, (list) => withEntry(list, { ...entry, to: x.row.label ?? x.row.agent.tab_name, address: x.row.agent.address, status: "sent" }));
+      sendStoryTask(kind, st.profile, it, prs, x.row.agent);
+    } else {
+      setThread(st.profile, it.key, (list) => withEntry(list, { ...entry, to: "a new Claude", status: "started" }));
+      startStoryTask(kind, st.profile, it, prs);
+    }
+    cx.notify();
   }
 
   // Asks what the Ask line holds: a suggestion, or the typed question.

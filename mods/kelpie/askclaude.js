@@ -261,7 +261,7 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // suggestions for that kind of thing (a click sends that one) and a word on where it goes (`hint`).
 // It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
 // accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
-export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory, copied = null }) {
+export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory, copied = null, tasks = [], task = null }) {
   return v_flex().id("ask-line").flex_none().gap(6).mt(4).px(10).pt(8).pb(6).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
     .child(h_flex().gap(8).items_center().min_w(0)
       .child(icon(own("sparkles"), 14).text_color(t.accent))
@@ -278,6 +278,8 @@ export function askLine(t, { about, input, to, send, suggest, clear, hint, isSto
       .child(textButton(t, "ask-send", "Send", (_e, cx) => send(cx))))
     .child(h_flex().gap(4).items_center().pl(22).min_w(0)
       .children(suggestionsFor(about.kind).map((s) => textButton(t, `ask-suggest-${s.id}`, s.label, (_e, cx) => suggest(s.id, cx), { dim: true, tip: "Ask it this (the wording is the profile's, on its Messages page)" })))
+      // A story's tasks (KELPIE-228: Merge, Request approval), as its header's menus offered them.
+      .children(tasks.map((x) => textButton(t, `ask-task-${x.id}`, x.label, (_e, cx) => task(x.id, cx), { dim: true, tip: x.tip })))
       // Copy, then ask (KELPIE-226): what was copied becomes what it's about.
       .when(Boolean(copied), (el) => el.child(textButton(t, "ask-copied", "Ask about what you copied", (_e, cx) => copied(cx), { dim: true, tip: "Copy a passage with ⌘C, then press this: the Ask line is about it" })))
       .child(div().flex_1())
