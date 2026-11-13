@@ -208,7 +208,7 @@ v_flex #work-side-list-demo
       Popup.new "desk-new-menu"
         div #desk-new-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="New Claude or terminal on the Desk"
           svg chrome:plus
-  h_flex #desk-agent-a8-0 [hover(bg=hover)] {click down:left} tip="Claude Code · idle"
+  h_flex #desk-agent-a7-0 [hover(bg=hover)] {click down:left} tip="Claude Code · idle"
     div
       div
         div [border=muted]
