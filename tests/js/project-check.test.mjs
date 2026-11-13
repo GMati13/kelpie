@@ -144,5 +144,6 @@ test("for a named account, the command switches to it and back to the account gh
   const r = await checkProject(CFG, { account: "me-work" });
   assert.equal(r.fix, "gh auth switch -h github.com -u me-work\ngh auth refresh -h github.com -s project\ngh auth switch -h github.com -u me-home");
   assert.equal(scopeCommand("me-work", "me-work"), "gh auth refresh -h github.com -s project", "already the active one: no switching");
+  for (const bad of ["x; rm -rf ~", "me-work\nrm -rf ~", "-x", "a b"]) assert.equal(scopeCommand(bad, "me-home"), null, `${JSON.stringify(bad)}: no command with it in`);
   assert.equal(scopeCommand("me-work", "x; rm -rf ~"), "gh auth switch -h github.com -u me-work\ngh auth refresh -h github.com -s project\ngh auth switch -h github.com", "not a login: no name to switch back to");
 });

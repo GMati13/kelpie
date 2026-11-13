@@ -65,7 +65,8 @@ describe("configureOnDesk", () => {
     const [space] = runs("space.new");
     assert.equal(space.task, 'Configure my Kelpie profile "Work" (id work). Scope: status (Story commands: status only).');
     assert.equal(space.tab, "Configure status");
-    assert.deepEqual(space.argv, ["env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "claude"]);
+    // Told it's the profile's and in no story (the Desk), then on the profile's account.
+    assert.deepEqual(space.argv, ["env", "KELPIE_PROFILE=work", "KELPIE_STORY=", "env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "KELPIE_GH_ACCOUNT=", "claude"]);
     assert.equal(dialogs().length, 0);
   });
   test("without it: nothing starts; a dialog says it's needed, with what installs it from this clone", async () => {
@@ -95,11 +96,12 @@ describe("configureOnDesk", () => {
     await new Confirm().yes();
     const [space] = runs("space.new");
     assert.equal(space.tab, "Configure");
-    const [env, plugin, sh, flag, script, name, source, task, ...claude] = space.argv;
+    assert.deepEqual(space.argv.slice(0, 3), ["env", "KELPIE_PROFILE=work", "KELPIE_STORY="], "told where it runs: the Desk");
+    const [env, plugin, sh, flag, script, name, source, task, ...claude] = space.argv.slice(3);
     assert.deepEqual([env, plugin, sh, flag, name], ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", "sh"]);
     assert.equal(source, REPO.replace(/\/$/, ""));
     assert.equal(task, 'Configure my Kelpie profile "Work" (id work). Scope: status (Story commands: status only).');
-    assert.deepEqual(claude, ["env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "claude"]);
+    assert.deepEqual(claude, ["env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "KELPIE_GH_ACCOUNT=", "claude"]);
     assert.ok(!script.includes(home) && !script.includes(source) && !script.includes("Configure my"), "no value is written into the script");
     assert.match(script, /"\$@" plugin marketplace add "\$root"; if "\$@" plugin install "\$PLUGIN"; then/);
   });
@@ -109,7 +111,7 @@ describe("configureOnDesk", () => {
     await configureOnDesk(work(), "all");
     mock.state.props = { ...dialogs()[0][0].props, overlay: "overlay-1" };
     await new Confirm().yes();
-    const [, , , , script] = runs("space.new")[0].argv;
+    const [, , , , script] = runs("space.new")[0].argv.slice(3);
     const runIt = (task, fail) => {
       const dir = tempDir();
       put(`${dir}/claude`, `#!/bin/sh\nprintf '%s|' "$@" >> "${dir}/calls"; echo >> "${dir}/calls"; [ "$1" = plugin ] && [ "$2" = install ] && exit ${fail ? 1 : 0}; exit 0\n`);
@@ -172,7 +174,7 @@ describe("the plugin's install is the person's click", () => {
       assert.doesNotMatch(readRepo("mods/kelpie", f), /installPlugin/, f);
     }
     const yes = bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {");
-    assert.match(yes, /const \{ overlay, installPlugin: install, installThen: then = null(, doneStory)?(, runPicks: picks)? \} = props\(\);/);
+    assert.match(yes, /const \{ overlay, installPlugin: install, installThen: then = null(, doneStory)?(, runPicks: picks)?(, closeStories: closing)? \} = props\(\);/);
     assert.match(yes, /cx\.spawn\(async \(\) => \{ await installPlugin\(install, then\)/);
   });
 });

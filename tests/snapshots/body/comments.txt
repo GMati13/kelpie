@@ -1,0 +1,81 @@
+v_flex #story-talk
+  h_flex #story-talk-head [fg=muted hover(fg=foreground)] {click} tip="Hide the comments"
+    svg chrome:chevron-down [fg=dim]
+    "Comments · 4"
+  div #story-talk-all [fg=dim hover(fg=foreground)] {click}
+    "Show all 4"
+  v_flex #story-talk-1
+    h_flex
+      div [bg=ansi2/33 fg=ansi2] tip="Priya Nair"
+        "PN"
+      div [fg=foreground]
+        "Priya Nair"
+      div [fg=dim]
+        "2d ago"
+    div #story-talk-1-body [font="Fraunces" fg=foreground/c4]
+      v_flex
+        v_flex
+          TextView.html "story-talk-1-b-0-text-0" "<span>Yes, but keep it short: &quot;Saved 2h ago&quot;. No dates.</span>" [fg=foreground/c4]
+  v_flex #story-talk-2
+    h_flex
+      div [bg=ansi4/33 fg=ansi4] tip="Lena Fischer"
+        "LF"
+      div [fg=foreground]
+        "Lena Fischer"
+      div [fg=dim]
+        "1d ago"
+    div #story-talk-2-body [font="Fraunces" fg=foreground/c4]
+      v_flex
+        v_flex
+          TextView.html "story-talk-2-b-0-text-0" "<span>Product call: map tiles stay out of this story, they're <b>ACME-190</b>. Offline maps would double the cache size.</span>" [fg=foreground/c4]
+  v_flex #story-talk-3
+    h_flex
+      div [bg=ansi2/33 fg=ansi2] tip="Priya Nair"
+        "PN"
+      div [fg=foreground]
+        "Priya Nair"
+      div [fg=dim]
+        "5h ago"
+    div #story-talk-3-body [font="Fraunces" fg=foreground/c4]
+      v_flex
+        v_flex
+          TextView.html "story-talk-3-b-0-text-0" "<span>Scope change after today's review: conflicts keep the newest change, and the trip's history says which edit won.</span>" [fg=foreground/c4]
+        v_flex
+          h_flex
+            div [fg=dim]
+              "•"
+            div
+              v_flex
+                v_flex
+                  TextView.html "story-talk-3-b-1-0-0-text-0" "<span>No merge dialog for now</span>" [fg=foreground/c4]
+          h_flex
+            div [fg=dim]
+              "•"
+            div
+              v_flex
+                v_flex
+                  h_flex
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-0" "<span>Keep</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-1" "<span>the</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-2" "<span>losing</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-3" "<span>edit</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-4" "<span>in</span>" [fg=foreground/c4]
+                    div [bg=foreground/1c]
+                      TextView.html "story-talk-3-b-1-1-0-w-0-5" "<span>tripHistory</span>" [fg=foreground/c4 font="JetBrains Mono" font="DM Mono" fg=foreground]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-6" "<span>so</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-7" "<span>it</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-8" "<span>can</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-9" "<span>be</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-10" "<span>put</span>" [fg=foreground/c4]
+                    div
+                      TextView.html "story-talk-3-b-1-1-0-w-0-11" "<span>back</span>" [fg=foreground/c4]

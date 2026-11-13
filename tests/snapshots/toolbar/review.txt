@@ -1,4 +1,4 @@
-h_flex
+h_flex {down:left}
   h_flex #tab-list {hover up:left}
     h_flex #view-changes [bg=selected fg=foreground bg=#00000000 border=qpRule] {down:left click}
       div

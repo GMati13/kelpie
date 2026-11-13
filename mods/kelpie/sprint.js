@@ -88,13 +88,15 @@ export async function jira(cfg, ...args) {
 }
 
 // A board's active sprints, as Jira answers them. A Kanban board has none (Jira refuses the
-// question), so then the board itself comes back marked `kanban` (its name is in `body.name`).
+// question), so then the board itself comes back marked `kanban` (its name is in `body.name`). So does
+// a team-managed board with sprints turned off (Jira calls its kind `simple`); a scrum board that
+// refuses it has something else wrong, which its error says.
 export async function activeSprints(cfg) {
   try {
     return await jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}/sprint?state=active`);
   } catch (e) {
     const board = await jira(cfg, "get", `/rest/agile/1.0/board/${cfg.board}`).catch(() => null);
-    if (board?.body?.type !== "kanban") throw e;
+    if (!["kanban", "simple"].includes(board?.body?.type)) throw e;
     return { ...board, kanban: true };
   }
 }

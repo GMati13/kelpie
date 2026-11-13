@@ -1,7 +1,7 @@
 v_flex [fg=foreground]
   h_flex
     h_flex #story-head-text
-      div #story-key [fg=accent] {click} tip="Open in Jira"
+      div #story-key [fg=accent] {down:left click} tip="Open in Jira"
         "ACME-142"
       div #story-title tip="Offline mode for saved trips\nACME-143's agent needs you"
         "Offline mode for saved trips"
@@ -22,7 +22,7 @@ v_flex [fg=foreground]
         div [bg=ansi2/33 fg=ansi2] tip="Assigned to Priya Nair"
           "PN"
       Popup.new "story-status-menu-menu"
-        div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+        div #story-status-menu-more [hover(bg=hover)] {down:left click} tip="Change the status"
           div [bg=accent/26 fg=accent]
             "In progress"
     h_flex

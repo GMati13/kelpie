@@ -126,8 +126,13 @@ describe("demoPulls and the local helpers", () => {
     const [r, ...rest] = await demoLocal("/f", ["ACME-143", "ACME-144"]);
     assert.deepEqual(rest, []);
     assert.deepEqual({ ...r, files: r.files.map((f) => [f.path, f.status, f.add, f.del]) },
-      { repo: "web", path: "/f/ACME-143/web", branch: "ACME-143-trip-cache", key: "ACME-143", ticket: true, files: [["src/trips/sync-queue.ts", "added", 10, 0]] });
+      { repo: "web", path: "/f/ACME-143/web", branch: "ACME-143-trip-cache", key: "ACME-143", ticket: true, files: [["src/trips/sync-queue.ts", "added", 10, 0]], head: null, committed: null });
     assert.deepEqual(await demoLocal("/f", ["ACME-151"]), []);
+  });
+  test("a branch's commits with no pull request yet, as changes.py --committed gives them", async () => {
+    const [r] = await demoLocal("/f", ["ACME-138", "ACME-139"]);
+    assert.deepEqual([r.repo, r.branch, r.files, r.committed.base, r.committed.commits], ["api", "ACME-139-token-bucket", [], "origin/main", 2]);
+    assert.deepEqual(r.committed.files.map((f) => [f.path, f.status, f.add, f.del]), [["src/limits/bucket.ts", "added", 15, 0], ["src/server.ts", "modified", 2, 0]]);
   });
   test("the footer's limits, once the fixture is read", async () => {
     await demoFixture();
@@ -193,6 +198,8 @@ describe("demo.json holds together", () => {
       assert.ok(issues.has(key), key);
       for (const x of list) if (x.id) assert.match(x.id, /^demo-/);
     }
+    assert.ok(FIXTURE.deskPaused?.length, "the Desk has a paused agent to show");
+    for (const x of FIXTURE.deskPaused) assert.match(x.id, /^demo-/);
   });
   test("every suggestion is a key, a pull request link or an idea, with an action", () => {
     for (const s of FIXTURE.suggest) {

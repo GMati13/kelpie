@@ -5,7 +5,7 @@ div
   v_flex [fg=foreground]
     h_flex
       h_flex #story-head-text
-        div #story-key [fg=accent font="DM Mono"] {click} tip="Open on GitHub"
+        div #story-key [fg=accent font="DM Mono"] {down:left click} tip="Open on GitHub"
           "ACME-160"
         div #story-title [font="Fraunces"] tip="Typo-tolerant search\nChanges requested on ACME-161 (search#233)"
           "Typo-tolerant search"
@@ -26,7 +26,7 @@ div
           div [bg=ansi1/33 fg=ansi1] tip="Assigned to Lena Vogel"
             "LV"
         Popup.new "story-status-menu-menu"
-          div #story-status-menu-more [hover(bg=hover)] {click} tip="Change the status"
+          div #story-status-menu-more [hover(bg=hover)] {down:left click} tip="Change the status"
             div [bg=accent/26 fg=accent font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
               "Review"
               div

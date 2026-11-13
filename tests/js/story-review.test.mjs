@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import { until } from "../lib/helpers.mjs";
 import { mock } from "herdr";
 import { OTHERS } from "../../mods/kelpie/config.js";
-import { reviewTaskRows, sendStoryReview, startStoryReview, tabKey } from "../../mods/kelpie/stories.js";
+import { reviewTaskRows, sendStoryReview, startStoryReview, storyTaskRows, tabKey } from "../../mods/kelpie/stories.js";
+import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
 const profile = { id: "w", name: "W", folder: "/work/acme", github: { owner: "acme" } };
 const story = { key: "ABC-1", title: "Show times in each zone", subs: [] };
@@ -75,5 +76,15 @@ describe("Review on a story's heading", () => {
     assert.equal(tabKey("Review ABC-1"), null);
     assert.equal(tabKey("ABC-1 merge"), "ABC-1");
     assert.equal(tabKey("Review ABC-1 changes"), "ABC-1");
+  });
+  test("a story's Merge and Request approval menus don't offer the agent reviewing its pull requests", () => {
+    mock.state.spaces = [{ id: "s1", name: "ABC-1", tabs: [] }, { id: "s2", name: "Reviews", tabs: [] }];
+    mock.state.agents = [
+      { address: "t1", tab_name: "ABC-1 fix the form", space: "s1", pane: "p1", status: "idle", title: "" },
+      { address: "t2", tab_name: "Review ABC-1", space: "s2", pane: "p2", status: "idle", title: "" },
+    ];
+    const rows = storyTaskRows(skinTheme(), profile, { ...story, space: { id: "s1" } }, "merge", prs);
+    const offered = rows.filter((r) => r.action && r.label !== "New agent").map((r) => r.label);
+    assert.deepEqual(offered, ["ABC-1 fix the form"]);
   });
 });

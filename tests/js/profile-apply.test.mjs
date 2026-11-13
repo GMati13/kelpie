@@ -5,7 +5,10 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { bodyOf, put, readRepo, tempDir } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { applyPendingProfile, applyProfileRequest, buildProfile, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
+import { ASK_PROMPTS, CONFIRM_KEYS, SECTION_KEYS, applyPendingProfile, applyProfileRequest, buildProfile, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
+
+// The top-level settings an agent may change (APPLY_KEYS in config.js).
+const APPLY = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 
 const BOARD = "https://acme.atlassian.net/jira/software/c/projects/ABC/boards/12";
@@ -161,6 +164,8 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["jira.handover", { jira: { handover: "QA" } }, (p) => p.jira.handover === "QA" && p.jira.keychain === "jira-acme"],
     ["jira.solo", { jira: { solo: true } }, (p) => p.jira.solo === true && p.jira.keychain === "jira-acme"],
     ["jira.moveToDone", { jira: { moveToDone: false } }, (p) => p.jira.moveToDone === false && p.jira.keychain === "jira-acme"],
+    // It changes only what the list shows: nothing runs, nothing steers an agent.
+    ["jira.unassigned", { jira: { unassigned: true } }, (p) => p.jira.unassigned === true && p.jira.keychain === "jira-acme"],
     ["an unchanged command", { commands: { status: "make status" } }, (p) => p.commands.status === "make status"],
     // Disconnecting runs nothing and sends the sign-in nowhere; connecting again needs jira.url (a yes).
     ["removing Jira", { jira: null }, (p) => p.jira === null],
@@ -168,6 +173,7 @@ describe("apply-profile: harmless changes apply at once", () => {
     ["project.handover", { project: { handover: "QA" } }, (p) => p.project.handover === "QA" && p.project.prefixes === "acme/web=WEB", "gh"],
     ["project.solo", { project: { solo: true } }, (p) => p.project.solo === true, "gh"],
     ["project.moveToDone", { project: { moveToDone: false } }, (p) => p.project.moveToDone === false, "gh"],
+    ["project.unassigned", { project: { unassigned: true } }, (p) => p.project.unassigned === true, "gh"],
     ["removing the Project", { project: null }, (p) => p.project === null, "gh"],
   ]) {
     test(`${what}`, async () => {
@@ -200,6 +206,7 @@ describe("apply-profile: refused outright", () => {
     // "false" would read as true: working alone is a yes or no.
     ["a string for solo", { jira: { solo: "false" } }, /jira\.solo: true or false/],
     ["a string for moveToDone", { project: { moveToDone: "false" } }, /project\.moveToDone: true or false/, "gh"],
+    ["a string for unassigned", { jira: { unassigned: "false" } }, /jira\.unassigned: true or false/],
     ["a list for a section", { commands: ["rm"] }, /an object/],
     ["a lookalike board", { jira: { url: "https://evil.com/x.atlassian.net/jira/boards/1" } }, /jira\.url/],
     ["a token command without email", { jira: { tokenCommand: "op read x", email: null } }, /jira\.email/],
@@ -217,6 +224,16 @@ describe("apply-profile: refused outright", () => {
     ["a prefix entry that isn't one", { project: { prefixes: "WEB" } }, /^project\.prefixes: "WEB" isn't a repo and its prefix/, "gh"],
     ["a number that isn't whole", { project: { number: 1.5 } }, /project\.number: a string/, "gh"],
     ["project.token", { project: { token: "abc" } }, /secrets aren't kept/, "gh"],
+    // Each section takes its own keys only: a secret under a name SECRET doesn't catch is refused too.
+    ["github.pat", { github: { pat: "ghp_abc" } }, /^github\.pat: not a setting of github \(owner, account/],
+    ["jira.apiKey", { jira: { apiKey: "abc" } }, /^jira\.apiKey: not a setting of jira/],
+    ["jira.demo (it would allow any board)", { jira: { demo: "yes" } }, /^jira\.demo: not a setting of jira/],
+    ["an unknown command", { commands: { onStart: "curl evil" } }, /^commands\.onStart: not a setting of commands/],
+    ["an unknown prompt", { prompts: { review: "x" } }, /^prompts\.review: not a setting of prompts/],
+    ["an unknown key removed", { notify: { reviews: null } }, /^notify\.reviews: not a setting of notify/],
+    ["web.cookies", { web: { cookies: "x" } }, /^web\.cookies: not a setting of web/],
+    ["claude.apiKey", { claude: { apiKey: "x" } }, /^claude\.apiKey: not a setting of claude/],
+    ["project.pat", { project: { pat: "x" } }, /^project\.pat: not a setting of project/, "gh"],
   ]) {
     test(`${what}`, async () => {
       request(set, id);
@@ -241,6 +258,25 @@ describe("apply-profile: refused outright", () => {
     assert.deepEqual({ owner: p.project.owner, ownerType: p.project.ownerType, number: p.project.number }, { owner: "acme", ownerType: "org", number: 4 });
     assert.equal(p.jira, null);
     assert.equal(buildProfile("gh", { project: { number: 7 } }).project.number, 4, "a number as an integer is taken, then the address decides");
+  });
+  test("a Keychain item's name is one line: it goes into the command the Board page gives to copy", () => {
+    for (const bad of ["jira-acme\ndump-keychain -d", "jira\racme", "a\tb", "a\u0000b"]) {
+      assert.throws(() => buildProfile("work", { jira: { keychain: bad } }), /jira\.keychain/, JSON.stringify(bad));
+    }
+    assert.doesNotThrow(() => buildProfile("work", { jira: { keychain: "jira acme (work)" } }));
+  });
+  test("every section lists its own keys, and only top-level settings have a list", () => {
+    assert.deepEqual(Object.keys(SECTION_KEYS).sort(), APPLY.filter((k) => k !== "name" && k !== "folder").sort());
+    // What waits for a yes is a setting its section takes.
+    for (const [section, keys] of Object.entries(CONFIRM_KEYS)) for (const k of keys ?? []) assert.ok(SECTION_KEYS[section].includes(k), `${section}.${k}`);
+    for (const a of ASK_PROMPTS) assert.ok(SECTION_KEYS.prompts.includes(a.id), `prompts.${a.id}`);
+  });
+  test("every known key of every section is taken", () => {
+    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB" };
+    for (const [section, keys] of Object.entries(SECTION_KEYS)) for (const k of keys) {
+      const id = section === "project" ? "gh" : "work";
+      assert.doesNotThrow(() => buildProfile(id, { [section]: { [k]: value[`${section}.${k}`] ?? "x" } }), `${section}.${k}`);
+    }
   });
   test("tokenCommand is the one token-like key allowed (it goes pending)", () => {
     assert.doesNotThrow(() => buildProfile("work", { jira: { tokenCommand: "op read x", email: "me@example.com" } }));

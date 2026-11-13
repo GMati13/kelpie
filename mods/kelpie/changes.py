@@ -1,6 +1,6 @@
 """Uncommitted changes in the repos working on some ticket keys, as JSON on stdout.
 
-    python3 -I changes.py <folder> [--unpushed] <key> [key ...]     (or python3 -I -c "<this file>" ...)
+    python3 -I changes.py <folder> [--unpushed] [--committed] <key> [key ...]     (or python3 -I -c "<this file>" ...)
 
 A repo counts for a key in two ways:
   - it sits in a ticket folder, a folder named exactly after the key up to two levels under <folder>
@@ -13,6 +13,11 @@ match. Every matching repo is listed, with or without changes; "ticket" is its t
     [{"repo", "path", "branch", "key", "ticket", "files": [{"path", "add", "del", "status", "patch"}]}]
 With --unpushed, each also says "unpushed": how many commits its HEAD has that no remote branch holds
 (all of them in a repo with no remote), as removing the folder would lose those too.
+With --committed, each also says "head" (its HEAD commit) and "committed": what its branch committed
+since it left the default branch, null when that can't be told (no default branch found, a detached
+HEAD, or the default branch itself checked out):
+    {"base", "commits", "files": [{"path", "add", "del", "status", "patch"}]}
+The story's pull requests show their own commits; the view leaves out a repo whose branch has one.
 """
 
 import json
@@ -69,19 +74,23 @@ def new_file(path, limit=200000, rows=1500):
     return {"add": len(lines), "del": 0, "patch": patch}
 
 
-def changes(repo):
+def changes(repo, since=None):
+    """The working tree's changes against HEAD, untracked files too; or, given a commit, what HEAD
+    changed since it (committed only)."""
     files = {}
-    for line in git(repo, "diff", "HEAD", "--numstat").splitlines():
+    against = [f"{since}...HEAD"] if since else ["HEAD"]
+    for line in git(repo, "diff", *against, "--numstat", "--").splitlines():
         parts = line.split("\t")
         if len(parts) == 3:
             add, rem, path = parts
             path = renamed(path)
             files[path] = {"path": path, "add": int(add) if add.isdigit() else 0, "del": int(rem) if rem.isdigit() else 0, "status": "modified", "patch": ""}
-    for path in git(repo, "ls-files", "--others", "--exclude-standard").splitlines():
-        files[path] = {"path": path, "status": "added", **new_file(os.path.join(repo, path))}
+    if not since:
+        for path in git(repo, "ls-files", "--others", "--exclude-standard").splitlines():
+            files[path] = {"path": path, "status": "added", **new_file(os.path.join(repo, path))}
     if not files:
         return []
-    patch, current = git(repo, "diff", "HEAD"), None
+    patch, current = git(repo, "diff", *against, "--"), None
     patch = patch[:MAX_PATCH] + ("\n… cut here, the diff is too long" if len(patch) > MAX_PATCH else "")
     chunks = {}
     for line in patch.splitlines():
@@ -100,6 +109,26 @@ def unpushed(repo):
     """Commits on HEAD that no remote-tracking branch has: 0 for a repo with nothing committed yet."""
     out = git(repo, "rev-list", "--count", "HEAD", "--not", "--remotes").strip()
     return int(out) if out.isdigit() else 0
+
+
+def default_branch(repo):
+    """The branch work goes into: the remote's default (origin/HEAD), else origin/main or origin/master,
+    else a local main or master."""
+    named = git(repo, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD").strip()
+    for ref in ([named] if named else []) + ["origin/main", "origin/master", "main", "master"]:
+        if git(repo, "rev-parse", "-q", "--verify", f"refs/remotes/{ref}" if ref.startswith("origin/") else f"refs/heads/{ref}").strip():
+            return ref
+    return None
+
+
+def committed(repo, branch):
+    """What the checked-out branch committed since it left the default branch, or None."""
+    base = default_branch(repo)
+    if not branch or not base or base.split("/")[-1] == branch:
+        return None
+    count = git(repo, "rev-list", "--count", f"{base}..HEAD", "--").strip()
+    commits = int(count) if count.isdigit() else 0
+    return {"base": base, "commits": commits, "files": changes(repo, base) if commits else []}
 
 
 def is_repo(path):
@@ -128,9 +157,10 @@ def ticket_folders(folder, keys):
 def main():
     folder = os.path.realpath(sys.argv[1])
     keys = sys.argv[2:]
-    ahead = bool(keys) and keys[0] == "--unpushed"
-    if ahead:
-        keys = keys[1:]
+    flags = set()
+    while keys and keys[0] in ("--unpushed", "--committed"):
+        flags.add(keys.pop(0))
+    ahead, since = "--unpushed" in flags, "--committed" in flags
     out, seen = [], set()
 
     def add(repo, key, ticket):
@@ -138,9 +168,13 @@ def main():
         if real in seen:
             return
         seen.add(real)
-        entry = {"repo": os.path.basename(repo), "path": repo, "branch": branch_of(repo), "key": key, "ticket": ticket, "files": changes(repo)}
+        branch = branch_of(repo)
+        entry = {"repo": os.path.basename(repo), "path": repo, "branch": branch, "key": key, "ticket": ticket, "files": changes(repo)}
         if ahead:
             entry["unpushed"] = unpushed(repo)
+        if since:
+            entry["head"] = git(repo, "rev-parse", "-q", "--verify", "HEAD").strip() or None
+            entry["committed"] = committed(repo, branch)
         out.append(entry)
 
     # Ticket folders first: what's in them is the ticket's, whatever the branch is called.

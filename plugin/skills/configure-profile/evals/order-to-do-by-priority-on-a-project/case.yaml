@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: order-to-do-by-priority-on-a-project
+expected_outcome: |
+  A profile on a GitHub Project whose priority is its single-select field "Priority". In one save_profile change it sets project.priorityField to "Priority", project.byPriority to true and project.showPriority to true, touching nothing else (no prompts, no address, no prefixes), and says it's saved at once. It explains that the order applies to To do (what's not started yet), with what needs the person still first, and that stories already in progress keep their place, so they won't jump around.

@@ -27,7 +27,7 @@ div #story-overview-view {size_change}
               h_flex
                 h_flex #sub-status-cell-ACME-181 {size_change}
                   Popup.new "sub-status-ACME-181-menu"
-                    div #sub-status-ACME-181-more [hover(bg=hover)] {click} tip="Change the status"
+                    div #sub-status-ACME-181-more [hover(bg=hover)] {down:left click} tip="Change the status"
                       div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                         "To do"
                         div
@@ -49,7 +49,7 @@ div #story-overview-view {size_change}
               h_flex
                 h_flex #sub-status-cell-ACME-182 {size_change}
                   Popup.new "sub-status-ACME-182-menu"
-                    div #sub-status-ACME-182-more [hover(bg=hover)] {click} tip="Change the status"
+                    div #sub-status-ACME-182-more [hover(bg=hover)] {down:left click} tip="Change the status"
                       div [bg=raised fg=muted font="DM Sans" bg=#00000000 border=#e6dcc81f fg=muted]
                         "To do"
                         div

@@ -28,6 +28,14 @@ const fresh = () => ({
 });
 
 const json = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+// What a read hands out: a copy, as Herdr's, but frozen. Kelpie keeps each read for the whole render
+// and hands the one value to every caller (mods/kelpie/host.js), so one changed in place would change
+// it for the rest: here that throws instead.
+const frozen = (v) => {
+  if (v && typeof v === "object" && !Object.isFrozen(v)) { for (const x of Object.values(v)) frozen(x); Object.freeze(v); }
+  return v;
+};
+const copy = (v) => frozen(json(v));
 
 export const mock = {
   state: fresh(),
@@ -109,7 +117,7 @@ export const presentUpdateNotes = (versions) => { answerNow("presentUpdateNotes"
 
 // --- Shared state: kept in memory, copied in and out as Herdr's JSON store does ---------------
 const read = (name) => { mock.reads[name] = (mock.reads[name] ?? 0) + 1; };
-export const shared = (key) => (read(`shared:${key}`), json(mock.state.shared.get(key)) ?? null);
+export const shared = (key) => (read(`shared:${key}`), copy(mock.state.shared.get(key)) ?? null);
 export function setShared(key, value) {
   record("setShared", [key, json(value)]);
   if (value === null || value === undefined) mock.state.shared.delete(key);
@@ -118,13 +126,13 @@ export function setShared(key, value) {
 }
 
 // --- What Herdr shows: whatever the test put in mock.state ----------------------------------
-export const spaces = () => (read("spaces"), json(mock.state.spaces));
-export const agents = () => (read("agents"), json(mock.state.agents));
-export const panes = () => (read("panes"), json(mock.state.panes));
-export const terminals = () => (read("terminals"), json(mock.state.terminals));
+export const spaces = () => (read("spaces"), copy(mock.state.spaces));
+export const agents = () => (read("agents"), copy(mock.state.agents));
+export const panes = () => (read("panes"), copy(mock.state.panes));
+export const terminals = () => (read("terminals"), copy(mock.state.terminals));
 export const machines = () => json(mock.state.machines);
-export const focused = () => (read("focused"), json(mock.state.focused));
-export const layout = () => json(mock.state.layout);
+export const focused = () => (read("focused"), copy(mock.state.focused));
+export const layout = () => (read("layout"), copy(mock.state.layout));
 export const layouts = () => json(mock.state.layouts);
 export const props = () => mock.state.props;
 export const settings = () => json(mock.state.settings);

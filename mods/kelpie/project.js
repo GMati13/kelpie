@@ -15,8 +15,8 @@
 import { gh } from "./pulls.js";
 import { demoLimit, demoProject } from "./demo.js";
 import { limitMessage } from "./ghlimit.js";
-import { GITHUB_LOGIN, prefixFor } from "./config.js";
-import { projectCategory } from "./board.js";
+import { GITHUB_LOGIN, prefixFor, priorityOf } from "./config.js";
+import { projectCategory, unassignedOf } from "./board.js";
 
 const PAGES = 10; // up to 1000 of your items
 const NODES = 100; // stories asked for at once (GitHub's most for nodes(ids:))
@@ -30,38 +30,60 @@ const DEMO_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
 
 // What Kelpie reads of every issue: enough to dress it as Jira's, find its status in this Project and
 // the pull requests that close it.
-const ISSUE = `id number title url state closedAt repository { nameWithOwner }
+const ISSUE = `id number title url state closedAt updatedAt repository { nameWithOwner }
   assignees(first: 10) { nodes { login name avatarUrl(size: 48) } }
   labels(first: 10) { nodes { name color } }
   parent { id number repository { nameWithOwner } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { url } }
-  projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } } } }`;
-// The Project: its Status options, its iteration fields and a page of your items in its order. The
-// filter is a constant: `@me` is the account gh runs as, Jira's currentUser().
-const PROJECT = `id title url
+  projectItems(first: 20) { nodes { id project { id } fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId name updatedAt } }
+    priority: fieldValueByName(name: $priority) @include(if: $withPriority) { ... on ProjectV2ItemFieldSingleSelectValue { optionId name } } } }`;
+// The Project: its Status options, its iteration fields and a page of its items in its order. The
+// filter is one of two constants (`FILTERS`): your items (`@me` is the account gh runs as, Jira's
+// currentUser()), or on a board worked alone (`solo`) every issue, whoever it's assigned to.
+// The priority field (the profile's project.priorityField, a single-select field) is asked only when
+// one is named: `$priority` its name, `$withPriority` whether to ask (config.js priorityOf()).
+const FILTERS = Object.freeze({ mine: "assignee:@me is:issue", all: "is:issue" });
+const projectFields = (filter) => `id title url
   field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+  priorityField: field(name: $priority) @include(if: $withPriority) { ... on ProjectV2SingleSelectField { id options { id name } } }
   fields(first: 50) { nodes { ... on ProjectV2IterationField { id name configuration { iterations { id title startDate duration } } } } }
-  items(first: 100, after: $cursor, query: "assignee:@me is:issue", orderBy: { field: POSITION, direction: ASC }) {
+  items(first: 100, after: $cursor, query: "${filter}", orderBy: { field: POSITION, direction: ASC }) {
     pageInfo { hasNextPage endCursor }
     nodes { id type isArchived
       fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2IterationField { id } } } } }
       content { ... on Issue { ${ISSUE} } } } }`;
+// The Project's issues nobody has (the profile's `unassigned`: the list's Unassigned section), a page
+// of them in its order, with what the scope needs (their iteration) and a sub-issue's story's title and
+// page, for its heading. The filter is a constant too. (`parent` asked twice merges into one.)
+const UNASSIGNED = `items(first: 100, after: $cursor, query: "no:assignee is:issue", orderBy: { field: POSITION, direction: ASC }) {
+    pageInfo { hasNextPage endCursor }
+    nodes { id type isArchived
+      fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldIterationValue { iterationId field { ... on ProjectV2IterationField { id } } } } }
+      content { ... on Issue { ${ISSUE} parent { title url state } } } } }`;
+const UNASSIGNED_PAGES = 3; // up to 300 issues nobody has
 // What GitHub says is left of the account's GraphQL budget, asked in every load's queries (pulls.js
 // gh() keeps it: Kelpie loads less often when it runs low, ghlimit.js).
 const BUDGET = "rateLimit { remaining limit resetAt }";
 // Kept stories asked for in one query (keptProject()): KEPT_SLOTS slots, each a repo and an issue
 // number, the unused ones skipped (`@include`). The text is the same every time; only variables vary.
 export const KEPT_SLOTS = 25;
+// The priority variables every query reading issues takes, off unless set.
+const PRIORITY_VARS = `$priority: String = "", $withPriority: Boolean = false`;
 const slots = Array.from({ length: KEPT_SLOTS }, (_, n) => n);
 export const QUERIES = Object.freeze({
-  user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
-  org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${PROJECT} } } }`,
+  user: `query KelpieProjectUser($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.mine)} } } }`,
+  org: `query KelpieProjectOrg($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.mine)} } } }`,
+  // The same for a board worked alone: every issue of the Project, assigned or not.
+  userAll: `query KelpieProjectUserAll($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.all)} } } }`,
+  orgAll: `query KelpieProjectOrgAll($owner: String!, $number: Int!, $cursor: String, ${PRIORITY_VARS}) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${projectFields(FILTERS.all)} } } }`,
   // The stories, with only their sub-issues' ids: GitHub charges a nested connection for every item
   // it could hold, so the sub-issues' own fields asked here (50 slots × each one's connections) cost
   // 125 points for 61 stories, a load. They're asked flat instead (`subs`), about 4 points per 100.
-  stories: `query KelpieStories($ids: [ID!]!) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} subIssues(first: 50) { nodes { id } } } } }`,
-  subs: `query KelpieSubIssues($ids: [ID!]!) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} } } }`,
+  stories: `query KelpieStories($ids: [ID!]!, ${PRIORITY_VARS}) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} subIssues(first: 50) { nodes { id } } } } }`,
+  subs: `query KelpieSubIssues($ids: [ID!]!, ${PRIORITY_VARS}) { ${BUDGET} nodes(ids: $ids) { ... on Issue { ${ISSUE} } } }`,
   // Kept stories' issues by key (keptProject()): each slot's node id and its parent's, and who gh runs as.
+  unassignedUser: `query KelpieUnassignedUser($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} user(login: $owner) { projectV2(number: $number) { ${UNASSIGNED} } } }`,
+  unassignedOrg: `query KelpieUnassignedOrg($owner: String!, $number: Int!, $cursor: String) { ${BUDGET} organization(login: $owner) { projectV2(number: $number) { ${UNASSIGNED} } } }`,
   kept: `query KelpieKept(${slots.map((n) => `$o${n}: String = "", $r${n}: String = "", $n${n}: Int = 0, $u${n}: Boolean = false`).join(", ")}) { ${BUDGET} viewer { login } ${slots.map((n) => `k${n}: repository(owner: $o${n}, name: $r${n}) @include(if: $u${n}) { issue(number: $n${n}) { id parent { id } } }`).join(" ")} }`,
 });
 
@@ -91,7 +113,8 @@ function target(cfg) {
   if (!owner || owner.length > 39 || !(cfg?.demo ? DEMO_LOGIN : GITHUB_LOGIN).test(owner)) throw new Error("The profile's GitHub Project has no valid owner: set its address again in the profile.");
   const number = Number(cfg?.number);
   if (!Number.isInteger(number) || number < 1) throw new Error("The profile's GitHub Project has no valid number: set its address again in the profile.");
-  return { owner, number, query: cfg.ownerType === "org" ? QUERIES.org : QUERIES.user };
+  const org = cfg.ownerType === "org", solo = cfg.solo === true;
+  return { owner, number, solo, query: solo ? (org ? QUERIES.orgAll : QUERIES.userAll) : org ? QUERIES.org : QUERIES.user };
 }
 
 // Days since 1970 of a "YYYY-MM-DD", and of today where the person is.
@@ -130,25 +153,38 @@ async function keptProject(board, keep, have, repos) {
   return { ids, viewer };
 }
 
-// The board's raw load, as board.js's header describes it.
+// The board's raw load, as board.js's header describes it. On a board worked alone (`solo`) every
+// issue in scope is the person's, whoever it's assigned to: the items come without the assignee
+// filter, and all of them, their stories and sub-issues are in `mine`. Past PAGES pages the rest is
+// left out and the answer says so (`cut`: how many items were read), as a whole board can be more.
 export async function loadProject(board, keep = {}) {
-  const { owner, number, query } = target(board.cfg);
+  const { owner, number, solo, query } = target(board.cfg);
+  // The priority field, only while the profile orders or marks by it; its name goes as a variable,
+  // like every other value.
+  const use = priorityOf({ project: board.cfg });
+  const priorityName = use.order || use.show ? use.field : null;
+  const withPriority = priorityName ? ["-f", `priority=${priorityName}`, "-F", "withPriority=true"] : [];
   let project = null;
   const items = [];
-  let cursor = null;
+  let cursor = null, cut = false;
   for (let page = 0; page < PAGES; page++) {
-    const data = await ask(board, ["-f", `owner=${owner}`, "-F", `number=${number}`, ...(cursor ? ["-f", `cursor=${cursor}`] : []), "-f", `query=${query}`]);
+    const data = await ask(board, ["-f", `owner=${owner}`, "-F", `number=${number}`, ...(cursor ? ["-f", `cursor=${cursor}`] : []), ...withPriority, "-f", `query=${query}`]);
     const p = (board.cfg.ownerType === "org" ? data.organization : data.user)?.projectV2;
     if (!p) throw new Error(`GitHub has no Project ${number} of ${owner} that your account can read.`);
     project ??= p;
     items.push(...(p.items?.nodes ?? []));
     const next = p.items?.pageInfo;
     if (!next?.hasNextPage || !next.endCursor) break;
+    if (page === PAGES - 1) { cut = true; break; }
     cursor = next.endCursor;
   }
   const options = project.field?.options ?? [];
   const columns = options.map((o) => ({ name: o.name, statuses: [o.id] }));
   const iterationField = (project.fields?.nodes ?? []).find((f) => f?.id && f.configuration);
+  // The priority levels: the field's options in their order, highest first (none: the field isn't a
+  // single-select field of this Project, so no ticket has a priority).
+  const levels = priorityName ? (project.priorityField?.options ?? []).filter((o) => o?.id && o.name).map((o) => ({ id: String(o.id), name: String(o.name) })) : null;
+  const levelIds = new Set((levels ?? []).map((l) => l.id));
 
   // The scope: the current iteration, the whole board, or nothing while no iteration runs.
   let sprints, inScope;
@@ -188,7 +224,7 @@ export async function loadProject(board, keep = {}) {
     const out = [];
     for (let at = 0; at < list.length; at += NODES) {
       const chunk = list.slice(at, at + NODES);
-      const data = await ask(board, [...chunk.flatMap((id) => ["-f", `ids[]=${id}`]), "-f", `query=${query}`]);
+      const data = await ask(board, [...chunk.flatMap((id) => ["-f", `ids[]=${id}`]), ...withPriority, "-f", `query=${query}`]);
       out.push(...(data.nodes ?? []).filter((n) => n?.id));
     }
     return out;
@@ -214,8 +250,11 @@ export async function loadProject(board, keep = {}) {
     const option = own?.fieldValueByName?.optionId ?? null;
     const index = option ? options.findIndex((o) => o.id === option) : -1;
     const who = i.assignees?.nodes?.[0];
+    const level = own?.priority?.optionId && levelIds.has(String(own.priority.optionId)) ? levels.find((l) => l.id === String(own.priority.optionId)) : null;
     return {
-      key, url: i.url, item: own?.id ?? null,
+      // `id` and `closed`: what closing it on GitHub needs (stories.js closePlan(), issues.js
+      // closeIssue()), as a Status move to done leaves the issue open.
+      key, url: i.url, item: own?.id ?? null, id: typeof i.id === "string" && NODE_ID.test(i.id) ? i.id : null, closed,
       fields: {
         summary: i.title ?? "",
         // GitHub's issues have no type of the board's: this one is Kelpie's own, never shown as a tag.
@@ -226,6 +265,11 @@ export async function loadProject(board, keep = {}) {
         parent: parent ? { key: parent } : null,
         // As GitHub gives them; cleaned and checked where they're kept (labelsOf() in stories.js).
         labels: (i.labels?.nodes ?? []).filter(Boolean).map((l) => ({ name: l.name, color: l.color })),
+        ...(level ? { priority: level } : {}),
+        // When it last moved (#141): its Status value's own time, else when it closed, both exact;
+        // else when the issue last changed at all, a guess (stories.js movedOf() cleans it).
+        ...((moved) => (moved ? { moved } : {}))(own?.fieldValueByName?.updatedAt ? { at: own.fieldValueByName.updatedAt, exact: true }
+          : closed && i.closedAt ? { at: i.closedAt, exact: true } : i.updatedAt ? { at: i.updatedAt, exact: false } : null),
         ...(who ? { assignee: { displayName: who.name || who.login, avatarUrls: { "48x48": who.avatarUrl ?? null } } } : {}),
       },
     };
@@ -249,17 +293,60 @@ export async function loadProject(board, keep = {}) {
       }
     }
   };
-  add(stories);
+  // Worked alone, every story and sub-issue added is the person's, whoever has it.
+  const counted = new Set(mine.map((i) => i.key));
+  const allMine = (_raw, dressed) => { if (solo && !counted.has(dressed.key)) { counted.add(dressed.key); mine.push(dressed); } };
+  add(stories, allMine);
   // Then the stories `keep` names that your items left out (reassigned since, or out of the
   // iteration), after the board's own; the issues of them assigned to the account gh runs as are yours.
   const kept = await keptProject(board, keep, seen, { ...(keep.repos ?? {}), ...repos });
   const fresh = kept.ids.filter((id) => !ids.includes(id));
   const before = parents.length;
   if (fresh.length) add(await storiesOf(fresh), (raw, dressed) => {
+    if (solo) return allMine(raw, dressed);
     if (kept.viewer && (raw.assignees?.nodes ?? []).some((n) => n?.login === kept.viewer)) mine.push(dressed);
   });
-  return {
+  const out = {
     site: "https://github.com", columns, sprints, mine, parents, children, links, repos, kept: parents.slice(before).map((i) => i.key),
+    ...(solo ? { solo: true } : {}), ...(cut ? { cut: items.length } : {}),
     project: { id: project.id, statusField: project.field?.id ?? null, title: project.title ?? "", url: project.url ?? "" },
+    ...(levels ? { priorities: levels } : {}),
   };
+  if (board.cfg.unassigned === true && board.cfg.solo !== true) out.unassigned = await unassignedProject();
+  return out;
+
+  // The work nobody has (the profile's `unassigned`): the same scope's issues with no assignee, by a
+  // question of its own, apart from yours (board.js unassignedOf()). The pull requests closing them
+  // don't join `links`: they'd put those issues among your stories. Its failing doesn't fail the
+  // load: the section says so and the rest shows.
+  async function unassignedProject() {
+    const had = new Set(Object.keys(links));
+    try {
+      const raw = [];
+      let at = null;
+      for (let page = 0; page < UNASSIGNED_PAGES; page++) {
+        const data = await ask(board, ["-f", `owner=${owner}`, "-F", `number=${number}`, ...(at ? ["-f", `cursor=${at}`] : []), "-f", `query=${board.cfg.ownerType === "org" ? QUERIES.unassignedOrg : QUERIES.unassignedUser}`]);
+        const p = (board.cfg.ownerType === "org" ? data.organization : data.user)?.projectV2;
+        raw.push(...(p?.items?.nodes ?? []));
+        const next = p?.items?.pageInfo;
+        if (!next?.hasNextPage || !next.endCursor) break;
+        at = next.endCursor;
+      }
+      const got = raw.filter((x) => x?.type === "ISSUE" && !x.isArchived && x.content?.id && inScope(x) && !(x.content.assignees?.nodes ?? []).length).map((x) => {
+        const c = x.content, d = dress(c);
+        // A sub-issue's story, as the heading it goes under when someone else has it.
+        if (d?.fields.parent && c.parent) {
+          const shut = c.parent.state === "CLOSED";
+          d.fields.parent = { key: d.fields.parent.key, ...(c.parent.url ? { url: c.parent.url } : {}), fields: { summary: c.parent.title ?? "", issuetype: { name: "Issue", subtask: false, madeUp: true },
+            status: { id: null, name: shut ? "Closed" : "Open", statusCategory: { key: projectCategory(-1, options.length, shut) } } } };
+        }
+        return d;
+      }).filter(Boolean);
+      return unassignedOf(got, seen);
+    } catch (e) {
+      return { parents: [], children: [], error: String(e?.message ?? e) };
+    } finally {
+      for (const url of Object.keys(links)) if (!had.has(url)) delete links[url];
+    }
+  }
 }
