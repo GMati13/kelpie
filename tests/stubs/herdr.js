@@ -105,6 +105,8 @@ export function readTextFile(path, options = {}) {
 }
 export const writeTextFile = (path, text, expected) => answer("writeTextFile", [path, text, expected], null);
 export const knownAgents = (options = {}) => answer("knownAgents", [options], []);
+// The Dock badge (Herdr 0.1.16): recorded, as a test reads what was set.
+export const setBadge = (text) => { record("setBadge", [text]); return null; };
 export const pickFolder = (options = {}) => answer("pickFolder", [options], null);
 export const watchFolder = (path) => { record("watchFolder", [path]); return new Promise(() => {}); };
 export const nextCommand = () => { record("nextCommand", []); return new Promise(() => {}); };
