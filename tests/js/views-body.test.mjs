@@ -438,11 +438,13 @@ test("the Ask line: one offer at rest; writing makes room and offers a clear; cl
   assert.equal(width(writing, "ask-more-box"), 0, "and the menu");
   assert.ok(width(writing, "ask-about") < width(rest, "ask-about"), "what it's about shrinks");
   assert.equal(width(writing, "ask-to-box"), 28, "who it goes to: its mark alone");
-  assert.equal(width(writing, "ask-reset-box"), 24, "a clear button");
+  assert.equal(width(writing, "ask-reset-box"), 0, "no clear until something's typed");
   assert.ok(nodeOf(byId(writing, "ask-about")).calls.some(([m, a]) => m === "transition" && a[0] === "width"), "it slides");
   view.askInput.set_value("Why");
   emit(view.askInput, "change", cx);
-  press(view.render(cx), "ask-reset", cx);
+  const typed = view.render(cx);
+  assert.equal(width(typed, "ask-reset-box"), 50, "typed: ↵ and a clear button");
+  press(typed, "ask-reset", cx);
   assert.equal(view.askInput.value(), "");
   const back = view.render(cx);
   assert.equal(width(back, "ask-offer-box"), width(rest, "ask-offer-box"), "back at rest");

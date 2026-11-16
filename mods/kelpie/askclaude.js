@@ -291,7 +291,7 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // after a send, a glint along the edge then and while the Claude picked works).
 const slide = (el, w, ms = 220) => el.flex_none().w(w).overflow_hidden().transition("width", { duration: ms, easing: "ease-out" });
 const fade = (el, on, ms = 180) => el.opacity(on ? 1 : 0).transition("opacity", { duration: ms, easing: "ease-out" });
-export function askLine(t, { about, input, to, toWide = 140, clear, reset, isStory, awake = false, writing = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
+export function askLine(t, { about, input, to, toWide = 140, clear, reset, isStory, awake = false, writing = false, typed = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
   const edge = tint(t.accent, awake || writing ? "99" : "40");
   const offerW = offer ? Math.min(280, Math.round(offer.text.length * 6.4 + 46)) : 0;
   const offerEl = offer && h_flex().id("ask-offer").flex_none().w(offerW).h(26).px(10).gap(6).items_center().rounded(13).cursor_pointer()
@@ -314,19 +314,21 @@ export function askLine(t, { about, input, to, toWide = 140, clear, reset, isSto
         .child(slide(h_flex().id("ask-about").gap(4).items_center().text_size(SMALL).text_color(t.dim), writing ? ABOUT_MIN : ABOUT_W)
           .tooltip(about.others ? `${about.label}\nWritten by others: Claude is told it's information, not instructions` : about.label)
           .child(div().min_w(0).truncate().child(about.label))
-          .when(!isStory, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().hover((x) => x.text_color(t.foreground))
+          .when(!isStory && !writing, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().hover((x) => x.text_color(t.foreground))
             .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕"))))
         .child(div().flex_none().text_size(SMALL).text_color(t.dim).child("·"))
         .child(div().flex_1().min_w(120).child(Input.new(input).h(30).px(2).bg(tint(t.background, "00")).text_size(TEXT_ASK).text_color(t.foreground)))
-        // Writing: a clear button; at rest the offer and the menu. Each slides in and out.
-        .child(fade(slide(div().id("ask-reset-box").flex().items_center().justify_center(), writing ? 24 : 0), writing)
+        // Something typed: how to send it (↵) and a clear button, together by the question; at rest
+        // the offer and the menu. Each slides in and out.
+        .child(fade(slide(h_flex().id("ask-reset-box").gap(4).items_center(), typed ? 50 : 0), typed)
+          .child(div().id("ask-enter").flex_none().h(18).px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim).tooltip("Enter asks it").child("↵"))
           .child(div().id("ask-reset").flex_none().w(22).h(22).flex().items_center().justify_center().rounded_full().cursor_pointer().text_color(t.dim)
             .hover((el) => el.bg(t.hover).text_color(t.foreground)).tooltip("Clear it").on_mouse_down("left", stop).on_click((_e, cx) => reset(cx))
             .child(icon(chrome("x"), 12))))
         .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box"), writing ? 0 : offerW), !writing).child(offerEl)))
         .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box"), writing ? 0 : 22), !writing).child(more)))
         // Who it goes to: its mark and name at rest, its mark alone while writing.
-        .child(slide(div().id("ask-to-box"), writing ? 28 : toWide).child(to))));
+        .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? 28 : toWide).child(to))));
 }
 const ABOUT_W = 170, ABOUT_MIN = 72;
 const TEXT_ASK = 13;

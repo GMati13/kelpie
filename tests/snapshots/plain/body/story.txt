@@ -221,7 +221,9 @@ v_flex [fg=foreground]
                   "·"
                 div
                   Input.new [bg=background/00 fg=foreground]
-                div #ask-reset-box [opacity=0] ~transition ~transition
+                h_flex #ask-reset-box [opacity=0] ~transition ~transition
+                  div #ask-enter [border=border fg=dim] tip="Enter asks it"
+                    "↵"
                   div #ask-reset [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clear it"
                     svg chrome:x
                 div #ask-offer-box [opacity=1] ~transition ~transition
@@ -235,7 +237,7 @@ v_flex [fg=foreground]
                       svg chrome:chevron-down
                 div #ask-to-box ~transition
                   Popup.new "ask-to-menu"
-                    h_flex #ask-to-more [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first\nA question about the whole story goes to a new Claude\nClick to send it to another"
+                    h_flex #ask-to-more [border=border fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first\nA question about the whole story goes to a new Claude\nClick to send it to another"
                       svg own:sparkles [fg=accent]
                       div
                         "New Claude"

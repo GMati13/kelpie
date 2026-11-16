@@ -5530,7 +5530,8 @@ export class StoryBody extends Stories {
     // Who it goes to: its state's mark and its name, quiet; a click lists the others (KELPIE-305).
     const toTip = `${row.tip}${row.id === "new" && about.kind === "story" ? "\nA question about the whole story goes to a new Claude" : ""}\nClick to send it to another`;
     const to = this.menuButton(t, "ask-to", "", rows, toTip, { width: 320, anchor: "bottom_right",
-      trigger: (toggle, open) => h_flex().id("ask-to-more").flex_none().h(26).px(8).gap(6).items_center().rounded(13).cursor_pointer()
+      // A small bordered pill, so it reads as a button; writing, it shrinks to a circle round its mark.
+      trigger: (toggle, open) => h_flex().id("ask-to-more").flex_none().h(26).px(7).gap(6).items_center().rounded(13).cursor_pointer().border_1().border_color(t.border).overflow_hidden()
         .text_size(SMALL).text_color(open ? t.foreground : t.muted).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
         .tooltip(toTip).on_mouse_down("left", stop).on_click(toggle)
         .child(row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11).text_color(t.accent))
@@ -5598,7 +5599,7 @@ export class StoryBody extends Stories {
     const line = askLine(t, {
       about, input: this.askInput, to, isStory: about.kind === "story", focus: this.askRest,
       toWide: Math.min(180, Math.round((row.id === "new" ? 10 : short.length) * 6.4 + 44)),
-      awake, writing: Boolean(this.askAwake || this.askTyped), offer, more, magic,
+      awake, writing: Boolean(this.askAwake || this.askTyped), typed: Boolean(this.askTyped), offer, more, magic,
       // Clear: empty, the cursor out of it, back at rest.
       reset: (cx) => { this.askInput.set_value(""); this.askTyped = false; this.askAwake = false; try { this.askRest.focus(); } catch { /* still emptied */ } cx.notify(); },
       take: (cx) => ask_(offer, cx),
