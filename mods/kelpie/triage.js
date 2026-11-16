@@ -167,8 +167,9 @@ function pump() {
 }
 
 // Each render of the tracking copy: drops entries whose agent works again, turned blocked, is gone or
-// is a day old; queues a triage for each agent whose turn just ended (working to done or idle), and for
-// one first seen finished and unseen (done: after a reload) that has no entry yet. Writes only on a change.
+// is a day old; queues a triage for each agent whose turn just ended (working to done or idle, or
+// anything to done: a turn too short to be seen working), and for one first seen finished and unseen
+// (done: after a reload) that has no entry yet. Writes only on a change.
 export function noteTurns(now = Date.now()) {
   const list = agents();
   const live = new Map(list.map((a) => [a.address, a]));
@@ -196,7 +197,10 @@ export function noteTurns(now = Date.now()) {
     const was = SEEN.get(a.address);
     SEEN.set(a.address, a.status);
     if (a.status === "working" && was !== "working") STARTED.set(a.address, now);
-    const ended = RESTING.has(a.status) && (was === "working" || (was === undefined && a.status === "done"));
+    // A turn ended: working to done or idle; or anything to done (Herdr's "finished while you weren't
+    // looking"), as a short turn can start and end between two of this copy's renders, and was then
+    // seen only as idle to done; or first seen done (after a reload).
+    const ended = RESTING.has(a.status) && (was === "working" || (a.status === "done" && was !== "done"));
     if (!ended) continue;
     of ??= spaceProfiles();
     const profile = of.get(a.space);
