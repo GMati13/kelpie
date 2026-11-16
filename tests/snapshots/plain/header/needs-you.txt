@@ -1,6 +1,9 @@
 v_flex [fg=foreground]
   h_flex
-    h_flex #story-head-text
+    h_flex #story-head-text {down:right}
+      div
+        Popup.new "head-menu-menu"
+          div #head-menu-at
       div #story-key [fg=accent] {down:left click} tip="Open in Jira"
         "ACME-142"
       div #story-title tip="Offline mode for saved trips\nACME-143's agent needs you"

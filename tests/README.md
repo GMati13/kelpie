@@ -306,6 +306,10 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `space-menu.test.mjs`: the profile menu with many profiles: its list has a height of its own, so it
   scrolls, its last entries inside it; ↑/↓ and opening it bring a row into view; it reads Herdr's lists as
   often with 30 profiles as with 3.
+- `copy-link.test.mjs`: Copy link and Copy key in the right-click menus (KELPIE-239): a story's row and title
+  row, a subtask, a pull request's line, the sidebar's pull request rows and a lone pull request's title row
+  copy the right link (Jira and a GitHub Project), each with a toast; a link that isn't http(s) is neither
+  offered nor copied.
 - `views-*.test.mjs`: what the views draw, as snapshots (next section).
 
 ## Snapshots: what the views draw

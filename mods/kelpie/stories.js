@@ -1473,6 +1473,32 @@ const pullsOf = (data) => {
 };
 // The pull request an item is, when it's shown on its own (a review, or one of yours with no ticket).
 const lonePr = (it) => it?.review ?? it?.pull ?? null;
+
+// Copy link and Copy key (KELPIE-239), in the right-click menus: a link only when it's an http(s) one
+// from the loaded data (`linkOf()`), and a toast says what was copied, as nothing on screen shows it.
+// Exported for the tests.
+export const linkOf = (url) => (typeof url === "string" && /^https?:\/\/[^\s]+$/i.test(url) ? url : null);
+export function copyLink(cx, url, what) {
+  if (!linkOf(url)) return false;
+  cx.write_to_clipboard(url);
+  notify({ title: `Copied link to ${what}`, level: "info", timeout: 3000 });
+  return true;
+}
+export function copyKey(cx, key) {
+  cx.write_to_clipboard(key);
+  notify({ title: `Copied ${key}`, level: "info", timeout: 3000 });
+}
+// A ticket's own menu rows after Ask Claude: open it where it lives, copy its link and its key.
+const ticketRows = (profile, url, key) => [
+  ...(url ? [{ label: boardOf(profile)?.kind === "project" ? "Open on GitHub" : "Open on the board", action: () => open(url) }] : []),
+  ...(linkOf(url) ? [{ label: "Copy link", action: (cx) => copyLink(cx, url, key) }] : []),
+  { label: "Copy key", hint: key, action: (cx) => copyKey(cx, key) },
+];
+// A pull request's: open it on GitHub, copy its link.
+const pullRows = (p, name) => [
+  { label: "Open on GitHub", hint: name, action: () => open(p.url) },
+  ...(linkOf(p.url) ? [{ label: "Copy link", action: (cx) => copyLink(cx, p.url, name) }] : []),
+];
 // The preview keys of those (reviewItem, pullItem).
 const LONE_KEY = /^(review|pull):/;
 // Every item shown on its own: the reviews, then your pull requests with no ticket.
@@ -3595,8 +3621,7 @@ export class Stories extends Source {
     const live = allAgents(it);
     return [
       { label: "Ask Claude about this", hint: "its Ask line", action: () => { selectStory(profile, it); pointAsk(profile, it.key, null); } },
-      ...(url ? [{ label: boardOf(profile)?.kind === "project" ? "Open on GitHub" : "Open on the board", action: () => open(url) }] : []),
-      { label: "Copy key", hint: it.key, action: (cx) => cx.write_to_clipboard(it.key) },
+      ...ticketRows(profile, url, it.key),
       ...(live.length ? [{ label: "Show agent", hint: agentWords(live[0].status), action: () => focusAgent(profile, it, live[0]) }] : []),
     ];
   }
@@ -3605,8 +3630,7 @@ export class Stories extends Source {
     const url = ticketUrl(boardOf(st.profile), st.data, s.key);
     return [
       { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url, description: DESCRIPTIONS[s.key]?.blocks })) },
-      ...(url ? [{ label: boardOf(st.profile)?.kind === "project" ? "Open on GitHub" : "Open on the board", action: () => open(url) }] : []),
-      { label: "Copy key", hint: s.key, action: (cx) => cx.write_to_clipboard(s.key) },
+      ...ticketRows(st.profile, url, s.key),
       ...(s.agent ? [{ label: "Show agent", hint: agentWords(s.agent.status), action: () => focusAgent(st.profile, it, s.agent) }] : []),
     ];
   }
@@ -3614,9 +3638,18 @@ export class Stories extends Source {
   prMenuRows(st, it, p, name) {
     return [
       { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "pr", p, { url: p.url, name })) },
-      { label: "Open on GitHub", hint: name, action: () => open(p.url) },
-      { label: "Copy link", action: (cx) => cx.write_to_clipboard(p.url) },
+      ...pullRows(p, name),
     ];
+  }
+  // The title row's (KELPIE-239): a story's or ticket's open, copy link and key; a lone pull request's
+  // open and copy link.
+  headMenuRows(st, it) {
+    const lone = lonePr(it);
+    return lone ? pullRows(lone, prName(lone)) : ticketRows(st.setup, ticketUrl(boardOf(st.setup), st.data, it.key), it.key);
+  }
+  // A pull request row in the sidebar (Reviews for you, Your pull requests): its right-click menu.
+  pullMenu(t, el, id, p) {
+    return el.relative().on_mouse_down("right", this.openMenu(id)).child(this.elementMenu(t, id, this.menu === id ? pullRows(p, prName(p)) : [], 30));
   }
 
   // A shining box's size (borderGlint() needs it) and the zoom (from shineProbe()), kept on this
@@ -3972,7 +4005,10 @@ export class Stories extends Source {
     // Two parts: what can be done (right) keeps its size; the key, title and state (left) take what's
     // left, the title truncating first, so the actions and icons never leave the screen.
     return h_flex().flex_none().w_full().gap(8).items_center().min_w(0).overflow_hidden()
+      // A right-click on its key, title and state opens its menu: open, copy link and key (KELPIE-239).
       .child(h_flex().id("story-head-text").flex_1().min_w(0).overflow_hidden().gap(8).items_center()
+        .relative().on_mouse_down("right", this.openMenu("head-menu"))
+        .child(this.elementMenu(t, "head-menu", this.menu === "head-menu" ? this.headMenuRows(st, it) : [], CONTROL))
         .child(skinFont(div().id("story-key").flex_none().text_color(t.accent), "key", SMALL).cursor_pointer().tooltip(where.tip)
           .on_mouse_down("left", stop).on_click(() => open(where.url)).child(skinText(where.label, "key")))
         // Its priority beside its key, as on its row in the list (#122), while Show priority is on.
@@ -5984,9 +6020,9 @@ export class StoryList extends Stories {
       const [state, words, color] = prLook(t, p, checksOf(p));
       // One naming no ticket of the board is shown on its own (pullItem), on its Changes too.
       const lone = prKey(p, st.data, known) ? null : pullItem(p);
-      return plain(`mine-${prName(p)}`, Boolean(lone) && lone.key === shown?.key, color, p.title.replace(/^\s*\[[^\]]*\]\s*/, ""), `${prName(p)}${p.updatedAt ? ` · ${ago(Date.parse(p.updatedAt))}` : ""}`,
+      return this.pullMenu(t, plain(`mine-${prName(p)}`, Boolean(lone) && lone.key === shown?.key, color, p.title.replace(/^\s*\[[^\]]*\]\s*/, ""), `${prName(p)}${p.updatedAt ? ` · ${ago(Date.parse(p.updatedAt))}` : ""}`,
         () => { if (lone) { selectStory(st.profile, lone); setView(st.profile, lone, "changes"); } else open(p.url); }, false, null, mark(t, state, 16))
-        .tooltip(`${words}. ${lone ? "Show its files and what it needs" : "Open on GitHub"}`);
+        .tooltip(`${words}. ${lone ? "Show its files and what it needs" : "Open on GitHub"} · right-click for more`), `mine-menu-${prName(p)}`, p);
     };
     // Pull requests grouped by the story they belong to (a subtask's key counts for its story), in the
     // order their newest one comes; a ticket not in the list (another board's) is a group of its key,
@@ -6026,8 +6062,8 @@ export class StoryList extends Stories {
       return wrap(this.menuButton(t, id, "", reviewTaskRows(st.profile, story, prs), `Review ${g.key}'s ${prs.length} pull requests together, with a new agent or one already reviewing them`, { iconPath: own("eye"), width: 340, box: ROW_CONTROL }));
     };
     const reviewRow = (r) => {
-      const row = plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
-        () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review`);
+      const row = this.pullMenu(t, plain(`review-${prName(r.review)}`, r.key === shown?.key, t.accent, r.title, `${prName(r.review)} · ${ago(Date.parse(r.review.updatedAt))}`,
+        () => selectStory(st.profile, r), false, approvedChip(r.review), avatar(t, r.review.author?.login ?? "", 16)).tooltip(`From ${r.review.author?.login ?? "someone"}. Preview it: its checks and files, and Start review · right-click for more`), `review-menu-${prName(r.review)}`, r.review);
       if (storyOf(r.review) || prKey(r.review, st.data, known)) return row;
       // At the story rows' actions' place (rowActions(): ACTIONS_TOP from the top), plain() rows starting 7 down.
       return row.child(div().id(`review-row-${prName(r.review)}`).flex_none().mt(ACTIONS_TOP - 7).on_mouse_down("left", stop).on_click(stop)

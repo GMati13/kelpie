@@ -297,9 +297,10 @@ test("a right-click on a subtask opens its menu: ask, open on the board, copy it
   rightClick(el, "sub-row-ACME-143", cx);
   assert.equal(view.menu, "sub-menu-ACME-143");
   const words = texts(byId(view.render(cx), "sub-menu-ACME-143-menu-list"));
-  for (const w of ["Ask Claude about this", "Open on the board", "Copy key", "Show agent"]) assert.ok(words.includes(w), w);
+  for (const w of ["Ask Claude about this", "Open on the board", "Copy link", "Copy key", "Show agent"]) assert.ok(words.includes(w), w);
   const clip = [];
-  press(view.render(cx), "sub-menu-ACME-143-row-2", { ...cx, write_to_clipboard: (x) => clip.push(x) });
+  // Ask Claude, Open on the board, Copy link (KELPIE-239), then Copy key.
+  press(view.render(cx), "sub-menu-ACME-143-row-3", { ...cx, write_to_clipboard: (x) => clip.push(x) });
   assert.deepEqual(clip, ["ACME-143"]);
 });
 // Another story's Claude, or the one reviewing the story's pull requests by others (KELPIE-118),

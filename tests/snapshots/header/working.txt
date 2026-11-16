@@ -4,7 +4,10 @@ div
       image art/kelpie/skins/quiet-pages/lamp-day-2.png
   v_flex [fg=foreground]
     h_flex
-      h_flex #story-head-text
+      h_flex #story-head-text {down:right}
+        div
+          Popup.new "head-menu-menu"
+            div #head-menu-at
         div #story-key [fg=accent font="DM Mono"] {down:left click} tip="Open in Jira"
           "ACME-175"
         div #story-title [font="Fraunces"] tip="Fix the flaky login test\nAgent working · PR in review"
