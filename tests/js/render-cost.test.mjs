@@ -101,6 +101,7 @@ for (const [role, setup] of ROLES) {
     crowd(30);
     mock.on.run = (name, args) => {
       if (name === "layout.show" || name === "layout.hide") { const n = node(mock.state.layout, args.id); if (n) n.hidden = name === "layout.hide"; }
+      if (name === "layout.resize") { const n = node(mock.state.layout, args.id); if (n) n.size = args.px != null ? { px: args.px } : { weight: args.weight }; }
       return undefined;
     };
     // The tab bar's and footer's own tasks (the key loop, the stats) never end under the stub.

@@ -15,14 +15,14 @@ before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); }
 const node = (root, id) => (root?.id === id ? root : (root?.children ?? []).map((c) => node(c, id)).find(Boolean) ?? null);
 const hidden = (id) => Boolean(node(mock.state.layout, id)?.hidden);
 
-// The demo with a story shown, the layout following show/hide as Herdr's does; `resizes` collects
-// every layout.resize asked for.
+// The demo with a story shown, the layout following show/hide and resizes as Herdr's does; `resizes`
+// collects every layout.resize asked for.
 function world(setup) {
   setupDemoWorld({ stories, ...setup });
   const resizes = [];
   mock.on.run = (name, args) => {
     if (name === "layout.show" || name === "layout.hide") { const n = node(mock.state.layout, args.id); if (n) n.hidden = name === "layout.hide"; }
-    if (name === "layout.resize") resizes.push(args);
+    if (name === "layout.resize") { resizes.push(args); const n = node(mock.state.layout, args.id); if (n) n.size = args.px != null ? { px: args.px } : { weight: args.weight }; }
     return undefined;
   };
   return resizes;
@@ -31,6 +31,9 @@ function world(setup) {
 test("folded: the lower block hides, the foot's tab bar shows, the details stay", () => {
   const resizes = world({ shown: "ACME-142" });
   syncHub();
+  // The tab bar's column takes the strip over it while the details show (#276), once; from then on
+  // folding and unfolding resize nothing.
+  resizes.length = 0;
   assert.equal(hidden("lower"), false);
   assert.equal(hidden("toolbar-start"), true);
   const size = structuredClone(node(mock.state.layout, "lower").size);

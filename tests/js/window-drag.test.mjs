@@ -12,6 +12,7 @@ import { byId } from "../lib/snapshot.mjs";
 import { repoFile } from "../lib/helpers.mjs";
 import { Stories, StoryList } from "../../mods/kelpie/stories.js";
 import Quiet from "../../mods/kelpie/main.js";
+import { GRIP, TAB_BAR, syncHub } from "../../mods/kelpie/work.js";
 
 const LAYOUTS = ["Kelpie", "Kelpie-Plain"];
 const nodes = (n, out = []) => { out.push(n); (n.children ?? []).forEach((c) => nodes(c, out)); return out; };
@@ -26,18 +27,31 @@ for (const name of LAYOUTS) {
     assert.deepEqual(dragging, ["side-top", "story-head", "toolbar", "toolbar-start"]);
   });
 
-  // #276: Herdr takes a press up to GRAB px either side of a divider's line as a drag of it (measured
-  // on Herdr 0.1.15), but the tab bar right under the details' divider keeps its presses (above), so
-  // the half of that grab over the tab bar did nothing (and before it kept them, moved the window).
-  // A gap in the details column puts the whole grab on the gap, where nothing else takes a press.
+  // #276: Herdr takes a press up to 3px either side of a divider's line as a drag of it (measured on
+  // Herdr 0.1.15 and 0.1.16), and while dragging puts the boundary itself under the pointer. The tab
+  // bar right under the details' divider keeps its presses (above) and its block moves the window, so
+  // the grab's lower half did nothing there. A gap in the details column moved the grab off it but
+  // left the pointer on the grab's edge as it dragged (the boundary is the gap's top), and the cursor
+  // flickered. So no gap: the tab bar's column starts with a strip that takes no press and moves no
+  // window, as tall as the grab below the line.
   test(`${name}: the details' divider can be grabbed anywhere Herdr takes it, none of it over the tab bar`, () => {
-    const GRAB = 3;
     const all = nodes(readLayout(name));
     const details = all.find((n) => n.id === "details");
     assert.equal(details.resizable, true, "the details' split is draggable");
+    assert.equal(details.gap ?? 0, 0, "no gap: the boundary Herdr drags stays the line, under the pointer");
     assert.deepEqual(details.children.map((c) => c.id), ["story-body", "lower"]);
-    assert.equal(details.children[1].children[0].id, "toolbar", "the tab bar is right under the divider");
-    assert.ok((details.gap ?? 0) >= 2 * GRAB, `the details column's gap (${details.gap ?? 0}) holds the divider's grab, ${GRAB}px each side`);
+    const bar = details.children[1].children[0];
+    assert.equal(bar.id, "tab-bar", "the tab bar's column is right under the divider");
+    assert.equal(bar.divider, undefined, "no line between the strip and the tab bar");
+    assert.deepEqual(bar.children.map((c) => c.id), ["tab-grip", "toolbar"]);
+    const grip = bar.children[0];
+    assert.ok(!grip.window_drag, "the strip never moves the window");
+    assert.equal(grip.content?.props?.role, "grip");
+    assert.deepEqual([grip.size, grip.min, grip.max], [{ px: GRIP }, GRIP, GRIP]);
+    assert.ok(GRIP >= 3, "the strip holds the grab below the line");
+    assert.equal(grip.hidden, true, "hidden until the details show, as they are");
+    assert.deepEqual([bar.size, bar.min, bar.max], [{ px: TAB_BAR }, TAB_BAR, TAB_BAR + GRIP]);
+    assert.equal(bar.children[1].size.px, TAB_BAR);
   });
 
   test(`${name}: the tab bars leave no edge of their block to drag by (their padding is the mod's)`, () => {
@@ -82,4 +96,29 @@ test("the title row's key and status chip keep their presses, so a click on them
   const el = await draw(new Stories()).then((d) => d.el);
   assert.ok(keepsPresses(byId(el, "story-key")), "the key");
   assert.ok(keepsPresses(byId(el, "story-status-menu-more")), "the status chip");
+});
+
+// The strip over the tab bar shows while the details do, and its column is as tall as the strip and
+// the tab bar, so folding leaves no band under the tab bar.
+function synced({ folded = false, ...setup }) {
+  setupDemoWorld({ stories, ...setup });
+  if (folded) mock.state.shared.set("kelpie.storyhead.folded", true);
+  mock.on.run = (name, args) => {
+    const n = nodes(mock.state.layout).find((x) => x.id === args?.id);
+    if (n && (name === "layout.show" || name === "layout.hide")) n.hidden = name === "layout.hide";
+    if (n && name === "layout.resize") n.size = args.px != null ? { px: args.px } : { weight: args.weight };
+    return undefined;
+  };
+  syncHub();
+  const of = (id) => nodes(mock.state.layout).find((x) => x.id === id);
+  return { grip: !of("tab-grip").hidden, bar: of("tab-bar").size.px, body: !of("story-body").hidden };
+}
+
+test("the strip over the tab bar shows with the details, and the tab bar's column grows by it", () => {
+  assert.deepEqual(synced({ shown: "ACME-142" }), { grip: true, bar: TAB_BAR + GRIP, body: true });
+});
+
+test("folded details, or no story, leave the tab bar its own height with no strip", () => {
+  assert.deepEqual(synced({ shown: "ACME-142", folded: true }), { grip: false, bar: TAB_BAR, body: false });
+  assert.deepEqual(synced({ shown: "Desk" }), { grip: false, bar: TAB_BAR, body: false });
 });

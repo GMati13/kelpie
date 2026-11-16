@@ -30,6 +30,11 @@ import { PaneHead } from "./panes.js";
 const HUB = "hub";
 const STACK = "hub-sources";
 const FOLDED = 48; // the Hub strip (46) and the card's border
+// The story layout's tab bar ("toolbar", 42px) and the strip over it while the details show
+// ("tab-grip"): Herdr grabs a divider up to 3px below its line, so the details' divider grabs there.
+// Exported for the tests.
+export const TAB_BAR = 42;
+export const GRIP = 3;
 export const SOURCES = [
   { id: "stories", label: "Stories", icon: "circle-check" },
   { id: "sprint", label: "Sprint", icon: "layers" },
@@ -94,7 +99,16 @@ function syncStories(root) {
   // until the focus goes to another pane.
   settleTerminalsFold();
   const low = unstarted || (Boolean(now) && terminalsFolded());
-  shown("story-body", Boolean(now) && (low || !headFolded()));
+  const body = Boolean(now) && (low || !headFolded());
+  shown("story-body", body);
+  // The strip over the tab bar holds the lower half of the details' divider (main.js grip): with no
+  // details shown there's no divider, and the tab bar goes back to the top of its column.
+  shown("tab-grip", body);
+  // Its column holds just the strip and the tab bar (GRIP and the tab bar's own height): a set size
+  // in Herdr's layout, so it follows the strip, or the hidden strip's 3px would stay under the bar.
+  const bar = find(root, "tab-bar");
+  const barPx = TAB_BAR + (body ? GRIP : 0);
+  if (bar && bar.size?.px !== barPx) run("layout.resize", { id: "tab-bar", px: barPx });
   // The tab bar and the terminals share the "lower" column, under a draggable boundary with the
   // details. A story not started has no terminals, and folded they're put away: "lower" hides and a
   // copy of the tab bar at the bottom of the column ("toolbar-start", where nothing resizes) shows
