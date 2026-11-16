@@ -5624,7 +5624,11 @@ export class StoryBody extends Stories {
       this.askPillText = { "ask-pill-wide": wideText, "ask-pill-brief": brief };
       this.askPill = {};
     }
-    const pillMeasure = div().absolute().top(-60).left(0).opacity(0).child(pillFor("ask-pill-wide", wideText)).child(pillFor("ask-pill-brief", brief));
+    // Each copy in a box of its own, sized by its content alone: side by side in one box, the short one
+    // was stretched to the long one's width and measured as wide as it.
+    const alone = (el) => h_flex().absolute().top(-60).left(0).items_start().opacity(0).child(el);
+    const pillMeasure = div().absolute().top(0).left(0).w(0).h(0)
+      .child(alone(pillFor("ask-pill-wide", wideText))).child(alone(pillFor("ask-pill-brief", brief)));
     const profile = st.profile;
     // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
     // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.

@@ -422,6 +422,13 @@ test("a merged pull request's line says how long ago it merged", async () => {
 // KELPIE-305: the Ask line is one row. At rest: the input, ONE offer (a click asks it), a menu of the
 // other asks, and who it goes to. Writing (the cursor in it, or typed), the offer and menu fold away,
 // what it's about and who it goes to shrink, a clear button comes (widths slide); clearing puts it back.
+// The element holding `child` directly, in `el`'s tree.
+const findParent = (el, child) => {
+  const kids = nodeOf(el)?.calls?.filter(([m]) => m === "child" || m === "children").flatMap(([m, a]) => (m === "child" ? [a[0]] : a[0] ?? [])) ?? [];
+  if (kids.includes(child)) return el;
+  for (const k of kids) { const f = k && typeof k === "object" && findParent(k, child); if (f) return f; }
+  return null;
+};
 const width = (el, id) => nodeOf(byId(el, id)).calls.find(([m]) => m === "w")?.[1][0];
 test("the Ask line: one offer at rest; writing makes room and offers a clear; clearing puts it back", async () => {
   const { view, cx } = await body({ space: "ACME-171" });
@@ -490,4 +497,9 @@ test("the Ask line's pill box takes the pill's measured width, zoom divided out,
   assert.equal(width(rest, "ask-to-box"), 100 + 6, "at rest: the pill, 120 drawn at zoom 1.2, plus its spacing");
   emit(view.askInput, "focus", cx);
   assert.equal(width(view.render(cx), "ask-to-box"), 70 + 6, "writing: the short pill");
+  // Each copy is measured alone, in its own absolute box, so neither stretches to the other's width.
+  const writing = view.render(cx);
+  const boxOf = (id) => findParent(writing, byId(writing, id));
+  assert.notEqual(boxOf("ask-pill-wide"), boxOf("ask-pill-brief"), "the two copies don't share a box");
+  assert.ok(nodeOf(boxOf("ask-pill-brief")).calls.some(([m]) => m === "absolute"), "the short copy's box is its own");
 });
