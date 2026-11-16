@@ -38,13 +38,14 @@
 //   glyph(t, { name, size }) -> element | null
 //       The profile's square (its first letter), in the profile row; null for the view's own.
 //   statusMark(t, state, { where, size, color, agent }) -> element | null
-//       The mark for a state, where the view shows one. `state`: a story's "needs-you", "changes" (changes requested), "failing",
+//       The mark for a state, where the view shows one. `state`: a story's "needs-you", "asks" (an agent of it waits on
+//       you), "changes" (changes requested), "failing",
 //       "done" (ready to merge), "review", "working", "paused", "waiting" (handed over), "idle"
 //       (open, quiet), "not-open"; an agent's, below. `where`: "row"
 //       (sidebar story row, 8px dot), "plain" (state "review" or "space": a review or other-space
 //       row), "picker" (story picker), "sub" (subtask row's agent chip), "tab" (tab bar, agent
 //       status), "pane" (a split pane's header), "side-tab" (the sidebar's agent rows). Those four are an
-//       agent's (ui.js agentMark(), `size` its box): "needs-you", "working", "done", "idle", "paused",
+//       agent's (ui.js agentMark(), `size` its box): "needs-you", "asks" (ended its turn waiting on you), "working", "done", "idle", "paused",
 //       "unknown" (a Claude that hasn't reported yet); restyle a state, never drop or merge one. `color`:
 //       the theme colour the view would use. `agent`: Herdr's agent, where there is one.
 //   blockDecor(t, el, { role, now, story, state, working }) -> el
@@ -64,7 +65,8 @@
 //   sidebarFoot(t, { now }) -> element | null
 //       Drawn in the footer block above its lines (a pond, hills, a glow). The block is the layout's
 //       "side-foot" (70px): make it taller in the skin's own layout file.
-//   footerExtras(t, { now }) -> element | null                 just before the footer's clock (sun arc, mug)
+//   footerExtras(t, { now, mark }) -> element | null           just before the footer's clock (sun arc, mug); `mark(state, size)` is
+//       Kelpie's own mark for a state (ui.js mark()), for a count of agents
 //   meter(t, { kind, label, value, scale, reset, done, total }) -> element | null
 //       A figure drawn as a meter. kind "cpu", "mem" (value %, scale [high, full]), "five", "week"
 //       (Claude limits: value %, reset true once passed), "subtasks" (done of total, in the title

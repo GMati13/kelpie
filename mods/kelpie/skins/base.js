@@ -18,7 +18,7 @@
 //   tabDecor(t, el, o)           a tab-bar tab (o: { tab, active, state, agentTab, now })     base: el
 //   controlDecor(t, el, o)       a button or chip (o: { kind, id, label, on })               base: el
 //   sidebarFoot(t, o)            a scene above the footer's lines (o: { now })              base: null
-//   footerExtras(t, o)           something just before the footer's clock (o: { now })        base: null
+//   footerExtras(t, o)           something just before the footer's clock (o: { now, mark })  base: null
 //   meter(t, o)                  a figure as a meter (o: { kind, label, value, scale, ... })  base: null (Kelpie's text)
 //   tick                         { [role]: ms }: redraw that role's copy this often          base: {}
 // See skins/index.js for the details of each.

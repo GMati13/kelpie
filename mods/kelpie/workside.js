@@ -11,6 +11,7 @@ import { div } from "gpui-kit";
 import { Popup, ScrollHandle, h_flex, v_flex } from "gpui-base";
 import { window, openOverlay } from "herdr";
 import { agents, layout, run, setShared, shared, spaces } from "./host.js";
+import { agentStatus } from "./attention.js";
 import { SMALL, ScrollPool, TEXT, ago, chrome, countBadge, groupHeader, icon, iconButton, agentMark, agentWords, resumeArgv, stop, find, toggleSide, empty, agentLabels } from "./ui.js";
 import { boardOf, chooseProfile, deskOf, hasBoard, newSpace, openProfile, profiles, shownProfile, shownSpace, spaceProfiles, spacesOf, switchProfile } from "./config.js";
 import { startAgent } from "./source.js";
@@ -243,10 +244,10 @@ export class WorkSide {
             .on_mouse_down("left", (e, cx) => { if (e.click_count === 2) { cx.stop_propagation(); run("space.rename", { id: sp.id }); } })
             .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: sp.id } } }); }),
           ...here.map((a) => row(`plain-agent-${a.address}`, a.focused,
-            agentMark(t, a.status, { where: "side-tab", agent: a }),
+            agentMark(t, agentStatus(a), { where: "side-tab", agent: a }),
             names.get(a.address), null,
             () => { run("space.select", { id: a.space }); if (a.pane) run("pane.focus", { pane: a.pane }); }, 16)
-            .tooltip(`${a.program?.name ?? "Agent"} · ${agentWords(a.status)}`)
+            .tooltip(`${a.program?.name ?? "Agent"} · ${agentWords(agentStatus(a))}`)
             .on_mouse_down("left", (e, cx) => { if (e.click_count === 2) { cx.stop_propagation(); run("tab.rename", { id: a.tab }); } })),
         ];
       }))

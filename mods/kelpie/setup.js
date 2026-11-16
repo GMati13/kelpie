@@ -141,6 +141,8 @@ export class Setup {
     this.notifyPulls = saved.notify?.pulls !== false; // on unless turned off
     // Finding agents that wait on you (#251, triage.js): on unless turned off; the model stays as saved.
     this.triage = saved.attention?.triage !== false;
+    // A notification when an agent begins waiting on you (#252): off unless turned on.
+    this.notifyWaiting = saved.notify?.waiting === true;
     // The Claude account its new agents use: a config folder, or null for Claude's own ~/.claude.
     this.claudeConfig = saved.claude?.config ?? null;
     // The other profiles whose Claudes may see this one's agents, and its theirs (config.js SHARE,
@@ -459,7 +461,7 @@ export class Setup {
         github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(storyReviewPrompt && storyReviewPrompt !== DEFAULT_STORY_REVIEW_PROMPT ? { storyReviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
-        notify: { pulls: this.notifyPulls },
+        notify: { pulls: this.notifyPulls, ...(this.notifyWaiting ? { waiting: true } : {}) },
         attention: !this.triage || this.profile?.attention?.model ? { ...(this.triage ? {} : { triage: false }), ...(this.profile?.attention?.model ? { model: this.profile.attention.model } : {}) } : null,
         claude: this.claudeConfig ? { config: this.claudeConfig } : null,
         web: home ? { home } : null,
@@ -769,6 +771,8 @@ export class Setup {
         ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR): its agents, What next? and its terminals, where a claude you type uses it too. Lists your ~/.claude* folders that have a settings.json or projects/. Resuming a session keeps the account it ran on."),
         toggle("setup-triage", "Find agents waiting on you", this.triage, (_e, cx) => { this.triage = !this.triage; cx.notify(); },
           this.triage ? "When an agent's turn ends, Kelpie reads its last message to tell whether it's waiting on you: a question, a choice, a plan to approve. Its own rules first; when they can't tell, a small model reads the message, on this account, in the background." : "Off: only agents asking you on a prompt show as needing you."),
+        this.triage ? toggle("setup-notify-waiting", "Tell me when an agent waits on me", this.notifyWaiting, (_e, cx) => { this.notifyWaiting = !this.notifyWaiting; cx.notify(); },
+          this.notifyWaiting ? "A notification with what it asks, once per turn, never for the agent you're looking at. A click shows the agent." : "Off: agents waiting on you show in Next, the sidebar and the footer, without a notification.") : null,
         ...this.sharesPart(t, toggle, group, hint),
         group("Another Claude account"),
         step("setup-claude-new", "Give it a config folder of its own and sign in there once, in a terminal. Then open this page again: the folder is listed above.",

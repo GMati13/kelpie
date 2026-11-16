@@ -73,7 +73,7 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
   `checking` (false; true is `herdr-app check` loading the mod, what `checking()` answers).
 - `mock.calls`: every call made, in order, as `{ fn, args }`; `mock.of("exec")` gives the argument lists of
   one function (`exec`, `hc`, `run`, `openOverlay`, `closeOverlay`, `notify`, `setShared`, `readTextFile`,
-  `writeTextFile`, `setAgentOrder`, ...).
+  `writeTextFile`, `setAgentOrder`, `setBadge` (the Dock badge, Herdr 0.1.16), ...).
 - `mock.on.<fn> = (...args) => result`: answers a call (a value or a promise). `undefined` falls back to
   the default: `exec`/`hc` answer `{ code: 0, stdout: "", stderr: "" }`, `openOverlay` an id, the rest null.
 - `mock.realExec(cmd, args, options)`: runs a command for real (spawnSync) and answers as `exec` does,
