@@ -6,6 +6,9 @@ h_flex {down:left}
       div
         div
           div [bg=#7fb3ae]
+  div #fold-terminals [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Fold the changes away, so the details take the column"
+    svg chrome:chevron-down
+  div [bg=border]
   h_flex
     div #panel-files [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Files"
       svg chrome:folder

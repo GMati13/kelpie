@@ -1477,6 +1477,8 @@ const viewOf = (profile, it) => {
   return mode === "start" && lonePr(it) ? "changes" : mode;
 };
 export function setView(profile, it, mode) {
+  // A view picked is a view to see: the lower block comes back if folded away (#271).
+  if (terminalsFolded()) foldTerminals(false);
   // Only the shared view changes here: syncStories (work.js) picks the stack's child from it. Selecting
   // here too raced it, as another copy that hadn't seen the new view yet switched back.
   setShared(VIEW, { ...(shared(VIEW) ?? {}), [viewKey(profile, it)]: mode });
@@ -2088,8 +2090,32 @@ const UNASSIGNED_OPEN = "kelpie.unassigned.open";
 const DONE_CLEAN = "kelpie.done.clean";
 export const headFolded = () => Boolean(shared(HEAD_FOLDED));
 function foldHead(shut) {
+  // Both folded would leave a title row over a tab bar: folding the details brings the terminals back.
+  if (shut && terminalsFolded()) setShared(TERMINALS_FOLDED, false);
   setShared(HEAD_FOLDED, shut);
   run(shut ? "layout.hide" : "layout.show", { id: "story-body" });
+}
+// The lower block (the tab bar and the terminals, or Changes, Screenshots…) folded away so the
+// details take the column (#271), by the tab bar's button: { pane }, the pane focused when folded.
+// work.js hides it as it does for a story not started: hidden, not resized, it comes back at the
+// height it had. Folding it brings the details back, as there'd be nothing else to show. Going to a
+// terminal brings it back too, or the person would act on one they can't see: picking a view
+// (setView) or a tab, and anything that moves the focus to another pane (a new agent, Next, Show
+// agent, Herdr's own tab keys), which settleTerminalsFold() notices.
+const TERMINALS_FOLDED = "kelpie.terminals.folded";
+export const terminalsFolded = () => Boolean(shared(TERMINALS_FOLDED));
+// Exported for the tests.
+export function foldTerminals(shut) {
+  if (shut && headFolded()) foldHead(false);
+  if (shut) setShared(TERMINALS_FOLDED, { pane: focused()?.pane ?? null });
+  else if (terminalsFolded()) setShared(TERMINALS_FOLDED, false);
+}
+// Called by work.js's syncStories(): unfolds once the focus is on another pane than when folded.
+// Writes only then, as every write redraws every copy.
+export function settleTerminalsFold() {
+  const f = shared(TERMINALS_FOLDED);
+  const pane = focused()?.pane;
+  if (f && pane && f.pane && pane !== f.pane) setShared(TERMINALS_FOLDED, false);
 }
 
 // A passage of a story's description someone pointed to (Claude, asked where a ticket says something):
@@ -6158,6 +6184,8 @@ export function storyNow() {
     pause: () => pauseFocused(profile, it),
     // A story not opened shows its details anyway: nothing to fold.
     fold: () => { if (viewOf(profile, it) !== "start") foldHead(!headFolded()); },
+    // The terminals (the lower block) folded away so the details take the column, or back (#271).
+    foldTerminals: () => { if (viewOf(profile, it) !== "start") foldTerminals(!terminalsFolded()); },
   };
 }
 
