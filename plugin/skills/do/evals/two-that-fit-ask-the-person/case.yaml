@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: two-that-fit-ask-the-person
+expected_outcome: |
+  Two of the person's skills could do this (acme-ticket and the general ticket-flow). It doesn't
+  choose: it asks the person which to use, naming both, and adds that question to their Next queue.
+  Neither skill's file is written.
+context:
+  scaffold_script: place-files.sh

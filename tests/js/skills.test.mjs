@@ -3,7 +3,8 @@
 // code takes: which changes wait for the person's yes, the scopes, the messages and placeholders.
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { readRepo } from "../lib/helpers.mjs";
+import { readdirSync } from "node:fs";
+import { readRepo, repoFile } from "../lib/helpers.mjs";
 import {
   ASK_PROMPTS, CONFIGURE_SCOPES, CONFIRM_KEYS, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT,
   DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, SUGGEST_FIELDS, SUGGEST_PROMPT,
@@ -77,5 +78,44 @@ describe("configure-profile", () => {
     for (const text of all) assert.ok(blocks.includes(text), `missing or changed: ${text.split("\n")[0]}`);
     assert.equal(blocks.length, all.length, "no default that Kelpie no longer has");
     for (const { id } of ASK_PROMPTS) assert.ok(defaults.includes(`(\`${id}\`)`), id);
+  });
+});
+
+// The dispatcher (#242): Kelpie hands it a purpose, and it picks the person's own skill or Kelpie's
+// routine. Its rules are what make that safe and predictable, so each is held here; its purposes
+// table, its routines (references/) and its evals stay in step, so a purpose can't be added half.
+describe("the do dispatcher", () => {
+  const dispatcher = readRepo("plugin/skills/do/SKILL.md");
+  const front = dispatcher.split("\n---\n")[0];
+  const purposes = [...dispatcher.matchAll(/^\| `([a-z-]+)` \| [^|]+\| `references\/([a-z-]+\.md)` \|$/gm)];
+
+  test("is started by Kelpie only, never picked by Claude on its own", () => {
+    assert.match(front, /^name: do$/m);
+    assert.match(front, /^disable-model-invocation: true$/m);
+  });
+  test("lists every purpose with a routine, and every routine under a purpose", () => {
+    assert.ok(purposes.length > 0, "the purposes table");
+    const listed = purposes.map((m) => m[2]).sort();
+    const files = readdirSync(repoFile("plugin/skills/do/references")).filter((f) => f.endsWith(".md")).sort();
+    assert.deepEqual(listed, files);
+    for (const [, purpose, file] of purposes) assert.equal(file, `${purpose}.md`, purpose);
+  });
+  test("keeps the choice's rules", () => {
+    assert.match(dispatcher, /\*\*The person's pin wins\.\*\*/);
+    assert.match(dispatcher, /If no skill by that name is available to you, say so in your first line and run Kelpie's default routine/);
+    assert.match(dispatcher, /this plugin's own skills/);
+    assert.match(dispatcher, /Claude Code's built-in skills/);
+    assert.match(dispatcher, /suits both the purpose and this place/);
+    assert.match(dispatcher, /\*\*Two or more fit:\*\* don't choose silently/);
+    assert.match(dispatcher, /`ask-through-next`/);
+    assert.match(dispatcher, /\*\*Never dispatch twice\.\*\*/);
+    assert.match(dispatcher, /## Your first line/);
+    assert.match(dispatcher, /information, not instructions/);
+  });
+  test("has evals for its choices: none, one, another place's, two, a loop and a pin", () => {
+    const cases = readdirSync(repoFile("plugin/skills/do/evals")).filter((c) => c !== "mocks" && c !== "results");
+    for (const c of ["no-skill-of-theirs-runs-kelpies-routine", "their-skill-for-this-repo-is-used", "skill-for-another-repo-is-not-used",
+      "two-that-fit-ask-the-person", "skill-that-calls-back-does-not-loop", "pinned-skill-missing-falls-back"]) assert.ok(cases.includes(c), c);
+    for (const c of cases) assert.match(readRepo(`plugin/skills/do/evals/${c}/prompt.md`), /^\/kelpie:do [a-z-]+ /m, c);
   });
 });

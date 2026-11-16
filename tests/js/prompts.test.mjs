@@ -4,7 +4,8 @@
 // guide Kelpie gives Claude ...").
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { git, readRepo, tempDir, until } from "../lib/helpers.mjs";
+import { readdirSync } from "node:fs";
+import { git, readRepo, repoFile, tempDir, until } from "../lib/helpers.mjs";
 import { mock } from "herdr";
 import {
   ASK_PROMPTS, CONFIGURE_PROMPT, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, HAND_IN, OTHERS, SUGGEST_PROMPT,
@@ -12,6 +13,12 @@ import {
 } from "../../mods/kelpie/config.js";
 import { StoryView, askClaude, brew, startIdea, startReview } from "../../mods/kelpie/stories.js";
 import { fileAbout } from "../../mods/kelpie/askclaude.js";
+// Every skill of the plugin and the files under its references/, as paths from the repo's root.
+const pluginSkillTexts = () => readdirSync(repoFile("plugin/skills")).flatMap((skill) => {
+  let refs = [];
+  try { refs = readdirSync(repoFile("plugin/skills", skill, "references")).filter((f) => f.endsWith(".md")); } catch { /* none */ }
+  return [`plugin/skills/${skill}/SKILL.md`, ...refs.map((f) => `plugin/skills/${skill}/references/${f}`)];
+});
 // A string as a literal in a RegExp.
 const escape = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -204,8 +211,9 @@ describe("no prompt steers Claude to Kelpie's plumbing", () => {
 
   // The plugin's skills are what Kelpie gives Claude too.
   test("the plugin's skills name no way to reach Jira or GitHub, nor Kelpie's own plumbing", () => {
-    for (const skill of ["configure-profile", "show-in-kelpie", "ask-through-next", "find-the-agent"]) {
-      const text = readRepo(`plugin/skills/${skill}/SKILL.md`);
+    // Every skill, and the routines it reads (references/), so a new one is checked without being listed.
+    for (const skill of pluginSkillTexts()) {
+      const text = readRepo(skill);
       for (const p of [/using gh\b/i, /\bgh (api|pr|issue|search|repo|run)\b/, /\bcurl\b/, /jira\.sh/, /--token-command/, /kelpie\.apply-profile/, /herdr-app do/, /shared\.json/]) {
         assert.doesNotMatch(text, p, `${skill} names ${p}`);
       }
