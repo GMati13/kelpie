@@ -770,7 +770,11 @@ export async function command(c) {
 }
 
 // The Kelpie layout's Hub roles (work.js) are views of their own.
-const ROLES = { top, sidebar, toolbar };
+// The strip over the tab bar while a story's details show ("tab-grip"): it draws nothing and takes no
+// press, so the half of the details' divider that Herdr grabs below its line lands here, not on the
+// tab bar (which keeps its presses, and whose block moves the window). #276
+const grip = () => div().size_full();
+const ROLES = { top, sidebar, toolbar, grip };
 const STATS_ROLES = ["sidebar", "footer"];
 
 export default class Quiet extends View {

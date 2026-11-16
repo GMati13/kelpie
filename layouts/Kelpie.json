@@ -100,7 +100,6 @@
           "id": "details",
           "type": "column",
           "resizable": true,
-          "gap": 6,
           "children": [
             {
               "id": "story-body",
@@ -131,21 +130,50 @@
               },
               "children": [
                 {
-                  "id": "toolbar",
-                  "type": "block",
+                  "id": "tab-bar",
+                  "type": "column",
+                  "resizable": false,
                   "size": {
                     "px": 42
                   },
-                  "window_drag": true,
-                  "content": {
-                    "mod": "kelpie",
-                    "props": {
-                      "role": "toolbar"
-                    }
-                  },
                   "min": 42,
-                  "max": 42,
-                  "background": "#1b1918"
+                  "max": 45,
+                  "children": [
+                    {
+                      "id": "tab-grip",
+                      "type": "block",
+                      "hidden": true,
+                      "background": "#1b1918",
+                      "size": {
+                        "px": 3
+                      },
+                      "min": 3,
+                      "max": 3,
+                      "content": {
+                        "mod": "kelpie",
+                        "props": {
+                          "role": "grip"
+                        }
+                      }
+                    },
+                    {
+                      "id": "toolbar",
+                      "type": "block",
+                      "size": {
+                        "px": 42
+                      },
+                      "window_drag": true,
+                      "content": {
+                        "mod": "kelpie",
+                        "props": {
+                          "role": "toolbar"
+                        }
+                      },
+                      "min": 42,
+                      "max": 42,
+                      "background": "#1b1918"
+                    }
+                  ]
                 },
                 {
                   "id": "main-stack",
