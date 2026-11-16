@@ -1,51 +1,24 @@
 {
   "id": "root",
   "type": "row",
-  "titlebar": "none",
-  "traffic_lights": [
-    24,
-    15
-  ],
-  "theme": "Kelpie",
-  "preview": "layouts/Kelpie.svg",
-  "ui_font": "DM Sans",
-  "background": "#1e1c1a",
-  "terminal_padding": [
-    14,
-    16
-  ],
-  "terminal_opacity": 0,
-  "padding": 0,
-  "gap": 0,
-  "divider": {
-    "width": 1,
-    "color": "#e6dcc81f"
-  },
   "children": [
     {
       "id": "side",
       "type": "column",
-      "size": {
-        "px": 290
-      },
-      "min": 220,
-      "max": 440,
-      "resizable": false,
-      "background": "#1a1816",
       "children": [
         {
           "id": "side-top",
           "type": "block",
-          "size": {
-            "px": 46
-          },
-          "window_drag": true,
           "content": {
             "mod": "kelpie",
             "props": {
               "role": "space-picker"
             }
-          }
+          },
+          "size": {
+            "px": 46
+          },
+          "window_drag": true
         },
         {
           "id": "side-list",
@@ -60,125 +33,117 @@
         {
           "id": "side-foot",
           "type": "block",
-          "size": {
-            "px": 70
-          },
           "content": {
             "mod": "kelpie",
             "props": {
               "role": "footer"
             }
+          },
+          "size": {
+            "px": 70
           }
         }
-      ]
+      ],
+      "size": {
+        "px": 290
+      },
+      "min": 220,
+      "max": 440,
+      "background": "#1a1816",
+      "resizable": false
     },
     {
       "id": "work",
       "type": "column",
-      "divider": {
-        "width": 1,
-        "color": "#e6dcc81f"
-      },
       "children": [
         {
           "id": "story-head",
           "type": "block",
-          "window_drag": true,
-          "size": {
-            "px": 50
-          },
-          "min": 50,
-          "max": 50,
           "content": {
             "mod": "kelpie",
             "props": {
               "role": "stories"
             }
-          }
+          },
+          "size": {
+            "px": 50
+          },
+          "min": 50,
+          "max": 50,
+          "window_drag": true
         },
         {
           "id": "details",
           "type": "column",
-          "resizable": true,
           "children": [
             {
               "id": "story-body",
               "type": "block",
-              "hidden": true,
-              "size": {
-                "weight": 1
-              },
-              "min": 60,
               "content": {
                 "mod": "kelpie",
                 "props": {
                   "role": "story-body"
                 }
-              }
+              },
+              "size": {
+                "weight": 1
+              },
+              "min": 60,
+              "hidden": true
             },
             {
               "id": "lower",
               "type": "column",
-              "size": {
-                "weight": 3
-              },
-              "min": 160,
-              "resizable": false,
-              "divider": {
-                "width": 1,
-                "color": "#e6dcc81f"
-              },
               "children": [
                 {
                   "id": "tab-bar",
                   "type": "column",
-                  "resizable": false,
-                  "size": {
-                    "px": 42
-                  },
-                  "min": 42,
-                  "max": 45,
                   "children": [
                     {
                       "id": "tab-grip",
                       "type": "block",
-                      "hidden": true,
-                      "background": "#1b1918",
-                      "size": {
-                        "px": 3
-                      },
-                      "min": 3,
-                      "max": 3,
                       "content": {
                         "mod": "kelpie",
                         "props": {
                           "role": "grip"
                         }
-                      }
+                      },
+                      "size": {
+                        "px": 3
+                      },
+                      "min": 3,
+                      "max": 3,
+                      "hidden": true,
+                      "background": "#1b1918"
                     },
                     {
                       "id": "toolbar",
                       "type": "block",
-                      "size": {
-                        "px": 42
-                      },
-                      "window_drag": true,
                       "content": {
                         "mod": "kelpie",
                         "props": {
                           "role": "toolbar"
                         }
                       },
+                      "size": {
+                        "px": 42
+                      },
                       "min": 42,
                       "max": 42,
-                      "background": "#1b1918"
+                      "background": "#1b1918",
+                      "window_drag": true
                     }
-                  ]
+                  ],
+                  "size": {
+                    "px": 42
+                  },
+                  "min": 42,
+                  "max": 45,
+                  "resizable": false
                 },
                 {
                   "id": "main-stack",
                   "type": "stack",
-                  "active": "main",
                   "children": [
                     {
                       "id": "main",
@@ -186,10 +151,18 @@
                       "content": {
                         "tab": "active",
                         "pane": {
-                          "gap": 0,
-                          "radius": 0,
+                          "header": {
+                            "content": {
+                              "mod": "kelpie",
+                              "props": {
+                                "role": "pane-head"
+                              }
+                            },
+                            "reveal": "always",
+                            "height": 32,
+                            "position": "top"
+                          },
                           "background": "#1b1917",
-                          "lone": false,
                           "border": {
                             "width": 1,
                             "color": "border"
@@ -198,17 +171,8 @@
                             "width": 0,
                             "color": "#00000000"
                           },
-                          "header": {
-                            "content": {
-                              "mod": "kelpie",
-                              "props": {
-                                "role": "pane-head"
-                              }
-                            },
-                            "height": 32,
-                            "position": "top",
-                            "reveal": "always"
-                          }
+                          "radius": 0,
+                          "gap": 0
                         }
                       },
                       "padding": 0
@@ -216,42 +180,49 @@
                     {
                       "id": "story-view",
                       "type": "block",
-                      "background": "#1e1c1a",
                       "content": {
                         "mod": "kelpie",
                         "props": {
                           "role": "story-view"
                         }
-                      }
+                      },
+                      "background": "#1e1c1a"
                     },
                     {
                       "id": "story-shots",
                       "type": "block",
-                      "background": "#1e1c1a",
                       "content": {
                         "mod": "kelpie-artifacts",
                         "props": {
                           "scope": "story"
                         }
-                      }
+                      },
+                      "background": "#1e1c1a"
                     }
-                  ]
+                  ],
+                  "active": "main"
                 }
-              ]
+              ],
+              "size": {
+                "weight": 3
+              },
+              "min": 160,
+              "divider": {
+                "width": 1,
+                "color": "#e6dcc81f"
+              },
+              "resizable": false
             }
           ],
           "divider": {
             "width": 1,
             "color": "#e6dcc81f"
-          }
+          },
+          "resizable": true
         },
         {
           "id": "toolbar-start",
           "type": "block",
-          "size": {
-            "px": 42
-          },
-          "window_drag": true,
           "content": {
             "mod": "kelpie",
             "props": {
@@ -259,29 +230,29 @@
               "slot": "start"
             }
           },
+          "size": {
+            "px": 42
+          },
           "min": 42,
           "max": 42,
           "hidden": true,
-          "background": "#1b1918"
+          "background": "#1b1918",
+          "window_drag": true
         }
       ],
+      "divider": {
+        "width": 1,
+        "color": "#e6dcc81f"
+      },
       "resizable": false
     },
     {
       "id": "panel",
       "type": "column",
-      "hidden": true,
-      "size": {
-        "px": 360
-      },
-      "min": 280,
-      "max": 2400,
-      "background": "#1a1816",
       "children": [
         {
           "id": "panel-body",
           "type": "stack",
-          "active": "files",
           "children": [
             {
               "id": "files",
@@ -307,31 +278,43 @@
             {
               "id": "web",
               "type": "block",
-              "radius": 12,
               "content": {
                 "terminal": "web"
-              }
-            },
-            {
-              "id": "web-1",
-              "type": "block",
-              "radius": 12,
-              "content": {
-                "terminal": "web-1"
-              }
-            },
-            {
-              "id": "web-2",
-              "type": "block",
-              "radius": 12,
-              "content": {
-                "terminal": "web-2"
-              }
+              },
+              "radius": 12
             }
-          ]
+          ],
+          "active": "files"
         }
       ],
+      "size": {
+        "px": 360
+      },
+      "min": 280,
+      "max": 2400,
+      "hidden": true,
+      "background": "#1a1816",
       "resizable": false
     }
-  ]
+  ],
+  "background": "#1e1c1a",
+  "padding": 0,
+  "theme": "Kelpie",
+  "ui_font": "DM Sans",
+  "terminal_padding": [
+    14,
+    16
+  ],
+  "terminal_opacity": 0,
+  "gap": 0,
+  "divider": {
+    "width": 1,
+    "color": "#e6dcc81f"
+  },
+  "titlebar": "none",
+  "traffic_lights": [
+    24,
+    15
+  ],
+  "preview": "layouts/Kelpie.svg"
 }

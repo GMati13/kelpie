@@ -9,6 +9,7 @@ import { mock } from "herdr";
 import { handlers, nodeOf, texts, tree, walk } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { StoryBody, StoryList } from "../../mods/kelpie/stories.js";
+import { emit, pickAndSend, wake } from "../lib/askline.mjs";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -260,10 +261,10 @@ test("the details end with the Ask line, about the story, to a new Claude", asyn
   const { el } = await body({ space: "ACME-142" });
   assert.ok(byId(el, "ask-line"), "the Ask line is there");
   assert.equal(askedAbout(el), "ACME-142 · the story");
-  assert.match(toLabel(el), /^to New Claude/);
-  // Where it goes is said only when it matters (a Claude mid-task); else it's the menu's tip.
-  assert.equal(byId(el, "ask-hint"), null);
-  assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-catchup", "ask-suggest-left", "ask-suggest-plan", "ask-suggest-explain"]);
+  assert.match(toLabel(el), /^New Claude/);
+  // At rest it's one quiet line: no suggestions, no Send (KELPIE-305).
+  assert.equal(handlers(el).filter((h) => h.id?.startsWith("ask-pick-")).length, 0);
+  assert.equal(byId(el, "ask-send"), null);
 });
 test("a subtask's title points the Ask line at it; a Claude waiting for you can't take it", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
@@ -271,7 +272,7 @@ test("a subtask's title points the Ask line at it; a Claude waiting for you can'
   const after = view.render(cx);
   assert.match(askedAbout(after), /^ACME-143 · /);
   // ACME-143's own Claude waits for an answer: a new one is picked, and it's listed as waiting.
-  assert.match(toLabel(after), /^to New Claude/);
+  assert.match(toLabel(after), /^New Claude/);
   view.menu = "ask-to";
   assert.match(texts(view.render(cx)).join(" "), /waiting for you, answer it first/);
 });
@@ -321,10 +322,9 @@ test("a suggestion asks the Claude on the subtask's key, and leaves no history i
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   press(el, "sub-title-ACME-172", cx);
   const pointed = view.render(cx);
-  assert.match(toLabel(pointed), /▾$/);
-  assert.doesNotMatch(toLabel(pointed), /^to New Claude/, "its own Claude, idle, is picked");
+  assert.doesNotMatch(toLabel(pointed), /^New Claude/, "its own Claude, idle, is picked");
   mock.calls.length = 0;
-  press(pointed, "ask-suggest-explain", cx);
+  pickAndSend(view, cx, "explain");
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1);
@@ -368,7 +368,7 @@ test("a right-click menu opens at the pointer, at any zoom", async () => {
 // KELPIE-226: Ask about what you copied points the Ask line at the clipboard's text.
 test("Ask about what you copied points the Ask line at the copied passage", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  press(el, "ask-copied", { ...cx, read_from_clipboard: () => "Queue edits made offline" });
+  press(wake(view, cx), "ask-copied", { ...cx, read_from_clipboard: () => "Queue edits made offline" });
   assert.match(askedAbout(view.render(cx)), /^“Queue edits made offline/);
   const about = mock.state.shared.get("kelpie.ask.about")[DEMO].about;
   assert.equal(about.kind, "text");
@@ -376,17 +376,17 @@ test("Ask about what you copied points the Ask line at the copied passage", asyn
 });
 test("Ask about what you copied with nothing copied says so, and points nothing", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  press(el, "ask-copied", { ...cx, read_from_clipboard: () => undefined });
+  press(wake(view, cx), "ask-copied", { ...cx, read_from_clipboard: () => undefined });
   assert.equal(askedAbout(view.render(cx)), "ACME-142 · the story");
 });
 
 // KELPIE-223 / KELPIE-230: Catch me up goes to the Claude already on the story; Plan this to a new
 // one in plan mode; once answered both stay pinned, and a plan has Go ahead.
 test("Catch me up goes to the story's own Claude, not a new one", async () => {
-  const { el, cx } = await body({ space: "ACME-171" });
+  const { view, cx } = await body({ space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   mock.calls.length = 0;
-  press(el, "ask-suggest-catchup", cx);
+  pickAndSend(view, cx, "catchup");
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1, "sent to the open Claude");
@@ -394,9 +394,9 @@ test("Catch me up goes to the story's own Claude, not a new one", async () => {
   assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0, "no new Claude");
 });
 test("Plan this starts a new Claude", async () => {
-  const { el, cx } = await body({ space: "ACME-171" });
+  const { view, cx } = await body({ space: "ACME-171" });
   mock.calls.length = 0;
-  press(el, "ask-suggest-plan", cx);
+  pickAndSend(view, cx, "plan");
   await new Promise((r) => setImmediate(r));
   assert.ok(mock.of("run").some(([n]) => n === "space.new" || n === "tab.new"), "a new Claude");
 });
@@ -417,4 +417,44 @@ test("a merged pull request's line says how long ago it merged", async () => {
   assert.ok(line, "api#291's line is drawn");
   assert.ok(texts(line).includes("3d"), texts(line).join(" | "));
   assert.match(nodeOf(line).calls.find(([m]) => m === "tooltip")[1][0], /^Merged 3d ago · /);
+});
+
+// KELPIE-305: the Ask line wakes on touch. At rest one quiet line; touched, faint suggestions, the one
+// that fits first and in Claude's voice; a click fills the line (Enter asks it); typing hides them for
+// one hint; a send brews the sparkles.
+test("the Ask line wakes on touch: Claude's offer first, a click fills, Enter asks, typing hides the rest", async () => {
+  const { view, cx } = await body({ space: "ACME-171" });
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  emit(view.askInput, "focus", cx);
+  const awake = view.render(cx);
+  const picks = handlers(awake).filter((h) => h.id?.startsWith("ask-pick-")).map((h) => h.id);
+  assert.equal(picks[0], "ask-pick-merge", "two pull requests ready: the offer is to merge");
+  assert.match(texts(byId(awake, "ask-pick-merge")).join(" "), /2 pull requests are ready: merge\?/);
+  mock.calls.length = 0;
+  press(awake, "ask-pick-catchup", cx);
+  assert.equal(mock.of("hc").filter(([a]) => a[0] === "send").length, 0, "a click fills, it doesn't send");
+  assert.equal(view.askInput.value(), "Catch me up");
+  const typing = view.render(cx);
+  assert.equal(handlers(typing).filter((h) => h.id?.startsWith("ask-pick-")).length, 0, "typing hides the suggestions");
+  assert.match(texts(byId(typing, "ask-hint")).join(" "), /^↵ asks /);
+  emit(view.askInput, "submit", cx);
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1);
+  assert.match(sent[0][0].at(-1), /Catch me up on this story/, "sent as the suggestion, in the profile's words");
+  const after = render(view.render(cx), skinTheme());
+  assert.match(after, /spin/, "the sparkles brew after a send");
+});
+test("typed over a filled suggestion, Enter sends what was typed", async () => {
+  const { view, cx } = await body({ space: "ACME-171" });
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  press(wake(view, cx), "ask-pick-catchup", cx);
+  view.askInput.set_value("Why is the toggle slow?");
+  emit(view.askInput, "change", cx);
+  mock.calls.length = 0;
+  emit(view.askInput, "submit", cx);
+  await new Promise((r) => setImmediate(r));
+  const [[args]] = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.match(args.at(-1), /Why is the toggle slow\?/);
+  assert.doesNotMatch(args.at(-1), /Catch me up on this story/);
 });
