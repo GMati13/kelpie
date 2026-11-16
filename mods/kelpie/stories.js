@@ -1423,7 +1423,7 @@ const issue = (i) => ({ key: i.key, ...(i.url ? { url: i.url } : {}), ...(i.item
   ...((p) => (p ? { priority: p } : {}))(priorityLevel(i.fields?.priority)),
   ...((m) => (m ? { moved: m } : {}))(movedOf(i.fields)),
   ...(i.fields?.assignee?.displayName ? { assignee: { displayName: i.fields.assignee.displayName, ...(avatarUrl(i.fields.assignee.avatarUrls?.["48x48"]) ? { avatar: i.fields.assignee.avatarUrls["48x48"] } : {}) } } : {}) } });
-const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, reviewDecision: p.reviewDecision, merged: p.merged,
+const pull = (p) => ({ ...(p.id ? { id: p.id } : {}), number: p.number, title: p.title, url: p.url, isDraft: p.isDraft, updatedAt: p.updatedAt, ...(p.mergedAt ? { mergedAt: p.mergedAt } : {}), reviewDecision: p.reviewDecision, merged: p.merged,
   ...(p.headRefName ? { headRefName: p.headRefName } : {}), ...(p.headRefOid ? { headRefOid: p.headRefOid } : {}), ...(p.viewerReview ? { viewerReview: p.viewerReview } : {}),
   author: p.author ? { login: p.author.login } : null, repository: { name: p.repository?.name }, commits: { nodes: [{ commit: { statusCheckRollup: { state: checksOf(p) } } }] } });
 const session = (x) => ({ id: x.id, title: x.title, cwd: x.cwd, updated: x.updated, running: x.running, first: x.first, ...(x.config ? { config: x.config } : {}) });
@@ -1546,7 +1546,8 @@ export function openArtifact(profile, url) {
 
 // The Claude account an Artifact was made on, as a folder ("~/.claude-work"; the default's "~/.claude").
 const accountLabel = (config) => `~/${config ? String(config).replace(/\/+$/, "").split("/").pop() : ".claude"}`;
-const agoWords = (at) => { const a = ago(at); return a === "now" ? "just now" : `${a} ago`; };
+// "just now", "3h ago"; nothing for a time not known.
+const agoWords = (at) => { const a = ago(at); return !a ? "" : a === "now" ? "just now" : `${a} ago`; };
 
 // Diff files you have looked at, ticked in the list: by "<repo or PR>:<path>:<hash of its patch>", so
 // the ticks survive restarts and a file that changes again shows unticked. Each holds its story's
@@ -3786,15 +3787,19 @@ export class Stories extends Source {
     const [state, words, color] = prLook(t, p, checksOf(p));
     const kind = askFor(p);
     const name = prName(p);
+    // A merged one's age is when it merged; an older copy without that time keeps its last change.
+    const at = p.merged ? p.mergedAt ?? p.updatedAt : p.updatedAt;
+    const age = ago(at);
+    const when = agoWords(at);
     const title = String(p.title ?? "").replace(/^\s*(?:\[[^\]]*\]|[A-Z][A-Z0-9_]*-\d+)[\s:\u2014-]*/, "") || name;
     const line = h_flex().id(`pr-${name}`).flex_1().min_w(0).h(CONTROL).gap(8).items_center().cursor_pointer().rounded(6).hover((x) => x.text_color(t.accent))
-        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${words} · ${p.title}${it.pr ? "" : " · right-click for more"}`).on_click(() => open(p.url))
+        .text_color(p.merged ? t.muted : t.foreground).tooltip(`${p.merged && when ? `Merged ${when}` : `${words}${when ? ` · updated ${when}` : ""}`} · ${p.title}${it.pr ? "" : " · right-click for more"}`).on_click(() => open(p.url))
         .child(div().flex_none().child(mark(t, state, 14)))
         .child(div().flex_1().min_w(0).truncate().text_size(TEXT).child(title))
         .child(this.column("pr-where", name, h_flex().flex_none().text_color(t.dim).child(name)))
         .child(this.column("pr-state", name, h_flex().flex_none().gap(6).items_center()
           .child(div().text_color(p.merged ? t.dim : color).child(PR_SHORT[state] ?? words))
-          .when(Boolean(p.updatedAt), (el) => el.child(div().text_color(t.dim).child(ago(p.updatedAt))))));
+          .when(Boolean(age), (el) => el.child(div().text_color(t.dim).child(age)))));
     return h_flex().id(`pr-row-${name}`).gap(10).items_center().min_w(0).text_size(SMALL)
       // A right-click opens its menu (elementMenu()); a lone pull request's own line has no Ask line to point.
       .when(!it.pr, (el) => el.relative().on_mouse_down("right", this.openMenu(`pr-menu-${name}`)))
@@ -4796,7 +4801,8 @@ export class Stories extends Source {
     const row = (a, i) => {
       const id = `artifact-${it.key}-${i}`;
       const by = titles.get(a.session) ?? (a.key ? `an agent on ${a.key}` : "an agent of this story");
-      const when = a.count > 1 ? `published ${a.count} times, last ${agoWords(a.last)}` : `published ${agoWords(a.last)}`;
+      const last = agoWords(a.last);
+      const when = a.count > 1 ? `published ${a.count} times${last ? `, last ${last}` : ""}` : `published${last ? ` ${last}` : ""}`;
       const other = claudeKey(a.config) !== mine;
       return h_flex().id(id).w_full().min_w(0).px(8).py(8).gap(12).items_center().rounded(8).hover((s) => s.bg(t.hover))
         .tooltip(`${a.title ?? "An Artifact"}\n${a.url}\nMade on the Claude account in ${accountLabel(a.config)}`)

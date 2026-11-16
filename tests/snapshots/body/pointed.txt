@@ -90,7 +90,7 @@ div
                     Popup.new "sub-menu-ACME-172-menu"
                       div #sub-menu-ACME-172-at
                   h_flex #pr-row-web#415 {down:right}
-                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click} tip="Approved, checks pass: ready to merge · ACME-172 Theme tokens and the dark mode toggle · right-click for more"
+                    h_flex #pr-web#415 [hover(fg=accent) fg=foreground] {click} tip="Approved, checks pass: ready to merge · updated 5h ago · ACME-172 Theme tokens and the dark mode toggle · right-click for more"
                       div
                         div
                           svg chrome:circle-check [fg=done]
@@ -104,7 +104,7 @@ div
                           div [fg=done]
                             "Approved"
                           div [fg=dim]
-                            "now"
+                            "5h"
                     div
                       Popup.new "pr-menu-web#415-menu"
                         div #pr-menu-web#415-at
@@ -139,7 +139,7 @@ div
                     Popup.new "sub-menu-ACME-173-menu"
                       div #sub-menu-ACME-173-at
                   h_flex #pr-row-charts#58 {down:right}
-                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click} tip="Approved, no checks: ready to merge · ACME-173 Dark palette for the dashboard charts · right-click for more"
+                    h_flex #pr-charts#58 [hover(fg=accent) fg=foreground] {click} tip="Approved, no checks: ready to merge · updated 2h ago · ACME-173 Dark palette for the dashboard charts · right-click for more"
                       div
                         div
                           svg chrome:circle-check [fg=done]
@@ -153,7 +153,7 @@ div
                           div [fg=done]
                             "Approved"
                           div [fg=dim]
-                            "now"
+                            "2h"
                     div
                       Popup.new "pr-menu-charts#58-menu"
                         div #pr-menu-charts#58-at

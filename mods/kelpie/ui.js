@@ -328,10 +328,13 @@ export function resetLabel(at, now = Date.now()) {
   return `${DAYS[when.getDay()]} ${clock12(when)}`;
 }
 
-// How long ago, short: "now", "5m", "3h", "2d". `at` is epoch ms.
+// How long ago, short: "now", "5m", "3h", "2d". `at` is epoch ms or a time as text (GitHub's, say);
+// anything else says nothing, as answering "now" for it once hid a bug (KELPIE-233).
 export function ago(at, now = Date.now()) {
-  const minutes = Math.floor((now - at) / 60000);
-  if (!Number.isFinite(minutes) || minutes < 1) return "now";
+  const time = typeof at === "string" ? Date.parse(at) : typeof at === "number" ? at : NaN;
+  const minutes = Math.floor((now - time) / 60000);
+  if (!Number.isFinite(minutes)) return "";
+  if (minutes < 1) return "now";
   if (minutes < 60) return `${minutes}m`;
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`;
   return `${Math.floor(minutes / (24 * 60))}d`;
