@@ -14,9 +14,9 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeTextFile } from "herdr";
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, waitColor, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
-import { attention, blockedAgents } from "./attention.js";
+import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
@@ -930,6 +930,10 @@ function need(it) {
     const own = it.subs.find((s) => s.agent === blocked[0]);
     return [0, it.story && own ? `${own.key}'s agent needs you` : "Agent needs you", "working"];
   }
+  // An agent of it ended its turn waiting on you (#251, #252): after one blocked on a prompt, before
+  // its pull requests' needs. Its line is what it waits for.
+  const waits = waitingOf(it);
+  if (waits) return [WAITING_RANK, `${waits.who}: ${waits.line}`, "ansi3"];
   // Changes requested before failing checks: a reviewer waits on you.
   const changes = prs.find((p) => p.reviewDecision === "CHANGES_REQUESTED");
   if (changes) return [1, `${pre}Changes requested${where(changes)}`, "working"];
@@ -950,6 +954,17 @@ function need(it) {
 
 // A pull request waiting for your review: after what needs you on your own stories.
 const REVIEW_RANK = 4;
+// An agent waiting on you, not blocked (attention.js waitsOnYou()): between one blocked (0) and changes
+// requested (1), so ordered(), Next and cmd-shift-j put it there.
+const WAITING_RANK = 0.5;
+// The story's agent waiting on you, the longest waiting first: { agent, who, line, at }, or null.
+function waitingOf(it) {
+  const found = [it.agent ? [it.agent, null] : null, ...it.subs.map((s) => (s.agent ? [s.agent, s] : null))].filter(Boolean)
+    .map(([a, s]) => ({ a, s, e: waitsOnYou(a) })).filter((x) => x.e).sort((x, y) => (x.e.at ?? 0) - (y.e.at ?? 0))[0];
+  if (!found) return null;
+  const who = it.story && found.s ? `${found.s.key}'s agent` : "Its agent";
+  return { agent: found.a, who, line: found.e.line || "waiting on you", at: found.e.at ?? null };
+}
 // Where a pull request needing nothing of you stands, in words.
 const pullWords = (p) => (p.isDraft ? "Draft" : ["PENDING", "EXPECTED"].includes(checksOf(p)) ? "Checks running"
   : p.reviewDecision === "APPROVED" ? "Approved" : "Waiting for review");
@@ -969,8 +984,14 @@ const needQueue = (items, reviews) => [...items.filter((x) => x.n[0] <= NEEDS_YO
 const DESK_ITEM = { key: "desk", desk: true };
 // `data`: the loaded stories, for the done column's name (passed in: the list mustn't read the shared
 // copy once it has its own).
+// The order (#252): what's blocked on a prompt (its stories, then the Desk's), then the agents
+// waiting on you (their own asks and those found waiting, waitingIn(), one row per agent), then your
+// pull requests' needs (changes requested, failing checks, ready to merge), then finished turns to
+// check (readyIn()), then the reviews waiting for you.
 const needQueueOf = (profile, items, reviews = [], data = null) => {
-  const needs = [...needQueue(items, []), ...asksIn(profile, items), ...reviews, ...(deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [])];
+  const ranked = (keep) => items.filter((x) => keep(x.n[0])).sort((a, b) => a.n[0] - b.n[0]).map((x) => x.it);
+  const desk = deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [];
+  const needs = [...ranked((r) => r === 0), ...desk, ...waitingIn(profile, items), ...ranked((r) => r >= 1 && r <= NEEDS_YOU), ...readyIn(profile, items), ...reviews];
   const ready = busyOf(`done-all:${profile?.id}`) ? [] : items.filter((x) => readyForDone(profile, x.it, x.n)).map((x) => x.it);
   const finish = ready.length ? [{ key: "finish", finish: ready, column: doneName(data) }] : [];
   const dirty = items.map((x) => x.it).filter((it) => cleanable(profile, it).length && !busyOf(it.key));
@@ -1063,6 +1084,31 @@ function asksIn(profile, items) {
   return list.filter((a) => Date.now() - a.at < ASK_FOR && (!a.terminal || (live.has(a.terminal) && !answered(a, live.get(a.terminal)))))
     .map((a) => ({ key: `ask:${a.id}`, ask: a, it: a.key ? items.find((x) => x.it.key === a.key)?.it ?? null : null }));
 }
+// The profile's agents found waiting on you (#251, attention.js waitsOnYou()) with its agents' own
+// asks (asksIn()), one row per agent (its own ask wins), the longest waiting first: { key:
+// "wait:<address>", wait, agent, it } beside the asks' items. `it` is the story the agent works on.
+const storyOfAgent = (items, a) => items.find((x) => allAgents(x.it).some((g) => g.address === a.address))?.it ?? null;
+const profileAgentsOf = (profile) => { const of = spaceProfiles(); return agents().filter((a) => profile && of.get(a.space)?.id === profile.id); };
+function waitingIn(profile, items) {
+  const asks = asksIn(profile, items);
+  const asked = new Set(asks.map((x) => x.ask.terminal).filter(Boolean));
+  const waits = profileAgentsOf(profile).filter((a) => !asked.has(a.address)).map((a) => [a, waitsOnYou(a)]).filter(([, e]) => e)
+    .map(([a, e]) => ({ key: `wait:${a.address}`, wait: e, agent: a, it: storyOfAgent(items, a) }));
+  const at = (x) => x.ask?.at ?? x.wait?.at ?? 0;
+  return [...asks, ...waits].sort((x, y) => at(x) - at(y));
+}
+// Finished turns with something to check (#251's `ready`): { key: "ready:<address>", ready, agent, it }.
+function readyIn(profile, items) {
+  return profileAgentsOf(profile).map((a) => [a, waitsOnYou(a, "ready")]).filter(([, e]) => e)
+    .map(([a, e]) => ({ key: `ready:${a.address}`, ready: e, agent: a, it: storyOfAgent(items, a) })).sort((x, y) => (x.ready.at ?? 0) - (y.ready.at ?? 0));
+}
+// Its ✕: set aside until the agent's next turn (a new turn replaces the entry).
+function setAside(profile, address) {
+  const all = shared(WAITING) ?? {};
+  const e = all[profile?.id]?.[address];
+  if (e) setShared(WAITING, { ...all, [profile.id]: { ...all[profile.id], [address]: { ...e, aside: true } } });
+}
+
 // Notes each ask whose agent is at rest, and drops each whose agent was answered since (answered()),
 // for every profile. Run by the copy that follows what's shown (syncTracking()), as agents change
 // state whatever's on screen; written only when something changed. Exported for the tests.
@@ -1177,6 +1223,8 @@ function dismissSuggestion(profile, key) {
 // What a queue item says, in Next and in the queue list.
 const queueLabel = (x) => (x.desk ? "Desk: an agent needs you"
   : x.ask ? x.ask.action
+  : x.wait ? x.wait.line || "Waiting on you"
+  : x.ready ? x.ready.line || "Finished: check its work"
   : x.finish ? (x.finish.length === 1 ? `${x.finish[0].key}: ready for ${x.column}, move it` : `${x.finish.length} stories ready for ${x.column}: move them`)
   : x.clean ? (x.clean.length === 1 ? `${x.clean[0].key}: ${finished(x.clean[0]) ? "finished" : "reassigned"}, clean up` : `${x.clean.length} ${x.clean.every(finished) ? "finished " : ""}stories: clean up all`)
   : x.suggest ? x.suggest.action
@@ -1184,6 +1232,7 @@ const queueLabel = (x) => (x.desk ? "Desk: an agent needs you"
 // Its second line: what it is (the story's title, who asked for the review), or why Claude picked it.
 const queueDetail = (x) => (x.desk ? "Its agent is waiting for your answer"
   : x.ask ? [askerOf(x.ask)?.tab_name ?? x.ask.tab, x.ask.why || x.it?.title].filter(Boolean).join(" · ")
+  : x.wait || x.ready ? [x.it?.key, `${x.agent.tab_name ?? "An"}'s agent`].filter(Boolean).join(" · ")
   : x.finish ? (x.finish.length === 1 ? x.finish[0].title : x.finish.map((it) => it.key).join(", "))
   : x.clean ? x.clean.map((it) => it.key).join(", ")
   : x.suggest ? x.suggest.why || x.suggest.title
@@ -1193,7 +1242,10 @@ const queueDetail = (x) => (x.desk ? "Its agent is waiting for your answer"
 // ready for Done; the broom for the clean-up; the sparkles for Claude's picks.
 function queueMark(t, x, size = 16) {
   const box = (el) => div().flex().flex_none().size(size).items_center().justify_center().child(el);
-  if (x.desk || x.ask) return mark(t, "needs-you", size);
+  if (x.desk) return mark(t, "needs-you", size);
+  // An agent waiting on you, whether it asked through Next or was found waiting (#252).
+  if (x.ask || x.wait) return mark(t, "asks", size);
+  if (x.ready) return mark(t, "done", size);
   if (x.finish) return box(icon(own("check-check"), size - 3).text_color(t.dim));
   if (x.clean) return box(icon(own("brush-cleaning"), size - 3).text_color(t.dim));
   if (x.suggest?.idea) return box(icon(own("lightbulb"), size - 3).text_color(t.accent));
@@ -1212,8 +1264,10 @@ const queueAway = (x) => Boolean((x.suggest && !x.it && !x.suggest.idea) || (x.a
 const queueWords = (x) => [queueLabel(x), queueDetail(x)].filter(Boolean).join("\n");
 function queueRow(t, x, on, go, { card = false } = {}) {
   const detail = [card && on ? "You're on it" : "", queueDetail(x)].filter(Boolean).join(" · ");
+  // An agent waiting whose tab you've opened since (`seen`) is drawn dimmer: you know, it still waits.
+  const seen = Boolean(x.wait?.seen || x.ready?.seen);
   return h_flex().id(`queue-${card ? "next" : x.key}`).flex_none().px(10).py(6).gap(10).items_start().rounded(7).cursor_pointer()
-    .tooltip(queueWords(x))
+    .tooltip(queueWords(x)).when(seen, (el) => el.opacity(0.65))
     .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover))).on_click(go)
     .child(div().flex_none().mt(1).child(queueMark(t, x, 16)))
     .child(v_flex().flex_1().min_w(0).gap(1)
@@ -1225,11 +1279,11 @@ function queueRow(t, x, on, go, { card = false } = {}) {
 // An agent's ask or a pick of Claude's gets an ✕ to drop it, folded or not: a queue of one has no
 // open list to drop it from (#64).
 function withDrop(t, profile, x, row) {
-  if (!x.suggest && !x.ask) return row;
-  const drop = () => (x.ask ? dismissAsk(profile, x.ask.id) : dismissSuggestion(profile, x.suggest.key));
+  if (!x.suggest && !x.ask && !x.wait && !x.ready) return row;
+  const drop = () => (x.ask ? dismissAsk(profile, x.ask.id) : x.wait || x.ready ? setAside(profile, x.agent.address) : dismissSuggestion(profile, x.suggest.key));
   return row.child(div().id(`queue-drop-${x.key}`).flex().flex_none().size(20).items_center().justify_center().rounded(5)
     .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-    .tooltip(x.ask ? "Drop this request" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(); })
+    .tooltip(x.ask ? "Drop this request" : x.wait || x.ready ? "Set it aside until its agent's next turn" : "Drop this suggestion").on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); drop(); })
     .child(icon(chrome("x"), 12)));
 }
 // Folded Next's smaller line under its main row: where ⌘⇧J goes when that isn't the main row's item
@@ -1245,7 +1299,7 @@ function queueThen(t, x, go) {
     .child(div().flex_none().text_color(t.dim).child("⌘⇧J"));
 }
 // Whether a queue item is the one on screen: its key, or for a pick or an agent's ask, its story's.
-const queueShown = (x, shownKey) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask) && x.it?.key === shownKey));
+const queueShown = (x, shownKey) => Boolean(shownKey) && (x.key === shownKey || (Boolean(x.suggest || x.ask || x.wait || x.ready) && x.it?.key === shownKey));
 // The one after the item shown, wrapping around; the first when the one shown isn't in it.
 const nextIn = (queue, shownKey) => queue[(queue.findIndex((x) => x.key === shownKey) + 1) % queue.length] ?? null;
 
@@ -1258,6 +1312,7 @@ const sunk = (it, n = need(it)) => it.sunk && n[0] > NEEDS_YOU && !talking(it);
 export function storyState(it, n = need(it)) {
   const r = n[0];
   if (r === 0) return "needs-you";
+  if (r === WAITING_RANK) return "asks";
   if (r === 1) return "changes";
   if (r === 2) return "failing";
   if (r === 3) return "done";
@@ -2302,9 +2357,9 @@ export function getNextRequest() {
     const profile = profileHasNext(await requestProfile(req));
     const s = itemsFor(profile);
     if (!s) throw new Error(`${profile.name}'s stories haven't loaded yet.`);
-    const kind = (x) => (x.desk ? "desk" : x.finish ? "move-to-done" : x.clean ? "clean" : x.ask ? "agent-ask" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
-    const keyOfItem = (x) => (x.finish ? x.finish.map((it) => it.key).join(", ") : x.clean ? x.clean.map((it) => it.key).join(", ") : x.ask ? x.ask.key : x.suggest ? (x.suggest.idea ? "" : x.suggest.key.replace(/^pr:/, "")) : x.review ? prName(x.review) : x.desk ? "" : x.key);
-    const urlOf = (x) => (x.ask ? x.ask.url : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && !x.finish && x.key && !lonePr(x) ? ticketUrl(boardOf(profile), s.data, x.key) : lonePr(x)?.url);
+    const kind = (x) => (x.desk ? "desk" : x.finish ? "move-to-done" : x.clean ? "clean" : x.ask ? "agent-ask" : x.wait ? "agent-waiting" : x.ready ? "agent-finished" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
+    const keyOfItem = (x) => (x.finish ? x.finish.map((it) => it.key).join(", ") : x.clean ? x.clean.map((it) => it.key).join(", ") : x.ask ? x.ask.key : x.wait || x.ready ? x.it?.key ?? "" : x.suggest ? (x.suggest.idea ? "" : x.suggest.key.replace(/^pr:/, "")) : x.review ? prName(x.review) : x.desk ? "" : x.key);
+    const urlOf = (x) => (x.ask ? x.ask.url : x.wait || x.ready ? "" : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && !x.finish && x.key && !lonePr(x) ? ticketUrl(boardOf(profile), s.data, x.key) : lonePr(x)?.url);
     const items = needQueueOf(profile, s.items, s.reviews, s.data).map((x) => Object.fromEntries(Object.entries({ kind: kind(x), key: keyOfItem(x), action: queueLabel(x), detail: queueDetail(x), url: urlOf(x) }).filter(([, v]) => v)));
     return { ok: true, profile: profile.name, items };
   });
@@ -3782,9 +3837,9 @@ export class Stories extends Source {
   // done or idle (a skin's mark, else Kelpie's), or paused; empty when it has none.
   agentSlot(t, s) {
     const a = s.agent;
-    const m = a ? agentMark(t, a.status, { where: "sub", agent: a }) : s.paused ? agentMark(t, "paused", { where: "sub" }) : null;
+    const m = a ? agentMark(t, agentStatus(a), { where: "sub", agent: a }) : s.paused ? agentMark(t, "paused", { where: "sub" }) : null;
     return h_flex().id(`sub-mark-${s.key}`).flex_none().w(16).justify_center().items_center()
-      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${agentWords(a.status)}` : "Paused: its session is kept to resume").child(m));
+      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${agentWords(agentStatus(a))}` : "Paused: its session is kept to resume").child(m));
   }
 
   // Whether a subtask row shows all its actions: while hovered (`this.hoverSub`, this copy's), and
@@ -3869,10 +3924,11 @@ export class Stories extends Source {
     // Kept at hand while its agent is talked to (stillTalking()): drawn as finished, as a sunk row is,
     // led by that agent's mark and saying on its key line what the agent is doing.
     const talk = stillTalking(it, n) ? talkAgent(it) : null;
+    const waits = n[0] === WAITING_RANK ? waitingOf(it) : null;
     const quiet = sunk(it, n) || Boolean(talk);
     const state = storyState(it, n);
     const busy = busyOf(it.key);
-    const sign = talk ? agentMark(t, talk.status, { where: "sub", size: 16, agent: talk }) : statusMark(t, state, { where: "row", size: 8, color: t[color] });
+    const sign = talk ? agentMark(t, agentStatus(talk), { where: "sub", size: 16, agent: talk }) : statusMark(t, state, { where: "row", size: 8, color: t[color] });
     // The second line is the key and its badges; the sentence of what it needs is the row's tooltip.
     const badges = storyBadges(t, it, { bar: false }), subs = subsLine(t, it);
     const tasks = st && busy?.kind !== "clean" ? this.rowTasks(t, st, it) : [];
@@ -3921,9 +3977,12 @@ export class Stories extends Source {
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
           .children(badges)
           .when(Boolean(talk), (el) => el.child(div().id(`talk-${it.key}`).flex_none().text_color(t.muted).child(TALK_WORDS[talk.status] ?? "Talking")))
+          // An agent of it waits on you (#252): what for, in the room the tags would have, cut to fit
+          // (whole in the row's tooltip).
+          .when(Boolean(waits), (el) => el.child(div().id(`waits-${it.key}`).flex_1().min_w(0).truncate().text_color(waitColor(t)).child(waits?.line ?? "")))
           // What kind of work it is, at the line's end in whole words: the marks before it keep their
           // places down the list.
-          .when(Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
+          .when(!waits && Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
         // Where your subtasks stand, as a thin line under it; muted with the key line on a sunk row.
         .when(Boolean(subs), (el) => el.child(quiet ? subs.opacity(0.6) : subs)))
       .when(acts.length > 0, (el) => el.relative().child(this.rowActions(it, acts))),
@@ -5763,13 +5822,17 @@ export class StoryList extends Stories {
   queueList(t, st, items, reviews, queue, shownKey) {
     const lit = (x) => queueShown(x, shownKey);
     const row = (x) => withDrop(t, st.profile, x, queueRow(t, x, lit(x), () => goNext(st.profile, x)));
-    // A group's label only when there's more than one group: alone it repeats the card's header.
-    const groups = [queue.some((x) => !x.clean && !x.finish && !x.suggest && !x.review && !x.ask), queue.some((x) => x.ask), queue.some((x) => x.review && !x.suggest), queue.some((x) => x.finish), queue.some((x) => x.clean)].filter(Boolean).length;
-    const part = (label, list) => (!list.length ? [] : groups < 2 ? list.map(row) : [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(t.dim)
-      .child(div().child(label)).child(div().text_color(t.muted).child(String(list.length))), ...list.map(row)]);
-    const asked = queue.filter((x) => !x.clean && !x.finish && !x.suggest && !x.review && !x.ask), fromAgents = queue.filter((x) => x.ask), review = queue.filter((x) => x.review && !x.suggest),
+    // The groups (#252): blocked agents, agents waiting on you, your pull requests' needs, finished
+    // turns to check, reviews, Ready for Done, the clean-up, Claude's picks.
+    const story = (x) => !x.clean && !x.finish && !x.suggest && !x.review && !x.ask && !x.wait && !x.ready && !x.desk;
+    const asked = queue.filter((x) => x.desk || (story(x) && need(x)[0] === 0)), waiting = queue.filter((x) => x.ask || x.wait),
+      prs = queue.filter((x) => story(x) && need(x)[0] !== 0), ready = queue.filter((x) => x.ready), review = queue.filter((x) => x.review && !x.suggest),
       finish = queue.filter((x) => x.finish), clean = queue.filter((x) => x.clean), said = queue.filter((x) => x.suggest);
-    return [...part("Needs you", asked), ...part("From agents", fromAgents), ...part("To review", review), ...part(`Ready for ${finish[0]?.column ?? "Done"}`, finish), ...part("Clean up", clean),
+    // A group's label only when there's more than one group: alone it repeats the card's header.
+    const groups = [asked, waiting, prs, ready, review, finish, clean].filter((l) => l.length).length;
+    const part = (label, list, color = t.dim) => (!list.length ? [] : groups < 2 ? list.map(row) : [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(color)
+      .child(div().child(label)).child(div().text_color(t.muted).child(String(list.length))), ...list.map(row)]);
+    return [...part("Needs you", asked), ...part("Waiting on you", waiting, waitColor(t)), ...part("Your pull requests", prs), ...part("Ready for you", ready), ...part("To review", review), ...part(`Ready for ${finish[0]?.column ?? "Done"}`, finish), ...part("Clean up", clean),
       // Claude's picks last, a tinted group of the card, so they read as generated (with none, the
       // What next? button is the card's last row instead).
       ...(said.length ? [div().pt(4).child(this.suggestBox(t, st, items, reviews, said, row))] : [])];
@@ -5961,7 +6024,8 @@ export class StoryList extends Stories {
     const tally = (lo, hi) => items.filter((x) => x.n[0] >= lo && x.n[0] <= hi).length;
     // The summary: a mark and a number each (the words in its tooltip), coloured as the rows are.
     const needYou = tally(0, 0);
-    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
+    const waiting = tally(WAITING_RANK, WAITING_RANK);
+    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [waiting, waiting === 1 ? "with an agent waiting on you" : "with agents waiting on you", "ansi3", "asks"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
       [reviews.length, "to review", "accent", "review"], [tally(5, 5), "working", "accent", "working"], [tally(7, 7), "paused", "muted", "paused"]];
     // Next: what cmd-shift-j goes to, the one after the item shown in what needs you.
     const desk = deskOf(st.profile);
@@ -7044,6 +7108,16 @@ function goNext(profile, it) {
     if (asker) { run("space.select", { id: asker.space }); run("pane.focus", { pane: asker.pane }); }
     return;
   }
+  // An agent waiting on you, or finished with something to check: the agent itself, in its story
+  // when it has one (#252). It stays in Next until it works again or its ✕.
+  if (it.wait || it.ready) {
+    const a = it.agent;
+    if (it.it) { selectStory(profile, it.it); return focusAgent(profile, it.it, a); }
+    setPreview(profile, null);
+    run("space.select", { id: a.space });
+    if (a.pane) run("pane.focus", { pane: a.pane });
+    return;
+  }
   setPoint(profile, it);
   selectStory(profile, it);
   const asking = lonePr(it) ? null : allAgents(it).find((a) => a.status === "blocked");
@@ -7405,14 +7479,14 @@ export function nextAgent() {
   if (!goBlockedAgent()) notify({ title: "Nothing needs you right now", level: "info", timeout: 3000 });
 }
 
-// Shows an agent waiting for you, the shown profile's first, the one after the focused pane when
-// several wait. False when none does.
+// Shows an agent waiting for you: one blocked on a prompt first (the shown profile's first), then
+// one that ended its turn waiting on you (#252, the longest waiting first), the one after the focused
+// pane when several wait. False when none does.
 function goBlockedAgent() {
   const profile = shownProfile();
   const of = spaceProfiles();
   const mine = (a) => profile && of.get(a.space)?.id === profile.id;
-  const list = blockedAgents()
-    .sort((a, b) => Number(mine(b)) - Number(mine(a)));
+  const list = [...blockedAgents().sort((a, b) => Number(mine(b)) - Number(mine(a))), ...waitingAgents()];
   if (!list.length) return false;
   const here = list.findIndex((a) => a.pane === focused()?.pane);
   const a = list[(here + 1) % list.length];
@@ -7422,6 +7496,19 @@ function goBlockedAgent() {
   run("space.select", { id: a.space });
   run("pane.focus", { pane: a.pane });
   return true;
+}
+
+// Shows the agent a "waiting on you" notification named (kelpie.show-waiting-<id>, triage.js
+// SHOW_WAITING): its space and pane, its profile shown and its preview cleared, as show_agent does.
+export function showWaiting(id) {
+  const address = (shared("kelpie.waiting.show") ?? {})[id]?.address;
+  const a = address ? agents().find((x) => x.address === address) : null;
+  if (!a) return;
+  const owner = spaceProfiles().get(a.space) ?? null;
+  if (owner && shownProfile()?.id !== owner.id) chooseProfile(null);
+  setPreview(owner, null);
+  run("space.select", { id: a.space });
+  if (a.pane) run("pane.focus", { pane: a.pane });
 }
 
 // Shows the story a notification named ("kelpie.show-notified-<id>"; with no id, or one since
@@ -7439,3 +7526,5 @@ export function showNotified(id) {
 // Exported for the tests only (tests/js/stories.test.mjs, next.test.mjs, diff.test.mjs, demo.test.mjs):
 // the logic the views rely on, pinned there. Nothing in the mods imports these.
 export { agentsByKey, applyPicks, askFor, build, changeSquares, diffRows, fileStatus, finished, issue, keyIn, lastSessions, need, needQueue, needQueueOf, nextIn, ordered, patchHash, progress, projectsOf, pull, pullsOf, sunk, syntaxOf, syntaxSpans, wordChanges };
+// For the tests only (tests/js/waiting.test.mjs): where a click on a queue row goes, and how a row and its ✕ draw.
+export { goNext, queueRow, withDrop };

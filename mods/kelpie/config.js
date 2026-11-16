@@ -841,7 +841,7 @@ export const SECTION_KEYS = {
   github: ["owner", "account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"],
   commands: ["leftovers", "cleanUp", "wrapUp", "status"],
   prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
-  notify: ["pulls"],
+  notify: ["pulls", "waiting"],
   attention: ["triage", "model"],
   claude: ["config"],
   web: ["home"],

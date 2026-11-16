@@ -10,6 +10,7 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { notify, openOverlay } from "herdr";
 import { agents, focused, layout, panes, run, setShared, shared, spaces } from "./host.js";
+import { agentStatus } from "./attention.js";
 import { MOD, agentMark, agentWords, ago, agentLabels, capitalize, chrome, claudeSession, groupHeader, icon, iconButton, menuButton, own, resumeArgv, sideHidden, stop, toggleSide } from "./ui.js";
 import { DESK_PAUSED, claudeArgv, deskOf, openDesk, shellArgv, shownProfile } from "./config.js";
 import { countShots } from "./shots.js";
@@ -222,9 +223,9 @@ export function deskRows(t, host, profile, { on = false, sessions = null } = {})
         .tooltip(paused.length ? `Resume its paused agent${paused.length === 1 ? "" : "s"}, or start something new on it ⌥⌘D`
           : "For work without a ticket: a space in the profile's folder, with Claude or a terminal ⌥⌘D").on_click(toggle) });
   const agentRow = (a) => row(`desk-agent-${a.address}`, a.focused,
-    agentMark(t, a.status, { where: "side-tab", agent: a }),
+    agentMark(t, agentStatus(a), { where: "side-tab", agent: a }),
     names.get(a.address))
-    .tooltip(`${a.program?.name ?? "Agent"} · ${agentWords(a.status)}`)
+    .tooltip(`${a.program?.name ?? "Agent"} · ${agentWords(agentStatus(a))}`)
     .on_click(() => { openDesk(profile); showDeskView(profile, "agent"); if (a.pane) run("pane.focus", { pane: a.pane }); })
     .on_mouse_down("left", (e, cx) => { if (e.click_count === 2) { cx.stop_propagation(); run("tab.rename", { id: a.tab }); } });
   return [head, ...(deskRow ? [deskRow] : []), ...here.map(agentRow)];

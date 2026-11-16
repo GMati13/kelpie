@@ -102,6 +102,18 @@ describe("turns ending, in the demo", () => {
     assert.equal(waiting()[a.address], undefined);
   });
 
+  // A turn shorter than the time between two renders of the tracking copy is seen only as idle, then
+  // done: Herdr's done says a turn finished unseen, so it counts (in the demo, every 6 s turn was missed).
+  test("a turn seen only as idle to done is read too", async () => {
+    const a = agentOf("ACME-152");
+    a.status = "idle";
+    noteTurns();
+    assert.deepEqual(waiting(), {});
+    a.status = "done";
+    noteTurns();
+    await until(() => waiting()[a.address], 3000, "triaged");
+  });
+
   test("blocked, gone or a day old: cleared", async () => {
     noteTurns();
     await until(() => Object.keys(waiting()).length === 2);

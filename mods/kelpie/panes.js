@@ -7,7 +7,8 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home, props } from "herdr";
-import { panes, run } from "./host.js";
+import { agents, panes, run } from "./host.js";
+import { agentStatus } from "./attention.js";
 import { SMALL, agentMark, agentWords, chrome, icon, iconButton, programIcon, sessionTitle } from "./ui.js";
 import { decor, skinFont, skinText, skinTheme } from "./skins/index.js";
 
@@ -44,7 +45,9 @@ export class PaneHead {
     const lit = p.focused;
     // An agent's pane leads with its state (agentMark(), as its tab does), any other with its program.
     const agent = Boolean(p.program?.agent || p.status);
-    const pic = agent ? div().id(`pane-mark-${pane}`).flex_none().tooltip(agentWords(p.status)).child(agentMark(t, p.status, { where: "pane" }))
+    // Waiting on you (attention.js agentStatus()) is Kelpie's, from the pane's agent.
+    const status = agentStatus(agents().find((a) => a.pane === pane)) === "asks" ? "asks" : p.status;
+    const pic = agent ? div().id(`pane-mark-${pane}`).flex_none().tooltip(agentWords(status)).child(agentMark(t, status, { where: "pane" }))
       : programIcon(p.program, lit ? t.foreground : t.dim);
     const tools = lit || this.hovered;
     return decor("blockDecor", t, h_flex().id(`pane-head-${pane}`).size_full().pl(10).pr(2).gap(8).items_center()
