@@ -18,9 +18,9 @@ import { CONTROL, ROW_CONTROL, INSET, MOD, waitColor, ScrollPool, SMALL, TEXT, T
 import { countShots } from "./shots.js";
 import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
+import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
 import { lozenge } from "./sprint.js";
-import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketText, ticketUrl } from "./board.js";
+import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketLink, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
 import { LOW_EVERY, blockedFor, limitMessage, limitOf, lowFor, lowMessage } from "./ghlimit.js";
 import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
@@ -412,18 +412,19 @@ async function resumeAll(profile, it, keys) {
   }
 }
 
-// What the ticket prompt fills in for a key of story `it`: the story's own fields (with its subtasks,
-// a line each) or a subtask's (with its story as the parent). With `template`, that prompt instead
-// of the ticket prompt (the orchestrator's); `then`, what follows it in the same message, before the
-// note about others' text (config.js jiraTask()).
-function ticketTask(st, it, key, template, then) {
+// What the ticket prompt fills in for a key of story `it`: only checked values (KELPIE-302), its key
+// and page (ticketLink()), a subtask's story's key, a story's subtasks' keys; Claude reads their
+// titles and descriptions itself. With `template`, that prompt instead of the ticket prompt (the
+// orchestrator's); `then`, what follows it in the same message; `others`: `then` passes on Claude's
+// own earlier words (a pick), so the note about others' text ends it (config.js jiraTask()).
+function ticketTask(st, it, key, template, then, others = false) {
   const s = key === it.key && it.story ? it : it.subs.find((x) => x.key === key) ?? it;
   const board = boardOf(st.setup);
   return jiraTask(board, {
-    key, url: ticketUrl(board, st.data, key) ?? "", summary: s.title || it.title, type: s.type, status: s.status,
-    parent: it.story && key !== it.key ? `${it.key}: ${it.title}` : "",
-    subtasks: s === it && it.story ? it.subs.map((x) => `${x.key} — ${x.title}${x.status ? ` (${x.status})` : ""}`).join("\n") : "",
-  }, template || undefined, then);
+    key, url: ticketLink(board, st.data, key) ?? "",
+    parent: it.story && key !== it.key ? it.key : "",
+    subtasks: s === it && it.story ? it.subs.map((x) => x.key) : [],
+  }, template || undefined, then, { others });
 }
 
 // A finished story: done on the board, or every pull request of it merged. It may leave things to
@@ -436,7 +437,8 @@ const storyKeys = (it) => [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a
 // What to ask an agent about some pull requests: one button each, by what they need.
 // What a pull request's buttons ask its agent; the messages are the profile's (config.js askText).
 const ASK = { fix: "Fix checks", comments: "Address comments", merge: "Merge" };
-const askOf = (profile, kind, ps) => askText(profile, kind, { prs: ps.map((p) => p.url).join(" and ") });
+// Each pull request by its page, rebuilt from its checked owner, repo and number (KELPIE-302).
+const askOf = (profile, kind, ps) => askText(profile, kind, { prs: ps.map((p) => pullLink(p.url)).filter(Boolean).join(" and ") });
 // Changes requested comes before failing checks, as in need() and the marks (prState()): a pull
 // request in both once had no header action, as the header looks for need()'s kind.
 const askFor = (p) => (p.merged ? null : p.reviewDecision === "CHANGES_REQUESTED" ? "comments" : failing(p) ? "fix" : ready(p) ? "merge" : null);
@@ -2793,7 +2795,12 @@ const taskPrs = (it) => {
   const openPrs = allPrs(it).filter((p) => !p.merged);
   return { openPrs, unapproved: openPrs.filter((p) => !p.isDraft && p.reviewDecision !== "APPROVED") };
 };
-const storyTaskText = (kind, profile, it, prs) => STORY_TASKS[kind].task(profile.github, { ticket: it.key, summary: it.title, prs: prs.map((x) => `- ${x.name}: ${x.title} (${x.state}) ${x.url}`).join("\n") });
+// Its message carries only checked values (KELPIE-302): the story's key and page, each pull request's
+// page and Kelpie's words for its state (config.js mergeTask()/approvalTask()).
+const storyTaskText = (kind, profile, it, prs) => STORY_TASKS[kind].task(profile.github, {
+  ticket: it.key, link: it.key ? ticketLink(boardOf(profile), (shared(STORIES) ?? {})[profile.id]?.data, it.key) ?? "" : "",
+  prs: prs.map((x) => ({ url: x.url, state: x.state })),
+});
 
 // Its agent for a story: in its space (made if needed), a tab "<KEY> <tab>" (so it counts as the
 // story's agent). Its tab already open is shown instead.
@@ -2867,9 +2874,9 @@ function askAboutOf(profile, it, data) {
   const p = (shared(ASK_ABOUT) ?? {})[profile?.id];
   if (p?.story === it.key && p.about) return { about: p.about, at: p.at ?? 0 };
   // Pointed at the story itself (a sidebar row's menu, the ✕): its own about, the cursor in the line
-  // once. Its description goes too once it's loaded (shown in the details, DESCRIPTIONS).
+  // once. Its key and page only (KELPIE-302): Claude reads its description itself.
   const at = p?.story === it.key ? p.at ?? 0 : 0;
-  return { at, about: ticketAbout(it, "story", null, { url: ticketUrl(boardOf(profile), data, it.key), description: DESCRIPTIONS[it.key]?.blocks }) };
+  return { at, about: ticketAbout(it, "story", null, { url: ticketLink(boardOf(profile), data, it.key) }) };
 }
 // Exported for the tests.
 export const threadOf = (profile, key) => ((shared(ASK_THREAD) ?? {})[profile?.id] ?? {})[key] ?? [];
@@ -2891,7 +2898,7 @@ function sendEntry(profile, key, e) {
 // suggestion or a typed question (`ask`). The person stays where they are. An open Claude gets it at
 // once, or, mid-task, once its turn ends (held: releaseHeld()), as typed into a working Claude it
 // could steer the work under way; one waiting for the person's answer gets nothing. A new one gets
-// the ticket prompt first, the question after it (that prompt ends with OTHERS itself). Either way
+// the ticket prompt first, the question after it (then OTHERS, when it passes on a copied passage). Either way
 // it goes on the story's thread. Exported for the tests.
 export function askClaude(st, it, key, row, about, ask) {
   const profile = st.profile;
@@ -2928,7 +2935,7 @@ export function askClaude(st, it, key, row, about, ask) {
   const tabs = it.space ? spaces().find((s) => s.id === it.space.id)?.tabs : [];
   setThread(profile, it.key, (list) => withEntry(list, entry({ to: "a new Claude", status: "started" })));
   const argv = pin === "plan" ? claudeArgv(profile, "--permission-mode", "plan") : claudeArgv(profile);
-  once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv, task: ticketTask(st, it, key, null, then) }));
+  once(it.key, () => launch(profile, it, { name: freeName(key, tabs), argv, task: ticketTask(st, it, key, null, then, Boolean(about.others)) }));
   say(said, `Asked a new Claude in ${it.key}'s space about ${about.name}.`);
 }
 
@@ -3082,22 +3089,16 @@ async function checkoutReview(profile, p) {
   return { folder: null, note: `Couldn't check ${prName(p)} out (${said || "no answer"}): its agent reads it from GitHub.` };
 }
 
-// The ticket a pull request's title names, with its summary and description as text, for the review
-// prompt; only the key when Jira can't say more, nothing without a key. A subtask's story follows its
-// own description ("Story KEY: summary" and the story's), as subtasks often say little themselves.
-async function reviewTicket(profile, p) {
+// The ticket a pull request's title names, for the review prompt: its key and its page
+// (ticketLink()), nothing without a key. Only those (KELPIE-302): the review agent reads the ticket,
+// and a subtask's story, itself.
+function reviewTicket(profile, p) {
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
   return ticketFields(profile, data ? prKey(p, data, projectsOf(data)) : keyIn(p.title, null), data);
 }
-async function ticketFields(profile, ticket, data) {
-  const board = boardOf(profile);
-  if (!ticket || !board) return ticket ? { ticket } : {};
-  try {
-    const f = await ticketText(board, ticket, data);
-    const parent = f.parent ? await ticketText(board, f.parent, data).catch(() => null) : null;
-    const story = parent ? [`Story ${f.parent}: ${parent.summary}`, parent.text].filter(Boolean).join("\n") : "";
-    return { ticket, summary: f.summary, description: [f.text, story].filter(Boolean).join("\n\n") };
-  } catch { return { ticket }; }
+function ticketFields(profile, ticket, data) {
+  if (!ticket) return {};
+  return { ticket, link: ticketLink(boardOf(profile), data, ticket) ?? "" };
 }
 
 // Start review: the pull request checked out, its ticket looked up, then a Claude agent on it in the
@@ -3110,9 +3111,9 @@ export function startReview(profile, p, key = null) {
   if (open) return run("tab.select", { id: open.id });
   return once(name, async () => {
     say(about, `Checking out ${prName(p)} for review…`);
-    const [checkout, ticket] = await Promise.all([checkoutReview(profile, p), reviewTicket(profile, p)]);
+    const checkout = await checkoutReview(profile, p);
     say(about, checkout.note);
-    const task = reviewTask(profile.github, { url: p.url, repo: p.repository.name, number: p.number, title: p.title, author: p.author?.login ?? "", folder: checkout.folder ?? "", ...ticket });
+    const task = reviewTask(profile.github, { url: p.url, folder: checkout.folder ?? "", ...reviewTicket(profile, p) });
     openInReviews(profile, name, task);
   });
 }
@@ -3164,10 +3165,7 @@ async function storyReviewText(profile, story, prs) {
   const notes = outs.map((o) => o.note).filter(Boolean);
   if (notes.length) say(about, notes.join(" "));
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
-  const ticket = await ticketFields(profile, story.key, data);
-  const list = prs.map((p, i) => [`- ${prName(p)} by ${p.author?.login ?? "someone"}: ${p.title}`, `  ${p.url}`,
-    outs[i].folder ? `  Its code, at its latest commit, is in ${outs[i].folder}: read it there.` : "  Not checked out: read it on GitHub."].join("\n")).join("\n");
-  return storyReviewTask(profile.github, { ticket: story.key, summary: ticket.summary || story.title, description: ticket.description ?? "", prs: list });
+  return storyReviewTask(profile.github, { ...ticketFields(profile, story.key, data), prs: prs.map((p, i) => ({ url: p.url, folder: outs[i].folder ?? "" })) });
 }
 export function startStoryReview(profile, story, prs) {
   if (prs.length === 1) return startReview(profile, prs[0], story.key);
@@ -3688,7 +3686,7 @@ export class Stories extends Source {
   subMenuRows(st, it, s) {
     const url = ticketUrl(boardOf(st.profile), st.data, s.key);
     return [
-      { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url, description: DESCRIPTIONS[s.key]?.blocks })) },
+      { label: "Ask Claude about this", hint: "the Ask line", action: () => pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketLink(boardOf(st.profile), st.data, s.key) })) },
       ...ticketRows(st.profile, url, s.key),
       ...(s.agent ? [{ label: "Show agent", hint: agentWords(s.agent.status), action: () => focusAgent(st.profile, it, s.agent) }] : []),
     ];
@@ -4370,7 +4368,7 @@ export class Stories extends Source {
       .on_click((_e, cx) => {
         if (this.opened.has(s.key)) this.opened.delete(s.key); else this.opened.add(s.key);
         // Looking at a subtask points the story's Ask line at it (askclaude.js).
-        pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketUrl(boardOf(st.profile), st.data, s.key), description: DESCRIPTIONS[s.key]?.blocks }));
+        pointAsk(st.profile, it.key, ticketAbout(it, "sub", s, { url: ticketLink(boardOf(st.profile), st.data, s.key) }));
         cx.notify();
       }).child(s.title);
     // A subtask's row: its key, title, state and agent buttons, then its pull requests. A ticket with
@@ -7237,36 +7235,44 @@ function goNext(profile, it) {
 // What next? (the magic button in Next's place): a Claude run in the background, no terminal (brew()),
 // with what the list knows (suggestSnapshot); its picks fill Next's queue. The message is the
 // profile's (config.js suggestText).
-// Where things stand, as lines: the sprints, each story (its status, what it needs, your subtasks,
-// its pull requests and agents), the reviews waiting for you, your pull requests naming no ticket,
-// the Desk's agents.
+// Where things stand, as lines, in Kelpie's own words only (KELPIE-302): each story by its key, where
+// it stands (to do, in progress, handed over, done), what needs the person, whether it's open here and
+// its agents' states, its subtasks by key (mine marked), its pull requests by their rebuilt pages; the
+// reviews waiting for the person and their pull requests naming no ticket, by page; how many agents the
+// Desk has. No title, description, name, column, sprint or label: Claude reads those itself, where it
+// can reach the board and GitHub.
 // Exported for the tests only (tests/js/stories.test.mjs).
+const SNAPSHOT_NEED = { 0: "an agent needs me", 0.5: "an agent waits on me", 1: "changes requested", 2: "checks failing", 3: "ready to merge", 5: "an agent is working", 7: "paused" };
+const SNAPSHOT_STAGE = { todo: "to do", doing: "in progress", testing: "handed over", past: "done", blocked: "blocked" };
 export function suggestSnapshot(st, items, reviews) {
-  const pr = (p) => `${prName(p)} ${p.merged ? "merged" : pullWords(p).toLowerCase()}${failing(p) ? ", checks failing" : ""}${p.reviewDecision === "CHANGES_REQUESTED" ? ", changes requested" : ""} ${p.url}`;
-  const agentsOf = (it) => allAgents(it).map((a) => a.status).join(", ");
-  const out = [`Sprint: ${(st.data.sprints ?? []).map((s) => s.name).join(", ") || "none running"}`];
-  const columns = st.data.columns ?? [];
+  const link = (p) => pullLink(p.url);
+  const pr = (p) => (link(p) ? `${link(p)} ${p.merged ? "merged" : "open"}${failing(p) ? ", checks failing" : ""}${p.reviewDecision === "CHANGES_REQUESTED" ? ", changes requested" : ""}${!p.merged && ready(p) ? ", ready to merge" : ""}` : null);
+  const words = (list) => [...new Set(list.map((a) => a.status).filter((x) => /^[a-z]+$/.test(x ?? "")))].join(", ");
+  const sprints = (st.data.sprints ?? []).length;
+  const out = [sprints ? `A sprint is running${sprints > 1 ? ` (${sprints} at once)` : ""}.` : st.data.kanban ? "No sprints: the board as a whole." : "No sprint is running."];
   const board = boardOf(st.setup);
-  const handover = columns[handoverFrom(columns, board?.handover)]?.name ?? "the last";
   const solo = Boolean(board?.cfg?.solo);
-  if (columns.length) out.push(`Board columns: ${columns.map((c) => c.name).join(" → ")}; ${solo ? `I work alone: from ${handover} on, a ticket waits on me to check it` : `my part is done from ${handover}`}`);
-  // Each ticket's priority when the board gives one (whatever the profile shows), and its levels.
-  const levels = st.data.priorities ?? [];
-  if (levels.length) out.push(`Priority levels, highest first: ${levels.map((l) => l.name).join(" → ")}`);
+  out.push(solo ? "I work alone: a ticket handed over waits on me to check it." : "Handed over means my part is done and it waits on others.");
+  const prio = (x) => (x.priority && Number.isInteger(x.priority.rank) ? ` · priority ${x.priority.rank + 1}` : "");
+  const levels = (st.data.priorities ?? []).length;
+  if (levels) out.push(`Priorities are 1 (the highest) to ${levels}.`);
   out.push("", "My stories (in the sprint, assigned to me or with my subtasks):");
-  const stories = items.map((x) => x.it).filter((it) => !it.review && !it.pull);
+  const stories = items.map((x) => x.it).filter((it) => !it.review && !it.pull && checkedKey(it.key));
   if (!stories.length) out.push("- none");
-  const prio = (x) => (x.priority ? ` · priority ${x.priority.name}` : "");
   for (const it of stories) {
-    out.push(`- ${it.key} ${it.title} [${it.status ?? it.type}]${prio(it)}: ${need(it)[1]}${it.space ? " · open here" : ""}${agentsOf(it) ? ` · agents: ${agentsOf(it)}` : ""}${sunk(it) ? (solo ? " · built, mine to check" : " · my part is done") : ""}`);
-    if (it.story) for (const s of it.subs) out.push(`  - ${s.key} ${s.title} [${s.status ?? "?"}]${prio(s)}${s.mine ? " (mine)" : ""}`);
-    for (const p of allPrs(it)) out.push(`  - PR ${pr(p)}`);
+    const where = it.category === "done" ? "done" : it.sunk ? "handed over" : it.category === "new" ? "to do" : "in progress";
+    const n = SNAPSHOT_NEED[need(it)[0]];
+    const agents = words(allAgents(it));
+    out.push(`- ${it.key}: ${where}${prio(it)}${n ? ` · ${n}` : ""}${it.space ? " · open here" : ""}${agents ? ` · agents: ${agents}` : ""}${it.reassigned ? " · now someone else's" : ""}`);
+    if (it.story) for (const sub of it.subs) if (checkedKey(sub.key)) out.push(`  - ${sub.key}: ${SNAPSHOT_STAGE[sub.stage] ?? "?"}${prio(sub)}${sub.mine ? " (mine)" : ""}`);
+    for (const p of allPrs(it)) { const line = pr(p); if (line) out.push(`  - pull request ${line}`); }
   }
-  const lone = pullsOf(st.data);
-  if (lone.length) out.push("", "My pull requests naming no ticket:", ...lone.map((x) => `- ${pr(x.pull)} ${x.title}`));
-  out.push("", "Reviews requested from me:", ...(reviews.length ? reviews.map((r) => `- ${prName(r.review)} by ${r.review.author?.login ?? "?"}: ${r.title} ${r.review.url}`) : ["- none"]));
+  const lone = pullsOf(st.data).map((x) => pr(x.pull)).filter(Boolean);
+  if (lone.length) out.push("", "My pull requests naming no ticket:", ...lone.map((x) => `- ${x}`));
+  const asked = reviews.map((r) => link(r.review)).filter(Boolean);
+  out.push("", "Reviews requested from me:", ...(asked.length ? asked.map((x) => `- ${x}`) : ["- none"]));
   const desk = deskAgents(st.profile);
-  if (desk.length) out.push("", `Desk agents: ${desk.map((a) => `${sessionTitle(a.title) ?? a.tab_name} (${a.status})`).join(", ")}`);
+  if (desk.length) out.push("", `Desk agents: ${desk.length} (${words(desk)})`);
   return out.join("\n");
 }
 // The magic's motion, native loops only and kept calm: what you read holds still (the picks and
@@ -7479,7 +7485,7 @@ export async function runPicks({ profile, keys = null }) {
           if (!(await startIdea(s.st.profile, p.x.suggest))) throw new Error("the Desk didn't show up in time");
         } else {
           const { it } = p.x, { action, why } = p.x.suggest;
-          const task = ticketTask(s.st, it, p.key, null, askText(s.st.profile, "picked", { action, why: why || "not said" }));
+          const task = ticketTask(s.st, it, p.key, null, askText(s.st.profile, "picked", { action, why: why || "not said" }), true);
           const id = await once(it.key, () => launch(s.st.profile, it, { name: p.key, argv: claudeArgv(s.st.profile), task }));
           if (id === undefined) throw new Error("it was already starting");
           if (!id) throw new Error("its new space didn't show up in time");
@@ -7498,7 +7504,8 @@ export async function runPicks({ profile, keys = null }) {
   if (failed.length) notify({ title: `${failed.length === 1 ? "A pick" : `${failed.length} picks`} didn't start`, body: `${failedText}.`, level: "warning" });
   return { started, failed };
 }
-function suggestTask(st, items, reviews) {
+// Exported for the tests (tests/js/checked-values.test.mjs).
+export function suggestTask(st, items, reviews) {
   const cfg = boardOf(st.setup)?.cfg;
   return suggestText(st.profile, { name: st.profile.name, snapshot: suggestSnapshot(st, items, reviews), board: cfg?.url ?? "", owner: st.setup.github?.owner ?? "" });
 }

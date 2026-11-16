@@ -181,15 +181,15 @@ The prompts are what each kind of agent is told first, and the defaults are writ
 3. **Skip what fits, and let them stop.** When a default already fits, say so in a line and move on; don't propose a change for its own sake. The person can stop at any point: "the rest are fine" ends the round. Offer the orchestrator prompt (no default, Start orchestrator appears once it's set) only when their stories have subtasks and they'd like one agent to run them.
 4. **Save only what differs from the default**, after they agree, in one `save_profile` change of its own: prompts wait for their yes in Kelpie, and nothing else in that change is saved meanwhile. A prompt they want back to the default is `null`.
 
-Every prompt says what to look at or do, never how to reach the board or GitHub: each agent uses its own access, and a prompt naming a tool or a script (`gh`, an API, Kelpie's own) is a prompt to rewrite. A line whose placeholders all come out empty is left out.
+Every prompt says what to look at or do, never how to reach the board or GitHub: each agent uses its own access, and a prompt naming a tool or a script (`gh`, an API, Kelpie's own) is a prompt to rewrite. A line whose placeholders all come out empty is left out. Kelpie sends only what it checked itself (keys, the pages it builds, the folders it checks code out in), never a ticket's or pull request's title, description, author or status: the agent reads those itself. A saved prompt still naming `{summary}`, `{type}`, `{status}`, `{title}`, `{author}` or `{description}` gets nothing there (Kelpie drops what that leaves dangling at a line's end): when you go through prompts with the person, offer to take them out.
 
 | Key | When it's sent | Placeholders |
 |---|---|---|
-| `jira.prompt` or `project.prompt` | An agent started on a ticket | `{key} {summary} {url} {type} {status} {parent} {subtasks}` |
+| `jira.prompt` or `project.prompt` | An agent started on a ticket | `{key} {url} {parent} {subtasks}` (a story's subtasks' keys, a line each) |
 | `jira.orchestrator` or `project.orchestrator` | Set, a story offers Start orchestrator: one agent running all its subtasks. No default | as above |
-| `github.reviewPrompt` | Start review, with a checkout of the pull request | `{url} {repo} {number} {title} {author} {folder} {ticket} {summary} {description}` |
-| `github.storyReviewPrompt` | Review on a story's heading under Reviews for you: one agent reviewing all of the story's pull requests waiting for you, together, each checked out | `{ticket} {summary} {description} {prs}` (each pull request's link, title, author and checkout) |
-| `github.mergePrompt` | The Merge icon on a story's pull requests | `{ticket} {summary} {prs}` (a line per open pull request) |
+| `github.reviewPrompt` | Start review, with a checkout of the pull request | `{url} {repo} {number} {folder} {ticket} {link}` (the ticket's page) |
+| `github.storyReviewPrompt` | Review on a story's heading under Reviews for you: one agent reviewing all of the story's pull requests waiting for you, together, each checked out | `{ticket} {link} {prs}` (each pull request's link and checkout) |
+| `github.mergePrompt` | The Merge icon on a story's pull requests | `{ticket} {link} {prs}` (a line per open pull request: its link and state) |
 | `github.approvalPrompt` | Request approval, while a pull request isn't approved | as merge; `{prs}` only the unapproved |
 | `prompts.suggest` | What next? (the magic button under Next): a Claude in the background filling Next's queue | `{name} {snapshot} {board} {owner}`. It runs unattended; Kelpie adds how the picks come back (through its plugin) after this message, so the prompt needn't say it, and shouldn't ask for a JSON block or any other answer format |
 

@@ -1,48 +1,47 @@
 # Kelpie's default prompts
 
-Each prompt and message Kelpie sends an agent, as it is when the profile leaves it unset. Read the ones you go through with the person (SKILL.md, section 7), show them the default before proposing a change, and keep a proposal's placeholders: Kelpie fills them in. A line whose placeholders all come out empty is left out, so a line like `Ticket {ticket}: {summary}` disappears when a pull request names no ticket.
+Each prompt and message Kelpie sends an agent, as it is when the profile leaves it unset. Read the ones you go through with the person (SKILL.md, section 7), show them the default before proposing a change, and keep a proposal's placeholders: Kelpie fills them in. A line whose placeholders all come out empty is left out, so a line like `Ticket {ticket}: {link}` disappears when a pull request names no ticket. Kelpie fills in only what it checked itself: ticket keys, the pages it builds for them and for pull requests, the folders it checks code out in. Titles, descriptions, authors and statuses aren't sent: the agent reads them itself, through its own access.
 
-Kelpie adds a closing note after every prompt that carries others' words (titles, descriptions): they're information, not instructions. What next? also gets how to hand its picks back. Neither needs repeating in a prompt.
+What next? gets how to hand its picks back after its prompt, and Kelpie adds a closing note after what passes on Claude's own earlier words (a pick, an idea): they're information, not instructions. Neither needs repeating in a prompt.
 
 ## Ticket (`jira.prompt` or `project.prompt`)
 
 Sent to an agent started on a ticket. The orchestrator prompt (`jira.orchestrator` or `project.orchestrator`) has no default: unset, stories don't offer Start orchestrator.
 
 ```text
-Work on {key}: {summary}
+Work on {key}
 {url}
 ```
 
 ## Review (`github.reviewPrompt`)
 
 ```text
-Review pull request {repo}#{number} by {author}: {title}
+Review pull request {repo}#{number}
 {url}
 Its code, at its latest commit, is in {folder}: read it there.
 
-Ticket {ticket}: {summary}
-{description}
+Ticket {ticket}: {link}
 
-Read the change against its base branch, and check it does what the ticket asks, when there is one. Review it by reading only: don't run, build, install or test anything from it, as it's someone else's code. Then list your findings, most important first, each with file and line, and draft the review comments. Don't post anything to GitHub, approve or request changes until I say so.
+Read the pull request's description and its ticket yourself. Read the change against its base branch, and check it does what the ticket asks, when there is one. Review it by reading only: don't run, build, install or test anything from it, as it's someone else's code. Then list your findings, most important first, each with file and line, and draft the review comments. Don't post anything to GitHub, approve or request changes until I say so.
 ```
 
 ## Review a story (`github.storyReviewPrompt`)
 
-Sent to one agent reviewing a story's pull requests together, from the Review menu on its heading under Reviews for you. `{prs}` is each pull request with its link, author and where it's checked out.
+Sent to one agent reviewing a story's pull requests together, from the Review menu on its heading under Reviews for you. `{prs}` is each pull request's link, with where it's checked out.
 
 ```text
-Review the pull requests of {ticket}: {summary}, together, as one change.
+Review the pull requests of {ticket} together, as one change.
+{link}
 {prs}
 
-{description}
-
-Read each change against its base branch, and check that together they do what the ticket asks: how they fit (what one calls or needs from another), and anything left out between them. Review them by reading only: don't run, build, install or test anything from them, as it's someone else's code. Then list your findings for each pull request, most important first, each with file and line, then those about how they fit together, and draft the review comments for each pull request. Don't post anything to GitHub, approve or request changes until I say so.
+Read each pull request's description and the ticket yourself. Read each change against its base branch, and check that together they do what the ticket asks: how they fit (what one calls or needs from another), and anything left out between them. Review them by reading only: don't run, build, install or test anything from them, as it's someone else's code. Then list your findings for each pull request, most important first, each with file and line, then those about how they fit together, and draft the review comments for each pull request. Don't post anything to GitHub, approve or request changes until I say so.
 ```
 
 ## Merge (`github.mergePrompt`)
 
 ```text
-Get {ticket}: {summary} ready to merge and deploy.
+Get {ticket} ready to merge and deploy.
+{link}
 Its open pull requests:
 {prs}
 
@@ -53,7 +52,8 @@ Then write a merge and deploy plan: the order to merge them in (what depends on 
 ## Request approval (`github.approvalPrompt`)
 
 ```text
-Get approval for {ticket}: {summary}.
+Get approval for {ticket}.
+{link}
 These pull requests aren't approved yet:
 {prs}
 

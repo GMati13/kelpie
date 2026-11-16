@@ -17,7 +17,7 @@ import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
 import { DEFAULT_HOURS } from "./estimates.js";
-import { ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, claudeFolders, claudeKey, isOwnClaude, profiles, setShare, sharedWith, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, claudeFolders, claudeKey, isOwnClaude, profiles, setShare, sharedWith, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { jiraPriorities } from "./board.js";
@@ -167,7 +167,7 @@ export class Setup {
     this.prompt.set_auto_grow(3, 10);
     this.prompt.on("change", (_e, cx) => cx.notify());
     // The orchestrator prompt is empty unless set: then a story offers "Start orchestrator".
-    this.orchestrator = TextareaState.new({ value: board?.orchestrator ?? "", placeholder: "Optional, e.g. Run {key}: {summary} through its subtasks, one agent each:\n{subtasks}" });
+    this.orchestrator = TextareaState.new({ value: board?.orchestrator ?? "", placeholder: "Optional, e.g. Run {key} through its subtasks, one agent each:\n{subtasks}" });
     this.orchestrator.set_auto_grow(2, 10);
     this.orchestrator.on("change", (_e, cx) => cx.notify());
     // The review prompt: the default until changed, which isn't saved, as the ticket prompt.
@@ -679,6 +679,9 @@ export class Setup {
     const hasBoard = Boolean(onJira ? parsed : project), hasGithub = Boolean(this.owner.value().trim());
     const dirty = this.dirty();
     const fields = (list) => `Fills in ${list.map((f) => `{${f}}`).join(" ")}.`;
+    // What each prompt is filled with now: only checked values (KELPIE-302; config.js's field lists also
+    // name the old placeholders a saved prompt may still hold, which come out empty).
+    const SENT = { ticket: ["key", "url", "parent", "subtasks"], review: ["url", "repo", "number", "folder", "ticket", "link"], storyReview: ["ticket", "link", "prs"], merge: ["ticket", "link", "prs"] };
 
     // The Board page's form for Jira: the board's address and how to sign in.
     const jiraForm = () => [
@@ -845,21 +848,21 @@ export class Setup {
         page("Prompts", "The first message each kind of agent gets. Each starts as a default; Reset brings it back."),
         group("Stories", hasBoard ? null : "Saved once a board is connected"),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,
-          `${fields(PROMPT_FIELDS)} {parent} is the story a subtask belongs to; {subtasks} lists a story's subtasks, a line each.`),
+          `${fields(SENT.ticket)} {parent} is the story a subtask belongs to; {subtasks} lists a story's subtasks' keys, a line each.`),
         field("Orchestrator", textarea(this.orchestrator), "For one agent that runs a whole story through its subtasks. When set, a story's More menu offers Start orchestrator; the same placeholders."),
         group("Pull requests", hasGithub ? null : "Saved once GitHub is connected"),
         promptField("review", "Review", this.reviewPrompt, DEFAULT_REVIEW_PROMPT,
-          `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent in the profile's folder, pointed at the checkout to read, as it's someone else's code. ${fields(REVIEW_FIELDS)} {folder} is the checkout; {ticket}, {summary} and {description} the ticket its title names.`),
+          `Start review checks the pull request out in its own worktree (worktrees/review-<repo>-<number> under the profile's folder) and starts the agent in the profile's folder, pointed at the checkout to read, as it's someone else's code. ${fields(SENT.review)} {folder} is the checkout; {ticket} the ticket its title names and {link} its page.`),
         promptField("story-review", "Review a story", this.storyReviewPrompt, DEFAULT_STORY_REVIEW_PROMPT,
-          `The Review menu on a story's heading under Reviews for you: one agent reviews all of the story's pull requests waiting for you, together, each checked out as Start review does. ${fields(STORY_REVIEW_FIELDS)} {prs} lists each pull request with its link, title, author and checkout; {ticket}, {summary} and {description} are the story's.`),
+          `The Review menu on a story's heading under Reviews for you: one agent reviews all of the story's pull requests waiting for you, together, each checked out as Start review does. ${fields(SENT.storyReview)} {prs} lists each pull request's link and checkout; {ticket} and {link} are the story's.`),
         promptField("merge", "Merge", this.mergePrompt, DEFAULT_MERGE_PROMPT,
-          `The Merge icon on a story, in its header and on its row in the list: a new agent in the story's space, or a Claude already open there. ${fields(MERGE_FIELDS)} {prs} is a line per open pull request of yours on the story.`),
+          `The Merge icon on a story, in its header and on its row in the list: a new agent in the story's space, or a Claude already open there. ${fields(SENT.merge)} {prs} is a line per open pull request of yours on the story: its link and state.`),
         promptField("approval", "Request approval", this.approvalPrompt, DEFAULT_APPROVAL_PROMPT,
           "The icon beside Merge while a pull request isn't approved yet. The same placeholders; {prs} only the ones not approved."),
         group("Next", hasBoard ? null : "Shown once a board is connected"),
         promptField("suggest", "What next?", this.suggestPrompt, SUGGEST_PROMPT,
-          "The magic button in Next: Claude looks around in the background, reading only, with no tab of its own, and fills Next with what to do. {snapshot} is what the list knows (sprints, stories, subtasks, pull requests, reviews, agents); {board} the board's address; {owner} the GitHub owner; {name} the profile's. However this is worded, Kelpie asks for the picks itself, through its Claude Code plugin. Say here what kind of work you pick up (frontend, say)."),
-        hint("A line whose placeholders all come out empty is left out."),
+          "The magic button in Next: Claude looks around in the background, reading only, with no tab of its own, and fills Next with what to do. {snapshot} is what the list knows, in Kelpie's own words (each story's and subtask's key and where it stands, pull requests' links, agents' states); {board} the board's address; {owner} the GitHub owner; {name} the profile's. However this is worded, Kelpie asks for the picks itself, through its Claude Code plugin. Say here what kind of work you pick up (frontend, say)."),
+        hint("Kelpie fills in only what it checked itself: ticket keys, the pages it builds for tickets and pull requests, the folders it checks code out in. Titles, descriptions and names aren't sent: the agent reads them itself. A line whose placeholders all come out empty is left out."),
       ],
 
       messages: () => [

@@ -152,15 +152,17 @@ describe("the demo's Jira board", () => {
     const keys = ordered(build(d, new Map([["ACME-143", { status: "blocked" }]])), true).map((x) => x.it.key);
     assert.ok(keys.indexOf("ACME-142") < keys.indexOf("ACME-151"), keys.join(" "));
   });
-  test("What next?'s snapshot names the levels and each ticket's priority", async () => {
+  test("What next?'s snapshot numbers each ticket's priority, 1 the highest", async () => {
     const profile = { ...DEMO_PROFILE, jira: { ...DEMO_PROFILE.jira, showPriority: true } };
     const d = await demoData(profile);
     const items = ordered(build(d, new Map()), false);
     const text = suggestSnapshot({ data: d, setup: profile, profile }, items, []);
-    assert.match(text, /Priority levels, highest first: Highest → High → Medium → Low → Lowest/);
-    assert.match(text, /- ACME-151 [^\n]*· priority Highest/);
-    assert.match(text, /  - ACME-152 [^\n]*\[In Review\] · priority High/);
-    assert.doesNotMatch(text, /- ACME-138 [^\n]*priority/);
+    // The levels by number only (KELPIE-302: the board's names for them are its own words).
+    assert.match(text, /^Priorities are 1 \(the highest\) to 5\.$/m);
+    assert.match(text, /^- ACME-151: [^\n]*· priority 1\b/m);
+    assert.match(text, /^ {2}- ACME-152: in progress · priority 2 \(mine\)$/m);
+    assert.doesNotMatch(text, /- ACME-138[^\n]*priority/);
+    assert.doesNotMatch(text, /Highest|Lowest|In Review/);
   });
 });
 

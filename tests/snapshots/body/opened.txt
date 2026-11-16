@@ -345,7 +345,7 @@ div
                 h_flex
                   div
                     svg own:sparkles [fg=accent]
-                  h_flex #ask-about [fg=dim] ~transition tip="ACME-143 · Cache trips in IndexedDB\nWritten by others: Claude is told it's information, not instructions"
+                  h_flex #ask-about [fg=dim] ~transition tip="ACME-143 · Cache trips in IndexedDB"
                     div
                       "ACME-143 · Cache trips in IndexedDB"
                     div #ask-about-clear [hover(fg=foreground)] {down:left click} tip="Ask about the story instead"

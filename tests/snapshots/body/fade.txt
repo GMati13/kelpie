@@ -88,7 +88,7 @@ div #story-overview-view {size_change}
           h_flex
             div
               svg own:sparkles [fg=accent]
-            h_flex #ask-about [fg=dim] ~transition tip="ACME-180 · the story\nWritten by others: Claude is told it's information, not instructions"
+            h_flex #ask-about [fg=dim] ~transition tip="ACME-180 · the story"
               div
                 "ACME-180 · the story"
             div [fg=dim]

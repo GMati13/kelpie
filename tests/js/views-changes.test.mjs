@@ -277,8 +277,8 @@ test("changes: Ask Claude points the story's Ask line at the file, lit while it 
   clickAt(s, 1, CENTRE.ask, headerOf(s.view, 0));
   const about = mock.state.shared.get("kelpie.ask.about")[DEMO];
   assert.equal(about.story, STORY);
-  assert.match(about.about.text, /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
-  assert.equal(about.about.others, true, "a pull request's file is others' work");
+  assert.match(about.about.text, /^About the file src\/file6000\.ts in the pull request web#409 \(ACME-184\): https:\/\/github\.com\/kelpie--demo\/web\/pull\/409 /);
+  assert.equal(about.about.others, false, "only its path and the pull request's page go (KELPIE-302)");
   const el = s.view.render(s.cx);
   assert.equal(byId(el, "ask-bar"), undefined, "nothing is laid over the diff");
 });
@@ -355,9 +355,10 @@ test("changes: a right-click on a line of code asks about that line, or the chan
   handlers(s.view.render(s.cx)).find((h) => h.id === "line-menu-row-0").fn({}, s.cx);
   const about = mock.state.shared.get("kelpie.ask.about")[DEMO].about;
   assert.match(about.id, /^lines:/);
-  assert.equal(about.others, true, "a pull request's code is others' work");
-  assert.match(about.text, /^About the file src\/file6000\.ts in web#409 \(ACME-184\), in the pull request/);
-  assert.match(about.text, /--- the lines, as written there ---\n\s+\d+ - const value6000_0 = old\(0\);\n--- end of the lines ---/);
+  assert.equal(about.others, false, "a pull request's code isn't sent: which lines only (KELPIE-302)");
+  assert.match(about.text, /^About the file src\/file6000\.ts in the pull request web#409 \(ACME-184\): https:\/\/github\.com\/kelpie--demo\/web\/pull\/409/);
+  assert.match(about.text, /read them in the pull request\.$/);
+  assert.doesNotMatch(about.text, /const value6000_0/);
 });
 test("changes: a second right-click offers no hidden range from the first", async () => {
   const s = await storyChanges([prGroup]);
