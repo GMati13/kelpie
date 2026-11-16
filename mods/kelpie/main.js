@@ -15,7 +15,7 @@ import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, 
 import { toggleDebug } from "./debug.js";
 import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, terminalsFolded } from "./stories.js";
+import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, getProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -700,6 +700,7 @@ export async function command(c) {
   if (c === "new-space") return newSpace();
   if (c === "desk") return goDesk();
   if (c === "next-need") return nextNeed();
+  if (c === "next-agent") return nextAgent();
   if (c === "stories") return openStoryPicker();
   if (c === "show-notified" || c.startsWith("show-notified-")) return showNotified(c.slice("show-notified-".length));
   // From outside (herdr-app do kelpie.profile-<id> / kelpie.preview-<KEY>): pick a profile as its menu
@@ -797,7 +798,8 @@ export default class Quiet extends View {
     }
     // Keys: "kelpie.files", "kelpie.changes", "kelpie.artifacts", "kelpie.web" toggle that panel;
     // "kelpie.refresh" loads the Kelpie layout's stories again (its Hub strip, which had it, is gone);
-    // "kelpie.close" closes the focused tab as its ✕ does. The Kelpie layout's story keys: "next-need",
+    // "kelpie.close" closes the focused tab as its ✕ does; "kelpie.next-agent" shows the next agent waiting
+    // for you (the footer's attention mark). The Kelpie layout's story keys: "next-need",
     // "start", "pause", "claude", "terminal", "fold", "fold-terminals", "stories" (the picker), "show-notified"
     // (a pull request notification's click), "pause-story-<key>" (the close dialog's Pause) and
     // "clean-story-<key>" (the clean-up dialog's Clean up), "clean-all" (the list's Clean up all).

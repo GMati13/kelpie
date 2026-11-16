@@ -363,6 +363,30 @@ describe("progress: where a story's subtasks are", () => {
     assert.equal(task([pr("ABC-9 a", { number: 1 }), pr("ABC-9 b", { number: 2 })]), "2 PRs in review");
     assert.equal(task([pr("ABC-9 a", { merged: true })]), "Merged");
   });
+  // KELPIE-221: the handover column and anything past it were "in progress", as every column between
+  // the first and the last is the board's in-progress category.
+  test("by stage: the handover column by its name, past it, blocked; in review only before it", () => {
+    const [s] = build(data({
+      mine: ["ABC-2", "ABC-3", "ABC-4", "ABC-5", "ABC-6"], parents: [issue("ABC-1", "doing")],
+      children: [issue("ABC-2", "qa", "ABC-1"), issue("ABC-3", "qa", "ABC-1"), issue("ABC-4", "blocked", "ABC-1"), issue("ABC-5", "doing", "ABC-1"), issue("ABC-6", "done", "ABC-1")],
+      prs: [pr("ABC-3 open, in QA", { number: 1 }), pr("ABC-5 open", { number: 2 })],
+    }), new Map());
+    assert.equal(progress(s), "5 subtasks · 1 blocked · 1 in review · 2 in QA · 1 done");
+    const [past] = build(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1"), issue("ABC-3", "doing", "ABC-1")] }), new Map(), {}, new Map(), "In Progress");
+    assert.equal(progress(past), "2 subtasks · 1 in In Progress · 1 past In Progress");
+  });
+  test("worked alone, what's in or past the handover column is built", () => {
+    const d = { ...data({ parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1"), issue("ABC-3", "doing", "ABC-1"), issue("ABC-4", "done", "ABC-1")] }), solo: true };
+    assert.equal(progress(build(d, new Map())[0]), "3 subtasks · 1 in progress · 1 built · 1 done");
+  });
+  for (const [board, profile] of [["Jira", DEMO_PROFILE], ["a GitHub Project", DEMO_PROJECT_PROFILE]]) {
+    test(`the demo on ${board}: a story handed over reads its handover column, not in progress`, async () => {
+      const it = build(await demoData(profile), new Map(), {}, new Map(), null).find((x) => x.key === "ACME-129");
+      assert.ok(it.sunk, "the fixture's handed-over story");
+      // Its subtask of yours is in QA (it read "2 in progress"); someone else's is still in progress.
+      assert.equal(progress(it), "2 subtasks · 1 in progress · 1 in QA");
+    });
+  }
   test("finished: done in Jira, or every pull request merged", () => {
     const it = (status, prs) => build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", status)], prs }), new Map(), {}, new Map([["ABC-9", { id: "s" }]]))[0];
     assert.equal(finished(it("done", [])), true);

@@ -16,6 +16,7 @@ import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeT
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
+import { attention, blockedAgents } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
@@ -522,6 +523,8 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
+      // Worked alone (the load's solo): what's past the handover column is "built" (progress()).
+      solo: data.solo === true,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub(raw)],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
@@ -674,20 +677,28 @@ export async function fetchAvatars(data) {
 const assigned = (t, id, who, mine, url = null) => div().id(id).flex_none()
   .child(avatar(t, who, 18, who ? `Assigned to ${who}${mine ? " (you)" : ""}` : "Unassigned", who ? avatarFile(url) : null));
 
-// Where its subtasks are, from Jira and their pull requests.
+// Where its subtasks are, by the stage build() gives each (as the row's bar has them): done; past
+// the handover column; in it (by the board's own name for it); then, before it, blocked (a status
+// named so), in review (an open pull request), in progress, to do. A board worked alone has nobody past the person's
+// part, so what's in or past the handover column reads as the Built group's word.
 function progress(it) {
   if (!it.story) {
     const open = it.subs[0].prs.filter((p) => !p.merged).length;
     return open ? `${open === 1 ? "PR" : `${open} PRs`} in review` : it.subs[0].prs.length ? "Merged" : "No PR yet";
   }
-  const n = { review: 0, doing: 0, todo: 0, done: 0 };
+  const n = { built: 0, past: 0, testing: 0, review: 0, doing: 0, blocked: 0, todo: 0, done: 0 };
   for (const s of it.subs) {
+    const stage = s.stage ?? (s.category === "done" ? "past" : s.category === "new" ? "todo" : "doing");
     if (s.category === "done") n.done++;
+    else if (stage === "past" || stage === "testing") n[it.solo ? "built" : stage]++;
+    else if (stage === "blocked") n.blocked++;
     else if (s.prs.some((p) => !p.merged)) n.review++;
-    else if (s.category === "indeterminate") n.doing++;
-    else n.todo++;
+    else n[stage]++;
   }
-  return [`${it.subs.length} subtask${it.subs.length === 1 ? "" : "s"}`, n.review && `${n.review} in review`, n.doing && `${n.doing} in progress`, n.todo && `${n.todo} to do`, n.done && `${n.done} done`].filter(Boolean).join(" · ");
+  const col = it.handover;
+  return [`${it.subs.length} subtask${it.subs.length === 1 ? "" : "s"}`, n.blocked && `${n.blocked} blocked`, n.review && `${n.review} in review`,
+    n.doing && `${n.doing} in progress`, n.todo && `${n.todo} to do`, n.testing && `${n.testing} in ${col ?? "the handover column"}`,
+    n.past && `${n.past} ${col ? `past ${col}` : "past your part"}`, n.built && `${n.built} built`, n.done && `${n.done} done`].filter(Boolean).join(" · ");
 }
 
 // A story's state at a glance, after its key in the list: its agents (a spinner while working, a pulse
@@ -7282,13 +7293,22 @@ export function nextNeed() {
   notify({ title: "Nothing needs you right now", level: "info", timeout: 3000 });
 }
 
+// The footer's attention mark (kelpie.next-agent): it counts the agents waiting for you, so its click
+// goes to one of them, the next after the focused pane, any profile's (goBlockedAgent()), never to
+// Next's other items, which once opened Clean up all (#250). The only one already focused: it stays,
+// as the mark then says (attention.js). Cmd-shift-j still goes through Next (nextNeed()).
+export function nextAgent() {
+  if (attention().here) return;
+  if (!goBlockedAgent()) notify({ title: "Nothing needs you right now", level: "info", timeout: 3000 });
+}
+
 // Shows an agent waiting for you, the shown profile's first, the one after the focused pane when
 // several wait. False when none does.
 function goBlockedAgent() {
   const profile = shownProfile();
   const of = spaceProfiles();
   const mine = (a) => profile && of.get(a.space)?.id === profile.id;
-  const list = agents().filter((a) => a.status === "blocked" && a.pane)
+  const list = blockedAgents()
     .sort((a, b) => Number(mine(b)) - Number(mine(a)));
   if (!list.length) return false;
   const here = list.findIndex((a) => a.pane === focused()?.pane);
