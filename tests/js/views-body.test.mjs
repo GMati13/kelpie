@@ -436,6 +436,8 @@ test("the Ask line: one offer at rest; writing makes room and offers a clear; cl
   const writing = view.render(cx);
   assert.equal(width(writing, "ask-offer-box"), 0, "the offer folds away");
   assert.equal(width(writing, "ask-more-box"), 0, "and the menu");
+  // Folded parts leave no gap: each brings its spacing inside its own box, which folds with it.
+  for (const id of ["ask-offer-box", "ask-more-box", "ask-to-box"]) assert.ok(nodeOf(byId(writing, id)).calls.some(([m]) => m === "pl"), `${id} keeps its own spacing`);
   assert.ok(width(writing, "ask-about") < width(rest, "ask-about"), "what it's about shrinks");
   assert.ok(width(writing, "ask-to-box") < width(rest, "ask-to-box"), "who it goes to shrinks");
   assert.deepEqual(texts(byId(writing, "ask-to-more")), ["ACME-172"], "shortened to the ticket it's on");

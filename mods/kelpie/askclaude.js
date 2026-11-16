@@ -322,18 +322,22 @@ export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, clea
             .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕"))))
         .child(div().flex_none().text_size(SMALL).text_color(t.dim).child("·"))
         .child(div().flex_1().min_w(120).child(Input.new(input).h(30).px(2).bg(tint(t.background, "00")).text_size(TEXT_ASK).text_color(t.foreground)))
-        // Something typed: how to send it (↵) and a clear button, together by the question; at rest
-        // the offer and the menu. Each slides in and out.
-        .child(fade(slide(h_flex().id("ask-reset-box").gap(4).items_center(), typed ? 50 : 0), typed)
-          .child(div().id("ask-enter").flex_none().h(18).px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim).tooltip("Enter asks it").child("↵"))
-          .child(div().id("ask-reset").flex_none().w(22).h(22).flex().items_center().justify_center().rounded_full().cursor_pointer().text_color(t.dim)
-            .hover((el) => el.bg(t.hover).text_color(t.foreground)).tooltip("Clear it").on_mouse_down("left", stop).on_click((_e, cx) => reset(cx))
-            .child(icon(chrome("x"), 12))))
-        .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box"), writing ? 0 : offerW), !writing).child(offerEl)))
-        .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box"), writing ? 0 : 22), !writing).child(more)))
-        // Who it goes to: its mark and name at rest, shortened to the ticket it's on while writing.
-        .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? toNarrow : toWide).child(to))));
+        // The right end, one group with no gap of its own: each part brings its spacing inside its sliding
+        // box (`pl`), so a part folded to 0 leaves no gap behind. Something typed: how to send it (↵) and a
+        // clear button by the question; at rest the offer and the menu; then who it goes to.
+        .child(h_flex().flex_none().items_center()
+          .child(fade(slide(h_flex().id("ask-reset-box").gap(4).items_center(), typed ? 50 : 0), typed)
+            .child(div().id("ask-enter").flex_none().h(18).px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim).tooltip("Enter asks it").child("↵"))
+            .child(div().id("ask-reset").flex_none().w(22).h(22).flex().items_center().justify_center().rounded_full().cursor_pointer().text_color(t.dim)
+              .hover((el) => el.bg(t.hover).text_color(t.foreground)).tooltip("Clear it").on_mouse_down("left", stop).on_click((_e, cx) => reset(cx))
+              .child(icon(chrome("x"), 12))))
+          .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box").pl(GAP), writing ? 0 : offerW + GAP), !writing).child(offerEl)))
+          .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box").pl(4), writing ? 0 : 26), !writing).child(more)))
+          // Who it goes to: its mark and name at rest, shortened to the ticket it's on while writing; the
+          // pill at its box's start, so any room left is at the line's end, not between it and the rest.
+          .child(slide(div().id("ask-to-box").pl(GAP).flex(), (writing ? toNarrow : toWide) + GAP).child(to)))));
 }
+const GAP = 6;
 const ABOUT_W = 170, ABOUT_MIN = 72;
 const TEXT_ASK = 13;
 // Where the Ask line's rows and the thread's lines start: past the sparkles (16) and the gap (8).

@@ -84,23 +84,24 @@ div #story-overview-view {size_change}
               "·"
             div
               Input.new [bg=background/00 fg=foreground]
-            h_flex #ask-reset-box [opacity=0] ~transition ~transition
-              div #ask-enter [border=border fg=dim] tip="Enter asks it"
-                "↵"
-              div #ask-reset [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clear it"
-                svg chrome:x
-            div #ask-offer-box [opacity=1] ~transition ~transition
-              h_flex #ask-offer [bg=accent/1c border=accent/55 fg=foreground hover(bg=accent/33)] {down:left click} tip="A new Claude reads the ticket and the code and plans it, changing nothing\nClick to ask it"
-                svg own:sparkles [fg=accent]
-                div
-                  "Plan this first?"
-            div #ask-more-box [opacity=1] ~transition ~transition
-              Popup.new "ask-more-menu"
-                div #ask-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Other things to ask"
-                  svg chrome:chevron-down
-            div #ask-to-box ~transition
-              Popup.new "ask-to-menu"
-                h_flex #ask-to-more [border=border fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-180's space, told about the ticket first\nA question about the whole story goes to a new Claude\nClick to send it to another"
+            h_flex
+              h_flex #ask-reset-box [opacity=0] ~transition ~transition
+                div #ask-enter [border=border fg=dim] tip="Enter asks it"
+                  "↵"
+                div #ask-reset [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clear it"
+                  svg chrome:x
+              div #ask-offer-box [opacity=1] ~transition ~transition
+                h_flex #ask-offer [bg=accent/1c border=accent/55 fg=foreground hover(bg=accent/33)] {down:left click} tip="A new Claude reads the ticket and the code and plans it, changing nothing\nClick to ask it"
                   svg own:sparkles [fg=accent]
                   div
-                    "New Claude"
+                    "Plan this first?"
+              div #ask-more-box [opacity=1] ~transition ~transition
+                Popup.new "ask-more-menu"
+                  div #ask-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Other things to ask"
+                    svg chrome:chevron-down
+              div #ask-to-box ~transition
+                Popup.new "ask-to-menu"
+                  h_flex #ask-to-more [border=border fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-180's space, told about the ticket first\nA question about the whole story goes to a new Claude\nClick to send it to another"
+                    svg own:sparkles [fg=accent]
+                    div
+                      "New Claude"
