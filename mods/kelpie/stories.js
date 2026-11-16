@@ -5603,6 +5603,28 @@ export class StoryBody extends Stories {
           .tooltip(toTip).on_mouse_down("left", stop).on_click(toggle);
         return base.px(7).gap(6).rounded(13).child(mark).child(div().min_w(0).truncate().child(writing ? brief : row.id === "new" ? "New Claude" : short));
       } });
+    // The pill's two widths, measured as drawn (invisible copies, each reporting its size), so its
+    // sliding box is exactly as wide as the pill shown, with no room left at the line's end. Sizes come
+    // as drawn, zoom included: divided by the zoom (shineProbe("ask")). Until measured, an estimate.
+    const pillFor = (id, text) => h_flex().id(id).flex_none().h(26).px(7).gap(6).items_center().border_1().text_size(SMALL)
+      .child(row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11)).child(div().child(text))
+      .on_size_change((size, cx) => {
+        const was = this.askPill?.[id];
+        if (was && Math.abs(was - size.width) < 0.5) return;
+        this.askPill = { ...(this.askPill ?? {}), [id]: size.width };
+        cx.notify();
+      });
+    const wideText = row.id === "new" ? "New Claude" : short;
+    const zoom = this.shine?.ask?.zoom || 1;
+    const pillW = (id, text, guess) => {
+      const raw = this.askPill?.[id];
+      return raw && this.askPillText?.[id] === text ? Math.ceil(raw / zoom) : guess;
+    };
+    if (this.askPillText?.["ask-pill-wide"] !== wideText || this.askPillText?.["ask-pill-brief"] !== brief) {
+      this.askPillText = { "ask-pill-wide": wideText, "ask-pill-brief": brief };
+      this.askPill = {};
+    }
+    const pillMeasure = div().absolute().top(-60).left(0).opacity(0).child(pillFor("ask-pill-wide", wideText)).child(pillFor("ask-pill-brief", brief));
     const profile = st.profile;
     // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
     // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.
@@ -5665,8 +5687,9 @@ export class StoryBody extends Stories {
         .tooltip("Other things to ask").on_mouse_down("left", stop).on_click(toggle).child(icon(chrome("chevron-down"), 12)) });
     const line = askLine(t, {
       about, input: this.askInput, to, isStory: about.kind === "story", focus: this.askRest,
-      toWide: Math.min(180, Math.round((row.id === "new" ? 10 : short.length) * 6.4 + 44)),
-      toNarrow: Math.round(brief.length * 6.4 + 44),
+      toWide: pillW("ask-pill-wide", wideText, Math.min(180, Math.round(wideText.length * 6.4 + 44))),
+      toNarrow: pillW("ask-pill-brief", brief, Math.round(brief.length * 6.4 + 44)),
+      toMeasure: pillMeasure,
       awake, writing, typed: Boolean(this.askTyped), offer, more, magic,
       // Clear: empty, the cursor out of it, back at rest.
       reset: (cx) => { this.askInput.set_value(""); this.askTyped = false; this.askAwake = false; try { this.askRest.focus(); } catch { /* still emptied */ } cx.notify(); },

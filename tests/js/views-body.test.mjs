@@ -476,3 +476,18 @@ test("a press or click on the Ask line stops there, not reaching the details und
   assert.ok(stopped("on_mouse_down", "right"), "a right press");
   assert.ok(stopped("on_click"), "a click");
 });
+
+// Who the Ask line goes to sits in a box as wide as its pill, measured as drawn: an estimate from its
+// letters left room after it at the line's end.
+test("the Ask line's pill box takes the pill's measured width, zoom divided out, nothing left over", async () => {
+  const { view, cx } = await body({ space: "ACME-171" });
+  const el = view.render(cx);
+  const report = (id, width) => nodeOf(byId(el, id)).calls.find(([m]) => m === "on_size_change")[1][0]({ width, height: 26 }, cx);
+  nodeOf(byId(el, "ask-zoom-probe")).calls.find(([m]) => m === "on_size_change")[1][0]({ width: 120, height: 0 }, cx);
+  report("ask-pill-wide", 120);
+  report("ask-pill-brief", 84);
+  const rest = view.render(cx);
+  assert.equal(width(rest, "ask-to-box"), 100 + 6, "at rest: the pill, 120 drawn at zoom 1.2, plus its spacing");
+  emit(view.askInput, "focus", cx);
+  assert.equal(width(view.render(cx), "ask-to-box"), 70 + 6, "writing: the short pill");
+});

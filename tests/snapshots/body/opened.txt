@@ -331,6 +331,15 @@ div
                 div [bg=accent/0b]
                 div [border=accent/40]
                 div #ask-zoom-probe {size_change}
+                div [opacity=0]
+                  h_flex #ask-pill-wide {size_change}
+                    svg own:sparkles
+                    div
+                      "New Claude"
+                  h_flex #ask-pill-brief {size_change}
+                    svg own:sparkles
+                    div
+                      "new"
                 h_flex
                   div
                     svg own:sparkles [fg=accent]

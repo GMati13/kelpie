@@ -291,7 +291,7 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // after a send, a glint along the edge then and while the Claude picked works).
 const slide = (el, w, ms = 220) => el.flex_none().w(w).overflow_hidden().transition("width", { duration: ms, easing: "ease-out" });
 const fade = (el, on, ms = 180) => el.opacity(on ? 1 : 0).transition("opacity", { duration: ms, easing: "ease-out" });
-export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, clear, reset, isStory, awake = false, writing = false, typed = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
+export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, toMeasure = null, clear, reset, isStory, awake = false, writing = false, typed = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
   const edge = tint(t.accent, awake || writing ? "99" : "40");
   const offerW = offer ? Math.min(280, Math.round(offer.text.length * 6.4 + 46)) : 0;
   const offerEl = offer && h_flex().id("ask-offer").flex_none().w(offerW).h(26).px(10).gap(6).items_center().rounded(13).cursor_pointer()
@@ -312,6 +312,7 @@ export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, clea
       .child(div().absolute().top(0).left(0).right(0).bottom(0).rounded(12).border_1().border_color(edge))
       .children(magic.glint ?? [])
       .when(Boolean(magic.measure), (el) => el.on_size_change(magic.measure).child(magic.probe))
+      .when(Boolean(toMeasure), (el) => el.child(toMeasure))
       .child(h_flex().relative().gap(8).items_center().min_w(0).h(44).px(12)
         .child(div().flex_none().w(18).child(magic.mark ?? icon(own("sparkles"), 14).text_color(t.accent)))
         // What it's about: its words at rest, a few letters while writing (the whole of it in the tip).
