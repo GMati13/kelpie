@@ -102,7 +102,7 @@ v_flex [fg=foreground]
         "Still talking"
       div [fg=dim]
         "1"
-    h_flex #story-ACME-126 [hover(bg=hover)] {down:right click hover} tip="Its agent finished a turn · 1 subtask · 1 in progress"
+    h_flex #story-ACME-126 [hover(bg=hover)] {down:right click hover} tip="Its agent finished a turn · 1 subtask · 1 in QA"
       div
         Popup.new "story-menu-ACME-126-menu"
           div #story-menu-ACME-126-at
@@ -117,7 +117,7 @@ v_flex [fg=foreground]
             "ACME-126"
           div #talk-ACME-126 [fg=muted]
             "Agent replied"
-        h_flex #b-subs-ACME-126 [opacity=0.6] tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 1 subtask · 1 in progress"
+        h_flex #b-subs-ACME-126 [opacity=0.6] tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 1 subtask · 1 in QA"
           div [bg=ansi4/73]
       h_flex #actions-ACME-126
         div #finish-ACME-126 {down:left click}
@@ -594,7 +594,7 @@ v_flex [fg=foreground]
         div #clean-ACME-116 {down:left click}
           div #clean-ACME-116 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-116: forgets its paused session"
             svg own:brush-cleaning
-    h_flex #story-ACME-129 [hover(bg=hover)] {down:right click hover} tip="2 subtasks · 2 in progress\nHanded over about 3d ago"
+    h_flex #story-ACME-129 [hover(bg=hover)] {down:right click hover} tip="2 subtasks · 1 in progress · 1 in QA\nHanded over about 3d ago"
       div
         Popup.new "story-menu-ACME-129-menu"
           div #story-menu-ACME-129-at
@@ -610,7 +610,7 @@ v_flex [fg=foreground]
           h_flex #b-pr-ACME-129 [fg=muted] tip="Every pull request merged"
             div
               svg own:git-merged [fg=ansi4]
-        h_flex #b-subs-ACME-129 [opacity=0.6] tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 2 subtasks · 2 in progress"
+        h_flex #b-subs-ACME-129 [opacity=0.6] tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 2 subtasks · 1 in progress · 1 in QA"
           div [bg=ansi4/73]
       h_flex #actions-ACME-129
         div #finish-ACME-129 {down:left click}
