@@ -1892,7 +1892,9 @@ function knownKeys() {
 
 // The shared keys kept by profile id, whose deleted profiles' entries pruneShared() drops (a function,
 // as some are declared further down). Paused agents stay out: a session paused there is still on disk.
-const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, UNASSIGNED_OPEN, DONE_CLEAN, ASK_ABOUT, ASK_THREAD];
+// "kelpie.waiting" is triage.js's (agents waiting on the person in silence, #251), named here as
+// triage.js imports this file.
+const byProfile = () => [DATA, ACTIVE, PREVIEW, NOTE, ASKS, SUGGESTED, BREWING, PICKS_ASKED, POINT, LEFTOVERS, LEFTOVERS_RUN, PR_SEEN, PR_FOLDS, DONE_OPEN, UNASSIGNED_OPEN, DONE_CLEAN, ASK_ABOUT, ASK_THREAD, "kelpie.waiting"];
 
 // After each fresh load (the list's), what shared state keeps of what's gone goes: views of closed
 // spaces, ticks and counts of keys no profile lists, the profile's paused agents on keys it no longer

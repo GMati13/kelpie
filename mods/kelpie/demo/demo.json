@@ -962,8 +962,13 @@
             "\\033[2m  ⎿  1 failed, 12 passed\\033[0m",
             "",
             "\\033[0m● The session test fails on CI because the merchant certificate isn't in the test environment. Pushed the branch; the check needs `APPLE_MERCHANT_CERT` set in CI before it can pass.",
+            "",
+            "  Can you add it to the CI secrets, or should I skip that test on CI for now?",
             ""
-          ]
+          ],
+          "turn": {
+            "last": "The session test fails on CI because the merchant certificate isn't in the test environment. Pushed the branch; the check needs `APPLE_MERCHANT_CERT` set in CI before it can pass.\n\nCan you add it to the CI secrets, or should I skip that test on CI for now?"
+          }
         }
       ]
     },
@@ -1114,8 +1119,14 @@
             "\\033[2m>\\033[0m Trying it: the banner shows twice after the laptop wakes. Why?",
             "",
             "\\033[0m● Both the wake listener and the timer fire on wake. I'll let the timer alone show it.",
+            "",
+            "  Fixed: the banner now shows once. To try it, close the laptop for a minute and open it again.",
             ""
-          ]
+          ],
+          "turn": {
+            "last": "Both the wake listener and the timer fire on wake. I'll let the timer alone show it.\n\nFixed: the banner now shows once. To try it, close the laptop for a minute and open it again.",
+            "triage": { "state": "ready", "kind": "done", "line": "Check the banner shows once after the laptop wakes" }
+          }
         }
       ]
     }

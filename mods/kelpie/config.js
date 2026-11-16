@@ -624,7 +624,10 @@ export const ASK_PROMPTS = [
   // Catch me up (KELPIE-223), to the Claude already on the story, and Plan this (KELPIE-230), to a new
   // Claude in plan mode; their answers come back pinned on the story's thread.
   { id: "catchup", label: "Catch me up", text: "Catch me up on this story in a few short lines: what's done, what you're doing now, what's next, anything that needs me, and how I can try it. Don't change anything for this." },
-  { id: "plan", label: "Plan this", text: "Plan how to build this before writing any code. Read the ticket, its subtasks and the code, and change nothing. Give the parts in order, each with what it looks like and how it behaves; a checkpoint after each where you stop for me; the open questions only I can answer; and what could go wrong." },
+  { id: "plan", label: "Plan this", text: "Plan how to build this before writing any code. Read the ticket, its subtasks and the code, and change nothing. Give the parts in order, each with what it looks like and how it behaves; a checkpoint after each where you stop for me; the open questions only I can answer; and what could go wrong." },  // Finding agents that wait on you (#251, triage.js): a small model reads an agent's closing message
+  // when Kelpie's own rules can't tell; {message} is that message, fenced. It answers in a set shape
+  // (triage.js SCHEMA), so the message only says what to decide.
+  { id: "triage", label: "Find agents waiting on you", text: "One of my Claude agents just ended its turn. This is the last message it wrote:\n\n{message}\n\nDecide one thing: is it now waiting on me?\n- waiting: it can't go on well without me: it asks me something, needs a choice or a decision, wants me to read or approve a plan, or is stuck.\n- ready: it finished, and there's something for me to check or try.\n- none: neither, a report with nothing for me to do.\nGive the state, its kind (question, choice, plan, review, stuck or done) and a line: what it waits for, or what to check, in under 12 words, as I'd read it in a list (\"asks which of two layouts to use\"). Decide from the message alone." },
 ];
 // The messages Ask Claude offers as suggestions, in ASK_PROMPTS.
 export const ASK_CLAUDE = ["explain", "check", "fixit", "test", "left", "catchup", "plan"];
@@ -683,7 +686,7 @@ export function suggestText(profile, fields) {
 
 // A value going into a prompt: no control characters (typed into an agent, one could act as a key:
 // Escape, Enter), and on one line unless it's one of the fields made of lines.
-const MULTILINE = new Set(["description", "subtasks", "prs", "snapshot", "idea"]);
+const MULTILINE = new Set(["description", "subtasks", "prs", "snapshot", "idea", "message"]);
 export function promptValue(name, value) {
   const text = String(value ?? "").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
   return MULTILINE.has(name) ? text : text.replace(/\s*\n\s*/g, " ");
@@ -819,11 +822,19 @@ export async function installPlugin(id, scope = null) {
 // only, no secrets, and the same checks as the dialog's Save.
 // A board's settings that are true or false only.
 const FLAGS = ["solo", "moveToDone", "byPriority", "showPriority", "unassigned"];
-const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
+const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web", "attention"];
 const SECRET = /token$|^token|password|secret/i;
 // The keys each section takes, and nothing else: refusing a secret by its name alone let one under
 // another name through (`github.pat`). Every key here is a setting the profile dialog has (`wrapUp`
 // is the clean-up command's old name, still read); a new setting joins its section's list.
+// Finding agents that wait on you (#251, triage.js): `attention.triage` (true/false, on unless false)
+// and `attention.model`, the small model asked when the rules can't tell (default TRIAGE_DEFAULT_MODEL).
+// The model's name goes into an argv after --model: letters first, then letters, digits, dots, dashes,
+// brackets (claude-haiku-4-5, opus[1m]).
+export const TRIAGE_MODEL = /^[A-Za-z][A-Za-z0-9.\-[\]]{0,63}$/;
+export const TRIAGE_DEFAULT_MODEL = "haiku";
+export const triageOn = (profile) => profile?.attention?.triage !== false;
+export const triageModel = (profile) => (TRIAGE_MODEL.test(profile?.attention?.model ?? "") ? profile.attention.model : TRIAGE_DEFAULT_MODEL);
 export const SECTION_KEYS = {
   jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "unassigned", "hoursPerDay"],
   project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator", "handover", "solo", "moveToDone", "byPriority", "showPriority", "priorityField", "unassigned", "hoursPerDay"],
@@ -831,6 +842,7 @@ export const SECTION_KEYS = {
   commands: ["leftovers", "cleanUp", "wrapUp", "status"],
   prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
   notify: ["pulls"],
+  attention: ["triage", "model"],
   claude: ["config"],
   web: ["home"],
 };
@@ -923,7 +935,7 @@ export function buildProfile(id, set) {
     for (const [k, v] of Object.entries(value)) {
       if (SECRET.test(k) && k !== "tokenCommand") throw new Error(`${key}.${k}: secrets aren't kept in a profile.`);
       if (!SECTION_KEYS[key].includes(k)) throw new Error(`${key}.${k}: not a setting of ${key} (${SECTION_KEYS[key].join(", ")}).`);
-      const flag = (key === "jira" || key === "project") && FLAGS.includes(k); // true/false only, never a string
+      const flag = ((key === "jira" || key === "project") && FLAGS.includes(k)) || (key === "attention" && k === "triage"); // true/false only, never a string
       // Hours a day of ticket work (estimates.js), a number only: more than 0, at most 24.
       const hours = (key === "jira" || key === "project") && k === "hoursPerDay";
       if (hours && v !== null && !(typeof v === "number" && v > 0 && v <= 24)) throw new Error(`${key}.${k}: a number of hours, more than 0 and at most 24, or null for the default (${DEFAULT_HOURS}).`);
@@ -966,6 +978,8 @@ export function buildProfile(id, set) {
   if (next.github && !next.github.owner) throw new Error("github.owner: needed while GitHub is set (null removes GitHub).");
   if (next.github?.account && !GITHUB_LOGIN.test(next.github.account)) throw new Error("github.account: a GitHub account name gh is signed in to (null for gh's active one).");
   if (next.web?.home && !/^https?:\/\//.test(next.web.home)) throw new Error("web.home: starts with https://.");
+  // It goes into the triage run's argv after --model (triage.js): a model's alias or name only.
+  if (next.attention?.model && !TRIAGE_MODEL.test(next.attention.model)) throw new Error("attention.model: a Claude model's alias or name, like haiku (null for the default).");
   if (next.claude && !next.claude.config) next.claude = null;
   return next;
 }
@@ -976,7 +990,8 @@ export function buildProfile(id, set) {
 // opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
-// folder, owner, handover, solo, moveToDone, the priority settings, unassigned, hoursPerDay, notify) applies at once.
+// folder, owner, handover, solo, moveToDone, the priority settings, unassigned, hoursPerDay, notify,
+// attention) applies at once.
 export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 // Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what

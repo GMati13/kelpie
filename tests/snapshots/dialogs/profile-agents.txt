@@ -67,7 +67,7 @@ div #work-setup-fit [bg=#00000080]
               div [fg=muted]
                 "Messages"
               div [fg=dim]
-                "15 changed"
+                "16 changed"
           h_flex #setup-tab-commands [hover(bg=hover)] {click}
             div [fg=dim]
               svg chrome:terminal
@@ -102,6 +102,14 @@ div #work-setup-fit [bg=#00000080]
               "Default"
           div [fg=dim]
             "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR): its agents, What next? and its terminals, where a claude you type uses it too. Lists your ~/.claude* folders that have a settings.json or projects/. Resuming a session keeps the account it ran on."
+        h_flex #setup-triage {click}
+          v_flex
+            div
+              "Find agents waiting on you"
+            div [fg=dim]
+              "When an agent's turn ends, Kelpie reads its last message to tell whether it's waiting on you: a question, a choice, a plan to approve. Its own rules first; when they can't tell, a small model reads the message, on this account, in the background."
+          h_flex [bg=accent]
+            div [bg=accent_foreground]
         v_flex
           h_flex [border=border]
             div
