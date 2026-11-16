@@ -195,3 +195,17 @@ Catch me up on this story in a few short lines: what's done, what you're doing n
 ```text
 Plan how to build this before writing any code. Read the ticket, its subtasks and the code, and change nothing. Give the parts in order, each with what it looks like and how it behaves; a checkpoint after each where you stop for me; the open questions only I can answer; and what could go wrong.
 ```
+
+### Find agents waiting on you (`triage`)
+
+```text
+One of my Claude agents just ended its turn. This is the last message it wrote:
+
+{message}
+
+Decide one thing: is it now waiting on me?
+- waiting: it can't go on well without me: it asks me something, needs a choice or a decision, wants me to read or approve a plan, or is stuck.
+- ready: it finished, and there's something for me to check or try.
+- none: neither, a report with nothing for me to do.
+Give the state, its kind (question, choice, plan, review, stuck or done) and a line: what it waits for, or what to check, in under 12 words, as I'd read it in a list ("asks which of two layouts to use"). Decide from the message alone.
+```

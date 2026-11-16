@@ -631,7 +631,7 @@ test("the list's icon buttons are the row actions' size, at their height", async
 test("a deleted profile's stories copy and other entries are pruned with the next load", async () => {
   setupDemoWorld({ stories });
   const keys = ["kelpie.stories.data", "kelpie.stories.preview", "kelpie.stories.note", "kelpie.next.asks", "kelpie.next.suggested",
-    "kelpie.next.brewing", "kelpie.point", "kelpie.clean.leftovers", "kelpie.clean.checking", "kelpie.pulls.folded", "kelpie.done.open"];
+    "kelpie.next.brewing", "kelpie.point", "kelpie.clean.leftovers", "kelpie.clean.checking", "kelpie.pulls.folded", "kelpie.done.open", "kelpie.waiting"];
   for (const key of keys) putShared(key, { ...(mock.sharedValue(key) ?? {}), gone: { at: NOW } });
   putShared("kelpie.paused", { ...(mock.sharedValue("kelpie.paused") ?? {}), gone: { "ACME-1": { id: "s" } } });
   await draw(new StoryList());
