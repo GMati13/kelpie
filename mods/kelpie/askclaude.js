@@ -3,8 +3,8 @@
 // a subtask's title, a right-click on a subtask or a pull request, a file's Ask Claude in Changes),
 // who it goes to (a new Claude in the story's space, or one of the Claudes already open there) and the
 // question, typed or one of the suggestions for that kind of thing (each a profile message: config.js
-// ASK_CLAUDE). What's asked about goes first, as a line Kelpie writes from its values (promptValue()),
-// and a question about others' work ends with OTHERS. Above the line, the story's asks so far (the
+// ASK_CLAUDE). What's asked about goes first, as a line Kelpie writes from checked values only (keys,
+// pages it builds, KELPIE-302), and a question passing on a copied passage ends with OTHERS. Above the line, the story's asks so far (the
 // thread): sent, held for a Claude mid-task until its turn ends, or why one didn't go. Sending and the
 // shared state are the caller's (stories.js); this module holds the rules and the look.
 //
@@ -14,7 +14,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
 import { SMALL, ago, chrome, icon, own, sessionTitle, stop, textButton, tint } from "./ui.js";
-import { ASK_PROMPTS, OTHERS, askText, fenced, promptValue } from "./config.js";
+import { ASK_PROMPTS, OTHERS, askText, checkedKey, checkedLink, checkedPath, fenced, promptValue, pullParts } from "./config.js";
 
 // The Claudes a story's ask may go to: those in its space, and those on one of its keys elsewhere
 // (a tab named after the key), never another story's or profile's. Outside a story (`story` null),
@@ -82,29 +82,42 @@ export function releaseOf(agent) {
   return agent.status === "working" || agent.status === "blocked" ? "keep" : "go";
 }
 
-// What's asked about, for a file of the Changes view: its path and where it is, a pull request's
-// address, else its folder on disk and whether it's committed on a branch with no pull request yet
-// (a group of its own in Changes) or not committed. `others`: whether it's from a pull request,
-// whose paths and code anyone who pushed to it wrote.
+// What's asked about, for a file of the Changes view. A pull request's (KELPIE-302): its page, rebuilt
+// from its checked owner, repo and number, and the file's path only when it's plain characters (no
+// spaces, quotes or line breaks: a path, not words); Claude reads the change itself. The person's own
+// (uncommitted, or committed on a branch with no pull request yet, a group of its own in Changes): its
+// path and repo, its folder on disk and whether it's committed, as before.
 export function fileAbout(f, key) {
   const g = f.group;
-  const path = promptValue("path", f.path), repo = promptValue("repo", g.repo);
-  const story = key ? ` (${promptValue("key", key)})` : "";
+  const story = checkedKey(key) ? ` (${key})` : "";
   const name = f.path.split("/").pop();
-  const base = { id: `file:${f.id ?? f.path}`, key, name, label: promptValue("path", f.path), kind: "file" };
-  if (g.url) return { ...base, text: `About the file ${path} in ${repo}${story}, in the pull request ${promptValue("url", g.url)} (its changes: ${promptValue("url", g.url)}/files).`, others: true };
+  const base = { id: `file:${f.id ?? f.path}`, key, name, label: promptValue("path", f.path), kind: "file", others: false };
+  if (g.url) {
+    const pull = pullParts(g.url), path = checkedPath(f.path);
+    if (!pull) return { ...base, text: `About a file of a pull request of ${story ? story.slice(2, -1) : "this story"}.` };
+    return { ...base, pull: pull.url, text: path
+      ? `About the file ${path} in the pull request ${pull.repo}#${pull.number}${story}: ${pull.url} (its changes: ${pull.url}/files).`
+      : `About a file of the pull request ${pull.repo}#${pull.number}${story} whose path Kelpie doesn't pass on (it isn't plain characters): its changes are at ${pull.url}/files.` };
+  }
+  const path = promptValue("path", f.path), repo = promptValue("repo", g.repo);
   const full = promptValue("path", g.path ? `${g.path}/${f.path}` : f.path);
   const state = g.committed ? `committed on ${promptValue("branch", g.committed.branch)}, no pull request yet` : "not committed yet";
   return { ...base, text: `About the file ${path} in ${repo}${story}, ${state}: ${full}.`, others: false };
 }
 
 // What's asked about, for lines of a file in Changes (KELPIE-227): the file as fileAbout() says it,
-// then which lines (`what`: "line 12", "lines 9-14", "the change at lines 9-14"), then the lines
-// themselves (`rows`, diffRows()'s: old/new numbers, +/− for added and removed, the text), fenced,
-// a pull request's being anyone's code. Each line cleaned (promptValue()), LINES_MAX at most.
+// then which lines (`what`: "line 12", "lines 9-14", "the change at lines 9-14"), then, for the
+// person's own file, the lines themselves (`rows`, diffRows()'s: old/new numbers, +/− for added and
+// removed, the text), fenced, each cleaned (promptValue()), LINES_MAX at most. A pull request's lines
+// are anyone's code: only which lines go, and Claude reads them there (KELPIE-302).
 export const LINES_MAX = 80;
 export function linesAbout(f, key, rows, what) {
   const file = fileAbout(f, key);
+  if (file.pull) {
+    const range = promptValue("note", what);
+    return { ...file, id: `lines:${f.id ?? f.path}:${range}`, kind: "lines", label: `${file.name} ${range}`,
+      text: `${file.text}\n\nAbout ${range} of it (line numbers as in its diff): read them in the pull request.` };
+  }
   const shown = rows.slice(0, LINES_MAX).map((r) => {
     const n = r.kind === "del" ? r.old : r.new ?? r.old;
     const sign = r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ";
@@ -133,41 +146,34 @@ export function textAbout(text, it, { found = false } = {}) {
 
 // What's asked about, for a ticket of the story shown: the story itself (`kind` "story"), one of its
 // subtasks ("sub", `x` the subtask) or one of its pull requests ("pr", `x` the pull request, `name`
-// its repo#n). A ticket goes with its status, a story with its subtasks (key, title, status, who has
-// it; KELPIE-231), a subtask with its story, and either with its description once it's loaded
-// (`description`, its blocks, as text), fenced. Titles, names and descriptions are anyone's on the
-// board or GitHub, so they go in cleaned, and the question ends with OTHERS. `url`: the ticket's or
-// pull request's page, when known.
-export const ABOUT_DESC_MAX = 2000;
-export function ticketAbout(it, kind, x = null, { url = null, name = null, description = null } = {}) {
-  const story = promptValue("key", it.key);
+// its repo#n). Only checked values go in the message (KELPIE-302): keys, the ticket's page as Kelpie
+// built it (`url`, ticketLink() in board.js) or the pull request's rebuilt from its checked parts, a
+// story's subtasks by key, marking those that are the person's. Claude reads titles, statuses and
+// descriptions itself. The label, shown only in Kelpie, keeps the title.
+export function ticketAbout(it, kind, x = null, { url = null, name = null } = {}) {
+  const story = checkedKey(it.key);
   const title = promptValue("title", (kind === "story" ? it.title : x?.title) ?? "");
-  const at = (words) => (url ? `, ${words}${promptValue("url", url)}` : "");
-  const status = (s) => (s ? ` Its status: ${promptValue("status", s)}.` : "");
-  const desc = (blocks) => {
-    const text = blocksText(blocks, ABOUT_DESC_MAX);
-    return text ? `\n\n${fenced("its description", text)}` : "";
-  };
   if (kind === "pr") {
-    const pr = promptValue("repo", name ?? "");
-    return { id: `pr:${pr}`, key: story, name: pr, label: pr, kind, others: true, text: `About the pull request ${pr} (“${title}”) of ${story}${at("")}.` };
+    const pull = pullParts(url);
+    const pr = pull ? `${pull.repo}#${pull.number}` : promptValue("repo", name ?? "");
+    return { id: `pr:${pr}`, key: story, name: pr, label: pr, kind, others: false,
+      text: pull ? `About the pull request ${pr} of ${story || "this story"}: ${pull.url}.` : `About a pull request of ${story || "this story"}.` };
   }
+  const page = checkedLink(url);
+  const at = page ? `: ${page}` : "";
   if (kind === "sub") {
-    const key = promptValue("key", x.key);
-    return { id: `sub:${key}`, key, name: key, label: `${key} · ${title}`, kind, others: true,
-      text: `About the subtask ${key} (“${title}”) of the story ${story} (“${promptValue("title", it.title ?? "")}”)${at("its ticket: ")}.${status(x.status)}${desc(description)}` };
+    const key = checkedKey(x.key);
+    return { id: `sub:${key}`, key, name: key, label: `${key} · ${title}`, kind, others: false,
+      text: `About the subtask ${key} of the story ${story}${at}.` };
   }
-  const subs = (it.subs ?? []).filter((s) => s.key !== it.key).map((s) => {
-    const who = s.you ? "you" : s.assignee ? promptValue("name", s.assignee) : "nobody";
-    return `- ${promptValue("key", s.key)} “${promptValue("title", s.title ?? "")}”: ${promptValue("status", s.status ?? "no status")}, ${who}`;
-  });
-  return { id: `story:${story}`, key: story, name: story, label: `${story} · the story`, kind: "story", others: true,
-    text: `About the story ${story} (“${title}”)${at("its ticket: ")}.${status(it.status)}${subs.length ? `\n\nIts subtasks:\n${subs.join("\n")}` : ""}${desc(description)}` };
+  const subs = (it.subs ?? []).filter((s) => s.key !== it.key && checkedKey(s.key)).map((s) => `${s.key}${s.you ? " (mine)" : ""}`);
+  return { id: `story:${story}`, key: story, name: story, label: `${story} · the story`, kind: "story", others: false,
+    text: `About the story ${story}${at}.${subs.length ? ` Its subtasks: ${subs.join(", ")}.` : ""}` };
 }
 
 // A description's blocks (adf.js: paragraphs, headings, lists, code) as plain text, a line a block,
 // cut at `max` characters; null for none.
-export function blocksText(blocks, max = ABOUT_DESC_MAX) {
+export function blocksText(blocks, max = 2000) {
   if (!Array.isArray(blocks) || !blocks.length) return null;
   const runs = (r) => (r ?? []).map((x) => (x.br ? "\n" : x.text ?? "")).join("");
   const lines = [];

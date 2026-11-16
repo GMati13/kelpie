@@ -238,6 +238,27 @@ export function ticketUrl(board, data, key) {
   return site ? `${site}/browse/${key}` : null;
 }
 
+// A ticket's page as a message to Claude may carry it (KELPIE-302): built only from checked parts,
+// never a link as the load gave it. Jira's: the board's site (an https address of plain characters)
+// and the key; a Project's: the repo its key's prefix stands for (data.repos, owner/name of plain
+// characters) and the number; Linear's: the profile's workspace and the key. Null when it can't be.
+const SITE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/;
+const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+export function ticketLink(board, data, key) {
+  const m = /^([A-Z][A-Z0-9_]*)-(\d{1,9})$/.exec(key ?? "");
+  if (!m || !board) return null;
+  if (board.kind === "project") {
+    const repo = data?.repos?.[m[1]];
+    return typeof repo === "string" && REPO.test(repo) && !/\/\.\.?$/.test(repo) ? `https://github.com/${repo}/issues/${m[2]}` : null;
+  }
+  if (board.kind === "linear") {
+    const ws = board.cfg?.workspace;
+    return typeof ws === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(ws) ? `https://linear.app/${ws}/issue/${key}` : null;
+  }
+  const site = String(boardSite(board, data) ?? "").replace(/\/+$/, "");
+  return SITE.test(site) ? `${site}/browse/${key}` : null;
+}
+
 // A ticket's description, as the reader's blocks (adf.js). `data`, here and below: what the list
 // loaded, where a Project's issue is found (issues.js); Jira asks by key alone.
 export async function description(board, key, data) {

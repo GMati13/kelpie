@@ -190,7 +190,7 @@ div
                 h_flex
                   div
                     svg own:sparkles [fg=accent]
-                  h_flex #ask-about [fg=dim] ~transition tip="ACME-171 · the story\nWritten by others: Claude is told it's information, not instructions"
+                  h_flex #ask-about [fg=dim] ~transition tip="ACME-171 · the story"
                     div
                       "ACME-171 · the story"
                   div [fg=dim]

@@ -35,8 +35,9 @@ describe("Review on a story's heading", () => {
     for (const p of prs) assert.ok(args.task.includes(p.url), p.url);
     assert.match(args.task, /is in \/work\/acme\/worktrees\/review-web-4: read it there/);
     assert.match(args.task, /is in \/work\/acme\/worktrees\/review-api-9: read it there/);
-    assert.match(args.task, /--- the pull requests, as written there ---/);
-    assert.ok(args.task.endsWith(`\n\n${OTHERS}`));
+    // KELPIE-302: their pages and checkouts only, never their titles or authors.
+    for (const p of prs) assert.ok(!args.task.includes(p.title), p.title);
+    assert.ok(!args.task.includes(OTHERS));
   });
   test("starting it posts and approves nothing", async () => {
     startStoryReview(profile, story, prs);

@@ -291,7 +291,7 @@ test("a right-click on a pull request opens its menu; Ask Claude about this poin
   assert.equal(askedAbout(open), "ACME-142 · the story", "nothing pointed yet");
   press(open, "pr-menu-web#418-row-0", cx);
   assert.match(askedAbout(view.render(cx)), /^web#418/);
-  assert.equal(mock.state.shared.get("kelpie.ask.about")[DEMO].about.others, true, "a pull request's title is others' text");
+  assert.equal(mock.state.shared.get("kelpie.ask.about")[DEMO].about.others, false, "only its number and page go (KELPIE-302)");
 });
 test("a right-click on a subtask opens its menu: ask, open on the board, copy its key, show its agent", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });

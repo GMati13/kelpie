@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { mock } from "herdr";
 import { put, tempDir } from "../lib/helpers.mjs";
 import { StoryList, answerAskRequest, threadOf } from "../../mods/kelpie/stories.js";
-import { ANSWER_LINES, ANSWER_MAX, askMessage, cleanAnswer, handBack, fileAbout } from "../../mods/kelpie/askclaude.js";
+import { ANSWER_LINES, ANSWER_MAX, askMessage, cleanAnswer, handBack, textAbout } from "../../mods/kelpie/askclaude.js";
 import { OTHERS, profileById } from "../../mods/kelpie/config.js";
 
 let stories, home, world;
@@ -80,7 +80,7 @@ describe("kelpie.ask-answer: a Claude asked from the Ask line answers", () => {
 
 describe("what the Ask line asks for", () => {
   test("the message asks for a short answer back by the ask's id, before the note about others' text", () => {
-    const text = askMessage({}, fileAbout({ path: "a.ts", group: { url: "https://github.com/acme/web/pull/4", repo: "web#4" } }, "ABC-1"), { note: "Why?" }, "abc123xyz");
+    const text = askMessage({}, textAbout("Copied words", { key: "ABC-1" }), { note: "Why?" }, "abc123xyz");
     const parts = text.split("\n\n");
     assert.equal(parts.at(-2), handBack("abc123xyz"));
     assert.equal(parts.at(-1), OTHERS);

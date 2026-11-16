@@ -460,12 +460,14 @@ describe("the demo's stories, as the list builds them", () => {
       return suggestSnapshot({ data: d, profile, setup: { profile, jira, github: profile.github } }, ordered(build(d, new Map())), []);
     };
     const team = snap(DEMO_PROFILE.jira);
-    assert.match(team, /; my part is done from QA$/m);
-    assert.match(team, /^- ACME-129 .* · my part is done$/m);
+    assert.match(team, /^Handed over means my part is done and it waits on others\.$/m);
+    assert.match(team, /^- ACME-129: handed over\b/m);
     const alone = snap({ ...DEMO_PROFILE.jira, solo: true });
-    assert.match(alone, /; I work alone: from QA on, a ticket waits on me to check it$/m);
-    assert.match(alone, /^- ACME-129 .* · built, mine to check$/m);
+    assert.match(alone, /^I work alone: a ticket handed over waits on me to check it\.$/m);
+    assert.match(alone, /^- ACME-129: handed over\b/m);
     assert.doesNotMatch(alone, /my part is done/);
+    // KELPIE-302: keys, Kelpie's words and pages only: no title, column, sprint or person's name.
+    for (const t of [team, alone]) assert.doesNotMatch(t, /QA|Currency|Sprint 4|Priya|In Review/);
   });
   test("the done story with no space has left; the PR naming no ticket shows on its own", async () => {
     const d = await demoData();
