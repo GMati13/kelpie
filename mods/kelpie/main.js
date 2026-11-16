@@ -15,7 +15,7 @@ import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, 
 import { toggleDebug } from "./debug.js";
 import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, terminalsFolded } from "./stories.js";
+import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, takeRuns, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, getProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -245,6 +245,8 @@ function track(role) {
   const lead = !sideHidden(root) ? role === "footer"
     : role === "toolbar" && (slot ? !find(root, "toolbar-start")?.hidden : !find(root, "lower")?.hidden);
   if (!lead) return;
+  // A long run a confirm dialog asked for (stories.js takeRuns()): it goes on here, as the dialog closed.
+  takeRuns();
   const me = `${role}${slot}`;
   if (!started || shared(TRACKER) !== me) {
     started = true;

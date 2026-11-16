@@ -90,16 +90,18 @@ async function once(key, fn) {
 }
 
 // What's busy on the board's tickets: a story being cleaned up or moved to done (by its key), one
-// ticket's status moving (`move:<key>`), Clean up all (`all:<profile id>`). While it runs, every copy
-// shows it (a spinner) and refuses what would clash with it: a second clean-up of a story once ran
+// ticket's status moving (`move:<key>`), Clean up all (`all:<profile id>`), Run all starting Claude's
+// picks (`picks:<profile id>`). While it runs, every copy shows it (a spinner) and refuses what would
+// clash with it: a second clean-up of a story once ran
 // its clean-up command twice at once, closing its space and dropping its entries in a race. `keys`
 // are the tickets whose status chips it locks, `step` what it's doing now, in words. Each entry ends
 // by `until`, the whole run's own time limit, so a reload mid-run or a command that never returns
 // can't keep a story locked.
-const RUNS = "kelpie.busy"; // { [name]: { kind: "clean" | "done" | "move" | "close", keys, step, at, until } }
+const RUNS = "kelpie.busy"; // { [name]: { kind: "clean" | "done" | "move" | "close" | "picks", keys, step, at, until } }
 const CLEAN_EACH = 25; // seconds the clean-up command gets per key (cleanUp)
 const BUSY_MARGIN = 60e3; // on top of a run's own limits: the checks before it, a slow board
 const MOVE_FOR = 30e3; // one ticket's move, at most (a single chip's, each of Move to Done's)
+const PICK_FOR = 30e3; // one of Run all's picks starting, at most (a new space showing, its agent opening)
 // Nothing starts on a story while it's being cleaned up (its space is closing, its folders going):
 // true then, after saying so (in the shown profile when it isn't given).
 const cleaningNow = (key, profile = null) => busyOf(key)?.kind === "clean" && (say({ profile, keys: key }, `${key} is being cleaned up: wait for that to finish.`), true);
@@ -5745,13 +5747,15 @@ export class StoryList extends Stories {
     const at = (shared(SUGGESTED) ?? {})[st.profile.id]?.at;
     const aside = asideIn(st.profile);
     const runAll = said.length > 1 && picksPlan(said).some((p) => p.run);
+    const starting = busyOf(`picks:${st.profile.id}`);
     return v_flex().id("queue-suggested").flex_none().pb(2).gap(2).rounded(8).bg(glow(0.07))
       .child(h_flex().flex_none().pl(10).pr(2).pt(4).gap(6).items_center()
         .child(icon(own("sparkles"), 12).text_color(t.accent))
         .child(div().id("queue-suggested-head").flex_1().min_w(0).truncate().text_size(SMALL).text_color(t.accent)
           .when(aside.length > 0, (el) => el.tooltip(`Set aside until Claude is asked again: ${aside.map((s) => `${s.idea ? s.action : s.key.replace(/^pr:/, "")}, as ${s.aside}`).join("; ")}`))
           .child(`Suggested by Claude${at ? ` · ${ago(at)}` : ""}${aside.length ? ` · ${aside.length} set aside` : ""}`))
-        .when(runAll, (el) => el.child(h_flex().id("queue-run-all").flex_none().px(6).py(2).gap(4).items_center().rounded(6).cursor_pointer().text_size(SMALL).text_color(t.dim)
+        .when(Boolean(starting), (el) => el.child(busyMark(t, "queue-run-all-busy", starting, { box: ROW_CONTROL })))
+        .when(runAll && !starting, (el) => el.child(h_flex().id("queue-run-all").flex_none().px(6).py(2).gap(4).items_center().rounded(6).cursor_pointer().text_size(SMALL).text_color(t.dim)
           .hover((x) => x.bg(glow(0.14)).text_color(t.accent)).tooltip("Start every pick at once, each in its own agent: you'll see what each does first")
           .on_click(() => askRunPicks(st.profile, said))
           .child(icon(own("play"), 12)).child("Run all")))
@@ -6614,9 +6618,9 @@ function doneLines(it, plan, done) {
 const cleanAfter = (profile, will) => (will ? { label: "Clean up afterwards", on: Boolean((shared(DONE_CLEAN) ?? {})[profile.id]),
   about: "Once everything is moved, clean it up as the broom does: only if nothing of it is still open, running or uncommitted." } : null);
 
-// The dialog listing every ticket it moves, from which status, and others' subtasks left alone. Its
-// button moves them itself (dialogs.js Confirm, `doneStory`): no command runs it, as any agent can
-// run a command and this writes to the board.
+// The dialog listing every ticket it moves, from which status, and others' subtasks left alone. Only
+// its button asks for the move (dialogs.js Confirm, `doneStory`, through askRun()): no command runs
+// it, as any agent can run a command and this writes to the board.
 function askMoveToDone(st, it) {
   if (busyOf(it.key)) return say({ profile: st.profile, keys: it.key }, busyWhy(it.key));
   const plan = donePlan(it), done = doneName(st.data);
@@ -6701,9 +6705,9 @@ async function movingToDone(s, it, plan, clean, at) {
 }
 
 // Next's Ready for Done (readyForDone()): one dialog for every story ready, each story's lines as Move
-// to Done lists one (doneLines()), one story alone asking as its own Move to Done does. Its button moves
-// them itself (dialogs.js Confirm, `doneStories`, moveStoriesToDone below): never a command, as any agent
-// can run one and this writes to the board.
+// to Done lists one (doneLines()), one story alone asking as its own Move to Done does. Only its button
+// asks for the moves (dialogs.js Confirm, `doneStories`, through askRun(); moveStoriesToDone below):
+// never a command, as any agent can run one and this writes to the board.
 function askFinishAll(profile, ready) {
   if (busyOf(`done-all:${profile.id}`)) return say({ profile }, "Those stories are already moving to Done.");
   const s = storyItems();
@@ -6792,8 +6796,9 @@ const closeTip = (list) => {
 const CLOSE_EACH = 30e3; // one issue's close, at most
 
 // Close's dialog, for one story of the Done group or all of them with something open (Close all):
-// each issue it closes, and any left open with why. Its button closes them itself (dialogs.js Confirm,
-// `closeStories`): no command runs it, as any agent can run a command and this writes to GitHub.
+// each issue it closes, and any left open with why. Only its button asks for the closing (dialogs.js
+// Confirm, `closeStories`, through askRun()): no command runs it, as any agent can run a command and
+// this writes to GitHub.
 function askClose(st, list) {
   if (busyOf(`close:${st.profile.id}`)) return say({ profile: st.profile }, "Close all is already running.");
   list = list.filter((it) => closable(it));
@@ -6811,17 +6816,18 @@ function askClose(st, list) {
   const detail = `This closes ${n === 1 ? "this issue" : `these ${n} issues`} on GitHub as completed${others ? ", others' sub-issues too, as the story is done on the board" : ""}:`;
   const title = list.length > 1 ? `Close ${list.length} stories' issues?` : `Close ${list[0].key} on GitHub?`;
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(520, 200 + Math.min(items.length, 10) * 24), props: {
-    role: "confirm", title, yes: n === 1 ? "Close it" : `Close ${n} issues`, working: "Closing…",
+    role: "confirm", title, yes: n === 1 ? "Close it" : `Close ${n} issues`,
     closeStories: { profile: st.profile.id, keys: list.map((it) => it.key) }, detail, items } });
 }
 
 // Close's dialog button: closes what closePlan() says of each story, as it stands now, a few issues a
-// request (board.js closeTickets()), each story under its busy mark until its own are done (and Close
-// all under `close:<profile>`). As each batch ends, its issues show closed at once (the rows lose their
-// Close, Close all's count drops) and `onStep` hears how far it got ({ total, closed, failed: { key:
-// why }, on: the keys being closed now }), so the dialog marks each issue as it goes: a run of 30 is a
-// minute's work, too long to sit silent. One that fails (no permission on its repo, an issue gone)
-// doesn't stop the rest; the note names each with why, to close by hand. Then the stories load once.
+// request (board.js closeTickets()), in place once its dialog closed (askRun()), each story under its
+// busy mark until its own are done (and Close all under `close:<profile>`, its mark counting on). As
+// each batch ends, its issues show closed at once (the rows lose their Close, Close all's count drops)
+// and `onStep` hears how far it got ({ total, closed, failed: { key: why }, on: the keys being closed
+// now }): a run of 30 is a minute's work, too long to sit silent. One that fails (no permission on its
+// repo, an issue gone) doesn't stop the rest; the note names each with why, to close by hand. Then the
+// stories load once.
 // Returns { closed, failed: [{ key, why }] }, null when nothing could run.
 export async function closeStories({ profile, keys = [], onStep = () => {} }) {
   const s = storyItems();
@@ -6885,6 +6891,59 @@ export async function closeStories({ profile, keys = [], onStep = () => {} }) {
   say({ profile, keys: list.length === 1 ? list[0].key : [] }, text, full);
   if (failed.length) notify({ title: "Some issues didn't close", body: full, level: "warning" });
   return { closed, failed };
+}
+
+// A long run a confirm dialog's own button asked for (KELPIE-262): Move to Done (`done`), Ready for
+// Done (`done-all`), Close (`close`) and Run all (`picks`). The dialog closes at once and the run goes
+// on in place, under its busy marks, as Clean up's does: a dialog's tasks end when it closes, so the
+// run can't stay there. These write to the board or GitHub, or start agents, so no `kelpie.*` command
+// runs them (any agent can run one): the button writes a request to shared state, which only mod code
+// writes (no command or plugin request writes this key: a test holds it), and the copy that follows
+// what's shown (track() in main.js) takes it. Each request runs once (by id, even if two draws see it
+// before its removal lands), and one older than RUN_ASK_FOR is dropped unrun.
+const RUN_ASKS = "kelpie.run.asks"; // { [id]: { kind, args, at } }
+const RUN_ASK_FOR = 60e3;
+const RUN_TAKEN = new Set(); // ids already taken in this context (the newest few)
+const runKinds = () => ({ done: moveStoryToDone, "done-all": moveStoriesToDone, close: closeStories, picks: runPicks });
+// What a request may carry, checked again when it's taken: a profile id, ticket keys, a yes or no.
+function runArgs(kind, a) {
+  if (!a || typeof a.profile !== "string" || !a.profile) return null;
+  const keys = (v) => Array.isArray(v) && v.every((k) => typeof k === "string" && TICKET_KEY.test(k));
+  const clean = a.clean === true || a.clean === false ? a.clean : null;
+  if (kind === "done") return typeof a.key === "string" && TICKET_KEY.test(a.key) ? { profile: a.profile, key: a.key, clean } : null;
+  if (kind === "done-all") return keys(a.keys) ? { profile: a.profile, keys: a.keys, clean } : null;
+  if (kind === "close") return keys(a.keys) ? { profile: a.profile, keys: a.keys } : null;
+  // Run all's are its picks' suggestion keys (a ticket's, `pr:<repo>#<n>` or `idea:<n>`): matched
+  // against the queue's picks when it runs, never used as they are.
+  if (kind === "picks") return Array.isArray(a.keys) && a.keys.every((k) => typeof k === "string" && k.length <= 200) ? { profile: a.profile, keys: a.keys } : null;
+  return null;
+}
+// The dialog's button (dialogs.js Confirm): the request, with a fresh id. False when it's malformed.
+export function askRun(kind, args) {
+  const clean = runKinds()[kind] ? runArgs(kind, args) : null;
+  if (!clean) return false;
+  const now = Date.now();
+  const kept = Object.fromEntries(Object.entries(shared(RUN_ASKS) ?? {}).filter(([, r]) => now - (r?.at ?? 0) < RUN_ASK_FOR));
+  const id = `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  setShared(RUN_ASKS, { ...kept, [id]: { kind, args: clean, at: now } });
+  return true;
+}
+// The leading copy, each draw: every request waiting is taken, removed and run on its own (after the
+// draw, as a run's first steps write shared state). Returns the runs started, for the tests.
+export function takeRuns() {
+  const asks = shared(RUN_ASKS);
+  if (!asks || typeof asks !== "object" || !Object.keys(asks).length) return [];
+  setShared(RUN_ASKS, {});
+  const now = Date.now(), started = [];
+  for (const [id, r] of Object.entries(asks)) {
+    if (RUN_TAKEN.has(id)) continue;
+    RUN_TAKEN.add(id);
+    if (RUN_TAKEN.size > 50) RUN_TAKEN.delete(RUN_TAKEN.values().next().value);
+    const run = runKinds()[r?.kind], args = run && runArgs(r.kind, r.args);
+    if (!args || !(now - r.at < RUN_ASK_FOR) || r.at > now + 5e3) continue;
+    started.push(Promise.resolve().then(() => run(args)).catch((e) => console.log(`kelpie ${r.kind}: ${e}`)));
+  }
+  return started;
 }
 
 // Clean up all's dialog (the list's broom beside its freshness line, and Next): every finished story
@@ -7159,15 +7218,16 @@ export function picksPlan(said) {
 // Each pick's key in the dialog: its ticket's, or none for an idea or a pull request.
 const pickKey = (p) => (p.run === "story" ? p.key : p.x.suggest.key.startsWith("pr:") ? p.x.suggest.key.slice(3) : p.x.suggest.idea ? null : p.x.suggest.key);
 // Its dialog: every pick and what will happen to it, the ones it can run ticked (all at first). Its
-// button starts them itself (dialogs.js Confirm, `runPicks`): no command does, as any agent can run
-// one and this starts agents with Claude's words in their first message.
+// button asks for them (dialogs.js Confirm, `runPicks`, through askRun()): no command does, as any
+// agent can run one and this starts agents with Claude's words in their first message.
 function askRunPicks(profile, said) {
+  if (busyOf(`picks:${profile.id}`)) return say({ profile }, "Claude's picks are already being started.");
   const plan = picksPlan(said);
   const runs = plan.filter((p) => p.run).length;
   if (!runs) return say({ profile }, "None of these picks can be started from here: each opens on the web, for you.");
   const items = plan.map((p) => ({ key: pickKey(p), text: p.text, ...(p.run ? { choose: p.x.suggest.key } : {}) }));
   openOverlay({ mod: MOD, kind: "dialog", width: 560, height: Math.min(560, 230 + Math.min(items.length, 10) * 30), props: {
-    role: "confirm", title: `Start ${runs === 1 ? "1 of Claude's picks" : `${runs} of Claude's picks`}?`, yes: "Start them", working: "Starting…",
+    role: "confirm", title: `Start ${runs === 1 ? "1 of Claude's picks" : `${runs} of Claude's picks`}?`, yes: "Start them",
     detail: "Each starts in its own agent, one after another, with Claude's suggestion added to its first message. Turn off any you'd rather leave for now:",
     items, runPicks: { profile: profile.id } } });
 }
@@ -7182,11 +7242,16 @@ export async function runPicks({ profile, keys = null }) {
   const want = keys ? new Set(keys) : null;
   const plan = picksPlan(needQueueOf(s.st.profile, s.items, s.reviews, s.st.data).filter((x) => x.suggest)).filter((p) => p.run && (!want || want.has(p.x.suggest.key)));
   if (!plan.length) { say({ profile }, "Nothing was started: those picks are gone from Next."); return null; }
+  // Its mark (Run all's place in Next turns into the working mark, saying which it's starting), as
+  // the dialog no longer waits: a second Run all is refused meanwhile.
+  const mark = `picks:${profile}`;
+  const at = takeBusy(mark, { kind: "picks", keys: [], step: `Starting… 1 of ${plan.length}` }, plan.length * PICK_FOR + BUSY_MARGIN);
+  if (!at) { say({ profile }, "Claude's picks are already being started."); return null; }
   const started = [], failed = [];
-  const ran = await once(`picks:${profile}`, async () => {
+  const ran = await once(mark, async () => {
     for (const [i, p] of plan.entries()) {
       const name = p.run === "story" ? p.key : p.x.suggest.action;
-      say({ profile }, `Starting ${name}: ${i + 1} of ${plan.length}…`);
+      stepBusy(mark, at, { step: `Starting ${name}: ${i + 1} of ${plan.length}…` });
       try {
         if (p.run === "idea") {
           if (!(await startIdea(s.st.profile, p.x.suggest))) throw new Error("the Desk didn't show up in time");
@@ -7204,7 +7269,7 @@ export async function runPicks({ profile, keys = null }) {
       }
     }
     return true;
-  });
+  }).finally(() => endBusy(mark, at));
   if (!ran) { say({ profile }, "Claude's picks are already being started."); return null; }
   const failedText = failed.map((f) => `${f.key} (${f.why})`).join(", ");
   say({ profile }, `Started ${started.length} of ${plan.length}${started.length ? `: ${started.join(", ")}` : ""}.${failed.length ? ` Didn't start: ${failedText}.` : ""}`);
