@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts, walk } from "gpui-kit";
 import { byId } from "../lib/snapshot.mjs";
-import { Stories, StoryList, build, busyOf, cleanUp, donePlan, moveStoryToDone, storyItems } from "../../mods/kelpie/stories.js";
+import { Stories, StoryList, build, busyOf, cleanUp, donePlan, moveStoryToDone, storyItems, takeRuns } from "../../mods/kelpie/stories.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { doneOption } from "../../mods/kelpie/board.js";
 import { boardOf } from "../../mods/kelpie/config.js";
@@ -28,10 +28,11 @@ test("only the confirm dialog's button moves a story to done; no kelpie.* comman
   for (const f of ["main.js", "work.js", "workside.js", "setup.js", "desk.js", "demo.js", "source.js", "ui.js", "sprint.js", "pulls.js", "panes.js", "config.js"]) {
     assert.doesNotMatch(readRepo("mods/kelpie", f), /moveStor(y|ies)ToDone/, f);
   }
-  // The dialog's button runs one story's (doneStory) or Next's Ready for Done (doneStories), nothing else.
+  // The dialog's button asks for one story's (doneStory) or Next's Ready for Done (doneStories), nothing
+  // else (stories.js askRun(), KELPIE-262); the leading copy runs it.
   const yes = bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {");
-  assert.match(yes, /const move = doneStory \? moveStoryToDone : moveStoriesToDone;/);
-  assert.match(yes, /await move\(ask\)/);
+  assert.match(yes, /if \(doneStory\) \{ askRun\("done", /);
+  assert.match(yes, /if \(doneStories\) \{ askRun\("done-all", /);
   // stories.js defines both; one story's is called only by Next's run of several, itself called nowhere.
   const stories = readRepo("mods/kelpie/stories.js");
   assert.equal(stories.match(/moveStoryToDone\(/g).length, 2, "defined, and called by moveStoriesToDone()");
@@ -144,13 +145,20 @@ describe("Move to Done on the demo's board", async () => {
     const cx = fakeCx();
     dialog.init(cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
-    assert.deepEqual(texts(byId(dialog.render(cx), "confirm-yes")), ["Moving…"]);
-    await cx.settle(10);
+    // It asks and closes at once (KELPIE-262): nothing has moved yet, no task of the dialog's waits.
+    assert.deepEqual(mock.of("closeOverlay"), [["o1"]], "closed at once");
+    assert.deepEqual(cx.tasks, []);
+    assert.equal(await statusOf("ACME-143"), "In Progress");
+    // The leading copy runs it, the story under its busy mark meanwhile.
+    const runs = takeRuns();
+    await Promise.resolve();
+    assert.equal(busyOf("ACME-142")?.kind, "done");
+    await Promise.all(runs);
     assert.deepEqual(await Promise.all(["ACME-143", "ACME-144", "ACME-142"].map(statusOf)), ["Done", "Done", "Done"]);
     assert.equal(await statusOf("ACME-145"), "Done", "already done, left alone");
     assert.equal(refreshes(), 1);
     assert.equal(note(), "Moved ACME-143, ACME-144 and ACME-142 to Done.");
-    assert.deepEqual(mock.of("closeOverlay"), [["o1"]], "closed once done");
+    assert.equal(busyOf("ACME-142"), null);
   });
 
   test("others' subtasks are left alone and the story stays, saying why", async () => {
@@ -247,15 +255,14 @@ describe("Move to Done on the demo's board", async () => {
     dialog.init(cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-check").fn({}, cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
-    assert.deepEqual(texts(byId(dialog.render(cx), "confirm-yes")), ["Moving and cleaning up…"]);
-    await cx.settle(10);
+    assert.deepEqual(mock.of("closeOverlay"), [["o2"]], "closed at once");
+    await Promise.all(takeRuns());
     assert.deepEqual(await Promise.all(["ACME-139", "ACME-138"].map(statusOf)), ["Done", "Done"]);
     assert.equal(mock.sharedValue("kelpie.paused")[DEMO]["ACME-138"], undefined, "its paused session forgotten");
     assert.deepEqual(ran, ["clean-up ACME-139"], "the clean-up command ran on what the story left");
     assert.equal(note(), "Moved ACME-139 and ACME-138 to Done. Cleaned up ACME-138: removed branch 139-token-bucket");
     assert.equal(mock.sharedValue("kelpie.clean.leftovers")?.[DEMO]?.found?.["ACME-138"], undefined, "nothing left, so no broom (#112)");
     assert.deepEqual(mock.sharedValue("kelpie.done.clean"), { [DEMO]: true });
-    assert.deepEqual(mock.of("closeOverlay"), [["o2"]]);
   });
 
   test("a check that fails cleans nothing up and says why, after the moves", async () => {
