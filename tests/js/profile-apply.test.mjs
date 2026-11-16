@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { bodyOf, put, readRepo, tempDir } from "../lib/helpers.mjs";
 import { mock } from "herdr";
-import { ASK_PROMPTS, CONFIRM_KEYS, SECTION_KEYS, applyPendingProfile, applyProfileRequest, buildProfile, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
+import { ASK_PROMPTS, CONFIRM_KEYS, SECTION_KEYS, applyPendingProfile, applyProfileRequest, buildProfile, getProfileRequest, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
 
 // The top-level settings an agent may change (APPLY_KEYS in config.js).
 const APPLY = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
@@ -39,7 +39,9 @@ beforeEach(() => {
   mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
 });
 
-const request = (set, id = "work") => put(`${home}/kelpie/profile-apply.json`, JSON.stringify({ id, set }));
+// Asked as the plugin asks, by a Claude in none of the profiles' spaces on Claude's own account (""),
+// which both profiles here run on, so it may change either (boundary.js); `asker` says otherwise.
+const request = (set, id = "work", asker = { account: "" }) => put(`${home}/kelpie/profile-apply.json`, JSON.stringify({ ...asker, id, set }));
 const result = () => JSON.parse(readFileSync(`${home}/kelpie/profile-apply.result.json`, "utf8"));
 const saved = (id = "work") => mock.sharedValue("kelpie.profiles")[id];
 const pending = () => mock.sharedValue("kelpie.profile.pending");
@@ -350,5 +352,84 @@ describe("the pending change", () => {
     assert.equal(r.pending, true);
     assert.equal(saved().claude ?? null, SAVED.claude ?? null);
     assert.deepEqual(pending().set, { claude: { config: "/Users/me/.claude-evil" } });
+  });
+});
+
+// The account boundary (#254): a Claude reads and changes only its own profile's settings.
+describe("get-profile and apply-profile: only the asker's own profile", () => {
+  const OTHER = "/home/test/.claude-home";
+  // Home runs on another Claude account than Work and the GitHub profile, and has a space with an agent.
+  beforeEach(() => {
+    mock.state.home = "/home/test";
+    mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), home: { id: "home", name: "Home", folder: "/home-projects", claude: { config: OTHER } } });
+    mock.state.spaces = [{ id: "sh", name: "Desk", folder: "/home-projects", tabs: [] }, { id: "sw", name: "Desk", folder: "/work", tabs: [] }];
+    mock.state.agents = [{ address: "ah", space: "sh", tab: "t", pane: "p", tab_name: "Configure", status: "idle", title: "", program: { name: "Claude Code", agent: true } },
+      { address: "aw", space: "sw", tab: "t2", pane: "p2", tab_name: "Configure", status: "idle", title: "", program: { name: "Claude Code", agent: true } }];
+    mock.state.shared.set("kelpie.space.profile", { sh: "home", sw: "work" });
+  });
+  const get = async (req) => { put(`${home}/kelpie/profile-get.json`, JSON.stringify(req)); return getProfileRequest(); };
+
+  test("Let me configure it for you's Claude, on its profile's Desk and account, reads and saves it", async () => {
+    const r = await get({ terminal: "ah", account: OTHER, id: "home" });
+    assert.equal(r.ok, true);
+    assert.equal(r.profile.name, "Home");
+    request({ name: "Home sweet home" }, "home", { terminal: "ah", account: OTHER });
+    assert.equal((await applyProfileRequest()).ok, true);
+    assert.equal(saved("home").name, "Home sweet home");
+    assert.ok(existsSync(`${home}/kelpie/profile-get.result.json`) && !existsSync(`${home}/kelpie/profile-get.json`), "answered, the request removed");
+  });
+
+  test("the list holds only the profiles it may read", async () => {
+    assert.deepEqual((await get({ terminal: "ah", account: OTHER })).profiles.map((p) => p.id), ["home"]);
+    assert.deepEqual((await get({ terminal: "aw", account: "" })).profiles.map((p) => p.id), ["work"]);
+    assert.deepEqual((await get({ account: "" })).profiles.map((p) => p.id).sort(), ["gh", "work"], "in no profile's space: those on its account");
+    assert.deepEqual((await get({})).profiles, [], "an account it can't tell: none");
+  });
+
+  test("another profile's settings read as a profile that isn't there", async () => {
+    const r = await get({ terminal: "aw", account: "", id: "home" });
+    assert.equal(r.ok, false);
+    assert.equal(r.error, 'No profile "home" you may read. Profiles: work.');
+    assert.equal((await get({ terminal: "aw", account: "", id: "nope" })).error, 'No profile "nope" you may read. Profiles: work.');
+  });
+
+  for (const [what, set] of [["a name, saved at once otherwise", { name: "Mine now" }], ["the handover column", { jira: { handover: "Done" } }], ["a prompt, which would wait for a yes", { prompts: { fix: "x {prs}" } }]]) {
+    test(`another profile's ${what}: refused, nothing saved or waiting`, async () => {
+      request(set, "home", { terminal: "aw", account: "" });
+      const r = await applyProfileRequest();
+      assert.equal(r.ok, false);
+      assert.match(r.error, /^Kelpie keeps the profile home from you: it isn't the profile you run in/);
+      assert.equal(saved("home").name, "Home");
+      assert.equal(pending() ?? null, null);
+      assert.deepEqual(confirms(), []);
+    });
+  }
+
+  test("a Claude on another account than its space's profile changes nothing there", async () => {
+    request({ name: "Mine" }, "work", { terminal: "aw", account: OTHER });
+    // No session record in the stub: the request's account counts, and it isn't Work's.
+    const r = await applyProfileRequest();
+    assert.match(r.error, /another Claude account/);
+    assert.equal(saved("work").name, "Work");
+  });
+
+  test("a pair is the person's alone: no agent's change sets one", async () => {
+    for (const set of [{ claude: { share: ["work"] } }, { share: ["work"] }]) {
+      request(set, "home", { terminal: "ah", account: OTHER });
+      const r = await applyProfileRequest();
+      assert.equal(r.ok, false, JSON.stringify(set));
+    }
+    assert.equal(mock.sharedValue("kelpie.share") ?? null, null);
+    assert.equal(pending() ?? null, null, "nor left waiting for a yes");
+  });
+
+  test("a new profile only on the asker's own account", async () => {
+    request({ name: "Side", folder: "/side", claude: { config: OTHER } }, "side", { terminal: "aw", account: "" });
+    assert.match((await applyProfileRequest()).error, /^A new profile from here must run on your own Claude account/);
+    assert.equal(saved("side"), undefined);
+    request({ name: "Side", folder: "/side" }, "side", { terminal: "aw", account: "" });
+    assert.equal((await applyProfileRequest()).ok, true);
+    request({ name: "Side 2", folder: "/side2" }, "side2", {});
+    assert.match((await applyProfileRequest()).error, /which Kelpie can't tell/);
   });
 });

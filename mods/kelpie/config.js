@@ -50,6 +50,7 @@ import { appHome, exec, notify, openOverlay } from "herdr";
 import { hc, panes, run, setShared, shared, spaces } from "./host.js";
 import { GITHUB_LOGIN, MOD, githubEnv, modFile, placed } from "./ui.js";
 import { DEFAULT_HOURS } from "./estimates.js";
+import { accountKey, allowedFor, mayReach, whoAsks } from "./boundary.js";
 
 const PROFILES = "kelpie.profiles";
 const OLD = "kelpie.spaces";
@@ -327,10 +328,27 @@ export function savedSetup(space) {
   return profileOf(space);
 }
 
+// The pairs of profiles whose Claudes may see each other's agents (#254, boundary.js): shared
+// `kelpie.share`, ["<id>|<id>"] (the two ids sorted), one entry for both sides. Only the profile dialog's
+// switch writes it (setShare()): no agent's request or command does, as crossing is the person's call.
+export const SHARE = "kelpie.share";
+const pairOf = (a, b) => [a, b].sort().join("|");
+const pairs = () => (Array.isArray(shared(SHARE)) ? shared(SHARE) : []).filter((k) => typeof k === "string" && /^[a-z0-9][a-z0-9-]*\|[a-z0-9][a-z0-9-]*$/.test(k));
+// The ids of the profiles paired with `id`.
+export const sharedWith = (id) => pairs().map((k) => k.split("|")).filter((p) => p.includes(id) && p[0] !== p[1]).map((p) => (p[0] === id ? p[1] : p[0]));
+export function setShare(a, b, on) {
+  if (!a || !b || a === b) return;
+  const key = pairOf(a, b), now = pairs();
+  if (now.includes(key) === Boolean(on)) return;
+  setShared(SHARE, on ? [...now, key] : now.filter((k) => k !== key));
+}
+
 export function saveProfile(id, profile) {
   const all = { ...(shared(PROFILES) ?? {}) };
   if (profile) all[id] = { ...profile, id }; else delete all[id];
   setShared(PROFILES, all);
+  // A deleted profile's pairs go with it.
+  if (!profile && sharedWith(id).length) setShared(SHARE, pairs().filter((k) => !k.split("|").includes(id)));
   if (!profile && shared(CHOSEN)?.id === id) setShared(CHOSEN, null);
   if (!profile && (shared(DESK) ?? {})[id]) { const desks = { ...shared(DESK) }; delete desks[id]; setShared(DESK, desks); }
   // The sessions seen on its Desk (desk.js DESK_SESSIONS), for the Desk's Screenshots.
@@ -834,21 +852,52 @@ export function requestProfileChange(id, set) {
 }
 
 export async function applyProfileRequest() {
+  return answerProfileRequest("profile-apply", async (req) => {
+    const { id, set } = req ?? {};
+    if (typeof id !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("id: a profile id, lowercase letters, digits and dashes.");
+    if (!set || typeof set !== "object" || Array.isArray(set)) throw new Error("set: an object of settings.");
+    mayChange(await whoAsks(req), id, set);
+    return requestProfileChange(id, set);
+  });
+}
+// Whether the Claude asking may change profile `id` (boundary.js, #254): its own profile only, every
+// setting alike (those saved at once too). A new profile only on the asker's own Claude account, as
+// one made on another would hand it that account's work. Throws in words when not.
+function mayChange(asker, id, set) {
+  const saved = profileById(id);
+  if (saved && !mayReach(asker, saved)) throw new Error(`Kelpie keeps the profile ${id} from you: it isn't the profile you run in${asker.why ? ` (${asker.why})` : ""}. Change it in Kelpie's profile dialog, or from a Claude started in that profile.`);
+  if (saved) return;
+  const account = accountKey(set?.claude?.config ?? null);
+  if (asker.account === null || account !== asker.account) throw new Error(`A new profile from here must run on your own Claude account${asker.account === null ? ", which Kelpie can't tell" : ""}: make one on another in Kelpie's profile dialog.`);
+}
+// kelpie.get-profile (the plugin's get_profile): the profiles the asking Claude may read (boundary.js),
+// as { ok, profiles: [{ id, name, folder }] }, or with `id` that profile's settings, { ok, profile }.
+// Another profile's id answers as one that isn't there.
+export function getProfileRequest() {
+  return answerProfileRequest("profile-get", async (req) => {
+    const allowed = allowedFor(await whoAsks(req));
+    if (req?.id === undefined || req?.id === null) return { ok: true, profiles: allowed.map((p) => ({ id: p.id, name: p.name ?? null, folder: p.folder ?? null })) };
+    const p = typeof req.id === "string" ? allowed.find((x) => x.id === req.id) : null;
+    if (!p) throw new Error(`No profile ${JSON.stringify(String(req.id).slice(0, 60))} you may read. Profiles: ${allowed.map((x) => x.id).join(", ") || "none"}.`);
+    const all = shared(PROFILES) ?? {};
+    return { ok: true, profile: all[p.id] ?? p };
+  });
+}
+// A plugin request about profiles: `<home>/kelpie/<name>.json` read and handed to `handle`, whose result
+// (or the error it throws) goes to <name>.result.json, the request removed.
+async function answerProfileRequest(name, handle) {
   const dir = `${appHome()}/kelpie`;
-  const file = `${dir}/profile-apply.json`;
+  const file = `${dir}/${name}.json`;
   let result;
   try {
     const read = await exec("cat", [file]);
     if (read.code) throw new Error(`No request at ${file}.`);
-    const { id, set } = JSON.parse(read.stdout);
-    if (typeof id !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("id: a profile id, lowercase letters, digits and dashes.");
-    if (!set || typeof set !== "object" || Array.isArray(set)) throw new Error("set: an object of settings.");
-    result = requestProfileChange(id, set);
+    result = await handle(JSON.parse(read.stdout));
   } catch (e) {
     result = { ok: false, error: String(e?.message ?? e) };
   }
   const out = JSON.stringify({ ...result, at: new Date().toISOString() }, null, 2);
-  await exec("sh", ["-c", 'mkdir -p "$1" && printf "%s\\n" "$2" > "$1/profile-apply.result.json" && rm -f "$3"', "sh", dir, out, file]).catch(() => {});
+  await exec("sh", ["-c", 'mkdir -p "$1" && printf "%s\\n" "$2" > "$1/$4.result.json" && rm -f "$3"', "sh", dir, out, file, name]).catch(() => {});
   return result;
 }
 

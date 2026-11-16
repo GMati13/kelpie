@@ -18,7 +18,7 @@ import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
-import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
+import { applyProfileRequest, getProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { deskAgents, deskNow, deskShown, goDesk, pauseDesk, pauseDeskByKey, showDeskView } from "./desk.js";
 import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, syncSkin } from "./skins/index.js";
@@ -718,6 +718,7 @@ export async function command(c) {
   }
   // apply-profile: an agent's change to a profile, from a file (the plugin's save_profile tool writes it).
   if (c === "apply-profile") return applyProfileRequest();
+  if (c === "get-profile") return getProfileRequest();
   // edit-profile opens the shown profile's dialog, edit-profile-<tab> on that tab (setup.js TABS).
   if (c === "edit-profile" || c.startsWith("edit-profile-")) { const p = shownProfile(); return p ? openProfile(p.id, { focus: c.slice("edit-profile-".length) || undefined }) : undefined; }
   if (c.startsWith("profile-")) { const p = profiles().find((x) => x.id === c.slice("profile-".length)); return p ? switchProfile(p) : undefined; }

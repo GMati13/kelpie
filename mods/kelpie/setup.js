@@ -17,7 +17,7 @@ import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
 import { DEFAULT_HOURS } from "./estimates.js";
-import { ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, claudeFolders, isOwnClaude, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, claudeFolders, claudeKey, isOwnClaude, profiles, setShare, sharedWith, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { jiraPriorities } from "./board.js";
@@ -139,6 +139,9 @@ export class Setup {
     this.notifyPulls = saved.notify?.pulls !== false; // on unless turned off
     // The Claude account its new agents use: a config folder, or null for Claude's own ~/.claude.
     this.claudeConfig = saved.claude?.config ?? null;
+    // The other profiles whose Claudes may see this one's agents, and its theirs (config.js SHARE,
+    // #254): a pair each, saved with the profile, the only place it's set.
+    this.shares = new Set(this.profile ? sharedWith(this.profile.id) : []);
     this.claudeDirs = [];
     cx.spawn(async (cx) => {
       const dirs = await claudeFolders().catch(() => []);
@@ -237,6 +240,7 @@ export class Setup {
     cx.timer.every(1000, (cx) => { if (this.armed && Date.now() - this.armed.at >= ARMED_MS) { this.armed = null; cx.notify(); } });
     // What the dialog would save as it opened: anything else is an unsaved change.
     this.initial = JSON.stringify(this.draft().profile);
+    this.initialShares = [...this.shares].sort().join(",");
     if (saved.jira?.keychain && !saved.jira?.tokenCommand) this.fillEmail(cx);
   }
 
@@ -459,14 +463,20 @@ export class Setup {
   }
 
   dirty() {
-    return JSON.stringify(this.draft().profile) !== this.initial;
+    return JSON.stringify(this.draft().profile) !== this.initial || [...this.shares].sort().join(",") !== this.initialShares;
   }
 
   save(cx) {
     const { error, profile } = this.draft();
     if (error) return this.result(error[0], false, error[1], cx);
-    saveProfile(this.profile?.id ?? newProfileId(profile.name), profile);
+    const id = this.profile?.id ?? newProfileId(profile.name);
+    saveProfile(id, profile);
+    this.saveShares(id);
     closeOverlay(props().overlay);
+  }
+  // Each other profile's pair with this one, as its switch is now (one entry for both sides).
+  saveShares(id) {
+    for (const p of profiles()) if (p.id !== id) setShare(id, p.id, this.shares.has(p.id));
   }
 
   // "Let me configure it for you": a new Claude on the Desk sets up `scope` (config.js
@@ -483,6 +493,7 @@ export class Setup {
       if (error) return this.result(error[0], false, error[1], cx);
       const id = profile?.id ?? newProfileId(draft.name);
       saveProfile(id, draft);
+      this.saveShares(id);
       profile = profileById(id);
     }
     cx.spawn(async () => {
@@ -491,6 +502,21 @@ export class Setup {
       else await askPlugin(profile, "configure", scope);
       closeOverlay(overlay);
     });
+  }
+
+  // The Agents page's Other profiles: a switch per other profile, letting their Claudes and this one's
+  // see each other's agents (find, show and message them). Off by default: profiles may run on
+  // different Claude accounts so that one's work stays away from the other's (#254).
+  sharesPart(t, toggle, group, hint) {
+    const others = profiles().filter((p) => p.id !== this.profile?.id);
+    if (!others.length) return [];
+    const mine = claudeKey(this.claudeConfig);
+    return [
+      group("Other profiles"),
+      hint("Claude agents see only their own profile's agents. Turn one on to let this profile's Claudes and that profile's find, show and message each other's agents. Their settings, stories and Next stay apart. Only you can turn this on."),
+      ...others.map((p) => toggle(`setup-share-${p.id}`, p.name ?? p.id, this.shares.has(p.id), (_e, cx) => { if (this.shares.has(p.id)) this.shares.delete(p.id); else this.shares.add(p.id); cx.notify(); },
+        claudeKey(p.claude?.config) === mine ? "On the same Claude account." : "On another Claude account: its agents' work would reach this one's account, and this one's reach that one's.")),
+    ];
   }
 
   // A careful press: the first arms it (the button says what a second does), a second within
@@ -736,6 +762,7 @@ export class Setup {
           { label: "Default", value: null, on: !this.claudeConfig, tip: "Claude's own folder, ~/.claude" },
           ...dirs.map((d) => ({ label: dirName(d), value: d, on: this.claudeConfig === d, tip: d })),
         ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR): its agents, What next? and its terminals, where a claude you type uses it too. Lists your ~/.claude* folders that have a settings.json or projects/. Resuming a session keeps the account it ran on."),
+        ...this.sharesPart(t, toggle, group, hint),
         group("Another Claude account"),
         step("setup-claude-new", "Give it a config folder of its own and sign in there once, in a terminal. Then open this page again: the folder is listed above.",
           `CLAUDE_CONFIG_DIR=~/.claude-${this.profile?.id ?? "work"} claude`),

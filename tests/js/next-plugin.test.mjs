@@ -24,12 +24,37 @@ beforeEach(() => {
   mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
 });
 
-const request = (name, req) => put(`${home}/kelpie/${name}.json`, typeof req === "string" ? req : JSON.stringify(req));
+// Asked as the plugin asks: with the account its Claude runs on, the demo profile's ("", Claude's own
+// ~/.claude), so the demo is this Claude's own profile (boundary.js, #254).
+const request = (name, req) => put(`${home}/kelpie/${name}.json`, typeof req === "string" ? req : JSON.stringify((req && typeof req === "object" && !Array.isArray(req) ? { account: "", ...req } : req)));
 const result = (name) => JSON.parse(readFileSync(`${home}/kelpie/${name}.result.json`, "utf8"));
 const asks = () => mock.sharedValue("kelpie.next.asks")?.[DEMO] ?? [];
 const agentOf = (tab) => world.agents.find((a) => a.tab_name === tab);
 const queue = () => { const s = storyItems(); return needQueueOf(s.st.profile, s.items, s.reviews); };
 const demo = () => profileById(DEMO);
+
+// The account boundary (#254): Next is the asking Claude's own profile's, never the one shown.
+describe("Next's tools: only the asking Claude's own profile", () => {
+  test("a Claude on another account than the profile shown gets its own profile's answer, not the shown one's", async () => {
+    mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), home: { id: "home", name: "Home", folder: "/home-projects", claude: { config: "/home/test/.claude-home" } } });
+    request("next-get", { account: "/home/test/.claude-home" });
+    const r = await getNextRequest();
+    assert.equal(r.ok, false);
+    assert.equal(r.error, "The profile Home has no board, so Kelpie shows no Next queue for it.");
+    request("next-add", { action: "Read my plan", account: "/home/test/.claude-home" });
+    assert.equal((await addNextRequest()).ok, false);
+    assert.deepEqual(asks(), [], "nothing added to the shown profile's Next");
+  });
+  test("an account it can't tell: refused, in words", async () => {
+    for (const [name, run, req] of [["next-get", getNextRequest, {}], ["next-add", addNextRequest, { action: "Read my plan" }], ["next-suggest", suggestNextRequest, { items: [{ key: "ACME-180", action: "Start it" }] }]]) {
+      request(name, { ...req, account: undefined });
+      const r = await run();
+      assert.equal(r.ok, false, name);
+      assert.match(r.error, /which Claude account/, name);
+    }
+    assert.deepEqual(asks(), []);
+  });
+});
 
 describe("kelpie.add-next: an agent asks the person for something", () => {
   test("kept for the asking agent's profile, under its tab's name, linked to its story; the request removed", async () => {

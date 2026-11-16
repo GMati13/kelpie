@@ -29,6 +29,7 @@ import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
 import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, rankOf, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
+import { accountKey, allowedFor, crossedTo, whoAsks, mayReachAgent, profileFor } from "./boundary.js";
 import { demoAgentWork, demoArtifacts, demoBlob, demoLimit, demoLocal, demoPullFiles, demoSessions, demoSuggest, isDemo } from "./demo.js";
 
 const KEY = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -2177,6 +2178,10 @@ export function showPassageRequest() {
     const key = passageText(req?.key, 40).toUpperCase(), quote = passageText(req?.quote, 2000), note = passageText(req?.note, 200);
     if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
     if (quote.length < 3) throw new Error("quote: the passage's words, as the description or a comment has them.");
+    // Only in the asking Claude's own profile, while Kelpie shows it (#254): the passage view shows the
+    // shown profile's stories, and another account's are kept from this Claude.
+    const mine = profileFor(await whoAsks(req));
+    if (shownProfile()?.id !== mine.id) throw new Error(`Kelpie is showing another profile now, so it can't show you a story of ${passageText(mine.name, 60) || "yours"} there: ask the person to switch to it in Kelpie, then try again.`);
     if (!showPassage({ key, quote, note })) return { ok: false, error: `${key} isn't a story in the shown profile's list.` };
     // Where it is, for the agent's answer: the description and comments as the details will show
     // them. A board too slow to say in time leaves `found` out; the story is shown either way.
@@ -2230,14 +2235,11 @@ async function answerRequest(name, handle) {
   return result;
 }
 
-// Which profile a plugin request is about: the one What next? started it for (`profile`, from its
-// environment), else the asking agent's (`terminal`: its space's profile), else the one shown.
-function requestProfile(req) {
-  const named = typeof req?.profile === "string" ? profiles().find((p) => p.id === req.profile) : null;
-  if (named) return named;
-  const agent = typeof req?.terminal === "string" ? agents().find((a) => a.address === req.terminal) : null;
-  const space = agent && spaces().find((x) => x.id === agent.space);
-  return (space && profileOf(space)) || shownProfile();
+// Which profile a plugin request is about: the asking Claude's own (boundary.js: its terminal's
+// space's profile, else What next?'s `profile`, on that profile's Claude account), else the one profile
+// on its account. Never the one shown on screen, which may be another account's (#254).
+async function requestProfile(req) {
+  return profileFor(await whoAsks(req));
 }
 // A profile's stories and reviews as the list has them (storyItems(), for any profile).
 function itemsFor(profile) {
@@ -2254,8 +2256,8 @@ const profileHasNext = (profile) => {
 // kelpie.get-next (the plugin's get_next): the profile's Next queue, as Next lists it, for an agent
 // to read: { ok, profile, items: [{ kind, key, action, detail, url }] }.
 export function getNextRequest() {
-  return answerRequest("next-get", (req) => {
-    const profile = profileHasNext(requestProfile(req));
+  return answerRequest("next-get", async (req) => {
+    const profile = profileHasNext(await requestProfile(req));
     const s = itemsFor(profile);
     if (!s) throw new Error(`${profile.name}'s stories haven't loaded yet.`);
     const kind = (x) => (x.desk ? "desk" : x.finish ? "move-to-done" : x.clean ? "clean" : x.ask ? "agent-ask" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
@@ -2268,8 +2270,8 @@ export function getNextRequest() {
 // kelpie.add-next (the plugin's add_to_next): an agent asks the person for something (addAsk()).
 // It only adds a line to Next, which the person may take or drop, so nothing waits for a yes.
 export function addNextRequest() {
-  return answerRequest("next-add", (req) => {
-    const profile = profileHasNext(requestProfile(req));
+  return answerRequest("next-add", async (req) => {
+    const profile = profileHasNext(await requestProfile(req));
     const ask = addAsk(profile, { action: req?.action, why: req?.why, key: req?.key, url: req?.url, terminal: req?.terminal });
     return { ok: true, profile: profile.name, ask: { action: ask.action, ...(ask.key ? { key: ask.key } : {}) } };
   });
@@ -2279,7 +2281,7 @@ export function addNextRequest() {
 const PICKS_IN = 20;
 export function suggestNextRequest() {
   return answerRequest("next-suggest", async (req) => {
-    const profile = profileHasNext(requestProfile(req));
+    const profile = profileHasNext(await requestProfile(req));
     if (!Array.isArray(req?.items)) throw new Error("items: a list of picks.");
     const { kept, dropped } = await applyPicks(profile, req.items.slice(0, PICKS_IN));
     return { ok: true, profile: profile.name, kept: kept.map((k) => `${k.idea ? "idea" : k.key.replace(/^pr:/, "")}: ${k.action}${k.aside ? ` (set aside: ${k.aside})` : ""}`), dropped };
@@ -2326,12 +2328,13 @@ export function claudeOf(rec, local) {
 // A demo profile's from its fixture (its agents are stand-ins: no Claude to reach); the rest from
 // their sessions (claudeSession: the terminal's own Claude process's record, which also names the
 // agent, claudeOf()), read by agent-work.py where the agent runs, one run per machine.
-async function agentWork(list) {
+async function agentWork(list, read = new Map()) {
   const out = new Map();
   const real = [];
   await Promise.all(list.map(async ({ a, profile }) => {
     if (isDemo(profile)) { const w = await demoAgentWork(profile.folder, a.tab_name).catch(() => null); if (w) out.set(a.address, w); return; }
-    const rec = await claudeSession(a.address).catch(() => null);
+    // `read`: the session records already read (by address), for the agents in no profile's space.
+    const rec = read.has(a.address) ? read.get(a.address) : await claudeSession(a.address).catch(() => null);
     if (!rec?.sessionId) return;
     const claude = claudeOf(rec, !a.address.includes("/"));
     if (claude) out.set(a.address, { claude });
@@ -2356,8 +2359,8 @@ async function agentWork(list) {
 
 // A ticket key's place on the loaded boards: the profile whose list holds it, and its story when it's
 // a subtask (parentOf(): from the loaded data, so a key the board doesn't know has no story).
-function keyPlace(data, key, first) {
-  const ps = [first, ...profiles().filter((p) => p.id !== first?.id)].filter(Boolean);
+function keyPlace(data, key, first, allowed) {
+  const ps = [first, ...allowed.filter((p) => p.id !== first?.id)].filter(Boolean);
   for (const p of ps) {
     const d = data[p.id]?.data;
     const story = parentOf(d, key);
@@ -2385,8 +2388,9 @@ function resumableOn(profile, keys, data) {
     .map(({ t, id, ...x }) => Object.fromEntries(Object.entries({ ...x, at: iso(t) }).filter(([, v]) => v !== null)));
 }
 
-// kelpie.find-agents (the plugin's find_agents): the agents Kelpie knows, every profile's (or, with
-// `here`, the asking agent's profile's, else the shown one's), each { id, claude, tab, space, profile,
+// kelpie.find-agents (the plugin's find_agents): the agents the asking Claude may see (boundary.js:
+// its own profile's, and in spaces of no profile those on its own Claude account; never another
+// profile's, #254), each { id, claude, tab, space, profile,
 // key, story, ticket, state, folder, title, first, changed, you }, filtered by `key` (its own or its
 // story's), `folder` (it works in it, or under it, or the folder is in its), `file` (its session
 // changed it) and `words` (all found in its names, title, ticket or first message). A subtask's key
@@ -2400,11 +2404,22 @@ export function findAgentsRequest() {
     const words = passageText(req?.words, 200).toLowerCase().split(" ").filter(Boolean);
     if (key && !/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) throw new Error("key: a ticket key, like ABC-12.");
     if (folder && !folder.startsWith("/")) throw new Error("folder: a full path, starting with /.");
-    const asking = requestProfile(req);
-    const only = req?.here === true ? asking : null;
+    const asker = await whoAsks(req);
+    const allowed = allowedFor(asker), asking = asker.profile ?? (allowed.length === 1 ? allowed[0] : null);
     const all = spaces(), byId = new Map(all.map((s) => [s.id, s])), of = spaceProfiles(all), paneList = panes();
     const data = shared(DATA) ?? {};
-    let list = agents().filter((a) => byId.has(a.space)).map((a) => {
+    // Another profile's agents are never looked at, nor counted. One in a space of no profile counts
+    // only when its own session runs on the asker's account, read now (and handed to agentWork()).
+    const read = new Map();
+    const plain = agents().filter((a) => byId.has(a.space) && !of.get(a.space) && asker.account !== null);
+    await Promise.all(plain.slice(0, AGENTS_IN).map(async (a) => read.set(a.address, await claudeSession(a.address).catch(() => null))));
+    const reachable = (a) => {
+      const profile = of.get(a.space) ?? null;
+      if (profile) return mayReachAgent(asker, { profile });
+      const rec = read.get(a.address);
+      return Boolean(rec) && mayReachAgent(asker, { profile: null, account: accountKey(rec.config ?? null) });
+    };
+    let list = agents().filter((a) => byId.has(a.space) && reachable(a)).map((a) => {
       const space = byId.get(a.space), profile = of.get(space.id) ?? null;
       const d = data[profile?.id]?.data;
       const storyKey = hasBoard(profile) ? keyOf(space.name) : null;
@@ -2412,11 +2427,10 @@ export function findAgentsRequest() {
       return { a, space, profile, d, key: own, story: storyKey ?? parentOf(d, own) ?? own,
         folder: paneList.find((p) => p.id === a.pane)?.cwd ?? space.folder ?? null };
     });
-    if (only) list = list.filter((x) => x.profile?.id === only.id);
     let fallback = null, place = null;
     if (key) {
       const own = list.filter((x) => x.key === key || x.story === key);
-      place = own.length ? null : keyPlace(data, key, asking);
+      place = own.length ? null : keyPlace(data, key, asking, allowed);
       fallback = place?.story ?? null;
       list = own.length ? own : fallback ? list.filter((x) => (x.key === fallback || x.story === fallback) && (!place.profile || x.profile?.id === place.profile.id)) : [];
       if (!list.length) fallback = null;
@@ -2426,7 +2440,7 @@ export function findAgentsRequest() {
     if (asking) list = [...list.filter((x) => x.profile?.id === asking.id), ...list.filter((x) => x.profile?.id !== asking.id)];
     const more = Math.max(0, list.length - AGENTS_IN);
     list = list.slice(0, AGENTS_IN);
-    const work = await agentWork(list);
+    const work = await agentWork(list, read);
     let found = list.map((x) => {
       const w = work.get(x.a.address) ?? {};
       const files = Array.isArray(w.files) ? w.files.filter((f) => typeof f?.path === "string") : [];
@@ -2440,10 +2454,14 @@ export function findAgentsRequest() {
       changed: (file ? x.files.filter((f) => sameFile(f.path, file)) : x.files.slice(0, CHANGED_SHOWN)).map((f) => ({ path: f.path, ...(f.at ? { at: f.at } : {}) })),
       you: typeof req?.terminal === "string" && req.terminal === x.a.address,
       via: fallback ? "story" : null, note: fallback ? `On the story ${fallback}, not on ${key} itself.` : null,
+      // Another profile's agent, there only as the person paired the two profiles (boundary.js).
+      crossed: crossedTo(asker, x.profile) ? x.profile.name ?? x.profile.id : null,
     }).filter(([, v]) => v !== null && v !== false && !(Array.isArray(v) && !v.length))));
     const story = place?.story ?? null;
     const resumable = nobody ? resumableOn(place?.profile ?? asking, [key, story].filter(Boolean), data) : [];
-    return { ok: true, agents: agentsOut, ...(more ? { more } : {}), ...(only ? { profile: only.name } : {}),
+    // Nothing it may see at all: why, in words (the asker's account or profile can't be told).
+    const why = !allowed.length && !list.length && asker.why ? asker.why : null;
+    return { ok: true, agents: agentsOut, ...(more ? { more } : {}), ...(asker.profile ? { profile: asker.profile.name } : {}), ...(why ? { why } : {}),
       ...(nobody ? { nobody: story ? `Nobody is working on ${key} or its story ${story} right now.` : `Nobody is working on ${key} right now.` } : {}),
       ...(resumable.length ? { resumable } : {}) };
   });
@@ -2454,12 +2472,17 @@ export function findAgentsRequest() {
 // agent Herdr lists counts: the id is compared, never run. It only changes what's shown, so nothing
 // waits for a yes.
 export function showAgentRequest() {
-  return answerRequest("agent-show", (req) => {
+  return answerRequest("agent-show", async (req) => {
     const id = typeof req?.id === "string" ? req.id.slice(0, 100) : "";
     const a = id ? agents().find((x) => x.address === id) : null;
     const space = a ? spaces().find((s) => s.id === a.space) : null;
-    if (!a || !space || !a.pane) throw new Error(`No agent ${passageText(id, 60) || "was named"} in Kelpie's lists now: find_agents gives the ids of the agents running.`);
-    const profile = spaceProfiles().get(space.id) ?? null;
+    const profile = space ? spaceProfiles().get(space.id) ?? null : null;
+    // Only an agent find_agents would give this Claude (boundary.js): another profile's is refused in
+    // the same words as one that isn't there, so the answer doesn't say it exists.
+    const asker = a && space ? await whoAsks(req) : null;
+    const rec = a && space && !profile ? await claudeSession(a.address).catch(() => null) : null;
+    const may = asker && mayReachAgent(asker, { profile, account: rec ? accountKey(rec.config ?? null) : null });
+    if (!a || !space || !a.pane || !may) throw new Error(`No agent ${passageText(id, 60) || "was named"} in Kelpie's lists now: find_agents gives the ids of the agents running.`);
     chooseProfile(null);
     if (profile) setPreview(profile, null);
     if ((shared(VIEW) ?? {})[space.id] && shared(VIEW)[space.id] !== "agent") setShared(VIEW, { ...shared(VIEW), [space.id]: "agent" });
@@ -2470,20 +2493,20 @@ export function showAgentRequest() {
 }
 
 // Where an agent runs, as Kelpie sees it, for the Claude in it (the plugin's SessionStart hook and
-// get_story): its terminal's space when Kelpie knows it (`terminal`), else what its environment says
-// (`profile`, `story`: placed() in ui.js), else null. { profile, place: "story" | "desk" | "space", key }.
+// get_story): its terminal's space when Kelpie knows it, else what its environment says (`story`:
+// placed() in ui.js), else null; only in the asker's own profile (whoAsks(), boundary.js), so a Claude on
+// another account than its space's profile is told nothing of it. { profile, place, key }.
 const WHERE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
-function whereOf(req) {
+function whereOf(req, asker) {
+  if (!asker?.profile) return null;
   const agent = typeof req?.terminal === "string" ? agents().find((a) => a.address === req.terminal) : null;
   const space = agent && spaces().find((x) => x.id === agent.space);
-  const owner = space && profileOf(space);
-  if (owner) {
+  if (asker.how === "terminal" && space) {
     const key = storyKeyOf(space);
-    return { profile: owner, place: isDesk(space) ? "desk" : key ? "story" : "space", key };
+    return { profile: asker.profile, place: isDesk(space) ? "desk" : key ? "story" : "space", key };
   }
-  const named = typeof req?.profile === "string" ? profiles().find((p) => p.id === req.profile) : null;
-  if (!named || typeof req?.story !== "string") return null;
-  return WHERE_KEY.test(req.story) ? { profile: named, place: "story", key: req.story } : { profile: named, place: "space", key: null };
+  if (typeof req?.story !== "string") return null;
+  return WHERE_KEY.test(req.story) ? { profile: asker.profile, place: "story", key: req.story } : { profile: asker.profile, place: "space", key: null };
 }
 // A profile's stories as the list has them, the Done group's too, with when they loaded.
 function loadedFor(profile) {
@@ -2539,10 +2562,10 @@ function storyReport(profile, it, loaded) {
 // about a story: `key` (a subtask's gives its story), else the agent's own story, else the one shown.
 // { ok, where, story }. Read only: nothing moves.
 export function getStoryRequest() {
-  return answerRequest("story-get", (req) => {
-    const where = whereOf(req);
-    const profile = where?.profile ?? shownProfile();
-    if (!profile) throw new Error("No Kelpie profile is shown.");
+  return answerRequest("story-get", async (req) => {
+    const asker = await whoAsks(req);
+    const where = whereOf(req, asker);
+    const profile = where?.profile ?? profileFor(asker);
     if (!hasBoard(profile)) return { ok: true, where: wherePart(where, null), story: null, why: `The profile ${told(profile.name, 60)} has no board, so Kelpie holds no stories for it.` };
     const loaded = loadedFor(profile);
     const asked = typeof req?.key === "string" && req.key ? passageText(req.key, 40).toUpperCase() : null;
@@ -2563,8 +2586,8 @@ export function getStoryRequest() {
 // so agents starting at once don't answer each other's. { ok, where } (null outside Kelpie's spaces).
 export function whereRequest(terminal) {
   if (!/^[\w-]{1,40}$/.test(terminal)) return null;
-  return answerRequest(`where-${terminal}`, (req) => {
-    const where = whereOf({ ...req, terminal });
+  return answerRequest(`where-${terminal}`, async (req) => {
+    const where = whereOf({ ...req, terminal }, await whoAsks({ ...req, terminal }));
     return { ok: true, where: wherePart(where, where && hasBoard(where.profile) ? loadedFor(where.profile) : null) };
   });
 }
