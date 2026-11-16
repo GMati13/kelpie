@@ -4,7 +4,10 @@ div
       image art/kelpie/skins/quiet-pages/lamp-day-2.png
   v_flex [fg=foreground]
     h_flex
-      h_flex #story-head-text
+      h_flex #story-head-text {down:right}
+        div
+          Popup.new "head-menu-menu"
+            div #head-menu-at
         div #story-key [fg=accent font="DM Mono"] {down:left click} tip="Open on GitHub"
           "web#421"
         div #story-title [font="Fraunces"] tip="ACME-166 Share a trip with a link\nReview requested by priya-n"

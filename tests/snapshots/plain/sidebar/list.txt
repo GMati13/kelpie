@@ -381,7 +381,7 @@ v_flex [fg=foreground]
         Popup.new "review-ACME-166-menu"
           div #review-ACME-166-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Review ACME-166's 2 pull requests together, with a new agent or one already reviewing them"
             svg own:eye
-    h_flex #review-web#421 [hover(bg=hover)] {click} tip="From priya-n. Preview it: its checks and files, and Start review"
+    h_flex #review-web#421 [hover(bg=hover)] {click down:right} tip="From priya-n. Preview it: its checks and files, and Start review · right-click for more"
       div
         div [bg=ansi4/33 fg=ansi4] tip="priya-n"
           "P"
@@ -391,7 +391,10 @@ v_flex [fg=foreground]
             "ACME-166 Share a trip with a link"
         div [fg=muted]
           "web#421 · 20h"
-    h_flex #review-api#308 [hover(bg=hover)] {click} tip="From priya-n. Preview it: its checks and files, and Start review"
+      div
+        Popup.new "review-menu-web#421-menu"
+          div #review-menu-web#421-at
+    h_flex #review-api#308 [hover(bg=hover)] {click down:right} tip="From priya-n. Preview it: its checks and files, and Start review · right-click for more"
       div
         div [bg=ansi4/33 fg=ansi4] tip="priya-n"
           "P"
@@ -401,6 +404,9 @@ v_flex [fg=foreground]
             "ACME-166 Issue read-only share tokens for a trip"
         div [fg=muted]
           "api#308 · 21h"
+      div
+        Popup.new "review-menu-api#308-menu"
+          div #review-menu-api#308-at
     h_flex #review-story-ACME-184 [fg=dim hover(fg=foreground)] {click} tip="Show ACME-184"
       div #review-story-fold-ACME-184 [hover(bg=hover)] {down:left click} tip="Fold ACME-184's pull requests"
         svg chrome:chevron-down [fg=dim]
@@ -412,7 +418,7 @@ v_flex [fg=foreground]
         Popup.new "review-ACME-184-menu"
           div #review-ACME-184-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Review ACME-184's 2 pull requests together, with a new agent or one already reviewing them"
             svg own:eye
-    h_flex #review-web#427 [hover(bg=hover)] {click} tip="From sam-okafor. Preview it: its checks and files, and Start review"
+    h_flex #review-web#427 [hover(bg=hover)] {click down:right} tip="From sam-okafor. Preview it: its checks and files, and Start review · right-click for more"
       div
         div [bg=ansi4/33 fg=ansi4] tip="sam-okafor"
           "S"
@@ -422,7 +428,10 @@ v_flex [fg=foreground]
             "ACME-186 Label each stop's times with its zone"
         div [fg=muted]
           "web#427 · 50m"
-    h_flex #review-api#311 [hover(bg=hover)] {click} tip="From sam-okafor. Preview it: its checks and files, and Start review"
+      div
+        Popup.new "review-menu-web#427-menu"
+          div #review-menu-web#427-at
+    h_flex #review-api#311 [hover(bg=hover)] {click down:right} tip="From sam-okafor. Preview it: its checks and files, and Start review · right-click for more"
       div
         div [bg=ansi4/33 fg=ansi4] tip="sam-okafor"
           "S"
@@ -432,6 +441,9 @@ v_flex [fg=foreground]
             "ACME-186 Return each stop's time zone with the itinerary"
         div [fg=muted]
           "api#311 · 1h"
+      div
+        Popup.new "review-menu-api#311-menu"
+          div #review-menu-api#311-at
     h_flex #review-story-none [fg=dim]
       div #review-story-fold-none [hover(bg=hover)] {down:left click} tip="Fold the pull requests without a ticket"
         svg chrome:chevron-down [fg=dim]
@@ -439,7 +451,7 @@ v_flex [fg=foreground]
         "No ticket"
       div
         ""
-    h_flex #review-api#305 [hover(bg=hover)] {click} tip="From tomas-r. Preview it: its checks and files, and Start review"
+    h_flex #review-api#305 [hover(bg=hover)] {click down:right} tip="From tomas-r. Preview it: its checks and files, and Start review · right-click for more"
       div
         div [bg=ansi1/33 fg=ansi1] tip="tomas-r"
           "T"
@@ -449,6 +461,9 @@ v_flex [fg=foreground]
             "Bump OpenTelemetry to 1.28"
         div [fg=muted]
           "api#305 · 3h"
+      div
+        Popup.new "review-menu-api#305-menu"
+          div #review-menu-api#305-at
       div #review-row-api#305 {down:left click}
         div #review-row-api#305-go [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Review api#305: check it out and start a review agent on it, in Acme's Reviews space"
           svg own:eye
@@ -470,7 +485,7 @@ v_flex [fg=foreground]
             Popup.new "merge-none-menu"
               div #merge-none-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Merge for pull requests without a ticket, with a new agent or an open Claude"
                 svg own:git-merge
-    h_flex #mine-docs#58 [hover(bg=hover)] {click} tip="Draft. Show its files and what it needs"
+    h_flex #mine-docs#58 [hover(bg=hover)] {click down:right} tip="Draft. Show its files and what it needs · right-click for more"
       div
         div
           svg own:git-pull-request-draft [fg=dim]
@@ -480,6 +495,9 @@ v_flex [fg=foreground]
             "Fix typos in the onboarding guide"
         div [fg=muted]
           "docs#58 · 2d"
+      div
+        Popup.new "mine-menu-docs#58-menu"
+          div #mine-menu-docs#58-at
     h_flex
       div [fg=muted]
         "To do"
