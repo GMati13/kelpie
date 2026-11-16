@@ -16,6 +16,7 @@ import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeT
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
+import { attention, blockedAgents } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
@@ -7276,13 +7277,22 @@ export function nextNeed() {
   notify({ title: "Nothing needs you right now", level: "info", timeout: 3000 });
 }
 
+// The footer's attention mark (kelpie.next-agent): it counts the agents waiting for you, so its click
+// goes to one of them, the next after the focused pane, any profile's (goBlockedAgent()), never to
+// Next's other items, which once opened Clean up all (#250). The only one already focused: it stays,
+// as the mark then says (attention.js). Cmd-shift-j still goes through Next (nextNeed()).
+export function nextAgent() {
+  if (attention().here) return;
+  if (!goBlockedAgent()) notify({ title: "Nothing needs you right now", level: "info", timeout: 3000 });
+}
+
 // Shows an agent waiting for you, the shown profile's first, the one after the focused pane when
 // several wait. False when none does.
 function goBlockedAgent() {
   const profile = shownProfile();
   const of = spaceProfiles();
   const mine = (a) => profile && of.get(a.space)?.id === profile.id;
-  const list = agents().filter((a) => a.status === "blocked" && a.pane)
+  const list = blockedAgents()
     .sort((a, b) => Number(mine(b)) - Number(mine(a)));
   if (!list.length) return false;
   const here = list.findIndex((a) => a.pane === focused()?.pane);

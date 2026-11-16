@@ -11,7 +11,8 @@
 // (skins/quiet-pages/fonts/, loaded on Herdr's next start). Art from skins/quiet-pages/build.py.
 
 import { div, image, svg } from "gpui-kit";
-import { agents, run } from "../host.js";
+import { run } from "../host.js";
+import { attention } from "../attention.js";
 import base from "./base.js";
 import { alpha, artImage, bands, byHour } from "./common.js";
 
@@ -214,13 +215,15 @@ export default {
     return el;
   },
 
-  // The safelight in the footer: how many agents need you, lit only then. A click goes to the next.
+  // The safelight in the footer: how many agents need you, lit only then. A click shows the next of
+  // them (kelpie.next-agent), whatever else Next holds; its words and its click both come from
+  // attention.js, so they agree (#250).
   footerExtras(t) {
-    const n = agents().filter((a) => a.status === "blocked").length;
+    const { n, words } = attention();
     if (!n) return null;
     return div().id("qp-safelight").flex().flex_row().flex_none().gap(5).items_center().cursor_pointer()
-      .tooltip(`${n === 1 ? "An agent needs" : `${n} agents need`} you: show the next ⌘⇧J`)
-      .on_click(() => run("kelpie.next-need"))
+      .tooltip(words)
+      .on_click(() => run("kelpie.next-agent"))
       .child(bulb(11, 7)).child(div().font_family("DM Mono").text_color("#f08a6c").child(String(n)));
   },
 };

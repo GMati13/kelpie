@@ -27,7 +27,7 @@ v_flex
         div [font="DM Mono" fg=muted]
           "–"
       div
-      div #qp-safelight {click} tip="An agent needs you: show the next ⌘⇧J"
+      div #qp-safelight {click} tip="An agent needs you: show it"
         div
           div [bg=#e8603f52] ~loop(opacity)
           div [bg=#e8603f]
