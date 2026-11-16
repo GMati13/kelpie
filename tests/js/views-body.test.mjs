@@ -9,6 +9,7 @@ import { mock } from "herdr";
 import { handlers, nodeOf, texts, tree, walk } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { StoryBody, StoryList } from "../../mods/kelpie/stories.js";
+import { emit, pickAndSend, wake } from "../lib/askline.mjs";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -260,10 +261,10 @@ test("the details end with the Ask line, about the story, to a new Claude", asyn
   const { el } = await body({ space: "ACME-142" });
   assert.ok(byId(el, "ask-line"), "the Ask line is there");
   assert.equal(askedAbout(el), "ACME-142 · the story");
-  assert.match(toLabel(el), /^to New Claude/);
-  // Where it goes is said only when it matters (a Claude mid-task); else it's the menu's tip.
-  assert.equal(byId(el, "ask-hint"), null);
-  assert.deepEqual(handlers(el).filter((h) => h.id?.startsWith("ask-suggest-")).map((h) => h.id), ["ask-suggest-catchup", "ask-suggest-left", "ask-suggest-plan", "ask-suggest-explain"]);
+  assert.match(toLabel(el), /^New Claude/);
+  // At rest it's one quiet line: no suggestions, no Send (KELPIE-305).
+  assert.equal(handlers(el).filter((h) => h.id?.startsWith("ask-pick-")).length, 0);
+  assert.equal(byId(el, "ask-send"), null);
 });
 test("a subtask's title points the Ask line at it; a Claude waiting for you can't take it", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
@@ -271,7 +272,7 @@ test("a subtask's title points the Ask line at it; a Claude waiting for you can'
   const after = view.render(cx);
   assert.match(askedAbout(after), /^ACME-143 · /);
   // ACME-143's own Claude waits for an answer: a new one is picked, and it's listed as waiting.
-  assert.match(toLabel(after), /^to New Claude/);
+  assert.match(toLabel(after), /^New Claude/);
   view.menu = "ask-to";
   assert.match(texts(view.render(cx)).join(" "), /waiting for you, answer it first/);
 });
@@ -321,10 +322,9 @@ test("a suggestion asks the Claude on the subtask's key, and leaves no history i
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   press(el, "sub-title-ACME-172", cx);
   const pointed = view.render(cx);
-  assert.match(toLabel(pointed), /▾$/);
-  assert.doesNotMatch(toLabel(pointed), /^to New Claude/, "its own Claude, idle, is picked");
+  assert.doesNotMatch(toLabel(pointed), /^New Claude/, "its own Claude, idle, is picked");
   mock.calls.length = 0;
-  press(pointed, "ask-suggest-explain", cx);
+  pickAndSend(view, cx, "explain");
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1);
@@ -368,7 +368,7 @@ test("a right-click menu opens at the pointer, at any zoom", async () => {
 // KELPIE-226: Ask about what you copied points the Ask line at the clipboard's text.
 test("Ask about what you copied points the Ask line at the copied passage", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  press(el, "ask-copied", { ...cx, read_from_clipboard: () => "Queue edits made offline" });
+  pickAndSend(view, { ...cx, read_from_clipboard: () => "Queue edits made offline" }, "copied");
   assert.match(askedAbout(view.render(cx)), /^“Queue edits made offline/);
   const about = mock.state.shared.get("kelpie.ask.about")[DEMO].about;
   assert.equal(about.kind, "text");
@@ -376,17 +376,17 @@ test("Ask about what you copied points the Ask line at the copied passage", asyn
 });
 test("Ask about what you copied with nothing copied says so, and points nothing", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  press(el, "ask-copied", { ...cx, read_from_clipboard: () => undefined });
+  pickAndSend(view, { ...cx, read_from_clipboard: () => undefined }, "copied");
   assert.equal(askedAbout(view.render(cx)), "ACME-142 · the story");
 });
 
 // KELPIE-223 / KELPIE-230: Catch me up goes to the Claude already on the story; Plan this to a new
 // one in plan mode; once answered both stay pinned, and a plan has Go ahead.
 test("Catch me up goes to the story's own Claude, not a new one", async () => {
-  const { el, cx } = await body({ space: "ACME-171" });
+  const { view, cx } = await body({ space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   mock.calls.length = 0;
-  press(el, "ask-suggest-catchup", cx);
+  pickAndSend(view, cx, "catchup");
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1, "sent to the open Claude");
@@ -394,9 +394,9 @@ test("Catch me up goes to the story's own Claude, not a new one", async () => {
   assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0, "no new Claude");
 });
 test("Plan this starts a new Claude", async () => {
-  const { el, cx } = await body({ space: "ACME-171" });
+  const { view, cx } = await body({ space: "ACME-171" });
   mock.calls.length = 0;
-  press(el, "ask-suggest-plan", cx);
+  pickAndSend(view, cx, "plan");
   await new Promise((r) => setImmediate(r));
   assert.ok(mock.of("run").some(([n]) => n === "space.new" || n === "tab.new"), "a new Claude");
 });
@@ -417,4 +417,89 @@ test("a merged pull request's line says how long ago it merged", async () => {
   assert.ok(line, "api#291's line is drawn");
   assert.ok(texts(line).includes("3d"), texts(line).join(" | "));
   assert.match(nodeOf(line).calls.find(([m]) => m === "tooltip")[1][0], /^Merged 3d ago · /);
+});
+
+// KELPIE-305: the Ask line is one row. At rest: the input, ONE offer (a click asks it), a menu of the
+// other asks, and who it goes to. Writing (the cursor in it, or typed), the offer and menu fold away,
+// what it's about and who it goes to shrink, a clear button comes (widths slide); clearing puts it back.
+// The element holding `child` directly, in `el`'s tree.
+const findParent = (el, child) => {
+  const kids = nodeOf(el)?.calls?.filter(([m]) => m === "child" || m === "children").flatMap(([m, a]) => (m === "child" ? [a[0]] : a[0] ?? [])) ?? [];
+  if (kids.includes(child)) return el;
+  for (const k of kids) { const f = k && typeof k === "object" && findParent(k, child); if (f) return f; }
+  return null;
+};
+const width = (el, id) => nodeOf(byId(el, id)).calls.find(([m]) => m === "w")?.[1][0];
+test("the Ask line: one offer at rest; writing makes room and offers a clear; clearing puts it back", async () => {
+  const { view, cx } = await body({ space: "ACME-171" });
+  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  const rest = view.render(cx);
+  assert.ok(byId(rest, "ask-to-more"), "who it goes to");
+  assert.match(texts(byId(rest, "ask-offer")).join(" "), /2 pull requests ready: merge\?/, "two pull requests ready: the offer is to merge");
+  assert.ok(view.askMoreRows.some((r) => r.id === "catchup") && view.askMoreRows.some((r) => r.id === "copied"), "the rest in the menu");
+  assert.ok(!view.askMoreRows.some((r) => r.id === "merge"), "the offer isn't repeated in the menu");
+  assert.equal(width(rest, "ask-reset-box"), 0, "no clear at rest");
+  emit(view.askInput, "focus", cx);
+  const writing = view.render(cx);
+  assert.equal(width(writing, "ask-offer-box"), 0, "the offer folds away");
+  assert.equal(width(writing, "ask-more-box"), 0, "and the menu");
+  // Folded parts leave no gap: each brings its spacing inside its own box, which folds with it.
+  for (const id of ["ask-offer-box", "ask-more-box", "ask-to-box"]) assert.ok(nodeOf(byId(writing, id)).calls.some(([m]) => m === "pl"), `${id} keeps its own spacing`);
+  assert.ok(width(writing, "ask-about") < width(rest, "ask-about"), "what it's about shrinks");
+  assert.ok(width(writing, "ask-to-box") < width(rest, "ask-to-box"), "who it goes to shrinks");
+  assert.deepEqual(texts(byId(writing, "ask-to-more")), ["ACME-172"], "shortened to the ticket it's on");
+  assert.equal(width(writing, "ask-reset-box"), 0, "no clear until something's typed");
+  assert.ok(nodeOf(byId(writing, "ask-about")).calls.some(([m, a]) => m === "transition" && a[0] === "width"), "it slides");
+  view.askInput.set_value("Why");
+  emit(view.askInput, "change", cx);
+  const typed = view.render(cx);
+  assert.equal(width(typed, "ask-reset-box"), 50, "typed: ↵ and a clear button");
+  press(typed, "ask-reset", cx);
+  assert.equal(view.askInput.value(), "");
+  const back = view.render(cx);
+  assert.equal(width(back, "ask-offer-box"), width(rest, "ask-offer-box"), "back at rest");
+  mock.calls.length = 0;
+  pickAndSend(view, cx, "catchup");
+  await new Promise((r) => setImmediate(r));
+  const sent = mock.of("hc").filter(([a]) => a[0] === "send");
+  assert.equal(sent.length, 1);
+  assert.match(sent[0][0].at(-1), /Catch me up on this story/, "asked in the profile's words");
+  assert.match(render(view.render(cx), skinTheme()), /spin/, "the sparkles brew after a send");
+});
+
+// Laid over the details' bottom, the Ask line keeps its presses and clicks: they once reached the pull
+// request line under it, which opened in the browser instead of the question taking the cursor.
+test("a press or click on the Ask line stops there, not reaching the details under it", async () => {
+  const { el } = await body({ space: "ACME-142" });
+  const card = nodeOf(byId(el, "ask-line-card"));
+  const stopped = (method, button) => {
+    const call = card.calls.find(([m, a]) => m === method && (button ? a[0] === button : true));
+    if (!call) return false;
+    let stops = false;
+    call[1].find((v) => typeof v === "function")({}, { stop_propagation() { stops = true; } });
+    return stops;
+  };
+  assert.ok(stopped("on_mouse_down", "left"), "a left press");
+  assert.ok(stopped("on_mouse_down", "right"), "a right press");
+  assert.ok(stopped("on_click"), "a click");
+});
+
+// Who the Ask line goes to sits in a box as wide as its pill, measured as drawn: an estimate from its
+// letters left room after it at the line's end.
+test("the Ask line's pill box takes the pill's measured width, zoom divided out, nothing left over", async () => {
+  const { view, cx } = await body({ space: "ACME-171" });
+  const el = view.render(cx);
+  const report = (id, width) => nodeOf(byId(el, id)).calls.find(([m]) => m === "on_size_change")[1][0]({ width, height: 26 }, cx);
+  nodeOf(byId(el, "ask-zoom-probe")).calls.find(([m]) => m === "on_size_change")[1][0]({ width: 120, height: 0 }, cx);
+  report("ask-pill-wide", 120);
+  report("ask-pill-brief", 84);
+  const rest = view.render(cx);
+  assert.equal(width(rest, "ask-to-box"), 100 + 6, "at rest: the pill, 120 drawn at zoom 1.2, plus its spacing");
+  emit(view.askInput, "focus", cx);
+  assert.equal(width(view.render(cx), "ask-to-box"), 70 + 6, "writing: the short pill");
+  // Each copy is measured alone, in its own absolute box, so neither stretches to the other's width.
+  const writing = view.render(cx);
+  const boxOf = (id) => findParent(writing, byId(writing, id));
+  assert.notEqual(boxOf("ask-pill-wide"), boxOf("ask-pill-brief"), "the two copies don't share a box");
+  assert.ok(nodeOf(boxOf("ask-pill-brief")).calls.some(([m]) => m === "absolute"), "the short copy's box is its own");
 });

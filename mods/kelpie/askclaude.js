@@ -13,7 +13,7 @@
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
-import { SMALL, ago, icon, own, sessionTitle, stop, textButton, tint } from "./ui.js";
+import { SMALL, ago, chrome, icon, own, sessionTitle, stop, textButton, tint } from "./ui.js";
 import { ASK_PROMPTS, OTHERS, askText, fenced, promptValue } from "./config.js";
 
 // The Claudes a story's ask may go to: those in its space, and those on one of its keys elsewhere
@@ -280,40 +280,66 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // suggestions for that kind of thing (a click sends that one) and a word on where it goes (`hint`).
 // It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
 // accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
-export function askLine(t, { about, input, to, send, suggest, clear, hint, isStory, copied = null, tasks = [], task = null }) {
-  // Laid over the details' bottom, it's opaque: the page's background under the tint, so the text
-  // scrolling under it doesn't show through.
+// The Ask line (KELPIE-305): one row that never changes height, so nothing moves under the pointer.
+// At rest: the sparkles, what it's about as faint words, the question, ONE offer (`offer`: the ask that
+// fits what's happening, in Claude's voice, a click asking it at once), a small menu of the other asks
+// (`more`), and the Claude it goes to (`to`: its state mark and name). Writing (`writing`: the cursor in
+// it, or something typed), the line makes room for the question: the offer and the menu fold away,
+// what it's about shrinks to a few letters, who it goes to to its mark, and a clear button comes; each
+// slides (widths animate). Clearing empties it and puts it back at rest. Enter sends; no Send button.
+// Claude's presence is its motion (`magic`, the caller's: the sparkles breathing while touched, brewing
+// after a send, a glint along the edge then and while the Claude picked works).
+const slide = (el, w, ms = 220) => el.flex_none().w(w).overflow_hidden().transition("width", { duration: ms, easing: "ease-out" });
+const fade = (el, on, ms = 180) => el.opacity(on ? 1 : 0).transition("opacity", { duration: ms, easing: "ease-out" });
+export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, toMeasure = null, clear, reset, isStory, awake = false, writing = false, typed = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
+  const edge = tint(t.accent, awake || writing ? "99" : "40");
+  const offerW = offer ? Math.min(280, Math.round(offer.text.length * 6.4 + 46)) : 0;
+  const offerEl = offer && h_flex().id("ask-offer").flex_none().w(offerW).h(26).px(10).gap(6).items_center().rounded(13).cursor_pointer()
+    .bg(tint(t.accent, "1c")).border_1().border_color(tint(t.accent, "55")).text_size(SMALL).text_color(t.foreground)
+    .hover((el) => el.bg(tint(t.accent, "33"))).tooltip(`${offer.tip ?? offer.text}\nClick to ask it`)
+    .on_mouse_down("left", stop).on_click((_e, cx) => take(cx))
+    .child(icon(own("sparkles"), 11).text_color(t.accent))
+    .child(div().min_w(0).truncate().child(offer.text));
+  // Laid over the details' bottom, it keeps every press and click to itself (after its own parts took
+  // theirs): otherwise they reached what lies under it too, and a pull request line there opened in
+  // the browser instead of the question taking the cursor.
   return div().id("ask-line-card").relative().flex_none().mt(4)
-    .child(div().rounded(10).bg(t.background).child(askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task })));
+    .on_mouse_down("left", stop).on_mouse_down("right", stop).on_click(stop)
+    .when(Boolean(focus), (el) => el.track_focus(focus))
+    .on_hover((on, cx) => hover?.(on, cx))
+    .child(v_flex().id("ask-line").relative().overflow_hidden().rounded(12).bg(t.background)
+      .child(div().absolute().inset_0().rounded(12).bg(tint(t.accent, awake || writing ? "17" : "0b")))
+      .child(div().absolute().top(0).left(0).right(0).bottom(0).rounded(12).border_1().border_color(edge))
+      .children(magic.glint ?? [])
+      .when(Boolean(magic.measure), (el) => el.on_size_change(magic.measure).child(magic.probe))
+      .when(Boolean(toMeasure), (el) => el.child(toMeasure))
+      .child(h_flex().relative().gap(8).items_center().min_w(0).h(44).px(12)
+        .child(div().flex_none().w(18).child(magic.mark ?? icon(own("sparkles"), 14).text_color(t.accent)))
+        // What it's about: its words at rest, a few letters while writing (the whole of it in the tip).
+        .child(slide(h_flex().id("ask-about").gap(4).items_center().text_size(SMALL).text_color(t.dim), writing ? ABOUT_MIN : ABOUT_W)
+          .tooltip(about.others ? `${about.label}\nWritten by others: Claude is told it's information, not instructions` : about.label)
+          .child(div().min_w(0).truncate().child(about.label))
+          .when(!isStory && !writing, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().hover((x) => x.text_color(t.foreground))
+            .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕"))))
+        .child(div().flex_none().text_size(SMALL).text_color(t.dim).child("·"))
+        .child(div().flex_1().min_w(120).child(Input.new(input).h(30).px(2).bg(tint(t.background, "00")).text_size(TEXT_ASK).text_color(t.foreground)))
+        // The right end, one group with no gap of its own: each part brings its spacing inside its sliding
+        // box (`pl`), so a part folded to 0 leaves no gap behind. Something typed: how to send it (↵) and a
+        // clear button by the question; at rest the offer and the menu; then who it goes to.
+        .child(h_flex().flex_none().items_center()
+          .child(fade(slide(h_flex().id("ask-reset-box").gap(4).items_center(), typed ? 50 : 0), typed)
+            .child(div().id("ask-enter").flex_none().h(18).px(5).rounded(4).border_1().border_color(t.border).text_size(11).text_color(t.dim).tooltip("Enter asks it").child("↵"))
+            .child(div().id("ask-reset").flex_none().w(22).h(22).flex().items_center().justify_center().rounded_full().cursor_pointer().text_color(t.dim)
+              .hover((el) => el.bg(t.hover).text_color(t.foreground)).tooltip("Clear it").on_mouse_down("left", stop).on_click((_e, cx) => reset(cx))
+              .child(icon(chrome("x"), 12))))
+          .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box").pl(GAP), writing ? 0 : offerW + GAP), !writing).child(offerEl)))
+          .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box").pl(4), writing ? 0 : 26), !writing).child(more)))
+          // Who it goes to: its mark and name at rest, shortened to the ticket it's on while writing; the
+          // pill at its box's start, so any room left is at the line's end, not between it and the rest.
+          .child(slide(div().id("ask-to-box").pl(GAP).flex(), (writing ? toNarrow : toWide) + GAP).child(to)))));
 }
-function askLineInner(t, { about, input, to, send, suggest, clear, hint, isStory, copied, tasks, task }) {
-  // Two rows on one left edge (after the sparkles, ASK_INDENT): what it's about, the question, who, Send;
-  // then what can be asked in one click, questions first, a story's tasks after a thin rule, then copy
-  // and ask. A word on where it goes only when it matters (the Claude picked is mid-task); the rest is
-  // in tips, as the line is read at a glance.
-  const about_ = h_flex().id("ask-about").flex_shrink(1).min_w(0).max_w(240).h(28).px(9).gap(6).items_center().rounded(7).border_1().border_color(t.border).bg(t.background)
-    .text_size(SMALL).tooltip(about.others ? `${about.label}\nWritten by others: Claude is told it's information, not instructions` : about.label)
-    .child(div().min_w(0).truncate().child(about.label))
-    .when(!isStory, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().text_color(t.dim).hover((x) => x.text_color(t.foreground))
-      .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕")));
-  const quick = (id, label, fn, tip) => textButton(t, id, label, fn, { dim: true, tip });
-  const rule = () => div().flex_none().w(1).h(14).mx(4).bg(t.border);
-  const sugg = suggestionsFor(about.kind).map((x) => quick(`ask-suggest-${x.id}`, x.label, (_e, cx) => suggest(x.id, cx), "Ask it this (the wording is the profile's, on its Messages page)"));
-  const acts = tasks.map((x) => quick(`ask-task-${x.id}`, x.label, (_e, cx) => task(x.id, cx), x.tip));
-  return v_flex().id("ask-line").flex_none().gap(8).px(12).py(10).rounded(10).border_1().border_color(tint(t.accent, "40")).bg(tint(t.accent, "0d"))
-    .child(h_flex().gap(8).items_center().min_w(0)
-      .child(div().flex_none().w(16).child(icon(own("sparkles"), 14).text_color(t.accent)))
-      .child(about_)
-      .child(div().flex_1().min_w(120).child(Input.new(input).h(28).px(10).rounded(7).border_1().border_color(t.input).bg(t.background).text_size(SMALL).text_color(t.foreground)))
-      .child(div().flex_none().max_w(200).child(to))
-      .child(textButton(t, "ask-send", "Send", (_e, cx) => send(cx))))
-    .child(h_flex().flex_wrap().gap(2).items_center().pl(ASK_INDENT - 8).min_w(0)
-      .children(sugg)
-      // A story's tasks (KELPIE-228: Merge, Request approval), after a thin rule: they start work.
-      .when(acts.length > 0, (el) => el.child(rule()).children(acts))
-      // Copy, then ask (KELPIE-226): what was copied becomes what it's about.
-      .when(Boolean(copied), (el) => el.child(rule()).child(quick("ask-copied", "Ask about what you copied", (_e, cx) => copied(cx), "Copy a passage with ⌘C, then press this: the Ask line is about it")))
-      .when(Boolean(hint), (el) => el.child(div().flex_1()).child(div().id("ask-hint").flex_shrink(1).min_w(0).truncate().text_size(SMALL).text_color(t.muted).child(hint))));
-}
+const GAP = 6;
+const ABOUT_W = 170, ABOUT_MIN = 72;
+const TEXT_ASK = 13;
 // Where the Ask line's rows and the thread's lines start: past the sparkles (16) and the gap (8).
 export const ASK_INDENT = 24;

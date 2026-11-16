@@ -27,7 +27,7 @@ import { adfLines, findInTicket, findPassage, markdownBlocks } from "./adf.js";
 import { estimateOf, hoursPerDay, sprintSums } from "./estimates.js";
 import { decor, skinFont, skinMeter, skinText, skinTheme, statusMark } from "./skins/index.js";
 import { deskAgents, deskRows, goDeskAsking } from "./desk.js";
-import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, rankOf, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
+import { ASK_ID, PLAN_LINES, PLAN_MAX, askId, askLine, rankOf, suggestionsFor, blocksText, linesAbout, textAbout, askMessage, askThread, askWho, chosenWho, cleanAnswer, fileAbout, holdFor, openClaudes, questionOf, releaseOf, ticketAbout, withEntry } from "./askclaude.js";
 import { alpha, bands, mix, parseHex } from "./skins/common.js";
 import { asked as debugAsked, began, ended, skipped, waits } from "./debug.js";
 import { accountKey, allowedFor, crossedTo, whoAsks, mayReachAgent, profileFor } from "./boundary.js";
@@ -2855,6 +2855,8 @@ function sendAsked(about, agent, text, what) {
 // story key (its thread). Shared state, as the Changes view (another copy) points the line drawn in
 // the story's details.
 const ASK_ABOUT = "kelpie.ask.about";
+// How long the Ask line brews after a send (KELPIE-305).
+const ASK_BREW = 2600;
 const ASK_THREAD = "kelpie.ask.thread";
 export function pointAsk(profile, story, about) {
   const all = shared(ASK_ABOUT) ?? {};
@@ -5549,7 +5551,17 @@ export class StoryBody extends Stories {
     super.init(cx);
     // The Ask line's question (askclaude.js): Enter sends it.
     this.askInput = InputState.new({ placeholder: "Ask Claude… (Enter sends it)" });
+    // Enter sends what was typed (KELPIE-305).
     this.askInput.on("submit", (_e, cx) => this.askSend({ note: this.askInput.value() }, cx));
+    // The line wakes while the cursor is in it or the pointer over it; typing hides its suggestions.
+    this.askInput.on("focus", (_e, cx) => { this.askAwake = true; cx.notify(); });
+    this.askInput.on("blur", (_e, cx) => { this.askAwake = false; cx.notify(); });
+    this.askInput.on("change", (_e, cx) => {
+      const v = this.askInput.value(), typed = v.trim().length > 0;
+      if (typed !== Boolean(this.askTyped)) { this.askTyped = typed; cx.notify(); }
+    });
+    this.askRest = cx.focus_handle(); // where the cursor goes when the line is cleared, so it rests
+    this.askSentAt = 0; // a send's moment: the sparkles brew and a glint runs, for ASK_BREW
     this.askPick = null; // who the person picked: "new" or an agent's address, for what's pointed at now
     this.askFor = null; // what that pick was for (the about's id)
     this.askFocused = 0; // the last pointing the line took the cursor for
@@ -5570,13 +5582,53 @@ export class StoryBody extends Stories {
     const who = askWho({ story: it, key, open: openClaudes(it, agents(), tabKey), keyOf, names });
     const chosen = chosenWho(who, this.askPick, about.kind);
     const row = who.find((r) => r.id === chosen);
-    this.askTarget = { st, it, key, about, row, who };
+    this.askTarget = { t, st, it, key, about, row, who };
     const rows = who.map((r) => (r.waiting ? { header: `${r.label} · waiting for you, answer it first` }
       : { label: r.label, hint: r.hint, tip: r.tip, action: (cx) => { this.askPick = r.id; cx.notify(); } }));
-    const short = row.label.length > 24 ? `${row.label.slice(0, 23)}…` : row.label;
-    const to = this.menuButton(t, "ask-to", `to ${short} ▾`, rows, `${row.tip}${row.id === "new" && about.kind === "story" ? "\nA question about the whole story goes to a new Claude" : ""}`, { width: 320 });
-    // Said only when it matters: the Claude picked is mid-task, so the question waits.
-    const hint = row.busy ? "It's mid-task: your question waits until its turn ends" : null;
+    const short = row.label.length > 22 ? `${row.label.slice(0, 21)}…` : row.label;
+    const writing = Boolean(this.askAwake || this.askTyped);
+    // Its name, shortened while writing: the ticket it's on (its tab's key), else its name cut at 10
+    // letters; "new" for a new Claude. Session names are kebab-case ("fix-login-cookie-wait"), so a
+    // first word says nothing.
+    const brief = row.id === "new" ? "new" : keyOf(row.agent?.tab_name) ?? (short.length > 10 ? `${short.slice(0, 9)}…` : short);
+    // Who it goes to: its state's mark and its name, quiet; a click lists the others (KELPIE-305).
+    const toTip = `${row.tip}${row.id === "new" && about.kind === "story" ? "\nA question about the whole story goes to a new Claude" : ""}\nClick to send it to another`;
+    const to = this.menuButton(t, "ask-to", "", rows, toTip, { width: 320, anchor: "bottom_right",
+      // A small bordered pill, its mark and name; writing, the same pill shortened to the ticket it's on
+      // (`brief`), never the pill cut short; the whole name in its tip.
+      trigger: (toggle, open) => {
+        const mark = row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11).text_color(t.accent);
+        const base = h_flex().id("ask-to-more").flex_none().h(26).items_center().cursor_pointer().border_1().border_color(t.border)
+          .text_size(SMALL).text_color(open ? t.foreground : t.muted).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
+          .tooltip(toTip).on_mouse_down("left", stop).on_click(toggle);
+        return base.px(7).gap(6).rounded(13).child(mark).child(div().min_w(0).truncate().child(writing ? brief : row.id === "new" ? "New Claude" : short));
+      } });
+    // The pill's two widths, measured as drawn (invisible copies, each reporting its size), so its
+    // sliding box is exactly as wide as the pill shown, with no room left at the line's end. Sizes come
+    // as drawn, zoom included: divided by the zoom (shineProbe("ask")). Until measured, an estimate.
+    const pillFor = (id, text) => h_flex().id(id).flex_none().h(26).px(7).gap(6).items_center().border_1().text_size(SMALL)
+      .child(row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11)).child(div().child(text))
+      .on_size_change((size, cx) => {
+        const was = this.askPill?.[id];
+        if (was && Math.abs(was - size.width) < 0.5) return;
+        this.askPill = { ...(this.askPill ?? {}), [id]: size.width };
+        cx.notify();
+      });
+    const wideText = row.id === "new" ? "New Claude" : short;
+    const zoom = this.shine?.ask?.zoom || 1;
+    const pillW = (id, text, guess) => {
+      const raw = this.askPill?.[id];
+      return raw && this.askPillText?.[id] === text ? Math.ceil(raw / zoom) : guess;
+    };
+    if (this.askPillText?.["ask-pill-wide"] !== wideText || this.askPillText?.["ask-pill-brief"] !== brief) {
+      this.askPillText = { "ask-pill-wide": wideText, "ask-pill-brief": brief };
+      this.askPill = {};
+    }
+    // Each copy in a box of its own, sized by its content alone: side by side in one box, the short one
+    // was stretched to the long one's width and measured as wide as it.
+    const alone = (el) => h_flex().absolute().top(-60).left(0).items_start().opacity(0).child(el);
+    const pillMeasure = div().absolute().top(0).left(0).w(0).h(0)
+      .child(alone(pillFor("ask-pill-wide", wideText))).child(alone(pillFor("ask-pill-brief", brief)));
     const profile = st.profile;
     // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
     // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.
@@ -5603,22 +5655,51 @@ export class StoryBody extends Stories {
       },
       expanded: this.askExpanded, toggle: (id, cx) => { this.askExpanded = this.askExpanded === id ? null : id; cx.notify(); },
     });
+    // Claude's presence (KELPIE-305): the sparkles brew just after a send, breathe while the line
+    // is touched, rest otherwise; a glint runs along its edge after a send, and slowly while the
+    // Claude picked works.
+    const brewing = Date.now() - (this.askSentAt ?? 0) < ASK_BREW;
+    const awake = Boolean(this.askHover);
+    const glow = (a) => alpha(t.accent, a);
+    const glinting = brewing || Boolean(row.busy);
+    const magic = {
+      mark: brewing ? brewMark(t, 14) : awake || this.askAwake || this.askTyped ? sparkle(t, 14) : icon(own("sparkles"), 14).text_color(t.accent),
+      glint: glinting ? borderGlint(glow, this.shine?.ask, 12, brewing ? 1400 : 6000) : [],
+      measure: (size, cx) => this.shineSize("ask", size, cx),
+      probe: this.shineProbe("ask"),
+    };
+    // One offer: the ask that fits what's happening, in Claude's voice (askOffer()), a click asking it;
+    // every other ask, the story's tasks and copy-and-ask behind the small menu beside it.
+    const tasks = about.kind === "story" ? this.askTasks(st, it) : [];
+    const offer = this.askOffer(it, about, tasks);
+    const ask_ = (x, cx) => (x.task ? this.askTaskSend(x.id, cx) : this.askSend({ suggestion: x.id }, cx));
+    const copied = (cx) => {
+      const text = String(cx.read_from_clipboard?.() ?? "").trim();
+      if (!text) return say({ profile, keys: it.key }, "Nothing copied yet: copy a passage with ⌘C, then ask about what you copied.");
+      const flat = (x) => String(x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      const found = flat(blocksText(DESCRIPTIONS[it.key]?.blocks, 1e6)).includes(flat(text));
+      pointAsk(profile, it.key, textAbout(text, it, { found }));
+    };
+    const others = [...suggestionsFor(about.kind).map((x) => ({ ...x })), ...tasks.map((x) => ({ ...x, task: true }))].filter((x) => x.id !== offer?.id);
+    this.askMoreRows = [
+      ...others.map((x) => ({ id: x.id, label: x.label, tip: x.tip, action: (cx) => ask_(x, cx) })),
+      { id: "copied", label: "About what you copied", tip: "Copy a passage with ⌘C, then pick this: the line is about it", action: (cx) => copied(cx) },
+    ];
+    const more = this.menuButton(t, "ask-more", "", [{ header: "Or ask" }, ...this.askMoreRows], "Other things to ask", { width: 280, anchor: "bottom_right",
+      trigger: (toggle, open) => div().id("ask-more-more").flex_none().w(22).h(26).flex().items_center().justify_center().rounded(13).cursor_pointer()
+        .text_color(open ? t.foreground : t.dim).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
+        .tooltip("Other things to ask").on_mouse_down("left", stop).on_click(toggle).child(icon(chrome("chevron-down"), 12)) });
     const line = askLine(t, {
-      about, input: this.askInput, to, hint, isStory: about.kind === "story",
-      send: (cx) => this.askSend({ note: this.askInput.value() }, cx),
-      suggest: (id, cx) => this.askSend({ suggestion: id }, cx),
+      about, input: this.askInput, to, isStory: about.kind === "story", focus: this.askRest,
+      toWide: pillW("ask-pill-wide", wideText, Math.min(180, Math.round(wideText.length * 6.4 + 44))),
+      toNarrow: pillW("ask-pill-brief", brief, Math.round(brief.length * 6.4 + 44)),
+      toMeasure: pillMeasure,
+      awake, writing, typed: Boolean(this.askTyped), offer, more, magic,
+      // Clear: empty, the cursor out of it, back at rest.
+      reset: (cx) => { this.askInput.set_value(""); this.askTyped = false; this.askAwake = false; try { this.askRest.focus(); } catch { /* still emptied */ } cx.notify(); },
+      take: (cx) => ask_(offer, cx),
+      hover: (on, cx) => { if (Boolean(this.askHover) !== on) { this.askHover = on; cx.notify(); } },
       clear: () => pointAsk(profile, it.key, null),
-      // About the story: its tasks (KELPIE-228), while they apply, as its header offered them.
-      tasks: about.kind === "story" ? this.askTasks(st, it) : [],
-      task: (kind, cx) => this.askTask(t, st, it, kind, cx),
-      // Copy, then ask (KELPIE-226): the clipboard's text, said to be from the description when it is.
-      copied: (cx) => {
-        const text = String(cx.read_from_clipboard?.() ?? "").trim();
-        if (!text) return say({ profile, keys: it.key }, "Nothing copied yet: copy a passage with ⌘C, then press Ask about what you copied.");
-        const flat = (x) => String(x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-        const found = flat(blocksText(DESCRIPTIONS[it.key]?.blocks, 1e6)).includes(flat(text));
-        pointAsk(profile, it.key, textAbout(text, it, { found }));
-      },
     });
     // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
     // the question box ran far from what it's about and from Send.
@@ -5632,6 +5713,20 @@ export class StoryBody extends Stories {
     };
     if (!thread && this.askH?.thread) this.askH = { ...this.askH, thread: 0 };
     return [[thread, "thread"], [line, "line"]].filter(([el]) => el).map(([el, key]) => h_flex().flex_none().w_full().justify_center().child(el.w_full().max_w(ROWS).on_size_change(measured(key))));
+  }
+
+  // The Ask line's offer (KELPIE-305): the suggestion that fits what's happening, in Claude's voice,
+  // shown first when the line wakes: pull requests ready to merge, else subtasks done (catch me up),
+  // else for a file or lines an explanation, else what's left.
+  askOffer(it, about, tasks) {
+    const merge = tasks.find((x) => x.id === "merge");
+    const readyPrs = taskPrs(it).openPrs.filter(ready);
+    if (about.kind === "story" && merge && readyPrs.length) return { ...merge, task: true, text: readyPrs.length === 1 ? "A pull request is ready: merge it?" : `${readyPrs.length} pull requests ready: merge?`, tip: merge.tip };
+    const done = (it.subs ?? []).filter((x) => x.category === "done").length;
+    if (about.kind === "story" && done) return { id: "catchup", text: `${done === 1 ? "A subtask" : `${done} subtasks`} done: catch you up?`, tip: "Its Claude says what's done, what's going on and what needs you" };
+    if (about.kind === "file" || about.kind === "lines" || about.kind === "text") return { id: "explain", text: "Explain this?", tip: "What it does and why it's there, in plain words" };
+    if (about.kind === "story" && !(it.subs ?? []).some((x) => x.category !== "todo" && x.category !== "new")) return { id: "plan", text: "Plan this first?", tip: "A new Claude reads the ticket and the code and plans it, changing nothing" };
+    return { id: "left", text: "What's left?", tip: "What's left before this is done, and what's in the way" };
   }
 
   // A story's tasks on its Ask line (KELPIE-228): Merge while it has an open pull request, Request
@@ -5665,6 +5760,20 @@ export class StoryBody extends Stories {
     cx.notify();
   }
 
+  // Just sent: the sparkles brew and a glint runs along the line, then it rests (ASK_BREW).
+  sent(cx) {
+    this.askTyped = false; this.askSentAt = Date.now();
+    cx.timer.after(ASK_BREW + 50, (cx) => cx.notify());
+  }
+  // A story task filled into the line and sent with Enter.
+  askTaskSend(kind, cx) {
+    const x = this.askTarget;
+    if (!x) return;
+    this.askTask(x.t, x.st, x.it, kind, cx);
+    this.askInput.set_value("");
+    this.sent(cx);
+  }
+
   // Asks what the Ask line holds: a suggestion, or the typed question.
   askSend(ask, cx) {
     const x = this.askTarget;
@@ -5676,6 +5785,7 @@ export class StoryBody extends Stories {
     if (ask.suggestion === "plan") row = x.who.find((r) => r.id === "new");
     askClaude(x.st, x.it, x.key, row, x.about, ask);
     this.askInput.set_value("");
+    this.sent(cx);
     cx.notify();
   }
 

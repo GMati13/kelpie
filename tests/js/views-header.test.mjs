@@ -9,6 +9,7 @@ import { handlers, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryBody, StoryList } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
+import { emit, pickAndSend, wake } from "../lib/askline.mjs";
 import { demoPulls } from "../../mods/kelpie/demo.js";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -146,10 +147,13 @@ test("header: a pull request of yours with no ticket", async () => {
 // Working alone (#75), nobody can approve: no Request approval, a story's (on its Ask line since
 // KELPIE-228) or a lone pull request's.
 test("header: working alone, no Request approval", async () => {
-  assert.ok(byId((await header({ space: "ACME-160", View: StoryBody })).el, "ask-task-approval"), "a team's story offers it");
-  const solo = (await header({ space: "ACME-160", profile: ALONE, stories: aloneStories, View: StoryBody })).el;
+  const team = await header({ space: "ACME-160", View: StoryBody });
+  team.view.render(team.cx);
+  assert.ok(team.view.askMoreRows.some((r) => r.id === "approval"), "a team's story offers it");
+  const alone = await header({ space: "ACME-160", profile: ALONE, stories: aloneStories, View: StoryBody });
+  const solo = alone.view.render(alone.cx);
   assert.ok(byId(solo, "ask-line"), "the Ask line is drawn");
-  assert.equal(byId(solo, "ask-task-approval"), null);
+  assert.ok(!alone.view.askMoreRows.some((r) => r.id === "approval"));
   // docs#58 waiting on reviewers, nothing else to do: a team's header offers Request approval.
   const waiting = (st) => ({ ...st, data: { ...st.data, prs: st.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } });
   assert.ok(byId((await header({ preview: "pull:docs#58", stories: waiting(stories) })).el, "pull-approval"), "a team's lone pull request offers it");

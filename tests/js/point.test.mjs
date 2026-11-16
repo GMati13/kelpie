@@ -9,6 +9,7 @@ import { mock } from "herdr";
 import { handlers, nodeOf, texts } from "gpui-kit";
 import { byId, matchSnapshot, render } from "../lib/snapshot.mjs";
 import { Stories, StoryBody, StoryList, nextNeed } from "../../mods/kelpie/stories.js";
+import { emit, pickAndSend, wake } from "../lib/askline.mjs";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
 const snap = (name, el) => matchSnapshot(name, render(el, skinTheme()));
@@ -69,9 +70,12 @@ test("a story waiting on reviewers offers Request approval and Merge on its Ask 
   const { el } = await show(Stories, { space: "ACME-142" });
   assert.equal(byId(el, "story-approval-more"), null);
   assert.equal(byId(el, "story-merge-more"), null);
-  const body = (await show(StoryBody, { space: "ACME-142" })).el;
-  assert.deepEqual(texts(byId(body, "ask-task-merge")), ["Merge"]);
-  assert.deepEqual(texts(byId(body, "ask-task-approval")), ["Request approval"]);
+  const shown = await show(StoryBody, { space: "ACME-142" });
+  shown.view.render(shown.cx);
+  // On the Ask line: in its menu of other asks (or as its one offer).
+  const ids = shown.view.askMoreRows.map((r) => r.id);
+  assert.ok(ids.includes("merge") || texts(byId(shown.view.render(shown.cx), "ask-offer")).join(" ").includes("merge"), "Merge");
+  assert.ok(ids.includes("approval"), "Request approval");
 });
 
 test("Next pointed at merging: one box with the step, its pull requests and Merge all; the header's lit", async () => {
@@ -155,7 +159,7 @@ test("the Ask line's Merge sends the merge task to the story's open Claude", asy
   const { el, view, cx } = await show(StoryBody, { space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   mock.calls.length = 0;
-  handlers(el).find((h) => h.id === "ask-task-merge").fn({}, cx);
+  pickAndSend(view, cx, "merge");
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1, "to the open Claude");
