@@ -170,6 +170,8 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
 - `boundary.test.mjs`: who asks through the plugin (`whoAsks()`, #254: the terminal's space over the environment,
   the account from the terminal's own session, a profile only on its own account, never the one shown) and what
   it may see (`allowedFor()`, `mayReach()`, `mayReachAgent()`, `profileFor()`), with two profiles on two accounts.
+- `story-sessions.test.mjs`: a board profile's earlier sessions (the story list's, #157) are only its own Claude
+  account's, sessions.py run for real on a home with two accounts.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
   `patchHash`'s stable values.
