@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: pinned-skill-missing-falls-back
+expected_outcome: |
+  The profile pins /acme-dev:ticket, which this Claude doesn't have. Its first line says the pinned
+  skill isn't available and that it's using Kelpie's own routine; it doesn't silently swap in acme-
+  ticket.
+context:
+  scaffold_script: place-files.sh

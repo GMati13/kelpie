@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: skill-for-another-repo-is-not-used
+expected_outcome: |
+  The only ticket skill available is ops-ticket, for OPS tickets in another repository. It doesn't fit
+  this place, so it isn't used: no ops-change file is written, and the first line says it's using
+  Kelpie's own routine.
+context:
+  scaffold_script: place-files.sh

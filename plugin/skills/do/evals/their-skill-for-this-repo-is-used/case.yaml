@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: their-skill-for-this-repo-is-used
+expected_outcome: |
+  The repository has its own acme-ticket skill for ACME tickets. The first line says it's using the
+  person's /acme-ticket, which it then follows: ticket-notes/ACME-180.md is written with the key and
+  the link. Kelpie's own routine isn't run on top.
+context:
+  scaffold_script: place-files.sh
