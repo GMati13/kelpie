@@ -69,7 +69,8 @@ tests/python/test_*.py  kittyfix.py, changes.py, sessions.py, plugin/server.py (
   copied in and out as JSON, as Herdr's store does, and every read is handed out frozen: Kelpie keeps a
   read for the whole render, `mods/kelpie/host.js`, so a mod changing one in place fails), `spaces`, `agents`, `panes`, `terminals`, `layout`,
   `focused`, `props` (an overlay's or block's props), `theme`, `window` (`platform: "macos"`), `settings`,
-  `appHome` and `home` (non-existent paths by default: set them to a `tempDir()` when a test writes files).
+  `appHome` and `home` (non-existent paths by default: set them to a `tempDir()` when a test writes files),
+  `checking` (false; true is `herdr-app check` loading the mod, what `checking()` answers).
 - `mock.calls`: every call made, in order, as `{ fn, args }`; `mock.of("exec")` gives the argument lists of
   one function (`exec`, `hc`, `run`, `openOverlay`, `closeOverlay`, `notify`, `setShared`, `readTextFile`,
   `writeTextFile`, `setAgentOrder`, ...).

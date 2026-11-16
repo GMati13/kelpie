@@ -36,7 +36,7 @@ A story nobody has started yet:
 
 ## Requirements
 
-- [Herdr](https://herdr.dev), with its `herdr-app` and `hc` commands on your `PATH` (tested with Herdr 0.1.15 and herdr-core 0.1.20), and [Claude Code](https://claude.com/claude-code)
+- [Herdr](https://herdr.dev), with its `herdr-app` and `hc` commands on your `PATH` (Herdr 0.1.16 or later; tested with Herdr 0.1.16 and herdr-core 0.1.21), and [Claude Code](https://claude.com/claude-code)
 - `git`, `jq`, `curl`, and `python3` (its standard library only)
 - For pull requests, and for a GitHub Project as the board: the GitHub CLI `gh`, signed in (`gh auth login`). Moving a Project's tickets from Kelpie also needs gh's `project` scope (the profile dialog checks it and gives the command)
 - For Jira (Jira Cloud only): an API token, kept in the macOS Keychain or printed by a command of your own (`op read …`, `pass …`, `secret-tool lookup …`); the profile dialog sets it up

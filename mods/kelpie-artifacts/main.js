@@ -12,7 +12,7 @@
 import * as fs from "fs/promises";
 import { PathBuilder, View, div, image, svg } from "gpui-kit";
 import { Input, InputState, Popup, h_flex, v_flex } from "gpui-base";
-import { agents, appHome, exec, layout, nextCommand, panes, props, run, settings, shared, spaces, theme } from "herdr";
+import { agents, appHome, checking, exec, layout, nextCommand, panes, props, run, settings, shared, spaces, theme } from "herdr";
 import { FLATTEN_SCRIPT, INK, INKS, SAVE_SCRIPT, TEXT_FONT, addMark, arrowHead, drawArgs, editBase, isTiny, redo, strokeFor, textSizeFor, undo } from "./markup.js";
 import { justify, moveSelection, pngAspect, sections, stripWindow } from "./gallery.js";
 import { openExternal, reveal, revealLabel } from "./platform.js";
@@ -97,6 +97,9 @@ export default class Artifacts extends View {
     this.viewport = { width: 0, height: 0 };
     this.resetView();
     this.handle = cx.focus_handle();
+    // `herdr-app check` runs init() for real, exec included, and renders once (#284): start nothing
+    // then (no sweep of old folders in the person's Herdr folder, no refresh, timers or command loop).
+    if (checking()) return;
     this.refresh(cx);
     cx.timer.every(POLL, (cx) => this.refresh(cx));
     // Images age out of "Latest" even when nothing new arrives.
