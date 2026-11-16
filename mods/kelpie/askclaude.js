@@ -291,7 +291,7 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // after a send, a glint along the edge then and while the Claude picked works).
 const slide = (el, w, ms = 220) => el.flex_none().w(w).overflow_hidden().transition("width", { duration: ms, easing: "ease-out" });
 const fade = (el, on, ms = 180) => el.opacity(on ? 1 : 0).transition("opacity", { duration: ms, easing: "ease-out" });
-export function askLine(t, { about, input, to, toWide = 140, clear, reset, isStory, awake = false, writing = false, typed = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
+export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, clear, reset, isStory, awake = false, writing = false, typed = false, offer = null, take, more = null, magic = {}, hover, focus = null }) {
   const edge = tint(t.accent, awake || writing ? "99" : "40");
   const offerW = offer ? Math.min(280, Math.round(offer.text.length * 6.4 + 46)) : 0;
   const offerEl = offer && h_flex().id("ask-offer").flex_none().w(offerW).h(26).px(10).gap(6).items_center().rounded(13).cursor_pointer()
@@ -327,8 +327,8 @@ export function askLine(t, { about, input, to, toWide = 140, clear, reset, isSto
             .child(icon(chrome("x"), 12))))
         .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box"), writing ? 0 : offerW), !writing).child(offerEl)))
         .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box"), writing ? 0 : 22), !writing).child(more)))
-        // Who it goes to: its mark and name at rest, its mark alone while writing.
-        .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? 26 : toWide).child(to))));
+        // Who it goes to: its mark and name at rest, shortened to its first word while writing.
+        .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? toNarrow : toWide).child(to))));
 }
 const ABOUT_W = 170, ABOUT_MIN = 72;
 const TEXT_ASK = 13;
