@@ -18,9 +18,9 @@ Each story's pull requests, commits not in a pull request yet and uncommitted wo
 
 ![The Changes view: a file list on the left, a diff on the right](docs/screenshots/changes.png)
 
-Next takes you to whatever needs you, most urgent first. Claude can add its own picks from the sprint, the reviews waiting on you and the repos you work in:
+Next takes you to whatever needs you, most urgent first: an agent blocked on a prompt, then the agents that ended their turn waiting on you (a question, a choice, a plan to approve), then your pull requests, the reviews waiting on you and more. Claude can add its own picks from the sprint, the reviews waiting on you and the repos you work in:
 
-![The Next queue opened: what needs you, the reviews waiting on you, finished stories to clean up, and Claude's picks](docs/screenshots/next.png)
+![The Next queue opened: an agent that needs you, an agent waiting on your answer, your pull requests and the reviews waiting on you](docs/screenshots/next.png)
 
 A review waiting for you, before any agent starts on it:
 
