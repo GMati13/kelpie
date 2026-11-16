@@ -18,7 +18,7 @@ import { SMALL, TEXT, chrome, find, fullName, icon, iconButton, stop, textButton
 import { REFRESH, count } from "./source.js";
 import { openSetup, profileElsewhere, savedSetup, setupOf, shownProfile, shownSpace } from "./config.js";
 import { deskShown, deskView } from "./desk.js";
-import { Stories, StoryBody, StoryList, StoryView, headFolded, stackChild, storyNow } from "./stories.js";
+import { Stories, StoryBody, StoryList, StoryView, headFolded, settleTerminalsFold, stackChild, storyNow, terminalsFolded } from "./stories.js";
 import { SpacePicker, WorkSide } from "./workside.js";
 import { Sprint } from "./sprint.js";
 import { Pulls } from "./pulls.js";
@@ -90,14 +90,19 @@ function syncStories(root) {
   const unstarted = Boolean(now) && now.view === "start";
   const shown = (id, on) => { const node = find(root, id); if (node && Boolean(node.hidden) === on) run(on ? "layout.show" : "layout.hide", { id }); };
   shown("story-head", Boolean(now));
-  shown("story-body", Boolean(now) && (unstarted || !headFolded()));
+  // The terminals folded away (#271): the lower block hides as for a story not started, below,
+  // until the focus goes to another pane.
+  settleTerminalsFold();
+  const low = unstarted || (Boolean(now) && terminalsFolded());
+  shown("story-body", Boolean(now) && (low || !headFolded()));
   // The tab bar and the terminals share the "lower" column, under a draggable boundary with the
-  // details. A story not started has no terminals: "lower" hides and a copy of the tab bar at the
-  // bottom of the column ("toolbar-start", where nothing resizes) shows instead, so the details
-  // fill the column. Only one tab bar is ever shown, so its keys reach one copy.
-  shown("main-stack", !unstarted);
-  shown("lower", !unstarted);
-  shown("toolbar-start", unstarted);
+  // details. A story not started has no terminals, and folded they're put away: "lower" hides and a
+  // copy of the tab bar at the bottom of the column ("toolbar-start", where nothing resizes) shows
+  // instead, so the details fill the column. Hidden, not resized, "lower" comes back at the height it
+  // had. Only one tab bar is ever shown, so its keys reach one copy.
+  shown("main-stack", !low);
+  shown("lower", !low);
+  shown("toolbar-start", low);
   // An earlier version shrank "lower" to the tab bar's 42px, and Herdr kept that size: give the
   // terminals their share back.
   const lower = find(root, "lower");

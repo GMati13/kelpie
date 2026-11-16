@@ -15,7 +15,7 @@ import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, 
 import { toggleDebug } from "./debug.js";
 import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking } from "./stories.js";
+import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
@@ -260,6 +260,9 @@ function track(role) {
 }
 
 
+// What the fold button's tip calls the lower block, by the story's view.
+const FOLD_WHAT = { agent: "terminals", changes: "changes", shots: "screenshots", artifacts: "artifacts" };
+
 function toolbar(cx) {
   syncHub();
   track("toolbar");
@@ -397,6 +400,15 @@ function toolbar(cx) {
     .when(hubHidden(), (el) => el.child(h_flex().id("hub-setup").h(CONTROL).flex_none().px(10).gap(6).items_center().rounded(8).cursor_pointer()
       .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(`Choose what ${space?.name ?? "this space"}'s Hub shows`)
       .on_mouse_down("left", stop).on_click(() => openSetup(space)).child("Hub")))
+    // A story's lower block folded away so its details take the column, or back (#271): the tab bar
+    // then sits at the column's foot (work.js), so the chevron points the way the block goes.
+    .when(Boolean(work?.story) && work.view !== "start", (el) => {
+      const shut = terminalsFolded();
+      const what = FOLD_WHAT[work.view] ?? "terminals";
+      return el.child(iconButton(t, "fold-terminals", shut ? own("chevron-up") : chrome("chevron-down"), () => work.foldTerminals(),
+        shut ? `Show the ${what}` : `Fold the ${what} away, so the details take the column`, { on: shut }))
+        .child(div().w(1).h(16).mx(2).flex_none().bg(t.border));
+    })
     .child(h_flex().flex_none().gap(2).items_center()
       .children([panelButton("files", chrome("folder"), "Files"), panelButton("changes", chrome("git-compare"), "Changes"),
         panelButton("artifacts", chrome("layers"), "Screenshots"), panelButton("web", own("globe"), "Web ⌘⇧S")].filter(Boolean))
@@ -752,6 +764,7 @@ export async function command(c) {
   if (c === "start") return work.start();
   if (c === "pause") return work.pause();
   if (c === "fold") return work.fold();
+  if (c === "fold-terminals") return work.foldTerminals();
   // "view-agent", "view-changes", "view-shots", "view-start": the tab bar's view buttons.
   if (c.startsWith("view-")) return work.show(c.slice("view-".length));
 }
@@ -774,7 +787,7 @@ export default class Quiet extends View {
     // Keys: "kelpie.files", "kelpie.changes", "kelpie.artifacts", "kelpie.web" toggle that panel;
     // "kelpie.refresh" loads the Kelpie layout's stories again (its Hub strip, which had it, is gone);
     // "kelpie.close" closes the focused tab as its ✕ does. The Kelpie layout's story keys: "next-need",
-    // "start", "pause", "claude", "terminal", "fold", "stories" (the picker), "show-notified"
+    // "start", "pause", "claude", "terminal", "fold", "fold-terminals", "stories" (the picker), "show-notified"
     // (a pull request notification's click), "pause-story-<key>" (the close dialog's Pause) and
     // "clean-story-<key>" (the clean-up dialog's Clean up), "clean-all" (the list's Clean up all).
     if (props()?.role === "toolbar") cx.spawn(async () => {

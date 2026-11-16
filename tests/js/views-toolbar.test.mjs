@@ -111,3 +111,17 @@ test("the browser on screen while it plays: the plain globe, selected", () => {
   assert.match(text, /bg=selected/);
   assert.doesNotMatch(text, /Playing sound/);
 });
+
+// Folding a story's terminals away (#271): a chevron on the tab bar, pointing down while they show,
+// up and selected while folded (the bar then sits at the column's foot); none on a story not started.
+test("the fold button: down while the terminals show, up while folded, none on a story not started", () => {
+  const open = toolbar({ space: "ACME-142" });
+  assert.equal(ids(open.el, "fold-terminals").length, 1);
+  assert.match(render(byId(open.el, "fold-terminals"), skinTheme()), /Fold the terminals away/);
+  handlers(open.el).find((h) => h.id === "fold-terminals").fn({}, open.cx);
+  assert.ok(mock.sharedValue("kelpie.terminals.folded"), "folded");
+  const shut = open.view.render(open.cx);
+  assert.match(render(byId(shut, "fold-terminals"), skinTheme()), /Show the terminals/);
+  snap("toolbar/terminals-folded", byId(shut, "fold-terminals"));
+  assert.equal(ids(toolbar({ preview: "ACME-180" }).el, "fold-terminals").length, 0);
+});
