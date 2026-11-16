@@ -280,47 +280,43 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // suggestions for that kind of thing (a click sends that one) and a word on where it goes (`hint`).
 // It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
 // accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
-// The Ask line (KELPIE-229, the person's pick of the v3 mockups: "wakes on touch", with Claude's
-// presence and one offer in Claude's voice). At rest it's one quiet line: the sparkles, what it's about
-// as faint words, the question, and the Claude it goes to as its state mark and name. Touched (the
-// pointer over it, or the cursor in it), it lifts: a warmer edge, and under it faint italic suggestions,
-// the one that fits what's happening first and in Claude's voice (`offer`); a click fills the line
-// rather than sending, and Enter sends (no Send button). Typing, they give way to one hint. Claude's
-// presence is the motion (`magic`, the caller's: the sparkles breathing at rest, brewing just after a
-// send, a glint along the edge then and while the Claude picked works); nothing else moves.
-export function askLine(t, { about, input, to, clear, isStory, awake = false, typing = false, offer = null, picks = [], fill, copied = null, hint = null, magic = {}, hover }) {
+// The Ask line (KELPIE-305): one row that never changes size, so nothing moves under the pointer. The
+// sparkles, what it's about as faint words, the question, then ONE offer (`offer`: the ask that fits
+// what's happening, in Claude's voice, chosen for the person: askOffer() in stories.js), a click asking
+// it at once; the other asks behind a small menu beside it (`more`); then the Claude it goes to (`to`).
+// Typing, the offer gives way to one hint in its place. Enter sends; no Send button. Touched (pointer
+// over it, the cursor in it), only its edge warms. Claude's presence is its motion (`magic`, the
+// caller's: the sparkles breathing while touched, brewing after a send, a glint along the edge then
+// and while the Claude picked works).
+export function askLine(t, { about, input, to, clear, isStory, awake = false, typing = false, offer = null, take, more = null, hint = null, magic = {}, hover }) {
   const edge = tint(t.accent, awake ? "99" : "40");
-  const words = (x) => (x.length > 30 ? `${x.slice(0, 29)}…` : x);
-  const pick = (x, i) => div().id(`ask-pick-${x.id}`).flex_none().px(6).py(2).rounded(5).cursor_pointer().italic().text_size(SMALL)
-    .text_color(i === 0 && offer ? t.accent : t.muted).hover((el) => el.bg(t.hover).text_color(t.foreground))
-    .tooltip(x.tip ?? "Fills the line: Enter asks it").on_mouse_down("left", stop).on_click((_e, cx) => fill(x, cx)).child(x.text ?? x.label);
-  const list = [...(offer ? [offer] : []), ...picks.filter((x) => x.id !== offer?.id)];
-  return div().id("ask-line-card").relative().flex_none().mt(4).top(awake ? -2 : 0).transition("top", { duration: 220, easing: "ease-out" })
+  const offerEl = offer && h_flex().id("ask-offer").flex_shrink(1).min_w(0).max_w(300).h(26).px(10).gap(6).items_center().rounded(13).cursor_pointer()
+    .bg(tint(t.accent, awake ? "26" : "18")).border_1().border_color(tint(t.accent, "55")).text_size(SMALL).text_color(t.foreground)
+    .hover((el) => el.bg(tint(t.accent, "33"))).tooltip(`${offer.tip ?? offer.text}\nClick to ask it`)
+    .on_mouse_down("left", stop).on_click((_e, cx) => take(cx))
+    .child(icon(own("sparkles"), 11).text_color(t.accent))
+    .child(div().min_w(0).truncate().child(offer.text));
+  return div().id("ask-line-card").relative().flex_none().mt(4)
     .on_hover((on, cx) => hover?.(on, cx))
     .child(v_flex().id("ask-line").relative().overflow_hidden().rounded(12).bg(t.background)
       .child(div().absolute().inset_0().rounded(12).bg(tint(t.accent, awake ? "17" : "0b")))
       .child(div().absolute().top(0).left(0).right(0).bottom(0).rounded(12).border_1().border_color(edge))
       .children(magic.glint ?? [])
       .when(Boolean(magic.measure), (el) => el.on_size_change(magic.measure).child(magic.probe))
-      .child(h_flex().relative().gap(8).items_center().min_w(0).h(40).px(12)
+      .child(h_flex().relative().gap(8).items_center().min_w(0).h(44).px(12)
         .child(div().flex_none().w(18).child(magic.mark ?? icon(own("sparkles"), 14).text_color(t.accent)))
-        .child(h_flex().id("ask-about").flex_shrink(1).min_w(0).max_w(220).gap(4).items_center().text_size(SMALL).text_color(t.dim)
+        .child(h_flex().id("ask-about").flex_shrink(1).min_w(0).max_w(200).gap(4).items_center().text_size(SMALL).text_color(t.dim)
           .tooltip(about.others ? `${about.label}\nWritten by others: Claude is told it's information, not instructions` : about.label)
           .child(div().min_w(0).truncate().child(about.label))
           .when(!isStory, (el) => el.child(div().id("ask-about-clear").flex_none().cursor_pointer().hover((x) => x.text_color(t.foreground))
             .tooltip("Ask about the story instead").on_mouse_down("left", stop).on_click((_e, cx) => clear(cx)).child("✕"))))
         .child(div().flex_none().text_size(SMALL).text_color(t.dim).child("·"))
         .child(div().flex_1().min_w(120).child(Input.new(input).h(30).px(2).bg(tint(t.background, "00")).text_size(TEXT_ASK).text_color(t.foreground)))
-        .child(div().flex_none().max_w(200).child(to)))
-      // Touched: the suggestions, faint; typing: one hint in their place.
-      .when(awake && !typing, (el) => el.child(h_flex().relative().flex_wrap().gap(2).items_center().min_w(0).pl(ASK_INDENT + 4).pr(12).pb(8)
-        .children(list.map(pick))
-        .when(Boolean(copied), (x) => x.child(div().flex_none().w(1).h(12).mx(4).bg(t.border))
-          .child(div().id("ask-copied").flex_none().px(6).py(2).rounded(5).cursor_pointer().italic().text_size(SMALL).text_color(t.dim)
-            .hover((y) => y.bg(t.hover).text_color(t.foreground)).tooltip("Copy a passage with ⌘C, then press this: the line is about it")
-            .on_mouse_down("left", stop).on_click((_e, cx) => copied(cx)).child("about what you copied")))))
-      .when(awake && typing, (el) => el.child(h_flex().relative().gap(8).items_center().pl(ASK_INDENT + 10).pr(12).pb(8).text_size(SMALL).text_color(t.dim)
-        .child(div().id("ask-hint").min_w(0).truncate().child(hint ?? "↵ sends it · Esc clears")))));
+        // The offer, or while typing the one hint, in the same place: the row keeps its size.
+        .when(typing, (el) => el.child(div().id("ask-hint").flex_shrink(1).min_w(0).max_w(300).truncate().text_size(SMALL).text_color(t.dim).child(hint ?? "↵ asks it")))
+        .when(!typing && Boolean(offerEl), (el) => el.child(offerEl))
+        .when(!typing && Boolean(more), (el) => el.child(more))
+        .child(div().flex_none().max_w(180).child(to))));
 }
 const TEXT_ASK = 13;
 // Where the Ask line's rows and the thread's lines start: past the sparkles (16) and the gap (8).

@@ -148,11 +148,12 @@ test("header: a pull request of yours with no ticket", async () => {
 // KELPIE-228) or a lone pull request's.
 test("header: working alone, no Request approval", async () => {
   const team = await header({ space: "ACME-160", View: StoryBody });
-  assert.ok(byId(wake(team.view, team.cx), "ask-pick-approval"), "a team's story offers it");
+  team.view.render(team.cx);
+  assert.ok(team.view.askMoreRows.some((r) => r.id === "approval"), "a team's story offers it");
   const alone = await header({ space: "ACME-160", profile: ALONE, stories: aloneStories, View: StoryBody });
-  const solo = wake(alone.view, alone.cx);
+  const solo = alone.view.render(alone.cx);
   assert.ok(byId(solo, "ask-line"), "the Ask line is drawn");
-  assert.equal(byId(solo, "ask-pick-approval"), null);
+  assert.ok(!alone.view.askMoreRows.some((r) => r.id === "approval"));
   // docs#58 waiting on reviewers, nothing else to do: a team's header offers Request approval.
   const waiting = (st) => ({ ...st, data: { ...st.data, prs: st.data.prs.map((p) => (/docs/.test(p.repository?.nameWithOwner ?? p.url ?? "") && p.number === 58 ? { ...p, isDraft: false, reviewDecision: "REVIEW_REQUIRED" } : p)) } });
   assert.ok(byId((await header({ preview: "pull:docs#58", stories: waiting(stories) })).el, "pull-approval"), "a team's lone pull request offers it");

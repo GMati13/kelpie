@@ -71,9 +71,11 @@ test("a story waiting on reviewers offers Request approval and Merge on its Ask 
   assert.equal(byId(el, "story-approval-more"), null);
   assert.equal(byId(el, "story-merge-more"), null);
   const shown = await show(StoryBody, { space: "ACME-142" });
-  const body = wake(shown.view, shown.cx);
-  assert.deepEqual(texts(byId(body, "ask-pick-merge")), ["Merge"]);
-  assert.deepEqual(texts(byId(body, "ask-pick-approval")), ["Request approval"]);
+  shown.view.render(shown.cx);
+  // On the Ask line: in its menu of other asks (or as its one offer).
+  const ids = shown.view.askMoreRows.map((r) => r.id);
+  assert.ok(ids.includes("merge") || texts(byId(shown.view.render(shown.cx), "ask-offer")).join(" ").includes("merge"), "Merge");
+  assert.ok(ids.includes("approval"), "Request approval");
 });
 
 test("Next pointed at merging: one box with the step, its pull requests and Merge all; the header's lit", async () => {

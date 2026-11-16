@@ -368,7 +368,7 @@ test("a right-click menu opens at the pointer, at any zoom", async () => {
 // KELPIE-226: Ask about what you copied points the Ask line at the clipboard's text.
 test("Ask about what you copied points the Ask line at the copied passage", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  press(wake(view, cx), "ask-copied", { ...cx, read_from_clipboard: () => "Queue edits made offline" });
+  pickAndSend(view, { ...cx, read_from_clipboard: () => "Queue edits made offline" }, "copied");
   assert.match(askedAbout(view.render(cx)), /^“Queue edits made offline/);
   const about = mock.state.shared.get("kelpie.ask.about")[DEMO].about;
   assert.equal(about.kind, "text");
@@ -376,7 +376,7 @@ test("Ask about what you copied points the Ask line at the copied passage", asyn
 });
 test("Ask about what you copied with nothing copied says so, and points nothing", async () => {
   const { el, view, cx } = await body({ space: "ACME-142" });
-  press(wake(view, cx), "ask-copied", { ...cx, read_from_clipboard: () => undefined });
+  pickAndSend(view, { ...cx, read_from_clipboard: () => undefined }, "copied");
   assert.equal(askedAbout(view.render(cx)), "ACME-142 · the story");
 });
 
@@ -419,42 +419,32 @@ test("a merged pull request's line says how long ago it merged", async () => {
   assert.match(nodeOf(line).calls.find(([m]) => m === "tooltip")[1][0], /^Merged 3d ago · /);
 });
 
-// KELPIE-305: the Ask line wakes on touch. At rest one quiet line; touched, faint suggestions, the one
-// that fits first and in Claude's voice; a click fills the line (Enter asks it); typing hides them for
-// one hint; a send brews the sparkles.
-test("the Ask line wakes on touch: Claude's offer first, a click fills, Enter asks, typing hides the rest", async () => {
+// KELPIE-305: the Ask line is one row that never changes size: the input, ONE offer (the ask that fits,
+// in Claude's voice; a click asks it), a menu of the other asks, and who it goes to. Typing, the offer
+// gives way to one hint in its place; a send brews the sparkles.
+test("the Ask line: one row, one offer that asks at a click, the rest in a menu, typing swaps the offer for a hint", async () => {
   const { view, cx } = await body({ space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
+  const rest = view.render(cx);
+  assert.ok(byId(rest, "ask-to-more"), "who it goes to");
+  assert.match(texts(byId(rest, "ask-offer")).join(" "), /2 pull requests ready: merge\?/, "two pull requests ready: the offer is to merge");
+  assert.ok(view.askMoreRows.some((r) => r.id === "catchup") && view.askMoreRows.some((r) => r.id === "copied"), "the rest in the menu");
+  assert.ok(!view.askMoreRows.some((r) => r.id === "merge"), "the offer isn't repeated in the menu");
+  const rows = (el) => byId(el, "ask-line") && nodeOf(byId(el, "ask-line")).calls.filter(([m]) => m === "child").length;
   emit(view.askInput, "focus", cx);
-  const awake = view.render(cx);
-  const picks = handlers(awake).filter((h) => h.id?.startsWith("ask-pick-")).map((h) => h.id);
-  assert.equal(picks[0], "ask-pick-merge", "two pull requests ready: the offer is to merge");
-  assert.match(texts(byId(awake, "ask-pick-merge")).join(" "), /2 pull requests are ready: merge\?/);
-  mock.calls.length = 0;
-  press(awake, "ask-pick-catchup", cx);
-  assert.equal(mock.of("hc").filter(([a]) => a[0] === "send").length, 0, "a click fills, it doesn't send");
-  assert.equal(view.askInput.value(), "Catch me up");
+  assert.equal(rows(view.render(cx)), rows(rest), "touched, it doesn't grow: nothing moves under the pointer");
+  view.askInput.set_value("Why");
+  emit(view.askInput, "change", cx);
   const typing = view.render(cx);
-  assert.equal(handlers(typing).filter((h) => h.id?.startsWith("ask-pick-")).length, 0, "typing hides the suggestions");
+  assert.ok(!byId(typing, "ask-offer"), "the offer gives way while typing");
   assert.match(texts(byId(typing, "ask-hint")).join(" "), /^↵ asks /);
-  emit(view.askInput, "submit", cx);
+  view.askInput.set_value("");
+  emit(view.askInput, "change", cx);
+  mock.calls.length = 0;
+  pickAndSend(view, cx, "catchup");
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1);
-  assert.match(sent[0][0].at(-1), /Catch me up on this story/, "sent as the suggestion, in the profile's words");
-  const after = render(view.render(cx), skinTheme());
-  assert.match(after, /spin/, "the sparkles brew after a send");
-});
-test("typed over a filled suggestion, Enter sends what was typed", async () => {
-  const { view, cx } = await body({ space: "ACME-171" });
-  mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
-  press(wake(view, cx), "ask-pick-catchup", cx);
-  view.askInput.set_value("Why is the toggle slow?");
-  emit(view.askInput, "change", cx);
-  mock.calls.length = 0;
-  emit(view.askInput, "submit", cx);
-  await new Promise((r) => setImmediate(r));
-  const [[args]] = mock.of("hc").filter(([a]) => a[0] === "send");
-  assert.match(args.at(-1), /Why is the toggle slow\?/);
-  assert.doesNotMatch(args.at(-1), /Catch me up on this story/);
+  assert.match(sent[0][0].at(-1), /Catch me up on this story/, "asked in the profile's words");
+  assert.match(render(view.render(cx), skinTheme()), /spin/, "the sparkles brew after a send");
 });

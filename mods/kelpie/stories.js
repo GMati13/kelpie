@@ -5492,22 +5492,15 @@ export class StoryBody extends Stories {
     super.init(cx);
     // The Ask line's question (askclaude.js): Enter sends it.
     this.askInput = InputState.new({ placeholder: "Ask Claude… (Enter sends it)" });
-    // Enter sends: a suggestion filled in by a click (`askFill`, kept while the line still says it)
-    // goes as that suggestion or task, anything typed as the question (KELPIE-305).
-    this.askInput.on("submit", (_e, cx) => {
-      const f = this.askFill, v = this.askInput.value();
-      if (f && v.trim() === f.text) return f.task ? this.askTaskSend(f.id, cx) : this.askSend({ suggestion: f.id }, cx);
-      this.askSend({ note: v }, cx);
-    });
+    // Enter sends what was typed (KELPIE-305).
+    this.askInput.on("submit", (_e, cx) => this.askSend({ note: this.askInput.value() }, cx));
     // The line wakes while the cursor is in it or the pointer over it; typing hides its suggestions.
     this.askInput.on("focus", (_e, cx) => { this.askAwake = true; cx.notify(); });
     this.askInput.on("blur", (_e, cx) => { this.askAwake = false; cx.notify(); });
     this.askInput.on("change", (_e, cx) => {
       const v = this.askInput.value(), typed = v.trim().length > 0;
-      if (this.askFill && v.trim() !== this.askFill.text) this.askFill = null;
       if (typed !== Boolean(this.askTyped)) { this.askTyped = typed; cx.notify(); }
     });
-    this.askFill = null;
     this.askSentAt = 0; // a send's moment: the sparkles brew and a glint runs, for ASK_BREW
     this.askPick = null; // who the person picked: "new" or an agent's address, for what's pointed at now
     this.askFor = null; // what that pick was for (the about's id)
@@ -5582,24 +5575,33 @@ export class StoryBody extends Stories {
       measure: (size, cx) => this.shineSize("ask", size, cx),
       probe: this.shineProbe("ask"),
     };
-    // What fits what's happening, first and in Claude's voice (its offer); then the rest, as text.
+    // One offer: the ask that fits what's happening, in Claude's voice (askOffer()), a click asking it;
+    // every other ask, the story's tasks and copy-and-ask behind the small menu beside it.
     const tasks = about.kind === "story" ? this.askTasks(st, it) : [];
-    const picks = [...suggestionsFor(about.kind).map((x) => ({ ...x, text: x.label })), ...tasks.map((x) => ({ ...x, text: x.label, task: true }))];
+    const offer = this.askOffer(it, about, tasks);
+    const ask_ = (x, cx) => (x.task ? this.askTaskSend(x.id, cx) : this.askSend({ suggestion: x.id }, cx));
+    const copied = (cx) => {
+      const text = String(cx.read_from_clipboard?.() ?? "").trim();
+      if (!text) return say({ profile, keys: it.key }, "Nothing copied yet: copy a passage with ⌘C, then ask about what you copied.");
+      const flat = (x) => String(x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      const found = flat(blocksText(DESCRIPTIONS[it.key]?.blocks, 1e6)).includes(flat(text));
+      pointAsk(profile, it.key, textAbout(text, it, { found }));
+    };
+    const others = [...suggestionsFor(about.kind).map((x) => ({ ...x })), ...tasks.map((x) => ({ ...x, task: true }))].filter((x) => x.id !== offer?.id);
+    this.askMoreRows = [
+      ...others.map((x) => ({ id: x.id, label: x.label, tip: x.tip, action: (cx) => ask_(x, cx) })),
+      { id: "copied", label: "About what you copied", tip: "Copy a passage with ⌘C, then pick this: the line is about it", action: (cx) => copied(cx) },
+    ];
+    const more = this.menuButton(t, "ask-more", "", [{ header: "Or ask" }, ...this.askMoreRows], "Other things to ask", { width: 280, anchor: "bottom_right",
+      trigger: (toggle, open) => div().id("ask-more-more").flex_none().w(22).h(26).flex().items_center().justify_center().rounded(13).cursor_pointer()
+        .text_color(open ? t.foreground : t.dim).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
+        .tooltip("Other things to ask").on_mouse_down("left", stop).on_click(toggle).child(icon(chrome("chevron-down"), 12)) });
     const line = askLine(t, {
       about, input: this.askInput, to, hint, isStory: about.kind === "story",
-      awake, typing: Boolean(this.askTyped), offer: this.askOffer(it, about, tasks), picks, magic,
+      awake, typing: Boolean(this.askTyped), offer, more, magic,
+      take: (cx) => ask_(offer, cx),
       hover: (on, cx) => { if (Boolean(this.askHover) !== on) { this.askHover = on; cx.notify(); } },
-      // A click fills the line with it (Enter then asks it), and puts the cursor there.
-      fill: (x, cx) => { this.askFill = { id: x.id, text: x.text, task: Boolean(x.task) }; this.askInput.set_value(x.text); this.askTyped = true; try { this.askInput.focus(); } catch { /* still filled */ } cx.notify(); },
       clear: () => pointAsk(profile, it.key, null),
-      // Copy, then ask (KELPIE-226): the clipboard's text, said to be from the description when it is.
-      copied: (cx) => {
-        const text = String(cx.read_from_clipboard?.() ?? "").trim();
-        if (!text) return say({ profile, keys: it.key }, "Nothing copied yet: copy a passage with ⌘C, then press Ask about what you copied.");
-        const flat = (x) => String(x ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-        const found = flat(blocksText(DESCRIPTIONS[it.key]?.blocks, 1e6)).includes(flat(text));
-        pointAsk(profile, it.key, textAbout(text, it, { found }));
-      },
     });
     // As wide as the subtask rows at most (ROWS), centred like them: stretched across a wide screen,
     // the question box ran far from what it's about and from Send.
@@ -5621,12 +5623,14 @@ export class StoryBody extends Stories {
   askOffer(it, about, tasks) {
     const merge = tasks.find((x) => x.id === "merge");
     const readyPrs = taskPrs(it).openPrs.filter(ready);
-    if (about.kind === "story" && merge && readyPrs.length) return { ...merge, task: true, text: `${readyPrs.length === 1 ? "A pull request is" : `${readyPrs.length} pull requests are`} ready: merge?` };
+    if (about.kind === "story" && merge && readyPrs.length) return { ...merge, task: true, text: readyPrs.length === 1 ? "A pull request is ready: merge it?" : `${readyPrs.length} pull requests ready: merge?`, tip: merge.tip };
     const done = (it.subs ?? []).filter((x) => x.category === "done").length;
-    if (about.kind === "story" && done) return { id: "catchup", text: `${done === 1 ? "A subtask is" : `${done} subtasks are`} done: catch me up?` };
-    if (about.kind === "file" || about.kind === "lines" || about.kind === "text") return { id: "explain", text: "Explain this?" };
-    return { id: "left", text: "What's left?" };
+    if (about.kind === "story" && done) return { id: "catchup", text: `${done === 1 ? "A subtask" : `${done} subtasks`} done: catch you up?`, tip: "Its Claude says what's done, what's going on and what needs you" };
+    if (about.kind === "file" || about.kind === "lines" || about.kind === "text") return { id: "explain", text: "Explain this?", tip: "What it does and why it's there, in plain words" };
+    if (about.kind === "story" && !(it.subs ?? []).some((x) => x.category !== "todo" && x.category !== "new")) return { id: "plan", text: "Plan this first?", tip: "A new Claude reads the ticket and the code and plans it, changing nothing" };
+    return { id: "left", text: "What's left?", tip: "What's left before this is done, and what's in the way" };
   }
+
   // A story's tasks on its Ask line (KELPIE-228): Merge while it has an open pull request, Request
   // approval while one isn't approved (not for someone who works alone: nobody approves).
   askTasks(st, it) {
@@ -5660,7 +5664,7 @@ export class StoryBody extends Stories {
 
   // Just sent: the sparkles brew and a glint runs along the line, then it rests (ASK_BREW).
   sent(cx) {
-    this.askFill = null; this.askTyped = false; this.askSentAt = Date.now();
+    this.askTyped = false; this.askSentAt = Date.now();
     cx.timer.after(ASK_BREW + 50, (cx) => cx.notify());
   }
   // A story task filled into the line and sent with Enter.

@@ -326,7 +326,7 @@ div
           div [bg=accent/00] ×16 … [bg=accent/29]
         v_flex
           h_flex
-            div #ask-line-card ~transition {hover size_change}
+            div #ask-line-card {hover size_change}
               v_flex #ask-line [bg=background] {size_change}
                 div [bg=accent/0b]
                 div [border=accent/40]
@@ -343,6 +343,13 @@ div
                     "·"
                   div
                     Input.new [bg=background/00 fg=foreground]
+                  h_flex #ask-offer [bg=accent/18 border=accent/55 fg=foreground hover(bg=accent/33)] {down:left click} tip="What's left before this is done, and what's in the way\nClick to ask it"
+                    svg own:sparkles [fg=accent]
+                    div
+                      "What's left?"
+                  Popup.new "ask-more-menu"
+                    div #ask-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Other things to ask"
+                      svg chrome:chevron-down
                   div
                     Popup.new "ask-to-menu"
                       h_flex #ask-to-more [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-142's space, told about the ticket first\nClick to send it to another"
