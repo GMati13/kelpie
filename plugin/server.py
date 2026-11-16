@@ -3,7 +3,8 @@ something in Kelpie and set up their Kelpie profiles.
 
 - show_passage: a story (from a Jira board or a GitHub Project) opened in Kelpie with a passage of its
   description marked where it is (Kelpie's `kelpie.show-passage`, mods/kelpie/stories.js showPassageRequest).
-- get_profile: the saved profiles, read from Herdr's shared state (<home>/shared.json).
+- get_profile: the saved profiles this Claude may read (`kelpie.get-profile`, mods/kelpie/config.js
+  getProfileRequest).
 - save_profile / save_status: a change to a profile, through Kelpie's `kelpie.apply-profile`
   (mods/kelpie/config.js applyProfileRequest), which checks it and holds what needs the person's yes
   for their click in Kelpie; save_status reads the answer again once they've given it.
@@ -30,9 +31,11 @@ context telling a Claude in a Kelpie tab its profile and story, from KELPIE_PROF
 <home>/shared.json; when they're missing or name no story, Kelpie is asked by the agent's terminal
 (`kelpie.where-<HC_TERMINAL_ID>`). Outside Kelpie it says nothing.
 
-Which profile a Next request is about comes from where the server runs: KELPIE_PROFILE (set on every
-agent Kelpie starts, What next?'s too, whose Claude runs in no terminal) or HC_TERMINAL_ID (the agent's terminal in Herdr, so Kelpie
-finds its space's profile and says who asked), else Kelpie takes the profile it shows.
+Every request says where the server runs (origin()): HC_TERMINAL_ID (the agent's terminal in Herdr, so
+Kelpie finds its space's profile and says who asked), KELPIE_PROFILE (set on every agent Kelpie starts,
+What next?'s too, whose Claude runs in no terminal) and the Claude account it runs on (CLAUDE_CONFIG_DIR).
+Kelpie hands a Claude only its own profile's work (mods/kelpie/boundary.js, #254): profiles may run on
+different Claude accounts so that one account's work stays away from the other's.
 
 Each request is a file in <home>/kelpie/ (HERDR_APP_HOME, else ~/.config/herdr-app), written privately
 and put in place whole, then `herdr-app do <command>` (no shell), then Kelpie's answer file is read.
@@ -75,7 +78,9 @@ INSTRUCTIONS = (
     "agent, or need to reach another agent, use find_agents (and show_agent) rather than reading Claude's or Herdr's "
     "own files; and when another agent's "
     "work is in your way (its uncommitted changes, say), find it and point the person to it: never stash, revert or "
-    "overwrite another agent's work."
+    "overwrite another agent's work. Kelpie's tools give you only your own profile's agents, stories and settings: "
+    "the person's other profiles may run on other Claude accounts, kept apart on purpose, so don't look for their "
+    "work some other way."
 )
 
 TOOLS = [
@@ -107,8 +112,10 @@ TOOLS = [
         "name": "get_profile",
         "title": "Read a Kelpie profile",
         "description": (
-            "The person's Kelpie profiles as saved. With `id`, that profile's settings (name, folder, claude, "
-            "jira or project (its board: a Jira board or a GitHub Project), github, web, prompts, notify, commands); without, every profile's id, name and folder. "
+            "The person's Kelpie profile you run in, as saved. With `id`, that profile's settings (name, folder, claude, "
+            "jira or project (its board: a Jira board or a GitHub Project), github, web, prompts, notify, commands); without, the id, name and folder "
+            "of each profile you may read: your own (running outside them, those on your Claude account). Other profiles "
+            "are kept from you, as they may run on another Claude account. "
             "Read-only. Fields not in the profile dialog (sources, seen) are old or internal: leave them."
         ),
         "inputSchema": {
@@ -122,13 +129,13 @@ TOOLS = [
         "name": "save_profile",
         "title": "Save a change to a Kelpie profile",
         "description": (
-            "Saves a change to a Kelpie profile, checked by Kelpie as its dialog's Save is. `set` holds only "
+            "Saves a change to your own Kelpie profile (the one you run in; another profile is refused), checked by Kelpie as its dialog's Save is. `set` holds only "
             "what changes: name and folder replace; a section (jira, project, github, web, prompts, notify, commands, "
             "claude) given as an object is merged into the saved one; a key or section set to null is removed. "
             "A profile has one board, jira or project (a GitHub Project), not both: set the other to null. "
             "Values are strings, except jira.board and project.number (numbers, filled in from the address) and "
             "notify.pulls and either board's solo, moveToDone, byPriority, showPriority and unassigned (true/false). An id that doesn't "
-            "exist yet makes a new profile (it needs name and folder). Never put a secret in it: keys like token "
+            "exist yet makes a new profile (it needs name and folder), only on your own Claude account. Never put a secret in it: keys like token "
             "or password are refused. Changes that can run commands, steer agents, move the Jira sign-in, pick "
             "the GitHub account or change which tickets show and their keys (commands, prompts, claude, web, the "
             "jira sign-in and address, the project's address and key prefixes, either board's prompts, the github "
@@ -300,7 +307,8 @@ TOOLS = [
         "name": "find_agents",
         "title": "Find the agents working on something",
         "description": (
-            "Lists the Claude agents running in the person's Kelpie (their Herdr spaces and tabs), and for each: `id` (for "
+            "Lists the Claude agents running in your own Kelpie profile (its Herdr spaces and tabs; outside a profile's "
+            "spaces, those on your own Claude account), and for each: `id` (for "
             "show_agent), `claude` (the Claude agent itself: its session's `name` and messaging `address`, which reach it "
             "with Claude's own messaging between sessions, and its `session` id), its tab and space, its Kelpie profile, the ticket key it works on (`key`, and `story` when that's "
             "a subtask's), the ticket's title, its state (working, waiting for you, done, idle, starting), its folder, its "
@@ -314,7 +322,10 @@ TOOLS = [
             "under it, or with it inside theirs), `key` (a ticket key: its agents, a story's subtasks' too; a subtask with none of its own gives its story's, "
             "marked `via: story`; nobody on it or its story says so, with any paused agent or earlier session on them to "
             "resume), `words` (all found "
-            "in its names, title, ticket or first message), `here` (only your own profile's agents; else every profile's). "
+            "in its names, title, ticket or first message). The person's other profiles' agents are listed only when the "
+            "person let the two profiles see each other (each such agent marked `crossed`, its profile's name: say so when "
+            "you use it); otherwise never, as they may run on another Claude account, kept apart on purpose. When an agent the person means isn't listed, say it "
+            "may be in another profile and isn't reachable from here; don't look for it, or message it, some other way. "
             "Read-only: it changes nothing."
         ),
         "inputSchema": {
@@ -324,7 +335,6 @@ TOOLS = [
                 "folder": {"type": "string", "description": "A folder, as a full path."},
                 "key": {"type": "string", "description": "A ticket key, like ABC-123."},
                 "words": {"type": "string", "description": "Words to find in an agent's names, title, ticket or first message."},
-                "here": {"type": "boolean", "description": "Only your own profile's agents (the one of the space you run in)."},
             },
             "additionalProperties": False,
         },
@@ -336,8 +346,8 @@ TOOLS = [
         "description": (
             "Shows the person an agent's terminal in Kelpie: its space selected (and so its profile), its pane focused. Use "
             "it when they ask to be taken to, switched to or shown an agent (\"take me there\", \"show me that agent\"), "
-            "after find_agents found it. `id` is an agent's id exactly as find_agents gave it; Kelpie shows only an agent it "
-            "lists. It only changes what's on their screen, nothing in the agent: it never sends the agent anything. Say "
+            "after find_agents found it. `id` is an agent's id exactly as find_agents gave it; Kelpie shows only an agent "
+            "find_agents gives you. It only changes what's on their screen, nothing in the agent: it never sends the agent anything. Say "
             "which agent you showed them."
         ),
         "inputSchema": {
@@ -430,7 +440,7 @@ def show_passage(args):
         return "key: a ticket key, like ABC-123.", True
     if len(quote) < 3:
         return "quote: the passage's words, copied from the description or a comment.", True
-    answer = ask("passage", {"key": key, "quote": quote, "note": note}, "show-passage")
+    answer = ask("passage", {**origin(), "key": key, "quote": quote, "note": note}, "show-passage")
     if not answer.get("ok"):
         return f"Kelpie didn't show it: {clean(answer.get('error'), 300) or 'no reason given'}", True
     return f"Shown in Kelpie: {key}. {passage_found(answer)}", False
@@ -456,17 +466,21 @@ def passage_found(answer):
 
 
 def get_profile(args):
-    shared = read_json(os.path.join(home(), "shared.json"))
-    if not isinstance(shared, dict):
-        return "Kelpie's settings can't be read: Herdr has no shared state here yet (is Kelpie installed?).", True
-    profiles = shared.get("kelpie.profiles") or {}
+    """Asked of Kelpie, which gives only the profiles this Claude may read (boundary.js)."""
     pid = args.get("id")
+    request = origin()
+    if pid is not None:
+        if not isinstance(pid, str) or not PROFILE_ID.match(pid):
+            return "id: a profile id, lowercase letters, digits and dashes.", True
+        request["id"] = pid
+    answer = ask("profile-get", request, "get-profile")
+    if not answer.get("ok"):
+        return refused(answer, "say")
     if pid is None:
-        listed = [{"id": k, "name": v.get("name"), "folder": v.get("folder")} for k, v in profiles.items() if isinstance(v, dict)]
-        return json.dumps(listed, indent=2, ensure_ascii=False) if listed else "No profiles yet.", False
-    if not isinstance(pid, str) or pid not in profiles:
-        return f"No profile {pid!r}. Profiles: {', '.join(profiles) or 'none'}.", True
-    return json.dumps(profiles[pid], indent=2, ensure_ascii=False), False
+        listed = [p for p in answer.get("profiles") or [] if isinstance(p, dict)]
+        return (json.dumps(listed, indent=2, ensure_ascii=False) if listed else
+                "No profile you may read: Kelpie gives you only the profile you run in."), False
+    return json.dumps(answer.get("profile"), indent=2, ensure_ascii=False), False
 
 
 def answered(answer):
@@ -484,7 +498,7 @@ def save_profile(args):
         return "id: a profile id, lowercase letters, digits and dashes.", True
     if not isinstance(change, dict) or not change:
         return "set: an object of the settings to change.", True
-    return answered(ask("profile-apply", {"id": pid, "set": change}, "apply-profile"))
+    return answered(ask("profile-apply", {**origin(), "id": pid, "set": change}, "apply-profile"))
 
 
 def save_status(_args):
@@ -502,10 +516,19 @@ def open_profile_page(args):
     return f"Opened the profile dialog on its {page} page.", False
 
 
+def account_key(folder):
+    """A Claude account as one string, as Kelpie compares them (mods/kelpie/boundary.js accountKey): ""
+    for Claude's own ~/.claude (or none set), else its config folder as a plain absolute path."""
+    if not isinstance(folder, str) or not folder.strip():
+        return ""
+    path = os.path.normpath(os.path.abspath(os.path.expanduser(folder.strip())))
+    return "" if os.path.basename(path) == ".claude" else path
+
+
 def origin():
-    """Where this server runs, for Kelpie to tell the profile (and the asking agent): What next?'s
-    profile, else the agent's terminal in Herdr. Only well-formed values pass."""
-    out = {}
+    """Where this server runs, for Kelpie to tell who asks (boundary.js): the agent's terminal in Herdr,
+    What next?'s profile, and the Claude account it runs on. Only well-formed values pass."""
+    out = {"account": account_key(os.environ.get("CLAUDE_CONFIG_DIR"))}
     profile, terminal = os.environ.get("KELPIE_PROFILE", ""), os.environ.get("HC_TERMINAL_ID", "")
     if PROFILE_ID.match(profile):
         out["profile"] = profile
@@ -587,16 +610,20 @@ def find_agents(args):
         return "key: a ticket key, like ABC-123.", True
     if "folder" in request and not request["folder"].startswith("/"):
         return "folder: a full path, starting with /.", True
-    if args.get("here") is True:
-        request["here"] = True
     answer = ask("agents-find", request, "find-agents")
     if not answer.get("ok"):
         return refused(answer, "say")
     found = answer.get("agents") or []
     where = f" in Kelpie's profile {answer.get('profile')}" if answer.get("profile") else ""
     head = f"{len(found)} agent(s){where}" + (" match." if found else ": none match.")
+    if answer.get("why"):
+        head += " " + clean(answer.get("why"), 300)
     if answer.get("more"):
         head += f" {answer['more']} more weren't looked at: narrow it down with key or folder."
+    crossed = sorted({clean(a.get("crossed"), 60) for a in found if isinstance(a, dict) and a.get("crossed")})
+    if crossed:
+        head += (f" Some are in another of the person's profiles ({', '.join(crossed)}; `crossed`), which they let this one "
+                 "see: say so whenever you use or message one of those.")
     if found and all(a.get("via") == "story" for a in found if isinstance(a, dict)):
         head += " None works on that ticket itself: these are its story's agents (`via`, `note`)."
     if answer.get("nobody"):
@@ -649,6 +676,10 @@ def where_from_shared(profile, story):
     shared = shared if isinstance(shared, dict) else {}
     p = (shared.get("kelpie.profiles") or {}).get(profile)
     if not isinstance(p, dict):
+        return None
+    # Only on the profile's own Claude account (boundary.js): one on another is told nothing of it.
+    config = p.get("claude").get("config") if isinstance(p.get("claude"), dict) else None
+    if account_key(os.environ.get("CLAUDE_CONFIG_DIR")) != account_key(config):
         return None
     where = {"profile": {"id": profile, "name": p.get("name") or profile}, "place": "story" if story else "space"}
     if not story:
@@ -704,7 +735,7 @@ def session_start():
     where = where_from_shared(profile, story) if placed and story else None
     if where is None and TERMINAL.match(terminal):
         try:
-            answer = ask(f"where-{terminal}", {"terminal": terminal}, f"where-{terminal}", HOOK_WAIT)
+            answer = ask(f"where-{terminal}", {**origin(), "terminal": terminal}, f"where-{terminal}", HOOK_WAIT)
             where = answer.get("where") if isinstance(answer, dict) and answer.get("ok") else None
         except (Unreachable, OSError):
             where = None
@@ -735,7 +766,7 @@ def handle(msg):
         return  # a notification: nothing to answer
     if method == "initialize":
         reply(id_, {"protocolVersion": params.get("protocolVersion") or "2025-06-18", "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "kelpie", "version": "0.9.1"}, "instructions": INSTRUCTIONS})
+                    "serverInfo": {"name": "kelpie", "version": "0.10.0"}, "instructions": INSTRUCTIONS})
     elif method == "ping":
         reply(id_, {})
     elif method == "tools/list":
