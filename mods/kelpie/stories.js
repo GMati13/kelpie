@@ -523,6 +523,8 @@ function build(data, byAgent, paused = {}, started = new Map(), handover = null,
       reassigned: gone ? { to: names(children).length ? names(children) : names([{ fields: f }]) } : null,
       // The handover column's name, for the subtasks' tooltip (subStages()): boards call it anything.
       handover: from >= 0 ? columns[from]?.name ?? null : null,
+      // Worked alone (the load's solo): what's past the handover column is "built" (progress()).
+      solo: data.solo === true,
       sunk: own.length ? own.every((c) => past(c.fields?.status?.statusCategory?.key, c.fields?.status?.id)) : past(f?.status?.statusCategory?.key, f?.status?.id),
       story: children.length > 0, subs: children.length ? children.map(sub) : [sub(raw)],
       prs: children.length ? take(key) : [], agent: children.length ? byAgent.get(key) ?? null : null, space: started.get(key) ?? null,
@@ -675,20 +677,28 @@ export async function fetchAvatars(data) {
 const assigned = (t, id, who, mine, url = null) => div().id(id).flex_none()
   .child(avatar(t, who, 18, who ? `Assigned to ${who}${mine ? " (you)" : ""}` : "Unassigned", who ? avatarFile(url) : null));
 
-// Where its subtasks are, from Jira and their pull requests.
+// Where its subtasks are, by the stage build() gives each (as the row's bar has them): done; past
+// the handover column; in it (by the board's own name for it); then, before it, blocked (a status
+// named so), in review (an open pull request), in progress, to do. A board worked alone has nobody past the person's
+// part, so what's in or past the handover column reads as the Built group's word.
 function progress(it) {
   if (!it.story) {
     const open = it.subs[0].prs.filter((p) => !p.merged).length;
     return open ? `${open === 1 ? "PR" : `${open} PRs`} in review` : it.subs[0].prs.length ? "Merged" : "No PR yet";
   }
-  const n = { review: 0, doing: 0, todo: 0, done: 0 };
+  const n = { built: 0, past: 0, testing: 0, review: 0, doing: 0, blocked: 0, todo: 0, done: 0 };
   for (const s of it.subs) {
+    const stage = s.stage ?? (s.category === "done" ? "past" : s.category === "new" ? "todo" : "doing");
     if (s.category === "done") n.done++;
+    else if (stage === "past" || stage === "testing") n[it.solo ? "built" : stage]++;
+    else if (stage === "blocked") n.blocked++;
     else if (s.prs.some((p) => !p.merged)) n.review++;
-    else if (s.category === "indeterminate") n.doing++;
-    else n.todo++;
+    else n[stage]++;
   }
-  return [`${it.subs.length} subtask${it.subs.length === 1 ? "" : "s"}`, n.review && `${n.review} in review`, n.doing && `${n.doing} in progress`, n.todo && `${n.todo} to do`, n.done && `${n.done} done`].filter(Boolean).join(" · ");
+  const col = it.handover;
+  return [`${it.subs.length} subtask${it.subs.length === 1 ? "" : "s"}`, n.blocked && `${n.blocked} blocked`, n.review && `${n.review} in review`,
+    n.doing && `${n.doing} in progress`, n.todo && `${n.todo} to do`, n.testing && `${n.testing} in ${col ?? "the handover column"}`,
+    n.past && `${n.past} ${col ? `past ${col}` : "past your part"}`, n.built && `${n.built} built`, n.done && `${n.done} done`].filter(Boolean).join(" · ");
 }
 
 // A story's state at a glance, after its key in the list: its agents (a spinner while working, a pulse
