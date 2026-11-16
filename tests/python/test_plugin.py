@@ -23,6 +23,7 @@ printf '%s\\n' "$*" >> "$HERDR_APP_HOME/calls.log"
 case "$2" in
   kelpie.show-passage) name=passage ;;
   kelpie.apply-profile) name=profile-apply ;;
+  kelpie.get-profile) name=profile-get ;;
   kelpie.get-next) name=next-get ;;
   kelpie.add-next) name=next-add ;;
   kelpie.suggest-next) name=next-suggest ;;
@@ -45,10 +46,16 @@ case "$FAKE_ANSWER" in
       next-add) answer '{"ok": true, "profile": "Acme", "ask": {"action": "Read my plan"}}' ;;
       next-suggest) answer '{"ok": true, "profile": "Acme", "kept": ["ACME-2: Start it"], "dropped": [{"item": "nope", "why": "not a ticket key, like ABC-12"}]}' ;;
     esac ;;
+  profiles) answer '{"ok": true, "profiles": [{"id": "work", "name": "Work", "folder": "/work"}]}' ;;
+  profile) answer '{"ok": true, "profile": {"id": "work", "name": "Work", "jira": {"board": 12}}}' ;;
+  noprofile) answer '{"ok": false, "error": "No profile \\"home\\" you may read. Profiles: work."}' ;;
+  noprofiles) answer '{"ok": true, "profiles": []}' ;;
   agents) case "$name" in
       agents-find) answer '{"ok": true, "agents": [{"id": "w1:t3", "tab": "ACME-172", "space": "ACME-171", "profile": "Acme", "state": "idle", "changed": [{"path": "/acme/web/tokens.ts"}]}]}' ;;
       agent-show) answer '{"ok": true, "shown": {"tab": "ACME-172", "space": "ACME-171", "profile": "Acme", "state": "idle"}}' ;;
     esac ;;
+  crossed) answer '{"ok": true, "profile": "Home", "agents": [{"id": "w1:t9", "tab": "WORK-7", "space": "WORK-7", "profile": "Work", "crossed": "Work"}]}' ;;
+  noagents) answer '{"ok": true, "agents": [], "why": "Kelpie can\\u0027t tell which Claude account you run on."}' ;;
   story) answer '{"ok": true, "where": {"profile": {"id": "acme", "name": "Acme"}, "place": "story", "key": "ACME-1"}, "story": {"key": "ACME-1", "status": "In Progress"}}' ;;
   desk) answer '{"ok": true, "where": {"profile": {"id": "acme", "name": "Acme"}, "place": "desk"}}' ;;
   nowhere) answer '{"ok": true, "where": null}' ;;
@@ -164,8 +171,7 @@ class Server(unittest.TestCase):
         self.assertFalse(failed)
         self.assertIn("Shown in Kelpie: ABC-12", text)
         self.assertEqual(self.calls(), ["do kelpie.show-passage"])
-        with open(os.path.join(self.home, "last-request.json")) as f:
-            self.assertEqual(json.load(f), {"key": "ABC-12", "quote": "Done when it works", "note": "The criteria"})
+        self.assertEqual(self.last(), {"key": "ABC-12", "quote": "Done when it works", "note": "The criteria"})
 
     def test_the_answer_says_where_kelpie_found_the_passage(self):
         # The description, a comment (whose: a name someone else wrote, cleaned and quoted as data), a
@@ -241,30 +247,44 @@ class Server(unittest.TestCase):
     def shared(self, profiles):
         write(os.path.join(self.home, "shared.json"), json.dumps({"layout": "Kelpie", "kelpie.profiles": profiles}))
 
-    def test_get_profile_lists_profiles_or_shows_one(self):
-        self.shared({"work": {"id": "work", "name": "Work", "folder": "/work", "jira": {"board": 12}}, "home": {"id": "home", "name": "Home", "folder": "/h"}})
-        text, failed = self.call({}, tool="get_profile")
+    def test_get_profile_asks_kelpie_with_where_it_runs_and_returns_what_kelpie_gives(self):
+        # Kelpie gives only the profiles this Claude may read (config.js getProfileRequest, #254), so the
+        # server reads no profile itself: another account's never reaches it.
+        self.shared({"work": {"id": "work", "name": "Work", "folder": "/work"}, "home": {"id": "home", "name": "Home", "folder": "/h"}})
+        text, failed = self.call({}, tool="get_profile", answer="profiles", env={"HC_TERMINAL_ID": "t11n", "CLAUDE_CONFIG_DIR": "/acc/.claude-work/"})
         self.assertFalse(failed)
-        self.assertEqual(json.loads(text), [{"id": "work", "name": "Work", "folder": "/work"}, {"id": "home", "name": "Home", "folder": "/h"}])
-        text, failed = self.call({"id": "work"}, tool="get_profile")
+        self.assertEqual(json.loads(text), [{"id": "work", "name": "Work", "folder": "/work"}])
+        self.assertEqual(self.calls(), ["do kelpie.get-profile"])
+        self.assertEqual(self.last(account="/acc/.claude-work"), {"terminal": "t11n"})
+        text, failed = self.call({"id": "work"}, tool="get_profile", answer="profile")
+        self.assertFalse(failed)
         self.assertEqual(json.loads(text)["jira"], {"board": 12})
-        text, failed = self.call({"id": "nope"}, tool="get_profile")
-        self.assertTrue(failed)
-        self.assertIn("work, home", text)
-        self.assertEqual(self.calls(), [], "reading runs nothing")
+        self.assertEqual(self.last(), {"id": "work"})
 
-    def test_get_profile_without_herdrs_state_says_so(self):
-        text, failed = self.call({}, tool="get_profile")
+    def test_get_profile_says_what_kelpie_refused_and_checks_the_id_first(self):
+        text, failed = self.call({"id": "home"}, tool="get_profile", answer="noprofile")
         self.assertTrue(failed)
-        self.assertIn("can't be read", text)
+        self.assertIn('No profile "home" you may read. Profiles: work.', text)
+        text, failed = self.call({}, tool="get_profile", answer="noprofiles")
+        self.assertFalse(failed)
+        self.assertIn("Kelpie gives you only the profile you run in", text)
+        before = len(self.calls())
+        for pid in ("../x", "Work", 7):
+            text, failed = self.call({"id": pid}, tool="get_profile", answer="profile")
+            self.assertTrue(failed, pid)
+        self.assertEqual(len(self.calls()), before, "a bad id runs nothing")
+
+    def test_the_account_is_said_as_kelpie_compares_it(self):
+        for config, said in ((None, ""), ("", ""), ("/u/.claude", ""), ("/u/.claude/", ""), ("/u/.claude-work//", "/u/.claude-work"), ("~/.claude-work", os.path.join(self.home, ".claude-work"))):
+            self.call({"action": "Read my plan"}, tool="add_to_next", answer="next", env={} if config is None else {"CLAUDE_CONFIG_DIR": config})
+            self.last(account=said)
 
     def test_save_profile_sends_the_change_and_returns_the_saved_profile(self):
         text, failed = self.call({"id": "work", "set": {"name": "Work", "jira": {"handover": "QA"}}}, tool="save_profile")
         self.assertFalse(failed)
         self.assertTrue(text.startswith("Saved."))
         self.assertEqual(self.calls(), ["do kelpie.apply-profile"])
-        with open(os.path.join(self.home, "last-request.json")) as f:
-            self.assertEqual(json.load(f), {"id": "work", "set": {"name": "Work", "jira": {"handover": "QA"}}})
+        self.assertEqual(self.last(), {"id": "work", "set": {"name": "Work", "jira": {"handover": "QA"}}})
 
     def test_a_change_waiting_for_the_persons_yes_says_so_and_save_status_reads_it_again(self):
         text, failed = self.call({"id": "work", "set": {"commands": {"status": "make status"}}}, tool="save_profile", answer="pending")
@@ -329,9 +349,13 @@ class Server(unittest.TestCase):
         self.assertIn("a ticket key, like ABC-123", text)
 
 
-    def last(self):
+    def last(self, account=""):
+        """The last request Kelpie was sent, less its `account` (the Claude account the server runs on,
+        "" for Claude's own: every request says it, for Kelpie's account boundary, #254), checked here."""
         with open(os.path.join(self.home, "last-request.json")) as f:
-            return json.load(f)
+            request = json.load(f)
+        self.assertEqual(request.pop("account", None), account, "every request says the server's Claude account")
+        return request
 
     def test_add_to_next_sends_the_ask_with_the_agents_terminal(self):
         text, failed = self.call({"action": "Read my plan", "why": "Two\nways", "key": "acme-7"}, tool="add_to_next", answer="next", env={"HC_TERMINAL_ID": "t11n"})
@@ -389,17 +413,28 @@ class Server(unittest.TestCase):
         self.assertEqual(json.loads(text.split("\n", 1)[1]), [{"kind": "story", "key": "ACME-1", "action": "ACME-1: Agent needs you"}])
 
     def test_find_agents_sends_the_filters_with_the_agents_terminal_and_returns_the_list(self):
-        text, failed = self.call({"file": " web/tokens.ts\n", "key": "acme-172", "folder": "/acme", "words": "dark", "here": True},
+        text, failed = self.call({"file": " web/tokens.ts\n", "key": "acme-172", "folder": "/acme", "words": "dark"},
                                  tool="find_agents", answer="agents", env={"HC_TERMINAL_ID": "t11n"})
         self.assertFalse(failed)
         self.assertEqual(self.calls(), ["do kelpie.find-agents"])
-        self.assertEqual(self.last(), {"terminal": "t11n", "file": "web/tokens.ts", "folder": "/acme", "key": "acme-172", "words": "dark", "here": True})
+        self.assertEqual(self.last(), {"terminal": "t11n", "file": "web/tokens.ts", "folder": "/acme", "key": "acme-172", "words": "dark"})
         self.assertTrue(text.startswith("1 agent(s) match.\n"))
         self.assertEqual(json.loads(text.split("\n", 1)[1])[0]["id"], "w1:t3")
 
-    def test_find_agents_with_no_filters_asks_for_every_agent(self):
-        self.call({"here": "yes"}, tool="find_agents", answer="agents")
-        self.assertEqual(self.last(), {}, "only a real true narrows it to the profile")
+    def test_find_agents_with_no_filters_asks_with_only_where_it_runs(self):
+        # Which agents it may see is Kelpie's to say (boundary.js): `here` is gone, the schema refuses it.
+        self.call({}, tool="find_agents", answer="agents")
+        self.assertEqual(self.last(), {})
+
+    def test_find_agents_says_when_an_agent_is_from_another_profile_the_person_paired(self):
+        text, failed = self.call({}, tool="find_agents", answer="crossed")
+        self.assertFalse(failed)
+        self.assertTrue(text.startswith("1 agent(s) in Kelpie's profile Home match. Some are in another of the person's profiles (Work; `crossed`), which they let this one see: say so whenever you use or message one of those.\n"), text)
+
+    def test_find_agents_says_why_kelpie_found_none(self):
+        text, failed = self.call({}, tool="find_agents", answer="noagents")
+        self.assertFalse(failed)
+        self.assertEqual(text, "0 agent(s): none match. Kelpie can't tell which Claude account you run on.")
 
     def test_find_agents_refuses_bad_keys_and_relative_folders_before_anything_runs(self):
         for args in ({"key": "ACME-1; rm"}, {"folder": "web"}, {"folder": "~/acme"}):
@@ -489,6 +524,16 @@ class SessionStart(unittest.TestCase):
                 return f.read().splitlines()
         except FileNotFoundError:
             return []
+
+    def test_a_claude_on_another_account_than_its_profile_is_told_nothing_of_it(self):
+        # The account boundary (#254): the stories Kelpie saved are that profile's account's work. Kelpie,
+        # asked by the terminal, says nowhere (it checks the account too, boundary.js).
+        line = self.hook({"KELPIE_PROFILE": "acme", "KELPIE_STORY": "ACME-1", "HC_TERMINAL_ID": "t1", "CLAUDE_CONFIG_DIR": "/u/.claude-home"}, answer="nowhere")
+        self.assertIsNone(line)
+        with open(os.path.join(self.home, "last-request.json")) as f:
+            self.assertEqual(json.load(f)["account"], "/u/.claude-home", "Kelpie is told the account")
+        line = self.hook({"KELPIE_PROFILE": "acme", "KELPIE_STORY": "ACME-1", "CLAUDE_CONFIG_DIR": "/u/.claude"})
+        self.assertIn("story ACME-1", line, "Claude's own ~/.claude is the profile's default account")
 
     def test_the_story_from_the_environment_with_its_title_and_subtasks_and_no_call_to_kelpie(self):
         line = self.hook({"KELPIE_PROFILE": "acme", "KELPIE_STORY": "ACME-1", "HC_TERMINAL_ID": "t1"})

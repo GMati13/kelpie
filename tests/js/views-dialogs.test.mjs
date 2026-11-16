@@ -264,6 +264,37 @@ test("the profile dialog's Agents page: the Claude account, and how to add anoth
   snap("dialogs/profile-agents", el);
 });
 
+// Other profiles (#254): a switch per other profile lets their Claudes find, show and message each
+// other's agents, off by default, saved with the profile as one pair for both, said to be the person's
+// alone; with no other profile, nothing.
+test("the profile dialog's Agents page: Other profiles, a switch each, saved as one pair", () => {
+  assert.ok(!texts(profilePage("agents")).join("\n").includes("Other profiles"), "no other profile, no switches");
+  setupDemoWorld({ stories, props: { role: "setup", profile: DEMO, focus: "agents", overlay: "overlay-1" } });
+  mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), home: { id: "home", name: "Home", folder: "/home-projects", claude: { config: "/home/test/.claude-home" } }, side: { id: "side", name: "Side", folder: "/side", claude: null } });
+  const d = new Setup();
+  const cx = fakeCx();
+  d.init(cx);
+  for (const st of [...Object.values(d), ...Object.values(d.asks), ...Object.values(d.prefixes).map((x) => x.state)]) {
+    const start = st?.__state?.args?.[0]?.value;
+    if (typeof start === "string" && !st.value()) st.set_value(start);
+  }
+  let el = d.render(cx);
+  const words = texts(el).join("\n");
+  for (const s of ["Other profiles", "Only you can turn this on.", "Home", "On another Claude account", "Side", "On the same Claude account."]) assert.ok(words.includes(s), s);
+  snap("dialogs/profile-agents-others", el);
+  press(el, "setup-share-home", cx);
+  assert.equal(d.dirty(), true, "a switch turned is an unsaved change");
+  el = d.render(cx);
+  press(el, "setup-save", cx);
+  assert.deepEqual(mock.sharedValue("kelpie.share"), ["demo|home"]);
+  // Opened again from the other side, the pair shows on there too.
+  mock.state.props = { role: "setup", profile: "home", focus: "agents", overlay: "overlay-1" };
+  const h = new Setup();
+  h.init(cx);
+  assert.ok(h.shares.has(DEMO));
+  assert.equal(h.dirty(), false);
+});
+
 test("the profile dialog's GitHub page: with an account picked, the shell setup line to copy and its check", () => {
   const el = profilePage("github", { github: { owner: "kelpie--demo", demo: true, account: "kelpie-demo" } });
   const words = texts(el).join("\n");

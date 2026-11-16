@@ -23,7 +23,9 @@ beforeEach(() => {
   mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
 });
 
-const request = (req) => put(`${home}/kelpie/passage.json`, typeof req === "string" ? req : JSON.stringify(req));
+// Asked as the plugin asks: with the account its Claude runs on, the demo profile's ("", Claude's own
+// ~/.claude), so the demo is this Claude's own profile (boundary.js, #254).
+const request = (req) => put(`${home}/kelpie/passage.json`, typeof req === "string" ? req : JSON.stringify((req && typeof req === "object" && !Array.isArray(req) ? { account: "", ...req } : req)));
 const result = () => JSON.parse(readFileSync(`${home}/kelpie/passage.result.json`, "utf8"));
 const passage = () => mock.sharedValue("kelpie.passage");
 
@@ -35,6 +37,18 @@ test("a story of the list: shown with its passage, the request removed, ok in th
   assert.ok(!existsSync(`${home}/kelpie/passage.json`), "the request is removed");
   assert.deepEqual({ ...passage(), at: 0 }, { profile: DEMO, key: "ACME-180", quote: "with confirmation numbers and addresses", note: "What the PDF holds", at: 0 });
   assert.equal(mock.sharedValue("kelpie.stories.preview")?.[DEMO], "ACME-180", "a story not started is previewed");
+});
+
+// The account boundary (#254): only the asking Claude's own profile, and only while Kelpie shows it.
+test("a Claude of another profile than the one shown: refused, nothing shown", async () => {
+  mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), home: { id: "home", name: "Home", folder: "/home-projects", claude: { config: "/home/test/.claude-home" } } });
+  request({ key: "ACME-180", quote: "with confirmation numbers", account: "/home/test/.claude-home" });
+  const r = await showPassageRequest();
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "Kelpie is showing another profile now, so it can't show you a story of Home there: ask the person to switch to it in Kelpie, then try again.");
+  assert.equal(passage() ?? null, null);
+  request({ key: "ACME-180", quote: "with confirmation numbers", account: undefined });
+  assert.match((await showPassageRequest()).error, /which Claude account/, "an account it can't tell: the shown profile isn't taken for its own");
 });
 
 for (const key of ["../../etc/passwd", "ACME-180; rm -rf ~", "acme", "-ACME-1", "", null, 42]) {

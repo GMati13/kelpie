@@ -61,7 +61,9 @@ describe("kelpie.get-story and kelpie.where-<terminal>", () => {
     mock.state.appHome = home;
     mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
   });
-  const request = (name, req) => put(`${home}/kelpie/${name}.json`, JSON.stringify(req));
+  // Asked as the plugin asks: with the account its Claude runs on, the demo profile's ("", Claude's own
+  // ~/.claude), so the demo is this Claude's own profile (boundary.js, #254).
+  const request = (name, req) => put(`${home}/kelpie/${name}.json`, JSON.stringify((req && typeof req === "object" && !Array.isArray(req) ? { account: "", ...req } : req)));
   const result = (name) => JSON.parse(readFileSync(`${home}/kelpie/${name}.result.json`, "utf8"));
   const withSubs = () => stories.data.parents.find((p) => stories.data.children.some((c) => c.fields?.parent?.key === p.key));
   const subOf = (key) => stories.data.children.find((c) => c.fields?.parent?.key === key);
@@ -137,6 +139,24 @@ describe("kelpie.get-story and kelpie.where-<terminal>", () => {
     assert.equal(where.place, "story");
     assert.equal(where.key, space.name);
     assert.ok(Array.isArray(where.subtasks));
+  });
+  // The account boundary (#254): a Claude on another account than its space's profile is told nothing of it.
+  test("a Claude on another account than its space's profile: nowhere, and no story", async () => {
+    const space = world.spaces.find((s) => /^ACME-\d+$/.test(s.name));
+    const agent = world.agents.find((a) => a.space === space.id);
+    request(`where-${agent.address}`, { terminal: agent.address, account: "/home/test/.claude-home" });
+    await whereRequest(agent.address);
+    assert.equal(result(`where-${agent.address}`).where, null);
+    request("story-get", { terminal: agent.address, account: "/home/test/.claude-home", key: space.name });
+    const r = await getStoryRequest();
+    assert.equal(r.ok, false);
+    assert.match(r.error, /another Claude account/);
+  });
+  test("an account it can't tell: not the shown profile's story", async () => {
+    request("story-get", { account: undefined });
+    const r = await getStoryRequest();
+    assert.equal(r.ok, false);
+    assert.match(r.error, /which Claude account/);
   });
   test("where-<terminal>: a terminal in no Kelpie space is nowhere; a name that isn't a terminal's runs nothing", async () => {
     request("where-t999", {});

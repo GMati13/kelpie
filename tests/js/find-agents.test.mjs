@@ -21,7 +21,9 @@ beforeEach(() => {
   mock.on.exec = (c, a, o) => mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
 });
 
-const request = (name, req) => put(`${home}/kelpie/${name}.json`, typeof req === "string" ? req : JSON.stringify(req));
+// Asked as the plugin asks: with the account its Claude runs on, here the demo profile's (Claude's own
+// ~/.claude, ""), so the demo's agents are this Claude's own profile's (boundary.js).
+const request = (name, req) => put(`${home}/kelpie/${name}.json`, typeof req === "string" ? req : JSON.stringify(req && typeof req === "object" && !Array.isArray(req) ? { account: "", ...req } : req));
 const result = (name) => JSON.parse(readFileSync(`${home}/kelpie/${name}.result.json`, "utf8"));
 const agentOf = (tab) => world.agents.find((a) => a.tab_name === tab);
 const find = async (req) => { request("agents-find", req); return findAgentsRequest(); };
@@ -82,22 +84,85 @@ describe("kelpie.find-agents: the agents Kelpie knows", () => {
     assert.deepEqual((await find({ words: "dark mode" })).agents.map((x) => x.tab), ["ACME-172"]);
   });
 
-  test("with `here`, the asking agent's profile's only", async () => {
-    world.agents.push({ address: "x9", space: "sx", tab: "tx", pane: "px", tab_name: "Elsewhere", status: "working", title: "", program: { name: "Claude Code", agent: true } });
+  // Another profile, on another Claude account, with an agent of its own; and a crowd of agents in a
+  // space of no profile, whose sessions (claudeSession) run on `account`, "" for the demo's.
+  const otherProfile = () => {
+    mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), work: { id: "work", name: "Work", folder: "/work", claude: { config: "/home/test/.claude-work" } } });
+    mock.state.shared.set("kelpie.space.profile", { ...mock.state.shared.get("kelpie.space.profile"), sw: "work" });
+    mock.state.spaces.push({ id: "sw", name: "WORK-7", folder: "/work", tabs: [{ id: "tw", name: "WORK-7" }] });
+    world.agents.push({ address: "w1", space: "sw", tab: "tw", pane: "pw", tab_name: "WORK-7", status: "working", title: "Ship the payroll export", program: { name: "Claude Code", agent: true } });
     mock.state.agents = world.agents;
-    mock.state.spaces.push({ id: "sx", name: "Other", folder: "/other", tabs: [{ id: "tx", name: "Elsewhere" }] });
-    assert.ok((await find({})).agents.some((x) => x.tab === "Elsewhere"), "everywhere by default, its profile none");
-    const r = await find({ here: true, terminal: agentOf("ACME-175").address });
-    assert.equal(r.profile, "Acme");
-    assert.ok(!r.agents.some((x) => x.tab === "Elsewhere"));
-  });
-
-  test("the shown profile's agents are read first, so a crowd of other windows' agents can't push them past the cut", async () => {
-    // herdr-core lists every Herdr window's agents; in a live run 64 were open and the demo's came last.
-    const crowd = Array.from({ length: 120 }, (_, i) => ({ address: `x${i}`, space: "sx", tab: "tx", pane: `px${i}`, tab_name: `Other ${i}`, status: "idle", title: "", program: { name: "Claude Code", agent: true } }));
-    world.agents.unshift(...crowd);
+  };
+  const crowd = (n, account) => {
+    const list = Array.from({ length: n }, (_, i) => ({ address: `x${i}`, space: "sx", tab: "tx", pane: `px${i}`, tab_name: `Other ${i}`, status: "idle", title: "", program: { name: "Claude Code", agent: true } }));
+    world.agents.unshift(...list);
     mock.state.agents = world.agents;
     mock.state.spaces.unshift({ id: "sx", name: "Other", folder: "/other", tabs: [{ id: "tx", name: "Other" }] });
+    const pid = (address) => Number(String(address).slice(1)) + 1000;
+    mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify(/^x\d+$/.test(args[1]) ? { foreground: { pid: pid(args[1]) } } : {}), stderr: "" } : undefined);
+    mock.on.exec = (c, a, o) => {
+      if (c === "sh" && String(a[1]).includes("/sessions/")) return { code: 0, stdout: account === null ? "" : `${account}\n${JSON.stringify({ pid: Number(a[3]), sessionId: `0000000${a[3]}-aaaa` })}`, stderr: "" };
+      if (c === "python3") return { code: 0, stdout: "{}", stderr: "" };
+      return mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } });
+    };
+  };
+
+  test("another profile's agents are never listed, whatever is asked, nor counted (#254)", async () => {
+    otherProfile();
+    for (const req of [{}, { words: "payroll" }, { folder: "/work" }, { key: "WORK-7" }, { terminal: agentOf("ACME-175").address }]) {
+      const r = await find(req);
+      assert.ok(!r.agents.some((x) => x.tab === "WORK-7"), JSON.stringify(req));
+      assert.equal(r.more, undefined);
+    }
+    // Asked from Work's own terminal (no session record: the request's account), it's Work's only.
+    const w = await find({ terminal: "w1", account: "/home/test/.claude-work" });
+    assert.deepEqual(w.agents.map((x) => x.tab), ["WORK-7"]);
+    assert.equal(w.profile, "Work");
+  });
+
+  test("with the two profiles paired by the person, the other's agents too, each said to cross", async () => {
+    otherProfile();
+    mock.state.shared.set("kelpie.share", ["demo|work"]);
+    const r = await find({ words: "payroll" });
+    assert.deepEqual(r.agents.map((x) => [x.tab, x.crossed]), [["WORK-7", "Work"]]);
+    assert.equal((await find({})).agents.filter((x) => x.crossed).length, 1, "only the other profile's are marked");
+    request("agent-show", { id: "w1" });
+    assert.equal((await showAgentRequest()).ok, true, "and shown");
+  });
+
+  test("the asking agent's profile is named; `here` is gone, so it changes nothing", async () => {
+    const r = await find({ terminal: agentOf("ACME-175").address });
+    assert.equal(r.profile, "Acme");
+    assert.equal((await find({ here: false })).agents.length, world.agents.length);
+  });
+
+  test("a Claude Kelpie can't place on an account gets none, and why", async () => {
+    otherProfile();
+    for (const req of [{ account: undefined }, { account: "/home/test/.claude-home" }]) {
+      const r = await find(req);
+      assert.deepEqual(r.agents, [], JSON.stringify(req));
+    }
+    assert.match((await find({ account: undefined })).why, /which Claude account/);
+    // On another account than its space's profile: none of that profile's, nor its own account's.
+    const r = await find({ terminal: agentOf("ACME-175").address, account: "/home/test/.claude-work" });
+    assert.deepEqual(r.agents, []);
+    assert.match(r.why, /another Claude account/);
+  });
+
+  test("agents in a space of no profile: only those whose own session is on the asker's account", async () => {
+    crowd(3, "/home/test/.claude-work");
+    assert.ok(!(await find({})).agents.some((x) => x.space === "Other"), "another account's");
+    assert.deepEqual((await find({ account: "/home/test/.claude-work" })).agents.map((x) => x.tab), ["Other 0", "Other 1", "Other 2"]);
+  });
+
+  test("an agent in a space of no profile whose session isn't found: nobody's", async () => {
+    crowd(3, null);
+    assert.ok(!(await find({})).agents.some((x) => x.space === "Other"));
+  });
+
+  test("the asker's profile's agents are read first, so a crowd of other agents can't push them past the cut", async () => {
+    // herdr-core lists every Herdr window's agents; in a live run 64 were open and the demo's came last.
+    crowd(120, "");
     const r = await find({ file: "web/src/theme/tokens.ts" });
     assert.deepEqual(r.agents.map((x) => x.tab).sort(), ["ACME-172", "Claude"]);
     assert.ok(r.more > 0, "the rest are said to be left out");
@@ -231,6 +296,31 @@ describe("kelpie.show-agent: an agent's pane shown", () => {
     request("agent-show", { id: a.address });
     await showAgentRequest();
     assert.equal(mock.sharedValue("kelpie.view")[a.space], "agent");
+  });
+
+  test("another profile's agent isn't shown, in the words of one that isn't there (#254)", async () => {
+    mock.state.shared.set("kelpie.profiles", { ...mock.state.shared.get("kelpie.profiles"), work: { id: "work", name: "Work", folder: "/work", claude: { config: "/home/test/.claude-work" } } });
+    mock.state.shared.set("kelpie.space.profile", { ...mock.state.shared.get("kelpie.space.profile"), sw: "work" });
+    mock.state.spaces.push({ id: "sw", name: "WORK-7", folder: "/work", tabs: [] });
+    mock.state.agents = [...world.agents, { address: "w1", space: "sw", tab: "tw", pane: "pw", tab_name: "WORK-7", status: "working", title: "", program: { name: "Claude Code", agent: true } }];
+    request("agent-show", { id: "w1" });
+    const r = await showAgentRequest();
+    assert.equal(r.ok, false);
+    assert.equal(r.error, "No agent w1 in Kelpie's lists now: find_agents gives the ids of the agents running.");
+    assert.deepEqual(mock.of("run"), []);
+    request("agent-show", { id: "w1", account: "/home/test/.claude-work" });
+    assert.equal((await showAgentRequest()).ok, true, "Work's own Claude may");
+  });
+
+  test("an agent in a space of no profile: only for a Claude on its own session's account", async () => {
+    mock.state.spaces.push({ id: "sx", name: "Other", folder: "/other", tabs: [] });
+    mock.state.agents = [...world.agents, { address: "x1", space: "sx", tab: "tx", pane: "px", tab_name: "Other", status: "idle", title: "", program: { name: "Claude Code", agent: true } }];
+    mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify(args[1] === "x1" ? { foreground: { pid: 77 } } : {}), stderr: "" } : undefined);
+    mock.on.exec = (c, a, o) => (c === "sh" && String(a[1]).includes("/sessions/") ? { code: 0, stdout: `/home/test/.claude-work\n${JSON.stringify({ pid: 77, sessionId: "00000077-aaaa" })}`, stderr: "" } : mock.realExec(c, a, { ...o, env: { PATH: process.env.PATH } }));
+    request("agent-show", { id: "x1" });
+    assert.equal((await showAgentRequest()).ok, false);
+    request("agent-show", { id: "x1", account: "/home/test/.claude-work" });
+    assert.equal((await showAgentRequest()).ok, true);
   });
 
   // An id is only compared with Herdr's own list: anything else shows nothing and runs nothing.

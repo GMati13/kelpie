@@ -164,7 +164,12 @@ For inspecting what a view rendered (import from `"gpui-kit"`):
   through agent-work.py), the Claude agent itself (`claudeOf()`: its session's name, messaging address and id,
   each refused in any other shape, no address for another machine's), each filter, a subtask's key falling
   back to its story's agents and, with nobody, its paused agents and earlier sessions (#237), and that only an agent in
-  Herdr's own list is shown.
+  Herdr's own list is shown; and the account boundary (#254): another profile's agents never listed, counted or
+  shown, an agent in a space of no profile only on its own session's account. Requests ask as a Claude on the
+  demo's account (`account: ""`), as the plugin does.
+- `boundary.test.mjs`: who asks through the plugin (`whoAsks()`, #254: the terminal's space over the environment,
+  the account from the terminal's own session, a profile only on its own account, never the one shown) and what
+  it may see (`allowedFor()`, `mayReach()`, `mayReachAgent()`, `profileFor()`), with two profiles on two accounts.
 - `adf.test.mjs`: every ADF node kind to blocks, unknown ones kept as text, `adfLines`, `adfText`.
 - `diff.test.mjs`: `diffRows`, `wordChanges`, `fileStatus`, `changeSquares`, `syntaxOf`/`syntaxSpans`,
   `patchHash`'s stable values.

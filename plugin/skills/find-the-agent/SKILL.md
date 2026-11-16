@@ -7,6 +7,8 @@ description: Find which of the person's Claude agents is working on something, t
 
 The person runs many Claude agents at once, often several in one folder. Kelpie knows every one: its tab and space, its story, its state, its folder, and what its session started on and changed. So "who is editing this?" is one question to Kelpie, not a dig through session transcripts, process files or Herdr's internals, which are slow, fragile and not yours to rely on.
 
+Kelpie gives you only the agents of your own profile (the one whose space you run in). The person's other profiles often run on other Claude accounts, a work one and a personal one say, kept apart so that one account's work doesn't reach the other. So an agent missing from `find_agents` may be in another profile, and that's on purpose. The person can let two profiles see each other's agents in Kelpie; then `find_agents` lists the other profile's too, each marked `crossed` with that profile's name. Whenever you report, show or message one of those, say it's from that other profile, so the crossing is never silent.
+
 ## Finding
 
 Call `find_agents` with what you know, as narrow as you can make it:
@@ -20,7 +22,7 @@ Each agent comes back with `claude`, the Claude agent itself (its session's `nam
 
 Asked by a subtask's key, an agent works on the subtask itself when its tab is named after it. When none is, `find_agents` gives its story's agents instead, each with `via: "story"` and a note: say they're on the story, not on that subtask, rather than calling one "the subtask's agent". With several there, list them and ask the person which one they mean; never pick one yourself to message.
 
-Answer in a line or two per agent: its tab and space (what the person sees in Kelpie), what it's doing, its state, and why it matches (the file it changed, and when). If none match, say so, and that the change may have been made by hand or by an agent that has since closed. Don't then go looking in Claude's or Herdr's own files.
+Answer in a line or two per agent: its tab and space (what the person sees in Kelpie), what it's doing, its state, and why it matches (the file it changed, and when). If none match, say so, and that the change may have been made by hand, by an agent that has since closed, or by one in another of their profiles, which Kelpie keeps from you. Don't then go looking in Claude's or Herdr's own files, or among the other Claude sessions your own messaging lists: what another profile's agent works on, and its address, aren't yours to pass on or use.
 
 ## Taking them there
 
@@ -31,6 +33,10 @@ When they ask to be taken to an agent, call `show_agent` with its `id` from `fin
 When the person asks you to tell, ask or hand something to another agent, or you found something it needs (an API it calls changed, a file it edits is one you need too), find it with `find_agents` and message that Claude directly with Claude's own messaging between sessions, addressed by its `claude.address` (else its `claude.name`). Only its `claude` from `find_agents` names it: never an address you made up or read from a terminal. Without a `claude` (an agent on another machine has no `address`; a demo's stand-in has none), say you can't reach it and offer to take the person there instead.
 
 In the message, say who you are (your tab and ticket), what you found or ask, and that it comes from you, not the person. Keep it to information and questions: don't give it work the person didn't ask for, don't tell it to change, commit or drop its work unless the person said so, and don't message it to chase it or to ask over and over whether it's done. Tell the person what you sent and to whom.
+
+## An agent in another profile
+
+When the person names an agent Kelpie didn't give you (one they know works in another profile, or found nowhere), say it isn't reachable from here: Kelpie keeps each profile's agents to that profile, as their profiles may run on different Claude accounts. Don't message it through your own messaging between sessions, even if it shows up there, and don't pass on anything about it. Offer instead what they can do themselves: switch to that profile in Kelpie, or ask a Claude there.
 
 ## When nobody is on it
 
