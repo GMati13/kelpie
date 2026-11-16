@@ -189,6 +189,11 @@ describe("settlePulls: a quick read wins over a load that began before it", () =
     assert.equal(settlePulls(data({ prs: [P("SUCCESS", { merged: true })] }), Date.now() + 2).prs[0].merged, true);
     assert.equal(settlePulls(data({ prs: [P("SUCCESS")] }), Date.now() + 3).prs[0].merged, false, "then forgotten");
   });
+  // KELPIE-233: the line's age is when it merged, so the merge read here keeps that time.
+  test("a merge read here keeps when it merged", async () => {
+    await quick({ ...P("SUCCESS"), state: "MERGED", mergedAt: "2026-11-08T10:00:00Z" });
+    assert.equal(settlePulls(data({ prs: [P("SUCCESS")] }), Date.now() + 1).prs[0].mergedAt, "2026-11-08T10:00:00Z");
+  });
   test("one closed without merging leaves the lists", async () => {
     await quick({ ...P("SUCCESS"), state: "CLOSED" });
     assert.deepEqual(settlePulls(data({ prs: [P("PENDING")] }), Date.now() - 1000).prs, []);
