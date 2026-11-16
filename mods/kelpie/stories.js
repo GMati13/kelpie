@@ -16,7 +16,7 @@ import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeT
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
-import { attention, blockedAgents } from "./attention.js";
+import { agentStatus, attention, blockedAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
@@ -930,6 +930,10 @@ function need(it) {
     const own = it.subs.find((s) => s.agent === blocked[0]);
     return [0, it.story && own ? `${own.key}'s agent needs you` : "Agent needs you", "working"];
   }
+  // An agent of it ended its turn waiting on you (#251, #252): after one blocked on a prompt, before
+  // its pull requests' needs. Its line is what it waits for.
+  const waits = waitingOf(it);
+  if (waits) return [WAITING_RANK, `${waits.who}: ${waits.line}`, "working"];
   // Changes requested before failing checks: a reviewer waits on you.
   const changes = prs.find((p) => p.reviewDecision === "CHANGES_REQUESTED");
   if (changes) return [1, `${pre}Changes requested${where(changes)}`, "working"];
@@ -950,6 +954,17 @@ function need(it) {
 
 // A pull request waiting for your review: after what needs you on your own stories.
 const REVIEW_RANK = 4;
+// An agent waiting on you, not blocked (attention.js waitsOnYou()): between one blocked (0) and changes
+// requested (1), so ordered(), Next and cmd-shift-j put it there.
+const WAITING_RANK = 0.5;
+// The story's agent waiting on you, the longest waiting first: { agent, who, line, at }, or null.
+function waitingOf(it) {
+  const found = [it.agent ? [it.agent, null] : null, ...it.subs.map((s) => (s.agent ? [s.agent, s] : null))].filter(Boolean)
+    .map(([a, s]) => ({ a, s, e: waitsOnYou(a) })).filter((x) => x.e).sort((x, y) => (x.e.at ?? 0) - (y.e.at ?? 0))[0];
+  if (!found) return null;
+  const who = it.story && found.s ? `${found.s.key}'s agent` : "Its agent";
+  return { agent: found.a, who, line: found.e.line || "waiting on you", at: found.e.at ?? null };
+}
 // Where a pull request needing nothing of you stands, in words.
 const pullWords = (p) => (p.isDraft ? "Draft" : ["PENDING", "EXPECTED"].includes(checksOf(p)) ? "Checks running"
   : p.reviewDecision === "APPROVED" ? "Approved" : "Waiting for review");
@@ -1258,6 +1273,7 @@ const sunk = (it, n = need(it)) => it.sunk && n[0] > NEEDS_YOU && !talking(it);
 export function storyState(it, n = need(it)) {
   const r = n[0];
   if (r === 0) return "needs-you";
+  if (r === WAITING_RANK) return "asks";
   if (r === 1) return "changes";
   if (r === 2) return "failing";
   if (r === 3) return "done";
@@ -3782,9 +3798,9 @@ export class Stories extends Source {
   // done or idle (a skin's mark, else Kelpie's), or paused; empty when it has none.
   agentSlot(t, s) {
     const a = s.agent;
-    const m = a ? agentMark(t, a.status, { where: "sub", agent: a }) : s.paused ? agentMark(t, "paused", { where: "sub" }) : null;
+    const m = a ? agentMark(t, agentStatus(a), { where: "sub", agent: a }) : s.paused ? agentMark(t, "paused", { where: "sub" }) : null;
     return h_flex().id(`sub-mark-${s.key}`).flex_none().w(16).justify_center().items_center()
-      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${agentWords(a.status)}` : "Paused: its session is kept to resume").child(m));
+      .when(Boolean(m), (el) => el.tooltip(a ? `${a.tab_name}: ${agentWords(agentStatus(a))}` : "Paused: its session is kept to resume").child(m));
   }
 
   // Whether a subtask row shows all its actions: while hovered (`this.hoverSub`, this copy's), and
@@ -3869,10 +3885,11 @@ export class Stories extends Source {
     // Kept at hand while its agent is talked to (stillTalking()): drawn as finished, as a sunk row is,
     // led by that agent's mark and saying on its key line what the agent is doing.
     const talk = stillTalking(it, n) ? talkAgent(it) : null;
+    const waits = n[0] === WAITING_RANK ? waitingOf(it) : null;
     const quiet = sunk(it, n) || Boolean(talk);
     const state = storyState(it, n);
     const busy = busyOf(it.key);
-    const sign = talk ? agentMark(t, talk.status, { where: "sub", size: 16, agent: talk }) : statusMark(t, state, { where: "row", size: 8, color: t[color] });
+    const sign = talk ? agentMark(t, agentStatus(talk), { where: "sub", size: 16, agent: talk }) : statusMark(t, state, { where: "row", size: 8, color: t[color] });
     // The second line is the key and its badges; the sentence of what it needs is the row's tooltip.
     const badges = storyBadges(t, it, { bar: false }), subs = subsLine(t, it);
     const tasks = st && busy?.kind !== "clean" ? this.rowTasks(t, st, it) : [];
@@ -3921,9 +3938,12 @@ export class Stories extends Source {
             .child(avatar(t, it.reassigned.to[0] ?? null, 14, `${reassignedWords(it)}: kept here until you clean it up`))))
           .children(badges)
           .when(Boolean(talk), (el) => el.child(div().id(`talk-${it.key}`).flex_none().text_color(t.muted).child(TALK_WORDS[talk.status] ?? "Talking")))
+          // An agent of it waits on you (#252): what for, in the room the tags would have, cut to fit
+          // (whole in the row's tooltip).
+          .when(Boolean(waits), (el) => el.child(div().id(`waits-${it.key}`).flex_1().min_w(0).truncate().text_color(t.working).child(waits?.line ?? "")))
           // What kind of work it is, at the line's end in whole words: the marks before it keep their
           // places down the list.
-          .when(Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
+          .when(!waits && Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
         // Where your subtasks stand, as a thin line under it; muted with the key line on a sunk row.
         .when(Boolean(subs), (el) => el.child(quiet ? subs.opacity(0.6) : subs)))
       .when(acts.length > 0, (el) => el.relative().child(this.rowActions(it, acts))),
@@ -5961,7 +5981,8 @@ export class StoryList extends Stories {
     const tally = (lo, hi) => items.filter((x) => x.n[0] >= lo && x.n[0] <= hi).length;
     // The summary: a mark and a number each (the words in its tooltip), coloured as the rows are.
     const needYou = tally(0, 0);
-    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
+    const waiting = tally(WAITING_RANK, WAITING_RANK);
+    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [waiting, waiting === 1 ? "with an agent waiting on you" : "with agents waiting on you", "working", "asks"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
       [reviews.length, "to review", "accent", "review"], [tally(5, 5), "working", "accent", "working"], [tally(7, 7), "paused", "muted", "paused"]];
     // Next: what cmd-shift-j goes to, the one after the item shown in what needs you.
     const desk = deskOf(st.profile);

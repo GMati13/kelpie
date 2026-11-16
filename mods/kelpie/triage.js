@@ -18,13 +18,14 @@
 // Run by the copy that follows what's shown (main.js track()), as agents end turns whatever's shown.
 import { appHome, exec, readTextFile } from "herdr";
 import { agents, setShared, shared } from "./host.js";
+import { WAITING } from "./attention.js";
 import { OTHERS, askText, claudeArgv, fenced, spaceProfiles, triageModel, triageOn } from "./config.js";
 import { claudeSession, modFile } from "./ui.js";
 import { accountKey, accountOf } from "./boundary.js";
 import { feedClaude } from "./stories.js";
 import { demoLastTurn, demoTriage, isDemo } from "./demo.js";
 
-export const WAITING = "kelpie.waiting";
+export { WAITING };
 const ASKS = "kelpie.next.asks";
 const KEEP_FOR = 24 * 3600 * 1000;
 const RESTING = new Set(["done", "idle"]);

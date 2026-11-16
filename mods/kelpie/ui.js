@@ -64,10 +64,11 @@ export function programIcon(p, color) {
 // idle, paused (its session kept, no terminal), unknown (a Claude that hasn't said yet: starting).
 // `status` is Herdr's (blocked, working, done, idle; null when none reported) or "paused". A skin may
 // restyle a state (statusMark, `where`), never drop or merge one; else it's mark()'s.
-export const AGENT_WORDS = { "needs-you": "waiting for you", working: "working", done: "done", idle: "idle", paused: "paused", unknown: "starting" };
-export const agentStateOf = (status) => (status === "paused" ? "paused" : agentState(status) ?? "unknown");
+// "asks" is Kelpie's own (attention.js agentStatus()): it ended its turn waiting on you (#251, #252).
+export const AGENT_WORDS = { "needs-you": "waiting for you", asks: "waiting on you", working: "working", done: "done", idle: "idle", paused: "paused", unknown: "starting" };
+export const agentStateOf = (status) => (status === "paused" || status === "asks" ? status : agentState(status) ?? "unknown");
 export const agentWords = (status) => AGENT_WORDS[agentStateOf(status)];
-const AGENT_COLOR = { "needs-you": "working", working: "accent", done: "done", idle: "muted", paused: "dim", unknown: "unknown" };
+const AGENT_COLOR = { "needs-you": "working", asks: "working", working: "accent", done: "done", idle: "muted", paused: "dim", unknown: "unknown" };
 export function agentMark(t, status, { size = 14, where, agent } = {}) {
   const state = agentStateOf(status);
   return statusMark(t, state, { where, size, color: t[AGENT_COLOR[state]] ?? t.dim, agent }) ?? mark(t, state, size);
@@ -87,6 +88,9 @@ export function mark(t, state, size = 14) {
       .loop("opacity", { from: 0.45, to: 1, period: 1200 })
       .child(div().flex_none().size(dot(size * 0.4)).rounded_full().bg(t.working)));
     case "working": return box(icon(chrome("spinner"), size - 2).text_color(t.accent).spin(900));
+    // Ended its turn waiting on you (#252): a question in a ring, amber, still: not the pulse of an
+    // agent blocked on a prompt, and not the speech bubble of changes requested.
+    case "asks": return glyph(own("circle-help"), t.working);
     case "failing":
     case "pr-failing": return glyph(own("circle-x"), t.blocked);
     case "changes":

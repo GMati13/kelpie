@@ -15,7 +15,8 @@ import { skinTheme } from "../../mods/kelpie/skins/index.js";
 
 const LAYOUTS = ["Kelpie", "Kelpie-Plain"];
 // Herdr's statuses, null (a Claude that hasn't reported one yet) and Kelpie's own "paused".
-const STATES = { blocked: "needs you", working: "working", done: "done", idle: "idle", null: "unknown", paused: "paused" };
+// "asks" is Kelpie's own too: an agent that ended its turn waiting on you (#252).
+const STATES = { blocked: "needs you", asks: "waiting on you", working: "working", done: "done", idle: "idle", null: "unknown", paused: "paused" };
 const status = (k) => (k === "null" ? null : k);
 const PLACES = ["tab", "pane", "side-tab", "sub"];
 const draw = (el) => render(el, skinTheme());
