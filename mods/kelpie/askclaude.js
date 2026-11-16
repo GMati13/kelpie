@@ -327,7 +327,7 @@ export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, clea
             .child(icon(chrome("x"), 12))))
         .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box"), writing ? 0 : offerW), !writing).child(offerEl)))
         .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box"), writing ? 0 : 22), !writing).child(more)))
-        // Who it goes to: its mark and name at rest, shortened to its first word while writing.
+        // Who it goes to: its mark and name at rest, shortened to the ticket it's on while writing.
         .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? toNarrow : toWide).child(to))));
 }
 const ABOUT_W = 170, ABOUT_MIN = 72;

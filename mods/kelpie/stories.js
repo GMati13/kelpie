@@ -5528,14 +5528,15 @@ export class StoryBody extends Stories {
       : { label: r.label, hint: r.hint, tip: r.tip, action: (cx) => { this.askPick = r.id; cx.notify(); } }));
     const short = row.label.length > 22 ? `${row.label.slice(0, 21)}…` : row.label;
     const writing = Boolean(this.askAwake || this.askTyped);
-    // Its name, shortened while writing: its first word, cut at 10 letters ("new" for a new Claude).
-    const brief = row.id === "new" ? "new" : (short.split(/\s+/)[0] || short).slice(0, 10);
+    // Its name, shortened while writing: the ticket it's on (its tab's key), else its name cut at 10
+    // letters; "new" for a new Claude. Session names are kebab-case ("fix-login-cookie-wait"), so a
+    // first word says nothing.
+    const brief = row.id === "new" ? "new" : keyOf(row.agent?.tab_name) ?? (short.length > 10 ? `${short.slice(0, 9)}…` : short);
     // Who it goes to: its state's mark and its name, quiet; a click lists the others (KELPIE-305).
     const toTip = `${row.tip}${row.id === "new" && about.kind === "story" ? "\nA question about the whole story goes to a new Claude" : ""}\nClick to send it to another`;
     const to = this.menuButton(t, "ask-to", "", rows, toTip, { width: 320, anchor: "bottom_right",
-      // A small bordered pill, its mark and name; writing, the same pill with its name shortened to its
-      // first word ("new" for a new Claude), its own element and never the pill cut short; the whole
-      // name in its tip.
+      // A small bordered pill, its mark and name; writing, the same pill shortened to the ticket it's on
+      // (`brief`), never the pill cut short; the whole name in its tip.
       trigger: (toggle, open) => {
         const mark = row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11).text_color(t.accent);
         const base = h_flex().id("ask-to-more").flex_none().h(26).items_center().cursor_pointer().border_1().border_color(t.border)
