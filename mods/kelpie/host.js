@@ -10,6 +10,9 @@
 // Values are shared by every caller in the render: never change one in place (tests/stubs/herdr.js
 // hands them out frozen, so a mod that does fails its tests).
 import { agents as hostAgents, focused as hostFocused, hc as hostHc, layout as hostLayout, panes as hostPanes, run as hostRun, setShared as hostSetShared, shared as hostShared, spaces as hostSpaces, terminals as hostTerminals } from "herdr";
+// The whole module too, for what an older Herdr lacks (setBadge, Herdr 0.1.16): a named import of it
+// would stop the mod loading there.
+import * as Herdr from "herdr";
 
 let frame = null; // while a render runs: read name -> value
 let derived = null; // while a render runs: what was worked out from the reads (memo()), by name
@@ -61,3 +64,7 @@ export const hc = (args, ...rest) => {
   forget();
   return hostHc(args, ...rest);
 };
+
+// Herdr's Dock badge (main.js syncBadge(), #286): whether this Herdr has one, and setting it.
+export const canBadge = () => typeof Herdr.setBadge === "function";
+export const setBadge = (text) => Herdr.setBadge(text);

@@ -11,14 +11,14 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { appHome, checking, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
-import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
+import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals, canBadge, setBadge } from "./host.js";
 import { toggleDebug } from "./debug.js";
 import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, mark, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showWaiting, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, takeRuns, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { noteTurns } from "./triage.js";
-import { agentStatus } from "./attention.js";
+import { agentStatus, attention } from "./attention.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, getProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { deskAgents, deskNow, deskShown, goDesk, pauseDesk, pauseDeskByKey, showDeskView } from "./desk.js";
@@ -257,15 +257,34 @@ function track(role) {
     syncTracking(true);
     syncPanel(true);
     noteTurns();
+    syncBadge();
     return;
   }
   syncTracking();
   noteTurns();
+  syncBadge();
   syncPanel();
   syncWebOpen();
   syncSkin();
 }
 
+
+// The Dock badge (#286): how many agents need you, what the footer counts (attention.js: blocked on a
+// prompt plus waiting on you, every profile), so it's seen with Herdr behind other windows; nothing
+// while none does. Always on. Set by the copy that follows what's shown, only when the number changes
+// (the last call wins, and it doesn't outlive the app, so a fresh context sets it again), and only
+// where Herdr has setBadge (macOS draws it; others ignore it).
+const badge = { text: undefined };
+function syncBadge() {
+  if (!canBadge()) return;
+  const { n, w } = attention();
+  const text = n + w > 0 ? String(n + w) : null;
+  if (text === badge.text) return;
+  badge.text = text;
+  setBadge(text);
+}
+// For the tests: forget the number set, as a fresh context would.
+export const forgetBadge = () => { badge.text = undefined; };
 
 // What the fold button's tip calls the lower block, by the story's view.
 const FOLD_WHAT = { agent: "terminals", changes: "changes", shots: "screenshots", artifacts: "artifacts" };
