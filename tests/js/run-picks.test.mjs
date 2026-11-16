@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId } from "../lib/snapshot.mjs";
-import { StoryList, needQueueOf, picksPlan, runPicks, storyItems } from "../../mods/kelpie/stories.js";
+import { StoryList, busyOf, needQueueOf, picksPlan, runPicks, storyItems, takeRuns } from "../../mods/kelpie/stories.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { OTHERS } from "../../mods/kelpie/config.js";
 import { bodyOf, readRepo } from "../lib/helpers.mjs";
@@ -89,14 +89,20 @@ describe("Run all", () => {
     setupDemoWorld({ stories });
     putPicks();
     makeSpaces();
-    mock.state.props = { role: "confirm", runPicks: { profile: DEMO }, yes: "Start them", working: "Starting…", overlay: "o1",
+    mock.state.props = { role: "confirm", runPicks: { profile: DEMO }, yes: "Start them", overlay: "o1",
       items: picksPlan(said()).map((p) => ({ text: p.text, ...(p.run ? { choose: p.x.suggest.key } : {}) })) };
     const dialog = new Confirm();
     const cx = fakeCx();
     dialog.init(cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
-    assert.deepEqual(texts(byId(dialog.render(cx), "confirm-yes")), ["Starting…"]);
-    await cx.settle(10);
+    // It closes at once (KELPIE-262): nothing started yet; the leading copy runs it.
+    assert.deepEqual(mock.of("closeOverlay"), [["o1"]]);
+    assert.deepEqual(started(), []);
+    const runs = takeRuns();
+    await Promise.resolve();
+    assert.equal(busyOf(`picks:${DEMO}`)?.kind, "picks", "Run all's mark while it runs");
+    await Promise.all(runs);
+    assert.equal(busyOf(`picks:${DEMO}`), null);
     const [space, desk, ...rest] = started();
     assert.equal(rest.length, 0, "one each, the pull request skipped");
     assert.equal(space[0], "space.new");
@@ -111,7 +117,6 @@ describe("Run all", () => {
     assert.match(desk[1].name, /^Idea: /);
     assert.deepEqual(mock.sharedValue(SUGGESTED)[DEMO].items.map((x) => x.key), ["pr:web#999"], "the ones started leave the queue");
     assert.equal(note(), `Started 2 of 2: ACME-181, ${PICKS[2].action}.`);
-    assert.deepEqual(mock.of("closeOverlay"), [["o1"]]);
   });
   test("a pick turned off in the dialog isn't started", async () => {
     setupDemoWorld({ stories });
@@ -124,7 +129,7 @@ describe("Run all", () => {
     dialog.init(cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-pick-2").fn({}, cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
-    await cx.settle(10);
+    await Promise.all(takeRuns());
     assert.deepEqual(started().map(([n, a]) => [n, a.name]), [["space.new", "ACME-180"]]);
   });
   test("a story whose space never shows up is named as failed; the rest go on", async () => {
@@ -142,6 +147,18 @@ describe("Run all", () => {
     for (const f of ["main.js", "work.js", "workside.js", "setup.js", "desk.js", "demo.js", "source.js", "ui.js", "config.js"]) {
       assert.doesNotMatch(readRepo("mods/kelpie", f), /runPicks/, f);
     }
-    assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /await runPicks\(ask\)/);
+    // The button asks for it (stories.js askRun(), KELPIE-262), which the leading copy runs.
+    assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /askRun\("picks", \{ \.\.\.picks, keys \}\);/);
+  });
+  test("while it runs, Run all is the working mark and a second one is refused", async () => {
+    setupDemoWorld({ stories });
+    putPicks();
+    mock.state.shared.set("kelpie.busy", { [`picks:${DEMO}`]: { kind: "picks", keys: [], step: "Starting ACME-181: 1 of 2…", at: Date.now(), until: Date.now() + 60e3 } });
+    const { el } = await box();
+    assert.equal(byId(el, "queue-run-all"), null);
+    assert.ok(byId(el, "queue-run-all-busy"), "the working mark in its place");
+    assert.equal(await runPicks({ profile: DEMO }), null);
+    assert.equal(note(), "Claude's picks are already being started.");
+    assert.deepEqual(started(), []);
   });
 });

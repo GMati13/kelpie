@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId } from "../lib/snapshot.mjs";
-import { StoryList, build, closePlan, closeStories, storyItems } from "../../mods/kelpie/stories.js";
+import { StoryList, build, closePlan, closeStories, storyItems, takeRuns } from "../../mods/kelpie/stories.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { CLOSE, CLOSE_SLOTS, closeIssues } from "../../mods/kelpie/issues.js";
 import { DEMO_PROJECT_PROFILE, data, issue } from "../lib/stories.mjs";
@@ -25,7 +25,8 @@ test("only the confirm dialog's button closes issues; no kelpie.* command does",
   for (const f of ["main.js", "work.js", "workside.js", "setup.js", "desk.js", "source.js", "ui.js", "config.js"]) {
     assert.doesNotMatch(readRepo("mods/kelpie", f), /closeStories|closeTicket|closeIssue/, f);
   }
-  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /const ask = \(redraw\) => \(\{ \.\.\.closing, onStep[^}]*\} \}\);[\s\S]*await closeStories\(ask\(task\)\)/);
+  // Its button asks for the run (stories.js askRun(), KELPIE-262), which the leading copy runs.
+  assert.match(bodyOf(readRepo("mods/kelpie/dialogs.js"), "  yes(command = props().command, cx = null) {"), /if \(closing\) \{ askRun\("close", closing\); return closeOverlay\(overlay\); \}/);
   assert.equal(readRepo("mods/kelpie/stories.js").match(/closeStories\(/g).length, 1, "stories.js only defines it");
 });
 
@@ -180,23 +181,25 @@ describe("Close in the demo's GitHub Project", () => {
     assert.equal(mock.sharedValue("kelpie.busy")?.["ACME-118"], undefined, "its busy mark is gone");
   });
 
-  test("the dialog's button closes them; the row then has no Close, and Close all hides", async () => {
+  test("the dialog's button closes at once; the run then closes them in place, the row losing its Close", async () => {
     world();
-    mock.state.props = { role: "confirm", closeStories: { profile: DEMO, keys: ["ACME-118"] }, yes: "Close 2 issues", working: "Closing…", overlay: "o1" };
+    mock.state.props = { role: "confirm", closeStories: { profile: DEMO, keys: ["ACME-118"] }, yes: "Close 2 issues", overlay: "o1" };
     const dialog = new Confirm();
     const cx = fakeCx();
     dialog.init(cx);
     mock.state.props.items = [{ key: "ACME-118", text: "Show prices" }, { key: "ACME-119", text: "Convert prices" }];
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
-    await cx.settle(10);
-    // Once they're closed, each line is marked so and the button says how far it got.
-    const done = dialog.render(cx);
-    assert.deepEqual(texts(byId(done, "confirm-yes")), ["Closing… 2 of 2"]);
-    for (const i of [0, 1]) assert.ok(byId(done, `confirm-item-${i}`), `line ${i} marked`);
-    assert.deepEqual(dialog.progress, { total: 2, closed: ["ACME-118", "ACME-119"], failed: {}, on: [] });
-    assert.ok(cx.notified >= 3, "the dialog redraws at the start and as each batch ends");
-    assert.equal(note(), "Closed ACME-118 and ACME-119 on GitHub.");
+    // The dialog asks and closes (KELPIE-262): nothing has run yet, nothing waits on the dialog.
     assert.deepEqual(mock.of("closeOverlay"), [["o1"]]);
+    assert.deepEqual(cx.tasks, [], "no task of the dialog's runs it");
+    assert.equal(mock.sharedValue("kelpie.busy")?.["ACME-118"], undefined);
+    // The leading copy takes it: under the story's busy mark until done, then the note.
+    const runs = takeRuns();
+    assert.equal(runs.length, 1);
+    await Promise.resolve();
+    assert.equal(mock.sharedValue("kelpie.busy")?.["ACME-118"]?.kind, "close", "its mark while it runs");
+    await Promise.all(runs);
+    assert.equal(note(), "Closed ACME-118 and ACME-119 on GitHub.");
     const it = storyItems().done.map((x) => x.it).find((x) => x.key === "ACME-118");
     assert.ok(it, "still in Done");
     assert.deepEqual(closePlan(it).close, [], "shown closed at once");
@@ -228,25 +231,19 @@ describe("Close in the demo's GitHub Project", () => {
     assert.equal(mock.sharedValue("kelpie.busy")?.["ACME-118"], undefined);
   });
 
-  test("Close all with 12 open issues closes all 12 in one press, its progress drawn by the task's own cx", async () => {
+  test("Close all with 12 open issues closes all 12 in one press, the dialog gone at once", async () => {
     twelve();
-    mock.state.props = { role: "confirm", closeStories: { profile: DEMO, keys: ["ACME-118"] }, yes: "Close 12 issues", working: "Closing…", overlay: "o1" };
+    mock.state.props = { role: "confirm", closeStories: { profile: DEMO, keys: ["ACME-118"] }, yes: "Close 12 issues", overlay: "o1" };
     const dialog = new Confirm();
-    const task = fakeCx();
-    dialog.init(task);
-    // Herdr's click context is good only for the click: past an await it's stale and throws. The task's
-    // own (the one cx.spawn hands its callback) is what can redraw the dialog later.
-    let stale = false;
-    const click = { ...task, spawn: (fn) => task.spawn(fn), notify() { if (stale) throw new Error("stale context"); task.notified++; } };
-    handlers(dialog.render(task)).find((h) => h.id === "confirm-yes").fn({}, click);
-    stale = true;
-    await task.settle(20);
-    assert.deepEqual(task.errors, []);
-    assert.equal(dialog.progress.closed.length, 12, "every issue closed in one press");
-    assert.deepEqual(dialog.progress.failed, {});
-    assert.ok(task.notified >= 4, "the dialog redraws as each of the 3 batches ends");
-    assert.match(note(), /^Closed 12 issues on GitHub: ACME-118, ACME-119, ACME-901, .* and ACME-910\.$/, "how many, then which");
+    const cx = fakeCx();
+    dialog.init(cx);
+    handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
     assert.deepEqual(mock.of("closeOverlay"), [["o1"]]);
+    const [run] = takeRuns();
+    const r = await run;
+    assert.equal(r.closed.length, 12, "every issue closed in one press");
+    assert.deepEqual(r.failed, []);
+    assert.match(note(), /^Closed 12 issues on GitHub: ACME-118, ACME-119, ACME-901, .* and ACME-910\.$/, "how many, then which");
   });
 
 });

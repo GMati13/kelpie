@@ -407,3 +407,13 @@ test("the Ask line lies over the details' bottom, and the details leave room und
   const content = nodeOf(byId(view.render(cx), "story-overview-content"));
   assert.ok(content.calls.some(([m, a]) => m === "pb" && a[0] === 104), "80 for the line, and a little air");
 });
+
+// KELPIE-233: a merged pull request's line gives its age from when it merged, not its last change
+// (the fixture's api#291 merged 3 days ago and was commented on an hour ago), and says so in its tip.
+test("a merged pull request's line says how long ago it merged", async () => {
+  const { el } = await body({ preview: "ACME-175" });
+  const line = byId(el, "pr-api#291");
+  assert.ok(line, "api#291's line is drawn");
+  assert.ok(texts(line).includes("3d"), texts(line).join(" | "));
+  assert.match(nodeOf(line).calls.find(([m]) => m === "tooltip")[1][0], /^Merged 3d ago · /);
+});

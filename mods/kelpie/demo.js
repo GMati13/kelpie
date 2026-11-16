@@ -325,7 +325,8 @@ const pullId = (p) => `demo-pr-${p.repo}-${p.number}`;
 function asPull(f, raw) {
   const p = later(raw);
   return {
-    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(), ...(p.branch ? { headRefName: p.branch } : {}),
+    id: pullId(p), number: p.number, title: p.title, url: prUrl(f, p), isDraft: Boolean(p.draft), updatedAt: new Date(when(p.updated)).toISOString(),
+    ...(p.merged ? { mergedAt: new Date(when(p.mergedAt ?? p.updated)).toISOString() } : {}), ...(p.branch ? { headRefName: p.branch } : {}),
     reviewDecision: APPROVED.has(prUrl(f, p)) ? "APPROVED" : p.review ?? null, viewerReview: APPROVED.has(prUrl(f, p)) ? "APPROVED" : null, author: { login: p.author ?? f.profile.me }, repository: { name: p.repo },
     commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks ?? null } } }] },
   };

@@ -12,8 +12,9 @@ import { demoApprove, demoNewestPulls, demoPullBody, demoPulls, demoReadPulls } 
 import { guarded } from "./ghlimit.js";
 
 // What the list keeps of a pull request; `id` is its node id, for reading it again (readPulls());
-// `headRefName` its branch, so Changes knows which local commits it already shows.
-const FIELDS = `id number title url isDraft updatedAt reviewDecision headRefName headRefOid author { login } repository { name }
+// `headRefName` its branch, so Changes knows which local commits it already shows; `mergedAt` when
+// it merged (null while open), its age once merged, as a later comment moves `updatedAt`.
+const FIELDS = `id number title url isDraft updatedAt mergedAt reviewDecision headRefName headRefOid author { login } repository { name }
   viewerLatestReview { state } latestOpinionatedReviews(first: 20) { nodes { state } }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }`;
 const QUERY = `query($q: String!) { rateLimit { remaining limit resetAt } search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
@@ -33,7 +34,7 @@ const checks = (pr) => pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state 
 // For merged pull requests, only what tells them apart: checks and reviews no longer matter, and
 // asking for them doubles the time GitHub takes.
 const LIGHT = `query($q: String!) { rateLimit { remaining limit resetAt } search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
-  id number title url updatedAt headRefName author { login } repository { name } } } } }`;
+  id number title url updatedAt mergedAt headRefName author { login } repository { name } } } } }`;
 
 // Every gh call Kelpie makes, as a profile's GitHub account (`github.account`; none: gh's active one),
 // through gh.sh, which hands gh that account's token itself; none while GitHub refuses that account

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId } from "../lib/snapshot.mjs";
-import { StoryList, busyOf, moveStoriesToDone } from "../../mods/kelpie/stories.js";
+import { StoryList, busyOf, moveStoriesToDone, takeRuns } from "../../mods/kelpie/stories.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { demoJira } from "../../mods/kelpie/demo.js";
 
@@ -74,7 +74,7 @@ describe("Ready for Done in Next", async () => {
     assert.equal(note(), "Those stories are already moving to Done.");
     assert.equal(await statusOf("ACME-175"), "In Progress", "as the demo's board has it");
   });
-  test("its button moves each story, sums it up and closes once done", async () => {
+  test("its button closes at once, then the run moves each story and sums it up", async () => {
     setupDemoWorld({ stories: two, spaces: [] });
     const keys = ["ACME-175", "ACME-129"];
     mock.state.props = { role: "confirm", doneStories: { profile: DEMO, keys }, yes: "Move to Done", overlay: "o9" };
@@ -82,12 +82,15 @@ describe("Ready for Done in Next", async () => {
     const cx = fakeCx();
     dialog.init(cx);
     handlers(dialog.render(cx)).find((h) => h.id === "confirm-yes").fn({}, cx);
-    assert.deepEqual(texts(byId(dialog.render(cx), "confirm-yes")), ["Moving…"]);
-    await cx.settle(10);
+    // It closes at once (KELPIE-262); the leading copy runs it, under `done-all:<profile>` meanwhile.
+    assert.deepEqual(mock.of("closeOverlay"), [["o9"]]);
+    const runs = takeRuns();
+    await Promise.resolve();
+    assert.equal(busyOf(`done-all:${DEMO}`)?.kind, "done");
+    await Promise.all(runs);
     assert.deepEqual(await Promise.all(["ACME-175", "ACME-130", "ACME-131", "ACME-129"].map(statusOf)), ["Done", "Done", "In Progress", "In QA"], "ACME-129 stays, as ACME-131 is someone else's");
     assert.equal(note(), "Moved ACME-175 and ACME-130 to Done. ACME-129 stays, as not all its subtasks are done.");
     assert.equal(busyOf(`done-all:${DEMO}`), null);
-    assert.deepEqual(mock.of("closeOverlay"), [["o9"]]);
   });
 
 });

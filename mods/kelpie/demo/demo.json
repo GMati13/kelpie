@@ -678,7 +678,8 @@
       "repo": "api",
       "number": 291,
       "title": "ACME-175 Retry the login test's sign-in once on a slow runner",
-      "updated": "-3d",
+      "updated": "-1h",
+      "mergedAt": "-3d",
       "merged": true
     },
     {
