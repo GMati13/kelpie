@@ -5,9 +5,11 @@ import { DEMO, NOW, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/vie
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { texts } from "gpui-kit";
+import { handlers, texts } from "gpui-kit";
 import { byId, render } from "../lib/snapshot.mjs";
-import { StoryList, need, storyItems } from "../../mods/kelpie/stories.js";
+import { StoryList, getNextRequest, goNext, need, needQueueOf, queueRow, storyItems, withDrop } from "../../mods/kelpie/stories.js";
+import { forgetTurns, noteTurns } from "../../mods/kelpie/triage.js";
+import { put, tempDir } from "../lib/helpers.mjs";
 import { agentStatus, waitsOnYou } from "../../mods/kelpie/attention.js";
 import { PaneHead } from "../../mods/kelpie/panes.js";
 import Quiet from "../../mods/kelpie/main.js";
@@ -78,3 +80,69 @@ for (const layout of ["Kelpie", "Kelpie-Plain"]) {
     assert.ok(w);
   });
 }
+
+// Next (#252): blocked first, then the agents waiting on you (their own asks too, one row per agent),
+// then your pull requests' needs, then finished turns to check, then the reviews.
+const queue = () => { const s = storyItems(); return needQueueOf(s.st.profile, s.items, s.reviews, s.st.data); };
+
+test("Next: blocked, then waiting on you, then your pull requests' needs, then finished turns, then reviews", () => {
+  const { w } = world();
+  const done = w.agents.find((x) => x.tab_name === "ACME-127");
+  const all = mock.state.shared.get("kelpie.waiting");
+  mock.state.shared.set("kelpie.waiting", { [DEMO]: { ...all[DEMO], [done.address]: { state: "ready", kind: "done", line: "Check the banner shows once after the laptop wakes", at: NOW } } });
+  const keys = queue().map((x) => x.key);
+  const at = (k) => keys.findIndex((x) => x.startsWith(k));
+  assert.ok(at("ACME-142") < at("ask:"), "the blocked story first");
+  assert.ok(at("ask:") >= 0 && at("wait:") >= 0, "the agent's own ask and the agent found waiting");
+  assert.ok(at("wait:") < at("ACME-160"), "before changes requested");
+  assert.ok(at("ACME-171") < at("ready:"), "ready to merge before finished turns");
+  assert.ok(at("ready:") < at("review:"), "finished turns before the reviews");
+  assert.ok(!keys.includes("ACME-151"), "the waiting story is its agent's row, not a row of its own too");
+  const wait = queue().find((x) => x.key.startsWith("wait:"));
+  assert.equal(wait.wait.line, QUESTION);
+  assert.equal(wait.it.key, "ACME-151");
+});
+
+test("an agent that asked through Next itself has one row: its ask", () => {
+  const { a } = world();
+  mock.state.shared.set("kelpie.next.asks", { [DEMO]: [{ id: "q1", at: NOW, action: "Add the CI secret", terminal: a.address, tab: "ACME-152" }] });
+  const rows = queue().filter((x) => x.ask?.terminal === a.address || x.agent?.address === a.address);
+  assert.deepEqual(rows.map((x) => x.key), ["ask:q1"]);
+});
+
+test("a click shows the agent and leaves it waiting; its ✕ sets it aside until its next turn", async () => {
+  const { a } = world();
+  const s = storyItems();
+  const wait = queue().find((x) => x.key.startsWith("wait:"));
+  const before = mock.calls.length;
+  goNext(s.st.profile, wait);
+  const ran = mock.calls.slice(before).filter((c) => c.fn === "run");
+  assert.deepEqual(ran.find((c) => c.args[0] === "pane.focus")?.args[1], { pane: a.pane }, "shows the agent");
+  assert.ok(waitsOnYou(a), "still waiting: a click doesn't answer it");
+  const row = withDrop(skinTheme(), s.st.profile, wait, queueRow(skinTheme(), wait, false, () => {}));
+  handlers(row).find((h) => h.id === `queue-drop-${wait.key}`).fn({}, { stop_propagation() {} });
+  assert.equal(mock.sharedValue("kelpie.waiting")[DEMO][a.address].aside, true);
+  assert.ok(!queue().some((x) => x.key.startsWith("wait:")), "set aside");
+  assert.equal(agentStatus(a), "done", "its mark is Herdr's again");
+});
+
+test("its pane focused marks it seen, and Next draws it dimmer", () => {
+  const { a } = world();
+  forgetTurns();
+  mock.state.focused = { space: a.space, tab: a.tab, pane: a.pane };
+  noteTurns();
+  assert.equal(mock.sharedValue("kelpie.waiting")[DEMO][a.address].seen, true);
+  const wait = queue().find((x) => x.key.startsWith("wait:"));
+  assert.match(render(queueRow(skinTheme(), wait, false, () => {}), skinTheme()), /opacity/);
+});
+
+test("get_next names it as an agent waiting, with its story", async () => {
+  const { a } = world();
+  const home = tempDir();
+  mock.state.appHome = home;
+  mock.on.exec = (c, args, o) => mock.realExec(c, args, { ...o, env: { PATH: process.env.PATH } });
+  put(`${home}/kelpie/next-get.json`, JSON.stringify({ account: "", terminal: a.address }));
+  const r = await getNextRequest();
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(r.items.find((x) => x.kind === "agent-waiting"), { kind: "agent-waiting", key: "ACME-151", action: QUESTION, detail: "ACME-151 · ACME-152's agent" });
+});

@@ -62,13 +62,15 @@ describe("needQueueOf: what Next goes through", () => {
     mock.state.agents = [{ space: "s-ee", status: "working", tab_name: "x" }];
     assert.ok(!keys(needQueueOf(profile, items(), [])).includes("clean"));
   });
-  test("the Desk goes after the reviews while one of its agents waits for you", () => {
+  // An agent of the Desk blocked on a prompt needs you now: with the blocked stories, before your pull
+  // requests' needs and the reviews (#252's order; it used to come after the reviews).
+  test("the Desk goes with what's blocked while one of its agents waits for you on a prompt", () => {
     mock.state.shared.set("kelpie.desk", { w: "d1" });
     mock.state.spaces = [{ id: "d1", name: "Desk", folder: "/w", tabs: [] }];
     mock.state.agents = [{ space: "d1", status: "working" }];
     assert.ok(!keys(needQueueOf(profile, items(), [review])).includes("desk"));
     mock.state.agents = [{ space: "d1", status: "blocked" }];
-    assert.deepEqual(keys(needQueueOf(profile, items(), [review])), ["BB-1", "AA-1", "review:web#3", "desk", "clean"]);
+    assert.deepEqual(keys(needQueueOf(profile, items(), [review])), ["BB-1", "desk", "AA-1", "review:web#3", "clean"]);
   });
   // CC-1 is in progress (KELPIE-126: a story already in hand isn't a pick, so Run all never starts a
   // second agent on it); HH-1 isn't started.

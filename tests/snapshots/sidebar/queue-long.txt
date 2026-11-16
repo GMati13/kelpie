@@ -18,7 +18,7 @@ v_flex #work-side-list-demo
         div
           "Needs you"
         div [fg=muted]
-          "4"
+          "1"
       h_flex #queue-ACME-142 [hover(bg=hover)] {click} tip="ACME-142: ACME-143's agent needs you\nOffline mode for saved trips"
         div
           div
@@ -30,6 +30,28 @@ v_flex #work-side-list-demo
               "ACME-142: ACME-143's agent needs you"
           div [fg=muted]
             "Offline mode for saved trips"
+      h_flex [fg=working]
+        div
+          "Waiting on you"
+        div [fg=muted]
+          "1"
+      h_flex #queue-ask:demo-0 [hover(bg=hover)] {click} tip="Pick the dark mode accent colour\nACME-172 · Two blues read well on the dark background: I'd like your choice before I set the token."
+        div
+          div
+            svg own:circle-help [fg=working]
+        v_flex
+          h_flex
+            div
+              "Pick the dark mode accent colour"
+          div [fg=muted]
+            "ACME-172 · Two blues read well on the dark background: I'd like your choice before I set the token."
+        div #queue-drop-ask:demo-0 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this request"
+          svg chrome:x
+      h_flex [fg=dim]
+        div
+          "Your pull requests"
+        div [fg=muted]
+          "3"
       h_flex #queue-ACME-160 [hover(bg=hover)] {click} tip="ACME-160: Changes requested on ACME-161 (search#233)\nTypo-tolerant search"
         div
           div
@@ -60,24 +82,6 @@ v_flex #work-side-list-demo
               "ACME-171: Approved, checks pass or none · ready to merge"
           div [fg=muted]
             "Dark mode for the dashboard"
-      h_flex [fg=dim]
-        div
-          "From agents"
-        div [fg=muted]
-          "1"
-      h_flex #queue-ask:demo-0 [hover(bg=hover)] {click} tip="Pick the dark mode accent colour\nACME-172 · Two blues read well on the dark background: I'd like your choice before I set the token."
-        div
-          div
-            div [bg=working/40] ~loop(opacity)
-              div [bg=working]
-        v_flex
-          h_flex
-            div
-              "Pick the dark mode accent colour"
-          div [fg=muted]
-            "ACME-172 · Two blues read well on the dark background: I'd like your choice before I set the token."
-        div #queue-drop-ask:demo-0 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Drop this request"
-          svg chrome:x
       h_flex [fg=dim]
         div
           "To review"

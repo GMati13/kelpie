@@ -17,7 +17,7 @@
 // (#254), and a turn in which the agent asked through Next itself (add_to_next): its own ask wins.
 // Run by the copy that follows what's shown (main.js track()), as agents end turns whatever's shown.
 import { appHome, exec, readTextFile } from "herdr";
-import { agents, setShared, shared } from "./host.js";
+import { agents, focused, setShared, shared } from "./host.js";
 import { WAITING } from "./attention.js";
 import { OTHERS, askText, claudeArgv, fenced, spaceProfiles, triageModel, triageOn } from "./config.js";
 import { claudeSession, modFile } from "./ui.js";
@@ -158,12 +158,18 @@ export function noteTurns(now = Date.now()) {
   const all = shared(WAITING) ?? {};
   let changed = false;
   const kept = {};
+  // The agent's pane focused since it began waiting: you've seen it, so Next draws it dimmer (#252).
+  const pane = focused()?.pane ?? null;
   for (const [id, byAgent] of Object.entries(all)) {
     const left = Object.fromEntries(Object.entries(byAgent ?? {}).filter(([address, e]) => {
       const a = live.get(address);
       const stays = Boolean(a) && RESTING.has(a.status) && now - (e?.at ?? 0) < KEEP_FOR;
       if (!stays) changed = true;
       return stays;
+    }).map(([address, e]) => {
+      if (e.seen || !pane || live.get(address)?.pane !== pane || e.state === "none") return [address, e];
+      changed = true;
+      return [address, { ...e, seen: true }];
     }));
     if (Object.keys(left).length) kept[id] = left;
   }
