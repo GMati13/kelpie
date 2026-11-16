@@ -3229,11 +3229,14 @@ export class Stories extends Source {
   }
 
   // Claude sessions under the folder, with the keys they were started on (sessions.py); null when
-  // that failed.
+  // that failed. Only the profile's own Claude account's (its claude.config, else ~/.claude), as the
+  // plain sidebar's (sessions.js): another account's are another profile's, and resuming one would
+  // run on that account (#157).
   fetchSessions({ space, setup }) {
     if (isDemo(setup.profile)) return demoSessions(setup.folder).then((list) => list.map(session)).catch(() => null);
+    const account = claudeConfigOf(setup.profile) ?? "~/.claude";
     return readTextFile(modFile("sessions.py"))
-      .then((code) => exec("python3", ["-I", "-c", code, setup.folder, "200"], space?.machine ? { on: space.machine } : {}))
+      .then((code) => exec("python3", ["-I", "-c", code, setup.folder, "200", account], space?.machine ? { on: space.machine } : {}))
       .then((r) => (r.code === 0 ? JSON.parse(r.stdout).map(session) : null))
       .catch(() => null);
   }
