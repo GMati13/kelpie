@@ -44,7 +44,7 @@ test("an agent waits on you only while it rests, and not once set aside", () => 
 test("its story ranks after the blocked ones, before changes requested, its question on its row", async () => {
   world();
   const it = storyItems().items.find((x) => x.it.key === "ACME-151").it;
-  assert.deepEqual(need(it), [0.5, `ACME-152's agent: ${QUESTION}`, "working"]);
+  assert.deepEqual(need(it), [0.5, `ACME-152's agent: ${QUESTION}`, "ansi3"]);
   const { el } = await draw(new StoryList());
   assert.deepEqual(texts(byId(el, "waits-ACME-151")), [QUESTION]);
   const rows = rowsOf(el);
@@ -210,4 +210,20 @@ describe("telling you an agent waits", () => {
     await until(() => mock.sharedValue("kelpie.waiting")?.[DEMO], 3000);
     assert.equal(told().length, 0, "not for the agent shown");
   });
+});
+
+// Waiting is amber in both layouts, never needs-you's colour: Quiet Pages makes `working` its coral
+// (the safelight's), so a waiting mark drawn in it read as blocked (seen in the demo).
+test("the waiting mark and question are the theme's amber in both layouts, not needs-you's colour", () => {
+  for (const layout of ["Kelpie", "Kelpie-Plain"]) {
+    setupDemoWorld({ stories, layout });
+    const t = skinTheme();
+    assert.ok(render(mark(t, "asks", 14), t).includes("[fg=ansi3]"), `${layout}: the theme's amber`);
+    assert.ok(!render(mark(t, "asks", 14), t).includes("fg=working"), `${layout}: not needs-you's colour`);
+  }
+  // Quiet Pages' needs-you colour isn't that amber, which is the point.
+  setupDemoWorld({ stories, layout: "Kelpie" });
+  assert.notEqual(skinTheme().working, skinTheme().ansi3);
+  {
+  }
 });

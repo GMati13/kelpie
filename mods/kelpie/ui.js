@@ -65,10 +65,13 @@ export function programIcon(p, color) {
 // `status` is Herdr's (blocked, working, done, idle; null when none reported) or "paused". A skin may
 // restyle a state (statusMark, `where`), never drop or merge one; else it's mark()'s.
 // "asks" is Kelpie's own (attention.js agentStatus()): it ended its turn waiting on you (#251, #252).
+// Its amber is the theme's yellow (ansi3), not `working`: a skin may make that needs-you's colour
+// (Quiet Pages' coral), and waiting must never read as blocked.
+export const waitColor = (t) => t.ansi3 ?? t.working;
 export const AGENT_WORDS = { "needs-you": "waiting for you", asks: "waiting on you", working: "working", done: "done", idle: "idle", paused: "paused", unknown: "starting" };
 export const agentStateOf = (status) => (status === "paused" || status === "asks" ? status : agentState(status) ?? "unknown");
 export const agentWords = (status) => AGENT_WORDS[agentStateOf(status)];
-const AGENT_COLOR = { "needs-you": "working", asks: "working", working: "accent", done: "done", idle: "muted", paused: "dim", unknown: "unknown" };
+const AGENT_COLOR = { "needs-you": "working", asks: "ansi3", working: "accent", done: "done", idle: "muted", paused: "dim", unknown: "unknown" };
 export function agentMark(t, status, { size = 14, where, agent } = {}) {
   const state = agentStateOf(status);
   return statusMark(t, state, { where, size, color: t[AGENT_COLOR[state]] ?? t.dim, agent }) ?? mark(t, state, size);
@@ -90,7 +93,7 @@ export function mark(t, state, size = 14) {
     case "working": return box(icon(chrome("spinner"), size - 2).text_color(t.accent).spin(900));
     // Ended its turn waiting on you (#252): a question in a ring, amber, still: not the pulse of an
     // agent blocked on a prompt, and not the speech bubble of changes requested.
-    case "asks": return glyph(own("circle-help"), t.working);
+    case "asks": return glyph(own("circle-help"), waitColor(t));
     case "failing":
     case "pr-failing": return glyph(own("circle-x"), t.blocked);
     case "changes":

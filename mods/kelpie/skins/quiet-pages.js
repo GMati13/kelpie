@@ -227,6 +227,6 @@ export default {
       .tooltip(words)
       .on_click(() => run("kelpie.next-agent"))
       .when(n > 0, (el) => el.child(bulb(11, 7)).child(count("#f08a6c", n)))
-      .when(w > 0 && Boolean(mark), (el) => el.when(n > 0, (x) => x.child(div().w(4))).child(mark("asks", 12)).child(count(t.working, w)));
+      .when(w > 0 && Boolean(mark), (el) => el.when(n > 0, (x) => x.child(div().w(4))).child(mark("asks", 12)).child(count(t.ansi3 ?? t.working, w)));
   },
 };

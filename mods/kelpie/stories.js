@@ -14,7 +14,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, h_resizable, resizable_panel, InputState, ScrollHandle, Scrollbar, TextView, VirtualListScrollHandle, v_virtual_list } from "gpui-base";
 import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeTextFile } from "herdr";
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
-import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
+import { CONTROL, ROW_CONTROL, INSET, MOD, waitColor, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
 import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
@@ -933,7 +933,7 @@ function need(it) {
   // An agent of it ended its turn waiting on you (#251, #252): after one blocked on a prompt, before
   // its pull requests' needs. Its line is what it waits for.
   const waits = waitingOf(it);
-  if (waits) return [WAITING_RANK, `${waits.who}: ${waits.line}`, "working"];
+  if (waits) return [WAITING_RANK, `${waits.who}: ${waits.line}`, "ansi3"];
   // Changes requested before failing checks: a reviewer waits on you.
   const changes = prs.find((p) => p.reviewDecision === "CHANGES_REQUESTED");
   if (changes) return [1, `${pre}Changes requested${where(changes)}`, "working"];
@@ -3979,7 +3979,7 @@ export class Stories extends Source {
           .when(Boolean(talk), (el) => el.child(div().id(`talk-${it.key}`).flex_none().text_color(t.muted).child(TALK_WORDS[talk.status] ?? "Talking")))
           // An agent of it waits on you (#252): what for, in the room the tags would have, cut to fit
           // (whole in the row's tooltip).
-          .when(Boolean(waits), (el) => el.child(div().id(`waits-${it.key}`).flex_1().min_w(0).truncate().text_color(t.working).child(waits?.line ?? "")))
+          .when(Boolean(waits), (el) => el.child(div().id(`waits-${it.key}`).flex_1().min_w(0).truncate().text_color(waitColor(t)).child(waits?.line ?? "")))
           // What kind of work it is, at the line's end in whole words: the marks before it keep their
           // places down the list.
           .when(!waits && Boolean(it.tags?.length), (el) => el.child(this.fittedTags(t, it.tags, `tags-${it.key}`, it.key))))
@@ -5832,7 +5832,7 @@ export class StoryList extends Stories {
     const groups = [asked, waiting, prs, ready, review, finish, clean].filter((l) => l.length).length;
     const part = (label, list, color = t.dim) => (!list.length ? [] : groups < 2 ? list.map(row) : [h_flex().px(10).pt(6).pb(2).gap(6).items_center().text_size(SMALL).text_color(color)
       .child(div().child(label)).child(div().text_color(t.muted).child(String(list.length))), ...list.map(row)]);
-    return [...part("Needs you", asked), ...part("Waiting on you", waiting, t.working), ...part("Your pull requests", prs), ...part("Ready for you", ready), ...part("To review", review), ...part(`Ready for ${finish[0]?.column ?? "Done"}`, finish), ...part("Clean up", clean),
+    return [...part("Needs you", asked), ...part("Waiting on you", waiting, waitColor(t)), ...part("Your pull requests", prs), ...part("Ready for you", ready), ...part("To review", review), ...part(`Ready for ${finish[0]?.column ?? "Done"}`, finish), ...part("Clean up", clean),
       // Claude's picks last, a tinted group of the card, so they read as generated (with none, the
       // What next? button is the card's last row instead).
       ...(said.length ? [div().pt(4).child(this.suggestBox(t, st, items, reviews, said, row))] : [])];
@@ -6025,7 +6025,7 @@ export class StoryList extends Stories {
     // The summary: a mark and a number each (the words in its tooltip), coloured as the rows are.
     const needYou = tally(0, 0);
     const waiting = tally(WAITING_RANK, WAITING_RANK);
-    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [waiting, waiting === 1 ? "with an agent waiting on you" : "with agents waiting on you", "working", "asks"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
+    const counts = [[needYou, needYou === 1 ? "needs you" : "need you", "working", "needs-you"], [waiting, waiting === 1 ? "with an agent waiting on you" : "with agents waiting on you", "ansi3", "asks"], [tally(1, 1), "with changes requested", "working", "changes"], [tally(2, 2), "with checks failing", "blocked", "failing"], [tally(3, 3), "ready to merge", "done", "ready"],
       [reviews.length, "to review", "accent", "review"], [tally(5, 5), "working", "accent", "working"], [tally(7, 7), "paused", "muted", "paused"]];
     // Next: what cmd-shift-j goes to, the one after the item shown in what needs you.
     const desk = deskOf(st.profile);
