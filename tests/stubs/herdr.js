@@ -21,6 +21,7 @@ const fresh = () => ({
   shared: new Map(),
   spaces: [], agents: [], panes: [], terminals: [], machines: [], layouts: [], themes: [], fonts: [], keys: [], commands: [],
   layout: null, focused: null, props: {}, settings: {}, placement: null,
+  checking: false, // true: as if `herdr-app check` were loading the mod (checking())
   theme: { ...THEME },
   window: { platform: "macos", titlebar: "none", buttons: false, maximized: false, fullscreen: false, active: true },
   home: "/nonexistent/kelpie-test-home",
@@ -88,6 +89,8 @@ function answerNow(fn, args, fallback) {
 // --- Processes and files -----------------------------------------------------------------------
 export const exec = (command, args = [], options = {}) => answer("exec", [command, args, options], { ...OK });
 export const hc = (args) => answer("hc", [args], { ...OK });
+// True while `herdr-app check` loads the mod (Herdr 0.1.16): a test sets mock.state.checking.
+export const checking = () => mock.state.checking === true;
 export const home = () => mock.state.home;
 export const appHome = () => mock.state.appHome;
 // The mods are taken to be installed in appHome()/mods: a file there (modFile() in ui.js) is read

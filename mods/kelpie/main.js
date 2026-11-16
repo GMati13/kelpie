@@ -10,7 +10,7 @@
 
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { appHome, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
+import { appHome, checking, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
 import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
 import { toggleDebug } from "./debug.js";
 import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
@@ -779,10 +779,16 @@ const STATS_ROLES = ["sidebar", "footer"];
 
 export default class Quiet extends View {
   init(_props, cx) {
+    this.stats = { cpu: null, mem: null };
+    this.claude = {}; // agent address -> what claude-statusline.sh saved for it, so switching back shows at once
+    const Work = WORK_ROLES[props()?.role];
+    // `herdr-app check` runs init() for real, exec and file writes included, and renders once (#284):
+    // this copy then starts nothing (no copies into the person's Herdr folder, polls, timers or command
+    // loop). A check gives no role, so it never reaches the Kelpie layout's work views below.
+    if (!Work && checking()) return;
     // A skin's animations (skins/index.js tick): this copy redraws as often as its skin asks for its role.
     const tick = skinTick(props()?.role ?? "sidebar");
     if (tick) cx.timer.every(Math.max(100, tick), (cx) => cx.notify());
-    const Work = WORK_ROLES[props()?.role];
     if (Work) {
       this.work = new Work();
       this.work.init(cx);
@@ -810,7 +816,6 @@ export default class Quiet extends View {
       }
     });
     if (!STATS_ROLES.includes(props()?.role ?? "sidebar")) return;
-    this.stats = { cpu: null, mem: null };
     // The mod's own icons draw only from a real folder (Herdr draws no SVG reached through a symlinked
     // mod folder, as stow makes it): copy any that are missing or changed to art/<mod>/icons, where
     // own() points. Once per start, here in the sidebar or footer, which every layout of this mod has.
@@ -820,7 +825,6 @@ export default class Quiet extends View {
       // Herdr's fonts/: skins/copy-art.sh, which install.sh runs too.
       await exec("sh", [modFile("skins/copy-art.sh"), modFile("skins"), `${appHome()}/art/${MOD}/skins`, `${appHome()}/fonts`]).catch(() => {});
     });
-    this.claude = {}; // agent address -> what claude-statusline.sh saved for it, so switching back shows at once
     this.poll(cx);
     cx.timer.every(POLL, (cx) => this.poll(cx));
     if (props()?.role === "footer") cx.timer.every(3000, () => { watchBrowserSize().catch(() => {}); watchPlaying().catch(() => {}); });
