@@ -457,3 +457,20 @@ test("the Ask line: one offer at rest; writing makes room and offers a clear; cl
   assert.match(sent[0][0].at(-1), /Catch me up on this story/, "asked in the profile's words");
   assert.match(render(view.render(cx), skinTheme()), /spin/, "the sparkles brew after a send");
 });
+
+// Laid over the details' bottom, the Ask line keeps its presses and clicks: they once reached the pull
+// request line under it, which opened in the browser instead of the question taking the cursor.
+test("a press or click on the Ask line stops there, not reaching the details under it", async () => {
+  const { el } = await body({ space: "ACME-142" });
+  const card = nodeOf(byId(el, "ask-line-card"));
+  const stopped = (method, button) => {
+    const call = card.calls.find(([m, a]) => m === method && (button ? a[0] === button : true));
+    if (!call) return false;
+    let stops = false;
+    call[1].find((v) => typeof v === "function")({}, { stop_propagation() { stops = true; } });
+    return stops;
+  };
+  assert.ok(stopped("on_mouse_down", "left"), "a left press");
+  assert.ok(stopped("on_mouse_down", "right"), "a right press");
+  assert.ok(stopped("on_click"), "a click");
+});

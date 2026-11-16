@@ -300,7 +300,11 @@ export function askLine(t, { about, input, to, toWide = 140, toNarrow = 60, clea
     .on_mouse_down("left", stop).on_click((_e, cx) => take(cx))
     .child(icon(own("sparkles"), 11).text_color(t.accent))
     .child(div().min_w(0).truncate().child(offer.text));
+  // Laid over the details' bottom, it keeps every press and click to itself (after its own parts took
+  // theirs): otherwise they reached what lies under it too, and a pull request line there opened in
+  // the browser instead of the question taking the cursor.
   return div().id("ask-line-card").relative().flex_none().mt(4)
+    .on_mouse_down("left", stop).on_mouse_down("right", stop).on_click(stop)
     .when(Boolean(focus), (el) => el.track_focus(focus))
     .on_hover((on, cx) => hover?.(on, cx))
     .child(v_flex().id("ask-line").relative().overflow_hidden().rounded(12).bg(t.background)

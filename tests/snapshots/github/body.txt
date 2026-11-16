@@ -242,7 +242,7 @@ div
           div [bg=accent/00] ×16 … [bg=accent/29]
         v_flex
           h_flex
-            div #ask-line-card {hover size_change}
+            div #ask-line-card {down:left down:right click hover size_change}
               v_flex #ask-line [bg=background] {size_change}
                 div [bg=accent/0b]
                 div [border=accent/40]
