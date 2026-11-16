@@ -437,7 +437,8 @@ test("the Ask line: one offer at rest; writing makes room and offers a clear; cl
   assert.equal(width(writing, "ask-offer-box"), 0, "the offer folds away");
   assert.equal(width(writing, "ask-more-box"), 0, "and the menu");
   assert.ok(width(writing, "ask-about") < width(rest, "ask-about"), "what it's about shrinks");
-  assert.equal(width(writing, "ask-to-box"), 28, "who it goes to: its mark alone");
+  assert.equal(width(writing, "ask-to-box"), 26, "who it goes to: a compact circle");
+  assert.deepEqual(texts(byId(writing, "ask-to-more")), [], "its mark alone, no name cut short");
   assert.equal(width(writing, "ask-reset-box"), 0, "no clear until something's typed");
   assert.ok(nodeOf(byId(writing, "ask-about")).calls.some(([m, a]) => m === "transition" && a[0] === "width"), "it slides");
   view.askInput.set_value("Why");

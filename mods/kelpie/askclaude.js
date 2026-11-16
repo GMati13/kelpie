@@ -328,7 +328,7 @@ export function askLine(t, { about, input, to, toWide = 140, clear, reset, isSto
         .when(Boolean(offerEl), (el) => el.child(fade(slide(div().id("ask-offer-box"), writing ? 0 : offerW), !writing).child(offerEl)))
         .when(Boolean(more), (el) => el.child(fade(slide(div().id("ask-more-box"), writing ? 0 : 22), !writing).child(more)))
         // Who it goes to: its mark and name at rest, its mark alone while writing.
-        .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? 28 : toWide).child(to))));
+        .child(slide(div().id("ask-to-box").flex().justify_end(), writing ? 26 : toWide).child(to))));
 }
 const ABOUT_W = 170, ABOUT_MIN = 72;
 const TEXT_ASK = 13;

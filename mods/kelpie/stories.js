@@ -5527,15 +5527,20 @@ export class StoryBody extends Stories {
     const rows = who.map((r) => (r.waiting ? { header: `${r.label} · waiting for you, answer it first` }
       : { label: r.label, hint: r.hint, tip: r.tip, action: (cx) => { this.askPick = r.id; cx.notify(); } }));
     const short = row.label.length > 22 ? `${row.label.slice(0, 21)}…` : row.label;
+    const writing = Boolean(this.askAwake || this.askTyped);
     // Who it goes to: its state's mark and its name, quiet; a click lists the others (KELPIE-305).
     const toTip = `${row.tip}${row.id === "new" && about.kind === "story" ? "\nA question about the whole story goes to a new Claude" : ""}\nClick to send it to another`;
     const to = this.menuButton(t, "ask-to", "", rows, toTip, { width: 320, anchor: "bottom_right",
-      // A small bordered pill, so it reads as a button; writing, it shrinks to a circle round its mark.
-      trigger: (toggle, open) => h_flex().id("ask-to-more").flex_none().h(26).px(7).gap(6).items_center().rounded(13).cursor_pointer().border_1().border_color(t.border).overflow_hidden()
-        .text_size(SMALL).text_color(open ? t.foreground : t.muted).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
-        .tooltip(toTip).on_mouse_down("left", stop).on_click(toggle)
-        .child(row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11).text_color(t.accent))
-        .child(div().min_w(0).truncate().child(row.id === "new" ? "New Claude" : short)) });
+      // At rest a small bordered pill, its mark and name; writing, a compact circle with its mark alone
+      // (its own element, never the pill cut short), the name in its tip.
+      trigger: (toggle, open) => {
+        const mark = row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11).text_color(t.accent);
+        const base = h_flex().id("ask-to-more").flex_none().h(26).items_center().cursor_pointer().border_1().border_color(t.border)
+          .text_size(SMALL).text_color(open ? t.foreground : t.muted).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
+          .tooltip(toTip).on_mouse_down("left", stop).on_click(toggle);
+        return writing ? base.w(26).justify_center().rounded_full().child(mark)
+          : base.px(7).gap(6).rounded(13).child(mark).child(div().min_w(0).truncate().child(row.id === "new" ? "New Claude" : short));
+      } });
     const profile = st.profile;
     // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
     // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.
@@ -5599,7 +5604,7 @@ export class StoryBody extends Stories {
     const line = askLine(t, {
       about, input: this.askInput, to, isStory: about.kind === "story", focus: this.askRest,
       toWide: Math.min(180, Math.round((row.id === "new" ? 10 : short.length) * 6.4 + 44)),
-      awake, writing: Boolean(this.askAwake || this.askTyped), typed: Boolean(this.askTyped), offer, more, magic,
+      awake, writing, typed: Boolean(this.askTyped), offer, more, magic,
       // Clear: empty, the cursor out of it, back at rest.
       reset: (cx) => { this.askInput.set_value(""); this.askTyped = false; this.askAwake = false; try { this.askRest.focus(); } catch { /* still emptied */ } cx.notify(); },
       take: (cx) => ask_(offer, cx),
