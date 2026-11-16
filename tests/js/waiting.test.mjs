@@ -2,14 +2,14 @@
 // shared `kelpie.waiting`) has its own mark wherever an agent's mark shows, and its story ranks after
 // the blocked ones, the question on its row.
 import { DEMO, NOW, draw, fakeCx, loadStories, setupDemoWorld } from "../lib/views.mjs";
-import { before, test } from "node:test";
+import { before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { handlers, texts } from "gpui-kit";
 import { byId, render } from "../lib/snapshot.mjs";
 import { StoryList, getNextRequest, goNext, need, needQueueOf, queueRow, storyItems, withDrop } from "../../mods/kelpie/stories.js";
 import { forgetTurns, noteTurns } from "../../mods/kelpie/triage.js";
-import { put, tempDir } from "../lib/helpers.mjs";
+import { put, tempDir, until } from "../lib/helpers.mjs";
 import { agentStatus, waitsOnYou } from "../../mods/kelpie/attention.js";
 import { PaneHead } from "../../mods/kelpie/panes.js";
 import Quiet from "../../mods/kelpie/main.js";
@@ -145,4 +145,69 @@ test("get_next names it as an agent waiting, with its story", async () => {
   const r = await getNextRequest();
   assert.equal(r.ok, true, r.error);
   assert.deepEqual(r.items.find((x) => x.kind === "agent-waiting"), { kind: "agent-waiting", key: "ACME-151", action: QUESTION, detail: "ACME-151 · ACME-152's agent" });
+});
+
+// The footer (#252): blocked agents and agents waiting on you, counted apart; a click goes to the most
+// urgent: blocked first, then the longest waiting.
+import quietPages from "../../mods/kelpie/skins/quiet-pages.js";
+import { command } from "../../mods/kelpie/main.js";
+import { mark } from "../../mods/kelpie/ui.js";
+import { attention } from "../../mods/kelpie/attention.js";
+const footer = () => quietPages.footerExtras(skinTheme(), { mark: (s, z) => mark(skinTheme(), s, z) });
+const tipOf = (el) => render(el, skinTheme()).match(/tip="([^"]*)"/)?.[1];
+
+test("the footer counts both, says both, and goes to the blocked one first, then the waiting one", async () => {
+  const { w, a } = world({ layout: "Kelpie" });
+  const blocked = w.agents.find((x) => x.status === "blocked");
+  mock.state.focused = { space: blocked.space, tab: blocked.tab, pane: blocked.pane };
+  const tree = render(footer(), skinTheme());
+  assert.ok(tree.includes("circle-help"), "the waiting mark beside the safelight");
+  assert.equal(tipOf(footer()), "An agent needs you · 1 waiting on you: show the next");
+  const before = mock.calls.length;
+  await command("next-agent");
+  assert.deepEqual(mock.calls.slice(before).filter((c) => c.fn === "run" && c.args[0] === "pane.focus").map((c) => c.args[1]), [{ pane: a.pane }], "the waiting one, as the blocked one is shown");
+});
+
+test("only agents waiting: their count alone, and its words", () => {
+  const { w } = world({ layout: "Kelpie" });
+  for (const x of w.agents) if (x.status === "blocked") x.status = "idle";
+  const { n, w: waiting, words } = attention();
+  assert.deepEqual([n, waiting], [0, 1]);
+  assert.equal(words, "An agent is waiting on you: show it");
+  assert.ok(!render(footer(), skinTheme()).includes("e8603f"), "no safelight");
+});
+
+// The notification (#252): only when the profile asks for it, once per turn, never for the agent shown.
+describe("telling you an agent waits", () => {
+  const setup = ({ waiting, focused = false } = {}) => {
+    const w = setupDemoWorld({ stories, profile: waiting === undefined ? {} : { notify: { waiting } } });
+    forgetTurns();
+    const a = w.agents.find((x) => x.tab_name === "ACME-152");
+    if (focused) mock.state.focused = { space: a.space, tab: a.tab, pane: a.pane };
+    a.status = "working";
+    noteTurns();
+    a.status = "done";
+    noteTurns();
+    return a;
+  };
+  const told = () => mock.of("notify").filter(([n]) => /waiting on you/.test(n.title));
+  test("on: one notification with the question; its click shows the agent", async () => {
+    const a = setup({ waiting: true });
+    await until(() => told().length === 1, 3000, "told");
+    const [n] = told()[0];
+    assert.equal(n.title, "ACME-152's agent is waiting on you");
+    assert.equal(n.body, QUESTION);
+    assert.match(n.action.name, /^kelpie\.show-waiting-[a-z0-9]+$/);
+    const before = mock.calls.length;
+    await command(n.action.name.slice("kelpie.".length));
+    assert.deepEqual(mock.calls.slice(before).filter((c) => c.fn === "run" && c.args[0] === "pane.focus").map((c) => c.args[1]), [{ pane: a.pane }]);
+  });
+  test("off by default, and never for the agent you're looking at", async () => {
+    setup();
+    await until(() => mock.sharedValue("kelpie.waiting")?.[DEMO], 3000);
+    assert.equal(told().length, 0, "off by default");
+    setup({ waiting: true, focused: true });
+    await until(() => mock.sharedValue("kelpie.waiting")?.[DEMO], 3000);
+    assert.equal(told().length, 0, "not for the agent shown");
+  });
 });

@@ -13,9 +13,9 @@ import { h_flex, v_flex } from "gpui-base";
 import { appHome, checking, exec, nextCommand, notify, openOverlay, props, theme, window } from "herdr";
 import { agents, focused, hc, layout, panes, rendering, run, setShared, shared, spaces, terminals } from "./host.js";
 import { toggleDebug } from "./debug.js";
-import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
+import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, mark, modFile, openExternal, placed, SMALL, TEXT, ago, agentName, capitalize, chrome, claudeInfo, clock12, find, icon, iconButton, LOAD, loadColor, menuButton, meter, programIcon, own, resetLabel, shownAgent, soundBars, statColor, stop, agentMark, agentStateOf, agentWords, sideHidden, buttonsRoom, toggleSide, sessionTitle } from "./ui.js";
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
-import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, takeRuns, terminalsFolded } from "./stories.js";
+import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showWaiting, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, takeRuns, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
 import { noteTurns } from "./triage.js";
 import { agentStatus } from "./attention.js";
@@ -59,7 +59,8 @@ function footer(t, state) {
   // A skin may draw them as meters (skins/index.js meter).
   const stat = (kind, label, value, scale) => skinMeter(t, { kind, label, value, scale }) ?? h_flex().gap(4).child(div().child(label))
     .child(skinFont(div(), "numbers").text_color(statColor(t, value, scale)).child(value == null ? "\u2013" : `${value}%`));
-  const extra = footerExtras(t, { now: new Date() });
+  // `mark`: Kelpie's own marks, for a skin that counts agents (a skin can't import ui.js).
+  const extra = footerExtras(t, { now: new Date(), mark: (state, size) => mark(t, state, size) });
   return v_flex().flex_none().mx(2).mt(6).pt(8).px(8).gap(2).border_t_1().border_color(t.border).text_size(SMALL).text_color(t.dim)
     .when(Boolean(c), (el) => el
       .child(h_flex().h(20).gap(8).items_center().justify_between()
@@ -710,6 +711,7 @@ export async function command(c) {
   if (c === "desk") return goDesk();
   if (c === "next-need") return nextNeed();
   if (c === "next-agent") return nextAgent();
+  if (c.startsWith("show-waiting-")) return showWaiting(c.slice("show-waiting-".length));
   if (c === "stories") return openStoryPicker();
   if (c === "show-notified" || c.startsWith("show-notified-")) return showNotified(c.slice("show-notified-".length));
   // From outside (herdr-app do kelpie.profile-<id> / kelpie.preview-<KEY>): pick a profile as its menu

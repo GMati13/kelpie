@@ -65,7 +65,8 @@
 //   sidebarFoot(t, { now }) -> element | null
 //       Drawn in the footer block above its lines (a pond, hills, a glow). The block is the layout's
 //       "side-foot" (70px): make it taller in the skin's own layout file.
-//   footerExtras(t, { now }) -> element | null                 just before the footer's clock (sun arc, mug)
+//   footerExtras(t, { now, mark }) -> element | null           just before the footer's clock (sun arc, mug); `mark(state, size)` is
+//       Kelpie's own mark for a state (ui.js mark()), for a count of agents
 //   meter(t, { kind, label, value, scale, reset, done, total }) -> element | null
 //       A figure drawn as a meter. kind "cpu", "mem" (value %, scale [high, full]), "five", "week"
 //       (Claude limits: value %, reset true once passed), "subtasks" (done of total, in the title

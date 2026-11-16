@@ -24,13 +24,22 @@ export const agentStatus = (a) => (waitsOnYou(a) ? "asks" : a?.status ?? null);
 
 // The agents waiting for the person on a prompt, each with a pane to show.
 export const blockedAgents = () => agents().filter((a) => a.status === "blocked" && a.pane);
+// The agents that ended their turn waiting on the person (#252), every profile's, each with a pane to
+// show, the longest waiting first.
+export const waitingAgents = () => agents().filter((a) => a.pane && waitsOnYou(a))
+  .sort((x, y) => (entries().get(x.address)?.at ?? 0) - (entries().get(y.address)?.at ?? 0));
 
-// What the mark says: { n, here, words }. `here`: the only agent waiting is the focused pane, so a
-// click has nowhere else to go and says so rather than jumping elsewhere.
+// What the mark says: { n, w, here, words }: `n` agents blocked on a prompt, `w` waiting on you.
+// `here`: the only one is the focused pane, so a click has nowhere else to go and says so rather than
+// jumping elsewhere. A click goes blocked first, then the longest waiting (stories.js nextAgent()).
 export function attention() {
-  const list = blockedAgents();
-  const n = list.length;
-  const here = n === 1 && list[0].pane === focused()?.pane;
-  const words = !n ? "" : here ? "An agent needs you: it's here" : n === 1 ? "An agent needs you: show it" : `${n} agents need you: show the next`;
-  return { n, here, words };
+  const blocked = blockedAgents(), waiting = waitingAgents();
+  const n = blocked.length, w = waiting.length;
+  const only = n + w === 1 ? blocked[0] ?? waiting[0] : null;
+  const here = Boolean(only) && only.pane === focused()?.pane;
+  const needs = n ? (n === 1 ? "An agent needs you" : `${n} agents need you`) : "";
+  const waits = w ? (n ? `${w} waiting on you` : w === 1 ? "An agent is waiting on you" : `${w} agents are waiting on you`) : "";
+  const said = [needs, waits].filter(Boolean).join(" · ");
+  const words = !said ? "" : here ? `${said}: it's here` : `${said}: show ${only ? "it" : "the next"}`;
+  return { n, w, here, words };
 }

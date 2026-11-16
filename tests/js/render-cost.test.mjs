@@ -36,7 +36,10 @@ const total = (reads) => Object.values(reads).reduce((a, b) => a + b, 0);
 // One render's host reads, after a first render and its loads.
 // `elsewhere`: their folder is another profile's.
 async function readsOf(n, { elsewhere = false, ...setup }, make) {
-  setupDemoWorld({ stories, ...setup });
+  // Finding agents that wait on you is off (attention.triage): it reads each finished agent's turn in
+  // the background (triage.js), and when that ended against the render measured varied from run to
+  // run, whatever the spaces. The render's own reads stay the same either way.
+  setupDemoWorld({ stories, ...setup, profile: { attention: { triage: false } } });
   if (elsewhere) mock.state.shared.set("kelpie.profiles", { ...mock.sharedValue("kelpie.profiles"), other: { id: "other", name: "Other", folder: "/home/test/elsewhere" } });
   crowd(n);
   const { view, cx } = await make();

@@ -16,11 +16,11 @@
 // agent in no profile's space, one whose session runs on another Claude account than its profile's
 // (#254), and a turn in which the agent asked through Next itself (add_to_next): its own ask wins.
 // Run by the copy that follows what's shown (main.js track()), as agents end turns whatever's shown.
-import { appHome, exec, readTextFile } from "herdr";
+import { appHome, exec, notify, readTextFile } from "herdr";
 import { agents, focused, setShared, shared } from "./host.js";
 import { WAITING } from "./attention.js";
 import { OTHERS, askText, claudeArgv, fenced, spaceProfiles, triageModel, triageOn } from "./config.js";
-import { claudeSession, modFile } from "./ui.js";
+import { MOD, claudeSession, modFile } from "./ui.js";
 import { accountKey, accountOf } from "./boundary.js";
 import { feedClaude } from "./stories.js";
 import { demoLastTurn, demoTriage, isDemo } from "./demo.js";
@@ -135,6 +135,23 @@ async function triageOne(job) {
   if (!RESTING.has(agents().find((a) => a.address === address)?.status)) return;
   const all = shared(WAITING) ?? {};
   setShared(WAITING, { ...all, [profile.id]: { ...(all[profile.id] ?? {}), [address]: { turn: turn.turn ?? null, at: Date.now(), ...found, tab: job.tab ?? null } } });
+  if (found.state === "waiting") tellWaiting(profile, address, job.tab, found.line);
+}
+
+// A notification for an agent that began waiting on you (#252), when the profile asks for it
+// (notify.waiting, off by default): once per turn (a turn is triaged once), never for the agent whose
+// pane is focused. Its click runs kelpie.show-waiting-<id> (a command takes no arguments: shared
+// SHOW_WAITING maps the id to the agent, for a day).
+export const SHOW_WAITING = "kelpie.waiting.show";
+function tellWaiting(profile, address, tab, line) {
+  if (profile?.notify?.waiting !== true) return;
+  const a = agents().find((x) => x.address === address);
+  if (!a || a.pane === focused()?.pane) return;
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const now = Date.now();
+  const kept = Object.fromEntries(Object.entries(shared(SHOW_WAITING) ?? {}).filter(([, v]) => now - (v?.at ?? 0) < KEEP_FOR));
+  setShared(SHOW_WAITING, { ...kept, [id]: { address, at: now } });
+  notify({ title: `${tab ?? "An agent"}'s agent is waiting on you`, body: line || "It ended its turn waiting on you.", level: "info", action: { name: `${MOD}.show-waiting-${id}` } });
 }
 
 // Starts queued triages, AT_ONCE at most, one per agent: a turn that ended while that agent's last

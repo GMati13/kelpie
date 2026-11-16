@@ -16,7 +16,7 @@ import { appHome, exec, notify, openOverlay, readTextFile, setAgentOrder, writeT
 import { agents, focused, hc, layout, memo, panes, run, setShared, shared, spaces } from "./host.js";
 import { CONTROL, ROW_CONTROL, INSET, MOD, ScrollPool, SMALL, TEXT, TITLE, ago, agentMark, agentWords, avatar, placed, clock12, capitalize, chip, chrome, countBadge, doneButton, mark, prState as prLook, progressBar, claudeSession, empty, groupHeader, icon, iconButton, menuButton, modFile, openExternal, own, primaryButton, resumeArgv, reveal, revealLabel, sessionTitle, stop, textButton, tint, sideHidden, buttonsRoom, ARTIFACT_LINK, WEB_OPEN } from "./ui.js";
 import { countShots } from "./shots.js";
-import { WAITING, agentStatus, attention, blockedAgents, waitsOnYou } from "./attention.js";
+import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
 import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask } from "./config.js";
 import { lozenge } from "./sprint.js";
@@ -7479,14 +7479,14 @@ export function nextAgent() {
   if (!goBlockedAgent()) notify({ title: "Nothing needs you right now", level: "info", timeout: 3000 });
 }
 
-// Shows an agent waiting for you, the shown profile's first, the one after the focused pane when
-// several wait. False when none does.
+// Shows an agent waiting for you: one blocked on a prompt first (the shown profile's first), then
+// one that ended its turn waiting on you (#252, the longest waiting first), the one after the focused
+// pane when several wait. False when none does.
 function goBlockedAgent() {
   const profile = shownProfile();
   const of = spaceProfiles();
   const mine = (a) => profile && of.get(a.space)?.id === profile.id;
-  const list = blockedAgents()
-    .sort((a, b) => Number(mine(b)) - Number(mine(a)));
+  const list = [...blockedAgents().sort((a, b) => Number(mine(b)) - Number(mine(a))), ...waitingAgents()];
   if (!list.length) return false;
   const here = list.findIndex((a) => a.pane === focused()?.pane);
   const a = list[(here + 1) % list.length];
@@ -7496,6 +7496,19 @@ function goBlockedAgent() {
   run("space.select", { id: a.space });
   run("pane.focus", { pane: a.pane });
   return true;
+}
+
+// Shows the agent a "waiting on you" notification named (kelpie.show-waiting-<id>, triage.js
+// SHOW_WAITING): its space and pane, its profile shown and its preview cleared, as show_agent does.
+export function showWaiting(id) {
+  const address = (shared("kelpie.waiting.show") ?? {})[id]?.address;
+  const a = address ? agents().find((x) => x.address === address) : null;
+  if (!a) return;
+  const owner = spaceProfiles().get(a.space) ?? null;
+  if (owner && shownProfile()?.id !== owner.id) chooseProfile(null);
+  setPreview(owner, null);
+  run("space.select", { id: a.space });
+  if (a.pane) run("pane.focus", { pane: a.pane });
 }
 
 // Shows the story a notification named ("kelpie.show-notified-<id>"; with no id, or one since

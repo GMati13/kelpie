@@ -110,6 +110,14 @@ div #work-setup-fit [bg=#00000080]
               "When an agent's turn ends, Kelpie reads its last message to tell whether it's waiting on you: a question, a choice, a plan to approve. Its own rules first; when they can't tell, a small model reads the message, on this account, in the background."
           h_flex [bg=accent]
             div [bg=accent_foreground]
+        h_flex #setup-notify-waiting {click}
+          v_flex
+            div
+              "Tell me when an agent waits on me"
+            div [fg=dim]
+              "Off: agents waiting on you show in Next, the sidebar and the footer, without a notification."
+          h_flex [bg=border]
+            div [bg=muted]
         v_flex
           h_flex [border=border]
             div

@@ -215,15 +215,18 @@ export default {
     return el;
   },
 
-  // The safelight in the footer: how many agents need you, lit only then. A click shows the next of
-  // them (kelpie.next-agent), whatever else Next holds; its words and its click both come from
-  // attention.js, so they agree (#250).
-  footerExtras(t) {
-    const { n, words } = attention();
-    if (!n) return null;
+  // The safelight in the footer: how many agents need you on a prompt, lit only then, and beside it
+  // how many wait on you (#252: Kelpie's waiting mark, `mark`, from main.js), each only when not 0. A
+  // click shows the most urgent of them (kelpie.next-agent), whatever else Next holds; its words and
+  // its click both come from attention.js, so they agree (#250).
+  footerExtras(t, { mark } = {}) {
+    const { n, w, words } = attention();
+    if (!n && !w) return null;
+    const count = (color, k) => div().font_family("DM Mono").text_color(color).child(String(k));
     return div().id("qp-safelight").flex().flex_row().flex_none().gap(5).items_center().cursor_pointer()
       .tooltip(words)
       .on_click(() => run("kelpie.next-agent"))
-      .child(bulb(11, 7)).child(div().font_family("DM Mono").text_color("#f08a6c").child(String(n)));
+      .when(n > 0, (el) => el.child(bulb(11, 7)).child(count("#f08a6c", n)))
+      .when(w > 0 && Boolean(mark), (el) => el.when(n > 0, (x) => x.child(div().w(4))).child(mark("asks", 12)).child(count(t.working, w)));
   },
 };
