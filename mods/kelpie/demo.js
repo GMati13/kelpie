@@ -423,6 +423,20 @@ export async function demoAgentWork(folder, tab) {
     files: (t.work.edits ?? []).map((e) => ({ path: `${folder}/${e.path}`, at: new Date(when(e.at, now)).toISOString() })) };
 }
 
+// last-turn.py and the triage model for a demo profile (triage.js, #251): a tab's fixture `turn`,
+// { last, triage }: `last` the message its agent closed its turn with, `triage` what the model would
+// answer when Kelpie's own rules can't tell ({ state, kind, line }). Each turn the stand-in ends is a
+// turn of its own (`ended`), so playing one shows it again.
+export async function demoLastTurn(tab, ended = Date.now()) {
+  const f = await demoFixture();
+  const t = (f.spaces ?? []).flatMap((s) => s.tabs).find((x) => x.agent && x.name === tab);
+  return t?.turn?.last ? { text: t.turn.last, turn: `demo-${tab}-${ended}`, at: new Date(ended).toISOString(), asked: null } : null;
+}
+export async function demoTriage(tab) {
+  const f = await demoFixture();
+  return (f.spaces ?? []).flatMap((s) => s.tabs).find((x) => x.agent && x.name === tab)?.turn?.triage ?? { state: "none", line: "" };
+}
+
 // artifacts.py for a demo profile: the Claude Artifacts the given sessions published (the fixture's
 // `artifacts`), newest first, shaped as the script prints them.
 export async function demoArtifacts(ids) {

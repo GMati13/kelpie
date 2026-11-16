@@ -94,6 +94,8 @@ const projectKey = (p) => (p ? `${p.ownerType}/${String(p.owner).toLowerCase()}/
 const REVIEW_ASKS = ["post", "approve", "changes"];
 // The messages What next?'s picks start agents with (an idea, Run all's stories): a group of their own.
 const IDEA_ASKS = ["idea", "picked"];
+// The message the small model reads an agent's closing message with (#251, triage.js): a group of its own.
+const TRIAGE_ASKS = ["triage"];
 // How long a careful button (Delete, Discard) stays armed for its second press.
 const ARMED_MS = 4000;
 
@@ -137,6 +139,8 @@ export class Setup {
     this.owner = field(saved.github?.owner, "An organisation or user, e.g. my-org");
     this.webHome = field(saved.web?.home, "Optional, e.g. your team's chat or a dashboard: https://…");
     this.notifyPulls = saved.notify?.pulls !== false; // on unless turned off
+    // Finding agents that wait on you (#251, triage.js): on unless turned off; the model stays as saved.
+    this.triage = saved.attention?.triage !== false;
     // The Claude account its new agents use: a config folder, or null for Claude's own ~/.claude.
     this.claudeConfig = saved.claude?.config ?? null;
     // The other profiles whose Claudes may see this one's agents, and its theirs (config.js SHARE,
@@ -456,6 +460,7 @@ export class Setup {
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
         notify: { pulls: this.notifyPulls },
+        attention: !this.triage || this.profile?.attention?.model ? { ...(this.triage ? {} : { triage: false }), ...(this.profile?.attention?.model ? { model: this.profile.attention.model } : {}) } : null,
         claude: this.claudeConfig ? { config: this.claudeConfig } : null,
         web: home ? { home } : null,
       },
@@ -762,6 +767,8 @@ export class Setup {
           { label: "Default", value: null, on: !this.claudeConfig, tip: "Claude's own folder, ~/.claude" },
           ...dirs.map((d) => ({ label: dirName(d), value: d, on: this.claudeConfig === d, tip: d })),
         ], (v) => { this.claudeConfig = v; }), "The Claude config folder this profile's new agents use (as CLAUDE_CONFIG_DIR): its agents, What next? and its terminals, where a claude you type uses it too. Lists your ~/.claude* folders that have a settings.json or projects/. Resuming a session keeps the account it ran on."),
+        toggle("setup-triage", "Find agents waiting on you", this.triage, (_e, cx) => { this.triage = !this.triage; cx.notify(); },
+          this.triage ? "When an agent's turn ends, Kelpie reads its last message to tell whether it's waiting on you: a question, a choice, a plan to approve. Its own rules first; when they can't tell, a small model reads the message, on this account, in the background." : "Off: only agents asking you on a prompt show as needing you."),
         ...this.sharesPart(t, toggle, group, hint),
         group("Another Claude account"),
         step("setup-claude-new", "Give it a config folder of its own and sign in there once, in a terminal. Then open this page again: the folder is listed above.",
@@ -854,7 +861,7 @@ export class Setup {
       messages: () => [
         page("Messages", "What a button sends to an agent. A pull request's buttons send to its agent, or start one with it when none is open; {prs} is the pull request's link, several joined by \"and\"."),
         group("Your pull requests"),
-        ...ASK_PROMPTS.filter((a) => !REVIEW_ASKS.includes(a.id) && !IDEA_ASKS.includes(a.id) && !ASK_CLAUDE.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text, null)),
+        ...ASK_PROMPTS.filter((a) => !REVIEW_ASKS.includes(a.id) && !IDEA_ASKS.includes(a.id) && !TRIAGE_ASKS.includes(a.id) && !ASK_CLAUDE.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text, null)),
         group("Reviews", "Nothing is posted until you press one"),
         ...ASK_PROMPTS.filter((a) => REVIEW_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label.replace(/ \(review\)$/, ""), this.asks[a.id], a.text, null)),
         group("Ask Claude", "Its suggestions: each follows what's asked about"),
@@ -865,6 +872,9 @@ export class Setup {
             "A click on one of Claude's improvement ideas in Next starts a Claude on the Desk with this. {idea} is Claude's brief, {where} the file or area, {why} why it pays off.")
           : promptField(`ask-${a.id}`, "Run a pick", this.asks[a.id], a.text,
             "Run all in Next starts each of Claude's picks in its own agent: this follows the ticket prompt in its first message. {action} is what Claude suggests, {why} why now."))),
+        group("Agents waiting on you"),
+        ...ASK_PROMPTS.filter((a) => TRIAGE_ASKS.includes(a.id)).map((a) => promptField(`ask-${a.id}`, a.label, this.asks[a.id], a.text,
+          "When an agent's turn ends and Kelpie can't tell from its last message whether it waits on you, a small model reads that message with this, in the background. {message} is the message. However this is worded, the answer comes back in a set shape: waiting, ready or neither, and a line.")),
         group("Setup"),
         promptField("configure", "Let me configure it for you", this.configurePrompt, CONFIGURE_PROMPT,
           "What a Set up with Claude or Ask Claude button starts a Claude on the Desk with. {name} and {id} are the profile's, {scope} and {about} what to set up, {home} Herdr's folder. Kelpie's Claude Code plugin does the rest."),

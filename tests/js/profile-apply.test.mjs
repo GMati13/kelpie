@@ -8,7 +8,7 @@ import { mock } from "herdr";
 import { ASK_PROMPTS, CONFIRM_KEYS, SECTION_KEYS, applyPendingProfile, applyProfileRequest, buildProfile, getProfileRequest, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
 
 // The top-level settings an agent may change (APPLY_KEYS in config.js).
-const APPLY = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web"];
+const APPLY = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web", "attention"];
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 
 const BOARD = "https://acme.atlassian.net/jira/software/c/projects/ABC/boards/12";
@@ -279,7 +279,7 @@ describe("apply-profile: refused outright", () => {
     for (const a of ASK_PROMPTS) assert.ok(SECTION_KEYS.prompts.includes(a.id), `prompts.${a.id}`);
   });
   test("every known key of every section is taken", () => {
-    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.hoursPerDay": 6, "project.hoursPerDay": 7.5, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB" };
+    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.hoursPerDay": 6, "project.hoursPerDay": 7.5, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB", "attention.triage": false, "attention.model": "haiku" };
     for (const [section, keys] of Object.entries(SECTION_KEYS)) for (const k of keys) {
       const id = section === "project" ? "gh" : "work";
       assert.doesNotThrow(() => buildProfile(id, { [section]: { [k]: value[`${section}.${k}`] ?? "x" } }), `${section}.${k}`);

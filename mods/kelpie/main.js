@@ -17,6 +17,7 @@ import { ARTIFACT_LINK, CONTROL, MOD, ROW, WEB_OPEN, modFile, openExternal, plac
 import { WORK_ROLES, hubHidden, syncHub } from "./work.js";
 import { addNextRequest, answerAskRequest, findAgentsRequest, getNextRequest, getStoryRequest, whereRequest, suggestNextRequest, whatNext, cleanAll, cleanStoryByKey, nextAgent, nextNeed, pauseStoryByKey, showAgentRequest, showNotified, showPassageRequest, showStoryByKey, storyKeyOf, storyNow, syncTracking, takeRuns, terminalsFolded } from "./stories.js";
 import { openStoryPicker } from "./dialogs.js";
+import { noteTurns } from "./triage.js";
 import { REFRESH } from "./source.js";
 import { applyProfileRequest, getProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { deskAgents, deskNow, deskShown, goDesk, pauseDesk, pauseDeskByKey, showDeskView } from "./desk.js";
@@ -253,9 +254,11 @@ function track(role) {
     if (shared(TRACKER) !== me) setShared(TRACKER, me);
     syncTracking(true);
     syncPanel(true);
+    noteTurns();
     return;
   }
   syncTracking();
+  noteTurns();
   syncPanel();
   syncWebOpen();
   syncSkin();
