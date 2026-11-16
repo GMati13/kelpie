@@ -85,7 +85,7 @@ div
                 div #prs-story [fg=muted]
                   "On the story itself"
                 h_flex #pr-row-docs#61 {down:right}
-                  h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-142 Offline mode: how saved trips sync · right-click for more"
+                  h_flex #pr-docs#61 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · updated 6h ago · ACME-142 Offline mode: how saved trips sync · right-click for more"
                     div
                       div
                         svg own:git-pull-request [fg=accent]
@@ -99,7 +99,7 @@ div
                         div [fg=accent]
                           "In review"
                         div [fg=dim]
-                          "now"
+                          "6h"
                   div
                     Popup.new "pr-menu-docs#61-menu"
                       div #pr-menu-docs#61-at
@@ -142,7 +142,7 @@ div
                     Popup.new "sub-menu-ACME-143-menu"
                       div #sub-menu-ACME-143-at
                   h_flex #pr-row-web#418 {down:right}
-                    h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · ACME-143 Cache trips in IndexedDB for offline use · right-click for more"
+                    h_flex #pr-web#418 [hover(fg=accent) fg=foreground] {click} tip="In review, checks pass · updated 25m ago · ACME-143 Cache trips in IndexedDB for offline use · right-click for more"
                       div
                         div
                           svg own:git-pull-request [fg=accent]
@@ -156,14 +156,14 @@ div
                           div [fg=accent]
                             "In review"
                           div [fg=dim]
-                            "now"
+                            "25m"
                     div
                       Popup.new "pr-menu-web#418-menu"
                         div #pr-menu-web#418-at
                     h_flex
                       h_flex #sub-pr-ask-cell-web#418 {size_change}
                   h_flex #pr-row-web#412 {down:right}
-                    h_flex #pr-web#412 [hover(fg=accent) fg=muted] {click} tip="Merged · Keep saved trips readable without a connection · right-click for more"
+                    h_flex #pr-web#412 [hover(fg=accent) fg=muted] {click} tip="Merged 1d ago · Keep saved trips readable without a connection · right-click for more"
                       div
                         div
                           svg own:git-merged [fg=ansi4]
@@ -177,7 +177,7 @@ div
                           div [fg=dim]
                             "Merged"
                           div [fg=dim]
-                            "now"
+                            "1d"
                     div
                       Popup.new "pr-menu-web#412-menu"
                         div #pr-menu-web#412-at

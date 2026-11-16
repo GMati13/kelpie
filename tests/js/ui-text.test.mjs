@@ -137,3 +137,12 @@ test("the story picker's rows have their words whole in a tooltip", async () => 
   assert.ok(row, "ACME-142 has a row");
   assert.match(row, /tip="ACME-142 Offline mode for saved trips\\n[^"]+"/);
 });
+
+// KELPIE-233: pull request lines passed GitHub's time as text, which ago() took for "now".
+test("ago() reads a time given as text, and says nothing for what isn't a time", async () => {
+  const { ago } = await import("../../mods/kelpie/ui.js");
+  assert.equal(ago(NOW - 3 * 3600000, NOW), "3h");
+  assert.equal(ago(new Date(NOW - 2 * 86400000).toISOString(), NOW), "2d");
+  assert.equal(ago(NOW - 10000, NOW), "now");
+  for (const bad of [undefined, null, "", "not a time", NaN]) assert.equal(ago(bad, NOW), "", String(bad));
+});
