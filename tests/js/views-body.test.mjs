@@ -419,10 +419,11 @@ test("a merged pull request's line says how long ago it merged", async () => {
   assert.match(nodeOf(line).calls.find(([m]) => m === "tooltip")[1][0], /^Merged 3d ago · /);
 });
 
-// KELPIE-305: the Ask line is one row that never changes size: the input, ONE offer (the ask that fits,
-// in Claude's voice; a click asks it), a menu of the other asks, and who it goes to. Typing, the offer
-// gives way to one hint in its place; a send brews the sparkles.
-test("the Ask line: one row, one offer that asks at a click, the rest in a menu, typing swaps the offer for a hint", async () => {
+// KELPIE-305: the Ask line is one row. At rest: the input, ONE offer (a click asks it), a menu of the
+// other asks, and who it goes to. Writing (the cursor in it, or typed), the offer and menu fold away,
+// what it's about and who it goes to shrink, a clear button comes (widths slide); clearing puts it back.
+const width = (el, id) => nodeOf(byId(el, id)).calls.find(([m]) => m === "w")?.[1][0];
+test("the Ask line: one offer at rest; writing makes room and offers a clear; clearing puts it back", async () => {
   const { view, cx } = await body({ space: "ACME-171" });
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
   const rest = view.render(cx);
@@ -430,16 +431,21 @@ test("the Ask line: one row, one offer that asks at a click, the rest in a menu,
   assert.match(texts(byId(rest, "ask-offer")).join(" "), /2 pull requests ready: merge\?/, "two pull requests ready: the offer is to merge");
   assert.ok(view.askMoreRows.some((r) => r.id === "catchup") && view.askMoreRows.some((r) => r.id === "copied"), "the rest in the menu");
   assert.ok(!view.askMoreRows.some((r) => r.id === "merge"), "the offer isn't repeated in the menu");
-  const rows = (el) => byId(el, "ask-line") && nodeOf(byId(el, "ask-line")).calls.filter(([m]) => m === "child").length;
+  assert.equal(width(rest, "ask-reset-box"), 0, "no clear at rest");
   emit(view.askInput, "focus", cx);
-  assert.equal(rows(view.render(cx)), rows(rest), "touched, it doesn't grow: nothing moves under the pointer");
+  const writing = view.render(cx);
+  assert.equal(width(writing, "ask-offer-box"), 0, "the offer folds away");
+  assert.equal(width(writing, "ask-more-box"), 0, "and the menu");
+  assert.ok(width(writing, "ask-about") < width(rest, "ask-about"), "what it's about shrinks");
+  assert.equal(width(writing, "ask-to-box"), 28, "who it goes to: its mark alone");
+  assert.equal(width(writing, "ask-reset-box"), 24, "a clear button");
+  assert.ok(nodeOf(byId(writing, "ask-about")).calls.some(([m, a]) => m === "transition" && a[0] === "width"), "it slides");
   view.askInput.set_value("Why");
   emit(view.askInput, "change", cx);
-  const typing = view.render(cx);
-  assert.ok(!byId(typing, "ask-offer"), "the offer gives way while typing");
-  assert.match(texts(byId(typing, "ask-hint")).join(" "), /^↵ asks /);
-  view.askInput.set_value("");
-  emit(view.askInput, "change", cx);
+  press(view.render(cx), "ask-reset", cx);
+  assert.equal(view.askInput.value(), "");
+  const back = view.render(cx);
+  assert.equal(width(back, "ask-offer-box"), width(rest, "ask-offer-box"), "back at rest");
   mock.calls.length = 0;
   pickAndSend(view, cx, "catchup");
   await new Promise((r) => setImmediate(r));

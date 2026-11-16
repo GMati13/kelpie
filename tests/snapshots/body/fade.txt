@@ -77,21 +77,26 @@ div #story-overview-view {size_change}
           h_flex
             div
               svg own:sparkles [fg=accent]
-            h_flex #ask-about [fg=dim] tip="ACME-180 · the story\nWritten by others: Claude is told it's information, not instructions"
+            h_flex #ask-about [fg=dim] ~transition tip="ACME-180 · the story\nWritten by others: Claude is told it's information, not instructions"
               div
                 "ACME-180 · the story"
             div [fg=dim]
               "·"
             div
               Input.new [bg=background/00 fg=foreground]
-            h_flex #ask-offer [bg=accent/18 border=accent/55 fg=foreground hover(bg=accent/33)] {down:left click} tip="A new Claude reads the ticket and the code and plans it, changing nothing\nClick to ask it"
-              svg own:sparkles [fg=accent]
-              div
-                "Plan this first?"
-            Popup.new "ask-more-menu"
-              div #ask-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Other things to ask"
-                svg chrome:chevron-down
-            div
+            div #ask-reset-box [opacity=0] ~transition ~transition
+              div #ask-reset [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clear it"
+                svg chrome:x
+            div #ask-offer-box [opacity=1] ~transition ~transition
+              h_flex #ask-offer [bg=accent/1c border=accent/55 fg=foreground hover(bg=accent/33)] {down:left click} tip="A new Claude reads the ticket and the code and plans it, changing nothing\nClick to ask it"
+                svg own:sparkles [fg=accent]
+                div
+                  "Plan this first?"
+            div #ask-more-box [opacity=1] ~transition ~transition
+              Popup.new "ask-more-menu"
+                div #ask-more-more [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Other things to ask"
+                  svg chrome:chevron-down
+            div #ask-to-box ~transition
               Popup.new "ask-to-menu"
                 h_flex #ask-to-more [fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="A new Claude in ACME-180's space, told about the ticket first\nA question about the whole story goes to a new Claude\nClick to send it to another"
                   svg own:sparkles [fg=accent]

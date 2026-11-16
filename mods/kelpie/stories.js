@@ -5501,6 +5501,7 @@ export class StoryBody extends Stories {
       const v = this.askInput.value(), typed = v.trim().length > 0;
       if (typed !== Boolean(this.askTyped)) { this.askTyped = typed; cx.notify(); }
     });
+    this.askRest = cx.focus_handle(); // where the cursor goes when the line is cleared, so it rests
     this.askSentAt = 0; // a send's moment: the sparkles brew and a glint runs, for ASK_BREW
     this.askPick = null; // who the person picked: "new" or an agent's address, for what's pointed at now
     this.askFor = null; // what that pick was for (the about's id)
@@ -5534,8 +5535,6 @@ export class StoryBody extends Stories {
         .tooltip(toTip).on_mouse_down("left", stop).on_click(toggle)
         .child(row.agent ? agentMark(t, row.agent.status, { size: 11 }) : icon(own("sparkles"), 11).text_color(t.accent))
         .child(div().min_w(0).truncate().child(row.id === "new" ? "New Claude" : short)) });
-    // Typing: where it goes, said once (the Claude picked is mid-task: it waits).
-    const hint = row.busy ? `↵ goes to ${short} when its turn ends · Esc clears` : `↵ asks ${row.id === "new" ? "a new Claude" : short}`;
     const profile = st.profile;
     // No history of asks: only a question still held for a Claude mid-task shows, as it waits on the
     // person (Send now, Cancel); once sent, its answer is the Claude's own, in its chat.
@@ -5566,11 +5565,11 @@ export class StoryBody extends Stories {
     // is touched, rest otherwise; a glint runs along its edge after a send, and slowly while the
     // Claude picked works.
     const brewing = Date.now() - (this.askSentAt ?? 0) < ASK_BREW;
-    const awake = Boolean(this.askAwake || this.askHover);
+    const awake = Boolean(this.askHover);
     const glow = (a) => alpha(t.accent, a);
     const glinting = brewing || Boolean(row.busy);
     const magic = {
-      mark: brewing ? brewMark(t, 14) : awake ? sparkle(t, 14) : icon(own("sparkles"), 14).text_color(t.accent),
+      mark: brewing ? brewMark(t, 14) : awake || this.askAwake || this.askTyped ? sparkle(t, 14) : icon(own("sparkles"), 14).text_color(t.accent),
       glint: glinting ? borderGlint(glow, this.shine?.ask, 12, brewing ? 1400 : 6000) : [],
       measure: (size, cx) => this.shineSize("ask", size, cx),
       probe: this.shineProbe("ask"),
@@ -5597,8 +5596,11 @@ export class StoryBody extends Stories {
         .text_color(open ? t.foreground : t.dim).when(open, (el) => el.bg(t.hover)).hover((el) => el.bg(t.hover).text_color(t.foreground))
         .tooltip("Other things to ask").on_mouse_down("left", stop).on_click(toggle).child(icon(chrome("chevron-down"), 12)) });
     const line = askLine(t, {
-      about, input: this.askInput, to, hint, isStory: about.kind === "story",
-      awake, typing: Boolean(this.askTyped), offer, more, magic,
+      about, input: this.askInput, to, isStory: about.kind === "story", focus: this.askRest,
+      toWide: Math.min(180, Math.round((row.id === "new" ? 10 : short.length) * 6.4 + 44)),
+      awake, writing: Boolean(this.askAwake || this.askTyped), offer, more, magic,
+      // Clear: empty, the cursor out of it, back at rest.
+      reset: (cx) => { this.askInput.set_value(""); this.askTyped = false; this.askAwake = false; try { this.askRest.focus(); } catch { /* still emptied */ } cx.notify(); },
       take: (cx) => ask_(offer, cx),
       hover: (on, cx) => { if (Boolean(this.askHover) !== on) { this.askHover = on; cx.notify(); } },
       clear: () => pointAsk(profile, it.key, null),
