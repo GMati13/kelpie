@@ -1,0 +1,10 @@
+---
+tags: [skill-creator]
+max_turns: 20
+timeout_seconds: 600
+allowed_tools: [Read, Glob, Grep, Skill, Write, Edit, Bash, mcp__plugin_kelpie_kelpie__add_to_next, mcp__plugin_kelpie_kelpie__get_next]
+---
+
+/kelpie:merge https://github.com/acme/web/pull/412 (ready to merge)
+
+The person pressed Merge and confirmed it: merge it once it's ready.
