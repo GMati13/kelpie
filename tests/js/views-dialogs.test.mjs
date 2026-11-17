@@ -326,6 +326,30 @@ test("the profile dialog's Prompts, Messages and Story commands pages: their gui
   assert.doesNotMatch(commands, /header/);
 });
 
+// Use for tickets (#244): automatic until changed; Kelpie's own or a skill of the person's is saved as
+// the profile's skills.ticket, a skill only by its slash name (it goes into the message as it is).
+test("the profile dialog's Prompts page: a ticket pinned to Kelpie's routine or to a skill of yours", () => {
+  const { d, cx } = profileDialog("prompts", {}, { filled: true });
+  let el = d.render(cx);
+  assert.deepEqual(texts(byId(el, "setup-ticket-use-0")), ["Automatic"]);
+  assert.equal(byId(el, "setup-ticket-use-1") && texts(byId(el, "setup-ticket-use-1"))[0], "Kelpie's own");
+  assert.ok(texts(el).join("\n").includes("the message below, sent as it is"), "automatic: the prompt goes as it is");
+  press(el, "setup-ticket-use-2", cx);
+  el = d.render(cx);
+  assert.ok(texts(el).join("\n").includes("Kelpie sends /kelpie:do ticket"), "pinned: says what's sent instead");
+  assert.ok(texts(el).join("\n").includes("Its slash name"), "asks for the skill");
+  d.ticketSkill.set_value("acme-dev ticket");
+  assert.match(d.draft().error?.[1] ?? "", /a skill's slash name/, "not a slash name: Save stops");
+  d.ticketSkill.set_value("/acme-dev:ticket");
+  assert.equal(d.draft().error, null);
+  assert.deepEqual(d.draft().profile.skills, { ticket: "/acme-dev:ticket" });
+  press(d.render(cx), "setup-ticket-use-1", cx);
+  assert.deepEqual(d.draft().profile.skills, { ticket: "kelpie" });
+  press(d.render(cx), "setup-ticket-use-0", cx);
+  assert.equal(d.draft().profile.skills, null, "automatic saves nothing");
+  assert.equal(d.dirty(), false);
+});
+
 // The Board page: Jira or a GitHub Project (tab id `jira`, also opened as `board` or `project`).
 const DEMO_PROJECT = { url: "https://github.com/users/kelpie--demo/projects/1", owner: "kelpie--demo", ownerType: "user", number: 1, demo: true };
 
