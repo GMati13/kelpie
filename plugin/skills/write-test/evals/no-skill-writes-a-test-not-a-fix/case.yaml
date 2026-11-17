@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: no-skill-writes-a-test-not-a-fix
+expected_outcome: |
+  Write a test for price(), which formats 150 cents as $1.5 instead of $1.50, with no skill of the person's. It says it's using Kelpie's routine, adds a test in the style of test/, leaves src/price.js as it is, and reports what the test shows.
+context:
+  scaffold_script: place-files.sh

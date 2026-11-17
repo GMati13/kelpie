@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: pull-request-link-is-not-a-story
+expected_outcome: |
+  Start orchestrator given a pull request's link instead of a story. It says it takes a story and asks what the person wants.
+context:
+  scaffold_script: place-files.sh

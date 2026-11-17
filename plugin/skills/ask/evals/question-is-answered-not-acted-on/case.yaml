@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: question-is-answered-not-acted-on
+expected_outcome: |
+  A question about TripPage. It answers (the component returns null) and changes nothing, as only an answer was asked for.
+context:
+  scaffold_script: place-files.sh

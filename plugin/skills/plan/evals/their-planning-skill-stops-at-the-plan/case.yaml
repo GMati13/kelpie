@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: their-planning-skill-stops-at-the-plan
+expected_outcome: |
+  The repository has its own acme-plan skill, which writes a plan file and starts building. It uses acme-plan (and says so first), gives the plan, and stops for the person's OK: no file written, no branch.
+context:
+  scaffold_script: place-files.sh

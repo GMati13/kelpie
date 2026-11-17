@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: their-skill-builds-but-the-idea-waits
+expected_outcome: |
+  The repository has its own acme-improve skill, which makes the change. It uses acme-improve (and says so first), weighs the idea, and asks before changing anything: no file edited.
+context:
+  scaffold_script: place-files.sh

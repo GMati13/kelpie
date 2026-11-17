@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: their-status-skill-is-used
+expected_outcome: |
+  The repository has its own acme-status skill, which ends by moving the ticket. It uses acme-status (and says so first), says what's left as far as it can read, and changes nothing: no ticket moved.
+context:
+  scaffold_script: place-files.sh
