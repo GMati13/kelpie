@@ -92,7 +92,7 @@ describe("configure-profile", () => {
 // person's own skill for its job or Kelpie's routine. Their choice rules are one text, kept the same
 // in every dispatcher here, so a fix to one reaches all; each holds its own job's inputs, routine and
 // evals.
-const DISPATCHERS = ["ticket"];
+const DISPATCHERS = ["ticket", "review", "post-review", "approve", "request-changes", "what-next"];
 const RULES = /<!-- dispatcher rules[^>]*-->\n([\s\S]*?)<!-- \/dispatcher rules -->/;
 describe("the dispatchers", () => {
   const skill = (p) => readRepo(`plugin/skills/${p}/SKILL.md`);
@@ -128,6 +128,27 @@ describe("the dispatchers", () => {
     for (const p of DISPATCHERS) {
       assert.match(skill(p), /\[references\/routine\.md\]\(references\/routine\.md\)/, p);
       assert.ok(readRepo(`plugin/skills/${p}/references/routine.md`).length > 200, p);
+    }
+  });
+  test("a review only reads, whichever routine runs, and its steps post only what the person's button asked", () => {
+    for (const p of ["review", "post-review", "approve", "request-changes"]) {
+      assert.match(skill(p), /\*\*A review only reads, whichever routine runs\.\*\* .*don't run, build, install or test anything from it, even when a skill's steps say to/, p);
+      assert.match(skill(p), /without working inside it/, p);
+    }
+    for (const p of ["post-review", "approve", "request-changes"]) assert.match(skill(p), /\*\*Carry on the review in this conversation\.\*\*.*don't make one up and post it/s, p);
+  });
+  test("what next runs unattended and read only, and its picks go to Kelpie whoever ranks them", () => {
+    const w = skill("what-next");
+    assert.match(w, /\*\*You run unattended, read only\.\*\*.*Wherever the rules below say to ask the person.*don't: use Kelpie's routine/s);
+    assert.match(w, /\*\*Hand the picks to Kelpie, whoever ranks them\.\*\*/);
+    // The ranking ladder that was SUGGEST_PROMPT is its routine now.
+    assert.match(readRepo("plugin/skills/what-next/references/routine.md"), /Finish their own sprint work[\s\S]*Help the sprint land[\s\S]*Get ahead[\s\S]*make things better/);
+  });
+  test("each has evals started as its own command", () => {
+    for (const p of DISPATCHERS) {
+      const cases = readdirSync(repoFile(`plugin/skills/${p}/evals`)).filter((c) => c !== "mocks" && c !== "results");
+      assert.ok(cases.length >= 2, `${p}: evals`);
+      for (const c of cases) assert.match(readRepo(`plugin/skills/${p}/evals/${c}/prompt.md`), new RegExp(`^/kelpie:${p}( |$)`, "m"), `${p}/${c}`);
     }
   });
   test("ticket's evals: none, one, another place's, two, a loop, a pin and the wrong input", () => {

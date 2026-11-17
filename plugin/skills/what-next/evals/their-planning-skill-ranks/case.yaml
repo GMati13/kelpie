@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: their-planning-skill-ranks
+expected_outcome: |
+  The repository has the person's acme-planning skill for deciding what to work on, which ranks by priority and ends in a numbered list. It uses acme-planning (and says so first), ranks by priority (ACME-178 first), and still hands the picks to Kelpie through suggest_next rather than only writing the list.
+context:
+  scaffold_script: place-files.sh

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: no-planning-skill-hands-picks
+expected_outcome: |
+  No planning skill of the person's: its first line says it's using Kelpie's own routine. Unattended, it asks nobody and changes nothing; it ranks from the snapshot (the board being out of reach) and hands 3 to 5 picks to Kelpie through suggest_next, best first, not ACME-142 (already in progress).
+context:
+  scaffold_script: place-files.sh
