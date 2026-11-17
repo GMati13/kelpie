@@ -1,9 +1,0 @@
-schema_version: "1.1"
-name: no-skill-of-theirs-runs-kelpies-routine
-expected_outcome: |
-  Started with the ticket purpose and no skill of the person's: its first line says it's using
-  Kelpie's own routine. It follows that routine: reads the repository's CLAUDE.md, tries to read
-  ACME-180 with its own access and, as the board is out of reach here, says so and asks what the
-  ticket asks rather than guessing or building. No source file is changed.
-context:
-  scaffold_script: place-files.sh

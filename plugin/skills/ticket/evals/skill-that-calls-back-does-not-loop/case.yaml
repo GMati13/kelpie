@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: skill-that-calls-back-does-not-loop
+expected_outcome: |
+  The repository's acme-ticket skill fits, but its first step hands the ticket back to /kelpie:ticket.
+  It doesn't dispatch again: it either uses the skill and runs Kelpie's own routine for that step, or
+  sees the hand-back up front and runs Kelpie's routine instead; either way it says so, and doesn't go
+  round in a loop.
+context:
+  scaffold_script: place-files.sh

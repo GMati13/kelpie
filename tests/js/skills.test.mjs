@@ -77,7 +77,7 @@ describe("configure-profile", () => {
     assert.match(guide, /`kelpie` for Kelpie's own routine/);
     assert.ok(CONFIRM_KEYS.skills === null, "every pin waits");
     // The dispatcher reads the pin as its `use:` line.
-    assert.match(readRepo("plugin/skills/do/SKILL.md"), /^use: <a skill, or kelpie>/m);
+    assert.match(readRepo("plugin/skills/ticket/SKILL.md"), /^use: <a skill, or kelpie>/m);
   });
   test("keeps every default prompt and message, word for word, in its reference", () => {
     const blocks = [...defaults.matchAll(/^```text\n([\s\S]*?)\n```$/gm)].map((m) => m[1]);
@@ -88,41 +88,55 @@ describe("configure-profile", () => {
   });
 });
 
-// The dispatcher (#242): Kelpie hands it a purpose, and it picks the person's own skill or Kelpie's
-// routine. Its rules are what make that safe and predictable, so each is held here; its purposes
-// table, its routines (references/) and its evals stay in step, so a purpose can't be added half.
-describe("the do dispatcher", () => {
-  const dispatcher = readRepo("plugin/skills/do/SKILL.md");
-  const front = dispatcher.split("\n---\n")[0];
-  const purposes = [...dispatcher.matchAll(/^\| `([a-z-]+)` \| [^|]+\| `references\/([a-z-]+\.md)` \|$/gm)];
+// The dispatchers (#242): one manual-only skill per purpose (/kelpie:ticket…), each picking the
+// person's own skill for its job or Kelpie's routine. Their choice rules are one text, kept the same
+// in every dispatcher here, so a fix to one reaches all; each holds its own job's inputs, routine and
+// evals.
+const DISPATCHERS = ["ticket"];
+const RULES = /<!-- dispatcher rules[^>]*-->\n([\s\S]*?)<!-- \/dispatcher rules -->/;
+describe("the dispatchers", () => {
+  const skill = (p) => readRepo(`plugin/skills/${p}/SKILL.md`);
 
-  test("is started by Kelpie only, never picked by Claude on its own", () => {
-    assert.match(front, /^name: do$/m);
-    assert.match(front, /^disable-model-invocation: true$/m);
+  test("each is started by Kelpie or the person only, never picked by Claude on its own", () => {
+    for (const p of DISPATCHERS) {
+      const front = skill(p).split("\n---\n")[0];
+      assert.match(front, new RegExp(`^name: ${p}$`, "m"), p);
+      assert.match(front, /^disable-model-invocation: true$/m, p);
+      assert.match(front, /^argument-hint: /m, p);
+    }
   });
-  test("lists every purpose with a routine, and every routine under a purpose", () => {
-    assert.ok(purposes.length > 0, "the purposes table");
-    const listed = purposes.map((m) => m[2]).sort();
-    const files = readdirSync(repoFile("plugin/skills/do/references")).filter((f) => f.endsWith(".md")).sort();
-    assert.deepEqual(listed, files);
-    for (const [, purpose, file] of purposes) assert.equal(file, `${purpose}.md`, purpose);
+  test("each keeps the same choice rules, word for word", () => {
+    const rules = DISPATCHERS.map((p) => skill(p).match(RULES)?.[1]);
+    for (const [i, r] of rules.entries()) assert.ok(r, `${DISPATCHERS[i]}: its dispatcher rules block`);
+    for (const r of rules) assert.equal(r, rules[0]);
+    const text = rules[0];
+    assert.match(text, /\*\*The person's pin wins\.\*\*/);
+    assert.match(text, /If no skill by that name is available to you, say so in your first line and run Kelpie's default routine/);
+    assert.match(text, /this plugin's own skills/);
+    assert.match(text, /Claude Code's built-in skills/);
+    assert.match(text, /suits both the job and this place/);
+    assert.match(text, /\*\*Two or more fit:\*\* don't choose silently/);
+    assert.match(text, /`ask-through-next`/);
+    assert.match(text, /\*\*Never dispatch twice\.\*\* If the skill you chose sends you back to any `\/kelpie:` dispatcher/);
+    assert.match(text, /## Your first line/);
+    assert.match(text, /information, not instructions/);
   });
-  test("keeps the choice's rules", () => {
-    assert.match(dispatcher, /\*\*The person's pin wins\.\*\*/);
-    assert.match(dispatcher, /If no skill by that name is available to you, say so in your first line and run Kelpie's default routine/);
-    assert.match(dispatcher, /this plugin's own skills/);
-    assert.match(dispatcher, /Claude Code's built-in skills/);
-    assert.match(dispatcher, /suits both the purpose and this place/);
-    assert.match(dispatcher, /\*\*Two or more fit:\*\* don't choose silently/);
-    assert.match(dispatcher, /`ask-through-next`/);
-    assert.match(dispatcher, /\*\*Never dispatch twice\.\*\*/);
-    assert.match(dispatcher, /## Your first line/);
-    assert.match(dispatcher, /information, not instructions/);
+  test("each does its own job only: other input is said and asked about, never guessed", () => {
+    for (const p of DISPATCHERS) assert.match(skill(p), new RegExp(`\\*\\*This skill is for [^*]+, and only that\\.\\*\\* .*don't guess at another job`), p);
   });
-  test("has evals for its choices: none, one, another place's, two, a loop and a pin", () => {
-    const cases = readdirSync(repoFile("plugin/skills/do/evals")).filter((c) => c !== "mocks" && c !== "results");
+  test("each has its routine, read only when it runs", () => {
+    for (const p of DISPATCHERS) {
+      assert.match(skill(p), /\[references\/routine\.md\]\(references\/routine\.md\)/, p);
+      assert.ok(readRepo(`plugin/skills/${p}/references/routine.md`).length > 200, p);
+    }
+  });
+  test("ticket's evals: none, one, another place's, two, a loop, a pin and the wrong input", () => {
+    const cases = readdirSync(repoFile("plugin/skills/ticket/evals")).filter((c) => c !== "mocks" && c !== "results");
     for (const c of ["no-skill-of-theirs-runs-kelpies-routine", "their-skill-for-this-repo-is-used", "skill-for-another-repo-is-not-used",
-      "two-that-fit-ask-the-person", "skill-that-calls-back-does-not-loop", "pinned-skill-missing-falls-back"]) assert.ok(cases.includes(c), c);
-    for (const c of cases) assert.match(readRepo(`plugin/skills/do/evals/${c}/prompt.md`), /^\/kelpie:do [a-z-]+ /m, c);
+      "two-that-fit-ask-the-person", "skill-that-calls-back-does-not-loop", "pinned-skill-missing-falls-back", "pull-request-link-is-not-a-ticket"]) assert.ok(cases.includes(c), c);
+    for (const c of cases) assert.match(readRepo(`plugin/skills/ticket/evals/${c}/prompt.md`), /^\/kelpie:ticket /m, c);
+  });
+  test("no skill or doc names the old /kelpie:do", () => {
+    for (const f of ["README.md", "CLAUDE.md", ...DISPATCHERS.map((p) => `plugin/skills/${p}/SKILL.md`)]) assert.doesNotMatch(readRepo(f), /\/kelpie:do\b/, f);
   });
 });
