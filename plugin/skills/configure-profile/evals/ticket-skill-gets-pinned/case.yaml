@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: ticket-skill-gets-pinned
+expected_outcome: |
+  The person starts tickets with their own skill, /acme-dev:ticket. It pins it, saving skills.ticket as "/acme-dev:ticket" through save_profile, rather than writing the skill into the ticket prompt (jira.prompt), which a pinned ticket doesn't use. It saves no merge or review prompt (the person said those are fine), and tells the person the change waits for their yes in Kelpie.
