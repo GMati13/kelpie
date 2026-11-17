@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: file-is-not-a-ticket
+expected_outcome: |
+  What's left given a file instead of a ticket or pull request. It says what it takes and asks what the person wants.
+context:
+  scaffold_script: place-files.sh

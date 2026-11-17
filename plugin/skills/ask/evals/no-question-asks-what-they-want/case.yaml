@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: no-question-asks-what-they-want
+expected_outcome: |
+  The Ask line sent with what it's about but no question. It doesn't start work on the ticket: it asks what the person wants to know.
+context:
+  scaffold_script: place-files.sh

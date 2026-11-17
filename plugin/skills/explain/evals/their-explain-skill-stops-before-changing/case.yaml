@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: their-explain-skill-stops-before-changing
+expected_outcome: |
+  The repository has its own acme-explain skill, which ends by refactoring. It uses acme-explain (and says so first), explains, and stops before the refactor: no file changed.
+context:
+  scaffold_script: place-files.sh

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: their-orchestrator-is-used
+expected_outcome: |
+  The repository has its own acme-orchestrate skill. It uses it (and says so first), works only on ACME-13 and ACME-14, invents no ticket content it couldn't read, and merges nothing.
+context:
+  scaffold_script: place-files.sh

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: nothing-given-asks
+expected_outcome: |
+  Look into an idea given nothing at all. It says it takes an idea and asks what the person wants.
+context:
+  scaffold_script: place-files.sh

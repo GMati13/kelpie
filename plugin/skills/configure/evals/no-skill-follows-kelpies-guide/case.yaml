@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: no-skill-follows-kelpies-guide
+expected_outcome: |
+  Configure the acme profile's GitHub page with no skill of the person's. It says it's using Kelpie's own routine, reads the profile through Kelpie's tool, and changes no file to set it.
+context:
+  scaffold_script: place-files.sh
