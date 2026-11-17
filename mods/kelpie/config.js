@@ -515,13 +515,32 @@ export function priorityOf(p) {
 export const PROMPT_FIELDS = ["key", "summary", "url", "type", "status", "parent", "subtasks"];
 export const DEFAULT_PROMPT = "Work on {key}\n{url}";
 
-export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT, then = "", { others = false } = {}) {
+export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT, then = "", { others = false, pin = null } = {}) {
+  // Pinned (the profile's `skills.ticket`, #244): the plugin's dispatcher with the pin, whatever the
+  // ticket prompt says. A template passed in is another purpose's (the orchestrator's) and stays.
+  if (pin && SKILL_PIN.test(pin) && template === (jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT)) {
+    const ids = [checkedKey(fields.key), checkedLink(fields.url)].filter(Boolean).join(" ");
+    return [`/kelpie:do ticket ${ids}\nuse: ${pin}`, then.trim(), others ? OTHERS : ""].filter(Boolean).join("\n\n");
+  }
   const subs = (Array.isArray(fields.subtasks) ? fields.subtasks : []).map(checkedKey).filter(Boolean);
   const filled = fillLines(template, PROMPT_FIELDS, {
     key: checkedKey(fields.key), url: checkedLink(fields.url), parent: checkedKey(fields.parent), subtasks: subs.join("\n"),
   });
   return [filled, then.trim(), others ? OTHERS : ""].filter(Boolean).join("\n\n");
 }
+
+// How a purpose is done, when the person pinned it (#244, the profile's `skills` section, the Prompts
+// page's Use): `kelpie` for Kelpie's own routine, or one of their skills by its slash name
+// (`/acme-dev:ticket`), both through the plugin's dispatcher (plugin/skills/do). Unset is automatic: the
+// purpose's prompt as it is, until the dispatcher becomes the default (#246). Only purposes the
+// dispatcher knows; each new one joins (#245). The name goes into the message as it is, so it's held
+// to a slash name's shape: nothing else can ride in with it.
+export const PURPOSES = ["ticket"];
+export const SKILL_PIN = /^(kelpie|\/[a-z0-9][a-z0-9_-]{0,63}(:[a-z0-9][a-z0-9_-]{0,63})?)$/;
+export const pinOf = (profile, purpose) => {
+  const v = profile?.skills?.[purpose];
+  return typeof v === "string" && SKILL_PIN.test(v) ? v : null;
+};
 
 // The task a review agent starts with: the profile's own template (github.reviewPrompt), else this.
 // Only checked values (KELPIE-302): {url} (the pull request's page, rebuilt from its checked owner,
@@ -874,7 +893,7 @@ export async function installPlugin(id, scope = null) {
 // only, no secrets, and the same checks as the dialog's Save.
 // A board's settings that are true or false only.
 const FLAGS = ["solo", "moveToDone", "byPriority", "showPriority", "unassigned"];
-const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web", "attention"];
+const APPLY_KEYS = ["name", "folder", "jira", "project", "github", "commands", "prompts", "skills", "notify", "claude", "web", "attention"];
 const SECRET = /token$|^token|password|secret/i;
 // The keys each section takes, and nothing else: refusing a secret by its name alone let one under
 // another name through (`github.pat`). Every key here is a setting the profile dialog has (`wrapUp`
@@ -893,6 +912,7 @@ export const SECTION_KEYS = {
   github: ["owner", "account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"],
   commands: ["leftovers", "cleanUp", "wrapUp", "status"],
   prompts: [...ASK_PROMPTS.map((a) => a.id), "suggest", "configure"],
+  skills: PURPOSES,
   notify: ["pulls", "waiting"],
   attention: ["triage", "model"],
   claude: ["config"],
@@ -1032,19 +1052,20 @@ export function buildProfile(id, set) {
   if (next.web?.home && !/^https?:\/\//.test(next.web.home)) throw new Error("web.home: starts with https://.");
   // It goes into the triage run's argv after --model (triage.js): a model's alias or name only.
   if (next.attention?.model && !TRIAGE_MODEL.test(next.attention.model)) throw new Error("attention.model: a Claude model's alias or name, like haiku (null for the default).");
+  for (const [k, v] of Object.entries(next.skills ?? {})) if (!SKILL_PIN.test(v)) throw new Error(`skills.${k}: kelpie, or a skill's slash name like /acme-dev:ticket (null for automatic).`);
   if (next.claude && !next.claude.config) next.claude = null;
   return next;
 }
 
 // What an agent may not change without the person's yes: anything that runs a command (commands, the
 // token command), decides where the Jira token goes or which one (the board, the email, the Keychain
-// item), steers future agents (prompts), picks the Claude account (its settings can run hooks), or
-// opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
+// item), steers future agents (prompts, and the skills pinned to do a job), picks the Claude account
+// (its settings can run hooks), or opens a page (the web start page), or picks the GitHub account Kelpie acts as (it approves pull
 // requests as it). A GitHub Project's address and key prefixes count too: they decide which tickets
 // show and the keys made from them, which go into {key} commands and folder names. The rest (name,
 // folder, owner, handover, solo, moveToDone, the priority settings, unassigned, hoursPerDay, notify,
 // attention) applies at once.
-export const CONFIRM_KEYS = { commands: null, prompts: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"] };
+export const CONFIRM_KEYS = { commands: null, prompts: null, skills: null, claude: null, web: null, jira: ["url", "site", "board", "keychain", "tokenCommand", "email", "prompt", "orchestrator"], project: ["url", "owner", "ownerType", "number", "prefixes", "prompt", "orchestrator"], github: ["account", "reviewPrompt", "storyReviewPrompt", "mergePrompt", "approvalPrompt"] };
 export { GITHUB_LOGIN };
 // Each setting that waits, as the profile dialog names it (its page and field, setup.js) and what
 // kind of value it is: `command` runs on this machine, `prompt` steers agents, `signin` decides where
@@ -1081,9 +1102,10 @@ const SETTING_NAMES = {
   "github.storyReviewPrompt": ["Prompts", "Review a story", "prompt"],
   "github.mergePrompt": ["Prompts", "Merge", "prompt"],
   "github.approvalPrompt": ["Prompts", "Request approval", "prompt"],
+  "skills.ticket": ["Prompts", "Use for tickets", "skill"],
 };
 // A key not named above: its section's page, the key as it is.
-const SECTION_NAMES = { commands: ["Story commands", "command"], prompts: ["Messages", "prompt"], claude: ["Agents", "claude"], web: ["Web", "page"], jira: ["Board", "signin"], project: ["Board", "tickets"], github: ["GitHub", "github"] };
+const SECTION_NAMES = { commands: ["Story commands", "command"], prompts: ["Messages", "prompt"], skills: ["Prompts", "skill"], claude: ["Agents", "claude"], web: ["Web", "page"], jira: ["Board", "signin"], project: ["Board", "tickets"], github: ["GitHub", "github"] };
 function settingName(section, k) {
   const named = SETTING_NAMES[`${section}.${k}`];
   if (named) return named;
@@ -1095,6 +1117,7 @@ function settingName(section, k) {
 const WHY_KINDS = {
   command: "a command runs on this machine",
   prompt: "a prompt steers your agents",
+  skill: "a skill pinned to a job decides how your agents do it",
   signin: "the board's address and sign-in decide where your Jira token goes",
   tickets: "the Project's address and ticket keys decide which tickets show, and the keys go into commands and folder names",
   claude: "the Claude account decides which settings and hooks your agents run with",

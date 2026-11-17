@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import {
-  DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
+  DEFAULT_APPROVAL_PROMPT, OTHERS, DEFAULT_MERGE_PROMPT, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
 import { existsSync } from "node:fs";
@@ -109,6 +109,16 @@ describe("prompt templates", () => {
     assert.equal(jiraTask({ prompt: "{type} {key} ({status})\n{subtasks}\n{other}" }, fields), "ABC-1 ()\nABC-2\n{other}");
     assert.equal(jiraTask({ prompt: "   " }, fields), jiraTask(null, fields));
     assert.equal(jiraTask(null, fields, "Orchestrate {key}"), "Orchestrate ABC-1");
+  });
+  test("jiraTask pinned (#244): the dispatcher with the pin, the note after it; the orchestrator stays its own", () => {
+    const fields = { key: "ABC-1", url: "https://jira.example.com/browse/ABC-1", parent: "ABC-0", subtasks: ["ABC-2"] };
+    assert.equal(jiraTask({ prompt: "Work on {key} my way" }, fields, undefined, "", { pin: "/acme-dev:ticket" }),
+      "/kelpie:do ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: /acme-dev:ticket");
+    assert.equal(jiraTask(null, fields, undefined, "Then this.", { pin: "kelpie", others: true }),
+      `/kelpie:do ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: kelpie\n\nThen this.\n\n${OTHERS}`);
+    assert.equal(jiraTask(null, fields, "Orchestrate {key}", "", { pin: "kelpie" }), "Orchestrate ABC-1");
+    // A pin that isn't one is never sent: the ticket prompt goes as without one.
+    assert.equal(jiraTask(null, fields, undefined, "", { pin: "/x\nrm -rf ~" }), jiraTask(null, fields));
   });
   test("fillLines: a line whose placeholders all came out empty goes, others stay", () => {
     const t = "Ticket {ticket}: {summary}\nPRs:\n{prs}\n\nKeep {other}\nPlain line";
