@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: ticket-link-is-not-a-pull-request
+expected_outcome: |
+  Address comments given a ticket's link instead of a pull request's. It doesn't start work on the ticket: it says it takes pull request links and asks what the person wants.
+context:
+  scaffold_script: place-files.sh
