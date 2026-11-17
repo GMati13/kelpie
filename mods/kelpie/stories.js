@@ -18,7 +18,7 @@ import { CONTROL, ROW_CONTROL, INSET, MOD, waitColor, ScrollPool, SMALL, TEXT, T
 import { countShots } from "./shots.js";
 import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
+import { OTHERS, PREVIEWS, pinOf, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketLink, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -416,7 +416,9 @@ async function resumeAll(profile, it, keys) {
 // and page (ticketLink()), a subtask's story's key, a story's subtasks' keys; Claude reads their
 // titles and descriptions itself. With `template`, that prompt instead of the ticket prompt (the
 // orchestrator's); `then`, what follows it in the same message; `others`: `then` passes on Claude's
-// own earlier words (a pick), so the note about others' text ends it (config.js jiraTask()).
+// own earlier words (a pick), so the note about others' text ends it (config.js jiraTask()). A ticket
+// pinned to a skill or to Kelpie's routine (the profile's skills.ticket, #244) goes to the plugin's
+// dispatcher with the pin instead of the ticket prompt.
 function ticketTask(st, it, key, template, then, others = false) {
   const s = key === it.key && it.story ? it : it.subs.find((x) => x.key === key) ?? it;
   const board = boardOf(st.setup);
@@ -424,7 +426,7 @@ function ticketTask(st, it, key, template, then, others = false) {
     key, url: ticketLink(board, st.data, key) ?? "",
     parent: it.story && key !== it.key ? it.key : "",
     subtasks: s === it && it.story ? it.subs.map((x) => x.key) : [],
-  }, template || undefined, then, { others });
+  }, template || undefined, then, { others, pin: pinOf(st.profile, "ticket") });
 }
 
 // A finished story: done on the board, or every pull request of it merged. It may leave things to

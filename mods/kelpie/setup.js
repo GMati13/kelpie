@@ -17,7 +17,7 @@ import { skinTheme } from "./skins/index.js";
 import { DIALOG, SMALL, TEXT, TITLE, agentLabels, chrome, icon, menuButton, modFile, own, platform, primaryButton, textButton } from "./ui.js";
 import { deskAgents } from "./desk.js";
 import { DEFAULT_HOURS } from "./estimates.js";
-import { ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, claudeFolders, claudeKey, isOwnClaude, profiles, setShare, sharedWith, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
+import { SKILL_PIN, ASK_CLAUDE, ASK_PROMPTS, askPlugin, hasPlugin, validEmail, CONFIGURE_PROMPT, SUGGEST_PROMPT, CONFIGURE_SCOPES, configureOnDesk, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, claudeFolders, claudeKey, isOwnClaude, profiles, setShare, sharedWith, handoverFrom, sunkWords, liveFolder, loadedColumns, newProfileId, parseBoard, profileById, saveProfile, PREFIX, STORIES, defaultPrefix, parsePrefixes, parseProject } from "./config.js";
 
 import { jira } from "./sprint.js";
 import { jiraPriorities } from "./board.js";
@@ -166,6 +166,17 @@ export class Setup {
     this.prompt = TextareaState.new({ value: board?.prompt || DEFAULT_PROMPT });
     this.prompt.set_auto_grow(3, 10);
     this.prompt.on("change", (_e, cx) => cx.notify());
+    // How a ticket is worked (#244, skills.ticket): automatic (unset: the ticket prompt), Kelpie's
+    // own routine, or one of the person's skills by its slash name. Whether the plugin, whose
+    // dispatcher reads the pin, is on the profile's account is asked once, for the page's hint.
+    const pin = saved.skills?.ticket ?? null;
+    this.ticketUse = pin === "kelpie" ? "kelpie" : pin ? "skill" : "auto";
+    this.ticketSkill = field(pin && pin !== "kelpie" ? pin : "", "/your-plugin:your-skill");
+    this.pluginReady = null;
+    if (this.profile) cx.spawn(async (cx) => {
+      this.pluginReady = await hasPlugin(this.profile).catch(() => null);
+      cx.notify();
+    });
     // The orchestrator prompt is empty unless set: then a story offers "Start orchestrator".
     this.orchestrator = TextareaState.new({ value: board?.orchestrator ?? "", placeholder: "Optional, e.g. Run {key} through its subtasks, one agent each:\n{subtasks}" });
     this.orchestrator.set_auto_grow(2, 10);
@@ -422,6 +433,11 @@ export class Setup {
     const mergePrompt = this.mergePrompt.value().trim();
     const approvalPrompt = this.approvalPrompt.value().trim();
     const asks = Object.fromEntries(ASK_PROMPTS.map((a) => [a.id, this.asks[a.id].value().trim()]).filter(([id, v]) => v && v !== ASK_PROMPTS.find((a) => a.id === id).text));
+    const skill = this.ticketSkill.value().trim();
+    const pin = this.ticketUse === "kelpie" ? "kelpie" : this.ticketUse === "skill" ? skill : null;
+    const badPin = this.ticketUse === "skill" && !(SKILL_PIN.test(skill) && skill !== "kelpie");
+    // Pins of purposes this page doesn't show yet are kept as saved.
+    const skills = { ...Object.fromEntries(Object.entries(this.profile?.skills ?? {}).filter(([k]) => k !== "ticket")), ...(pin && !badPin ? { ticket: pin } : {}) };
     const commands = { leftovers: this.leftovers.value().trim(), cleanUp: this.cleanUp.value().trim(), status: this.status.value().trim() };
     const configurePrompt = this.configurePrompt.value().trim();
     if (configurePrompt && configurePrompt !== CONFIGURE_PROMPT) asks.configure = configurePrompt;
@@ -446,6 +462,7 @@ export class Setup {
       : !onJira && projectUrl && !project ? ["project", NOT_PROJECT]
       : badPrefix ? ["project", `The key prefix of ${badPrefix.repo}: ${badPrefix.error}`]
       : badHours ? [onJira ? "jira" : "project", "Hours a day: a number of hours, more than 0 and at most 24."]
+      : badPin ? ["prompts", "Use for tickets: a skill's slash name, like /acme-dev:ticket (lowercase letters, digits, dashes)."]
       : home && !/^https?:\/\//.test(home) ? ["web", "Start it with https://."]
       : !name ? ["name", "Give it a name."]
       : !folder ? ["name", "Choose its folder: spaces in it belong to it."]
@@ -461,6 +478,7 @@ export class Setup {
         github: owner ? { owner, ...(this.githubAccount ? { account: this.githubAccount } : {}), ...(reviewPrompt && reviewPrompt !== DEFAULT_REVIEW_PROMPT ? { reviewPrompt } : {}), ...(storyReviewPrompt && storyReviewPrompt !== DEFAULT_STORY_REVIEW_PROMPT ? { storyReviewPrompt } : {}), ...(mergePrompt && mergePrompt !== DEFAULT_MERGE_PROMPT ? { mergePrompt } : {}), ...(approvalPrompt && approvalPrompt !== DEFAULT_APPROVAL_PROMPT ? { approvalPrompt } : {}), ...(this.profile?.demo ? { demo: true } : {}) } : null,
         commands: commands.leftovers || commands.cleanUp || commands.status ? commands : null,
         prompts: Object.keys(asks).length ? asks : null,
+        skills: Object.keys(skills).length ? skills : null,
         notify: { pulls: this.notifyPulls, ...(this.notifyWaiting ? { waiting: true } : {}) },
         attention: !this.triage || this.profile?.attention?.model ? { ...(this.triage ? {} : { triage: false }), ...(this.profile?.attention?.model ? { model: this.profile.attention.model } : {}) } : null,
         claude: this.claudeConfig ? { config: this.claudeConfig } : null,
@@ -570,7 +588,7 @@ export class Setup {
         return home ? home.replace(/^https?:\/\//, "").split("/")[0] : "Blank page";
       }
       case "prompts": return custom([
-        this.prompt.value().trim() !== DEFAULT_PROMPT, Boolean(this.orchestrator.value().trim()),
+        this.prompt.value().trim() !== DEFAULT_PROMPT, this.ticketUse !== "auto", Boolean(this.orchestrator.value().trim()),
         this.reviewPrompt.value().trim() !== DEFAULT_REVIEW_PROMPT, this.storyReviewPrompt.value().trim() !== DEFAULT_STORY_REVIEW_PROMPT, this.mergePrompt.value().trim() !== DEFAULT_MERGE_PROMPT,
         this.approvalPrompt.value().trim() !== DEFAULT_APPROVAL_PROMPT, this.suggestPrompt.value().trim() !== SUGGEST_PROMPT,
       ].filter(Boolean).length);
@@ -847,6 +865,14 @@ export class Setup {
       prompts: () => [
         page("Prompts", "The first message each kind of agent gets. Each starts as a default; Reset brings it back."),
         group("Stories", hasBoard ? null : "Saved once a board is connected"),
+        field("Use for tickets", choice("setup-ticket-use", [
+          { label: "Automatic", value: "auto", on: this.ticketUse === "auto", tip: "The message below, as it is" },
+          { label: "Kelpie's own", value: "kelpie", on: this.ticketUse === "kelpie", tip: "Kelpie's routine, even where a skill of yours fits" },
+          { label: "A skill of yours", value: "skill", on: this.ticketUse === "skill", tip: "Always this skill, without looking for others" },
+        ], (v) => { this.ticketUse = v; }), this.ticketUse === "auto"
+          ? "How an agent works on a ticket: the message below, sent as it is."
+          : `Kelpie sends /kelpie:ticket with the ticket's key and link and this choice, and the Kelpie plugin's dispatcher does it that way, saying so in its first line; the message below isn't used.${this.pluginReady === false ? " The Kelpie plugin isn't on this profile's Claude account yet: Let me configure it for you offers to install it." : ""}`),
+        this.ticketUse === "skill" && field("Skill", input(this.ticketSkill), "Its slash name, as you'd type it in Claude: /acme-dev:ticket. When the agent can't find it, it says so and uses Kelpie's routine."),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,
           `${fields(SENT.ticket)} {parent} is the story a subtask belongs to; {subtasks} lists a story's subtasks' keys, a line each.`),
         field("Orchestrator", textarea(this.orchestrator), "For one agent that runs a whole story through its subtasks. When set, a story's More menu offers Start orchestrator; the same placeholders."),

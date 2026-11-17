@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { readRepo, repoFile } from "../lib/helpers.mjs";
 import {
-  ASK_PROMPTS, CONFIGURE_SCOPES, CONFIRM_KEYS, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT,
+  ASK_PROMPTS, PURPOSES, CONFIGURE_SCOPES, CONFIRM_KEYS, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT,
   DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, SUGGEST_FIELDS, SUGGEST_PROMPT,
 } from "../../mods/kelpie/config.js";
 
@@ -71,6 +71,13 @@ describe("configure-profile", () => {
     assert.ok(prompts.includes("references/default-prompts.md"), "points at the defaults");
     assert.match(guide.split("## Setting up, from A to Z")[1], /^For `all`[^\n]*ends with the prompts and messages/m);
     assert.match(CONFIGURE_SCOPES.all, /prompts/, "the message for scope all says the prompts are part of it");
+  });
+  test("says how to pin each purpose the dispatcher knows (#244), and that a pin waits for a yes", () => {
+    for (const p of PURPOSES) assert.ok(guide.includes(`\`skills.${p}\``), `skills.${p}`);
+    assert.match(guide, /`kelpie` for Kelpie's own routine/);
+    assert.ok(CONFIRM_KEYS.skills === null, "every pin waits");
+    // The dispatcher reads the pin as its `use:` line.
+    assert.match(readRepo("plugin/skills/ticket/SKILL.md"), /^use: <a skill, or kelpie>/m);
   });
   test("keeps every default prompt and message, word for word, in its reference", () => {
     const blocks = [...defaults.matchAll(/^```text\n([\s\S]*?)\n```$/gm)].map((m) => m[1]);

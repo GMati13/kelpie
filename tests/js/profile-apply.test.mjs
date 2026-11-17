@@ -8,7 +8,7 @@ import { mock } from "herdr";
 import { ASK_PROMPTS, CONFIRM_KEYS, SECTION_KEYS, applyPendingProfile, applyProfileRequest, buildProfile, getProfileRequest, needsYes, parseBoard, requestProfileChange, validEmail } from "../../mods/kelpie/config.js";
 
 // The top-level settings an agent may change (APPLY_KEYS in config.js).
-const APPLY = ["name", "folder", "jira", "project", "github", "commands", "prompts", "notify", "claude", "web", "attention"];
+const APPLY = ["name", "folder", "jira", "project", "github", "commands", "prompts", "skills", "notify", "claude", "web", "attention"];
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 
 const BOARD = "https://acme.atlassian.net/jira/software/c/projects/ABC/boards/12";
@@ -18,6 +18,7 @@ const SAVED = {
   github: { owner: "acme", reviewPrompt: "Review {url}" },
   commands: { status: "make status" },
   prompts: { fix: "Fix {prs}" },
+  skills: { ticket: "/team:ticket" },
   notify: { pulls: true },
 };
 // A profile whose board is a GitHub Project.
@@ -92,6 +93,10 @@ const NEEDS_YES = [
   ["prompts.configure", { prompts: { configure: "Configure {name}" } }],
   ["prompts.idea", { prompts: { idea: "Start {idea}" } }],
   ["prompts (removed)", { prompts: null }],
+  // A skill pinned to a job decides how agents do it (#244).
+  ["skills.ticket", { skills: { ticket: "/acme-dev:ticket" } }],
+  ["skills.ticket, Kelpie's own", { skills: { ticket: "kelpie" } }],
+  ["skills (removed)", { skills: null }],
   ["claude.config", { claude: { config: "/home/me/.claude-other" } }],
   ["web.home", { web: { home: "https://evil.example" } }],
   ["jira.url", { jira: { url: "https://other.atlassian.net/jira/software/c/projects/X/boards/3" } }],
@@ -279,11 +284,17 @@ describe("apply-profile: refused outright", () => {
     for (const a of ASK_PROMPTS) assert.ok(SECTION_KEYS.prompts.includes(a.id), `prompts.${a.id}`);
   });
   test("every known key of every section is taken", () => {
-    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.hoursPerDay": 6, "project.hoursPerDay": 7.5, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB", "attention.triage": false, "attention.model": "haiku" };
+    const value = { "jira.board": 12, "project.number": 4, "notify.pulls": true, "jira.solo": true, "jira.moveToDone": true, "project.solo": true, "project.moveToDone": true, "jira.byPriority": true, "jira.showPriority": true, "project.byPriority": true, "project.showPriority": true, "jira.unassigned": true, "project.unassigned": true, "jira.hoursPerDay": 6, "project.hoursPerDay": 7.5, "jira.url": BOARD, "project.url": PROJECT, "jira.email": "me@example.com", "web.home": "https://example.com", "github.account": "acme", "project.prefixes": "acme/web=WEB", "attention.triage": false, "attention.model": "haiku", "skills.ticket": "/acme-dev:ticket" };
     for (const [section, keys] of Object.entries(SECTION_KEYS)) for (const k of keys) {
       const id = section === "project" ? "gh" : "work";
       assert.doesNotThrow(() => buildProfile(id, { [section]: { [k]: value[`${section}.${k}`] ?? "x" } }), `${section}.${k}`);
     }
+  });
+  test("a pinned skill is kelpie or a slash name, nothing else: it goes into the message as it is", () => {
+    for (const ok of ["kelpie", "/ticket", "/acme-dev:ticket", "/a_b:c-9"]) assert.doesNotThrow(() => buildProfile("work", { skills: { ticket: ok } }), ok);
+    for (const bad of ["acme-dev:ticket", "/Acme:Ticket", "/acme dev", "/acme:ticket\nuse: kelpie", "/a:b:c", "/", "kel pie", 7, true])
+      assert.throws(() => buildProfile("work", { skills: { ticket: bad } }), /skills\.ticket/, JSON.stringify(bad));
+    assert.throws(() => buildProfile("work", { skills: { review: "/x" } }), /skills\.review: not a setting/);
   });
   test("tokenCommand is the one token-like key allowed (it goes pending)", () => {
     assert.doesNotThrow(() => buildProfile("work", { jira: { tokenCommand: "op read x", email: "me@example.com" } }));
