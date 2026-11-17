@@ -336,7 +336,7 @@ test("the profile dialog's Prompts page: a ticket pinned to Kelpie's routine or 
   assert.ok(texts(el).join("\n").includes("the message below, sent as it is"), "automatic: the prompt goes as it is");
   press(el, "setup-ticket-use-2", cx);
   el = d.render(cx);
-  assert.ok(texts(el).join("\n").includes("Kelpie sends /kelpie:do ticket"), "pinned: says what's sent instead");
+  assert.ok(texts(el).join("\n").includes("Kelpie sends /kelpie:ticket"), "pinned: says what's sent instead");
   assert.ok(texts(el).join("\n").includes("Its slash name"), "asks for the skill");
   d.ticketSkill.set_value("acme-dev ticket");
   assert.match(d.draft().error?.[1] ?? "", /a skill's slash name/, "not a slash name: Save stops");

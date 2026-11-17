@@ -113,9 +113,9 @@ describe("prompt templates", () => {
   test("jiraTask pinned (#244): the dispatcher with the pin, the note after it; the orchestrator stays its own", () => {
     const fields = { key: "ABC-1", url: "https://jira.example.com/browse/ABC-1", parent: "ABC-0", subtasks: ["ABC-2"] };
     assert.equal(jiraTask({ prompt: "Work on {key} my way" }, fields, undefined, "", { pin: "/acme-dev:ticket" }),
-      "/kelpie:do ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: /acme-dev:ticket");
+      "/kelpie:ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: /acme-dev:ticket");
     assert.equal(jiraTask(null, fields, undefined, "Then this.", { pin: "kelpie", others: true }),
-      `/kelpie:do ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: kelpie\n\nThen this.\n\n${OTHERS}`);
+      `/kelpie:ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: kelpie\n\nThen this.\n\n${OTHERS}`);
     assert.equal(jiraTask(null, fields, "Orchestrate {key}", "", { pin: "kelpie" }), "Orchestrate ABC-1");
     // A pin that isn't one is never sent: the ticket prompt goes as without one.
     assert.equal(jiraTask(null, fields, undefined, "", { pin: "/x\nrm -rf ~" }), jiraTask(null, fields));

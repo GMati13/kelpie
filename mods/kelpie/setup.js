@@ -871,7 +871,7 @@ export class Setup {
           { label: "A skill of yours", value: "skill", on: this.ticketUse === "skill", tip: "Always this skill, without looking for others" },
         ], (v) => { this.ticketUse = v; }), this.ticketUse === "auto"
           ? "How an agent works on a ticket: the message below, sent as it is."
-          : `Kelpie sends /kelpie:do ticket with the ticket's key and link and this choice, and the Kelpie plugin's dispatcher does it that way, saying so in its first line; the message below isn't used.${this.pluginReady === false ? " The Kelpie plugin isn't on this profile's Claude account yet: Let me configure it for you offers to install it." : ""}`),
+          : `Kelpie sends /kelpie:ticket with the ticket's key and link and this choice, and the Kelpie plugin's dispatcher does it that way, saying so in its first line; the message below isn't used.${this.pluginReady === false ? " The Kelpie plugin isn't on this profile's Claude account yet: Let me configure it for you offers to install it." : ""}`),
         this.ticketUse === "skill" && field("Skill", input(this.ticketSkill), "Its slash name, as you'd type it in Claude: /acme-dev:ticket. When the agent can't find it, it says so and uses Kelpie's routine."),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,
           `${fields(SENT.ticket)} {parent} is the story a subtask belongs to; {subtasks} lists a story's subtasks' keys, a line each.`),

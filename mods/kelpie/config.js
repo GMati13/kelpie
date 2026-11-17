@@ -520,7 +520,7 @@ export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.pr
   // ticket prompt says. A template passed in is another purpose's (the orchestrator's) and stays.
   if (pin && SKILL_PIN.test(pin) && template === (jira?.prompt?.trim() ? jira.prompt : DEFAULT_PROMPT)) {
     const ids = [checkedKey(fields.key), checkedLink(fields.url)].filter(Boolean).join(" ");
-    return [`/kelpie:do ticket ${ids}\nuse: ${pin}`, then.trim(), others ? OTHERS : ""].filter(Boolean).join("\n\n");
+    return [`/kelpie:ticket ${ids}\nuse: ${pin}`, then.trim(), others ? OTHERS : ""].filter(Boolean).join("\n\n");
   }
   const subs = (Array.isArray(fields.subtasks) ? fields.subtasks : []).map(checkedKey).filter(Boolean);
   const filled = fillLines(template, PROMPT_FIELDS, {
@@ -531,9 +531,9 @@ export function jiraTask(jira, fields, template = jira?.prompt?.trim() ? jira.pr
 
 // How a purpose is done, when the person pinned it (#244, the profile's `skills` section, the Prompts
 // page's Use): `kelpie` for Kelpie's own routine, or one of their skills by its slash name
-// (`/acme-dev:ticket`), both through the plugin's dispatcher (plugin/skills/do). Unset is automatic: the
-// purpose's prompt as it is, until the dispatcher becomes the default (#246). Only purposes the
-// dispatcher knows; each new one joins (#245). The name goes into the message as it is, so it's held
+// (`/acme-dev:ticket`), both through the plugin's dispatcher for the purpose (`/kelpie:ticket`,
+// plugin/skills/ticket). Unset is automatic: the purpose's prompt as it is, until the dispatchers
+// become the default (#246). Only purposes with a dispatcher; each new one joins (#245). The name goes into the message as it is, so it's held
 // to a slash name's shape: nothing else can ride in with it.
 export const PURPOSES = ["ticket"];
 export const SKILL_PIN = /^(kelpie|\/[a-z0-9][a-z0-9_-]{0,63}(:[a-z0-9][a-z0-9_-]{0,63})?)$/;
