@@ -5,10 +5,10 @@ v_flex [fg=foreground]
         h_flex #stories-fresh [fg=dim hover(fg=foreground)] {click} tip="Load the stories again"
           "Updated just now ↻"
       h_flex
-        div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 3 stories with something left"
+        div #stories-clean-all [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up all 4 stories with something left"
           svg own:brush-cleaning
         div [fg=dim]
-          "3"
+          "4"
     h_flex
       h_flex #count-needs-you [fg=working] tip="1 needs you"
         div
@@ -129,6 +129,9 @@ v_flex [fg=foreground]
         div #finish-ACME-126 {down:left click}
           div #finish-ACME-126-button [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-126, then the story"
             svg own:check-check
+        div #clean-ACME-126 {down:left click}
+          div #clean-ACME-126 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-126: closes its space"
+            svg own:brush-cleaning
     div
       div [font="DM Sans" fg=muted]
         "IN PROGRESS"
@@ -587,7 +590,7 @@ v_flex [fg=foreground]
       div [font="DM Sans" fg=muted]
         "WAITING ON OTHERS"
       div [font="DM Mono" fg=dim]
-        "3"
+        "2"
       div
         div
           div [bg=#c195abf2] ×32 … [bg=#c195ab1a]
@@ -635,34 +638,12 @@ v_flex [fg=foreground]
         div #clean-ACME-116 {down:left click}
           div #clean-ACME-116 [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Clean up ACME-116: forgets its paused session"
             svg own:brush-cleaning
-    h_flex #story-ACME-129 [hover(bg=hover)] {down:right click hover} tip="2 subtasks · 1 in progress · 1 in QA\nHanded over about 3d ago"
-      div
-        Popup.new "story-menu-ACME-129-menu"
-          div #story-menu-ACME-129-at
-      div
-        div
-          div [border=dim]
-      v_flex
-        div [font="DM Sans" fg=muted]
-          "Password reset emails"
-        h_flex [opacity=0.6]
-          div [font="DM Mono" fg=dim]
-            "ACME-129"
-          h_flex #b-pr-ACME-129 [fg=muted] tip="Every pull request merged"
-            div
-              svg own:git-merged [fg=ansi4]
-        h_flex #b-subs-ACME-129 [opacity=0.6] tip="Your subtasks: 0 of 1 past QA · 1 in QA\nAll: 2 subtasks · 1 in progress · 1 in QA"
-          div [bg=ansi4/73]
-      h_flex #actions-ACME-129
-        div #finish-ACME-129 {down:left click}
-          div #finish-ACME-129-button [fg=dim hover(bg=hover fg=foreground)] {down:left click} tip="Move to Done: your subtasks of ACME-129, then the story"
-            svg own:check-check
     div #stories-done {click} tip="Show the stories finished this sprint"
       div
         div [font="DM Sans" fg=muted]
           "DONE"
         div [font="DM Mono" fg=dim]
-          "1"
+          "2"
         div
           svg chrome:chevron-right [fg=dim]
         div

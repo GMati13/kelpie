@@ -19,7 +19,18 @@ describe("cleanBlockers", () => {
     assert.deepEqual(cleanBlockers(story({ prs: [pr(true)] })), []);
   });
   test("a story not done on the board can't", () => {
-    for (const category of ["new", "indeterminate", undefined]) assert.match(cleanBlockers(story({ category })).join(), /isn't done on the board/);
+    for (const category of ["new", "indeterminate", undefined]) assert.match(cleanBlockers(story({ category })).join(), /your part of it isn't done yet/);
+  });
+  // #318: past the handover column (build()'s `sunk`) is the person's done, whatever the board's
+  // status after it (Ready for prod, Released) says.
+  test("a story whose part of yours is handed over can go, though the board isn't at Done", () => {
+    for (const category of ["new", "indeterminate"]) assert.deepEqual(cleanBlockers(story({ category, sunk: true })), []);
+  });
+  test("a handed-over story is still held by an open pull request or a busy agent", () => {
+    const handed = (over) => story({ category: "indeterminate", sunk: true, ...over });
+    assert.match(cleanBlockers(handed({ prs: [pr(false)] })).join(), /still open/);
+    assert.match(cleanBlockers(handed({ agent: { status: "working" } })).join(), /working/);
+    assert.match(cleanBlockers(handed({ agent: { status: "blocked" } })).join(), /waiting for you/);
   });
   test("an open pull request, its own or a subtask's, blocks it", () => {
     assert.match(cleanBlockers(story({ prs: [pr(false)] })).join(), /still open/);
@@ -98,7 +109,7 @@ describe("cleanUp", () => {
   test("a story that isn't settled is refused before anything is looked at", async () => {
     repoIn("ABC-1");
     await cleanUp(profile, story({ category: "indeterminate" }));
-    assert.match(note(), /wasn't cleaned up: it isn't done on the board/);
+    assert.match(note(), /wasn't cleaned up: your part of it isn't done yet/);
     assert.deepEqual(mock.of("exec").filter(([c]) => c === "python3"), []);
     assert.deepEqual(cleanRuns(), []);
   });
@@ -119,6 +130,25 @@ describe("cleanUp", () => {
     git(dir, "remote", "add", "origin", remote);
     git(dir, "push", "-q", "origin", "HEAD:refs/heads/work");
     await cleanUp(profile, reassigned());
+    assert.doesNotMatch(note(), /wasn't cleaned up/);
+    assert.ok(cleanRuns().length >= 1, "the clean-up command ran");
+  });
+  // #318: a story only handed over isn't done on the board either, and may have had no pull request
+  // merged: commits no remote has would be lost to a clean-up command, as a reassigned story's would.
+  const handed = (over = {}) => story({ category: "indeterminate", sunk: true, ...over });
+  test("a handed-over story with commits no remote has isn't cleaned up", async () => {
+    repoIn("ABC-1");
+    await cleanUp(profile, handed());
+    assert.match(note(), /ABC-1 wasn't cleaned up: a commit not pushed in ABC-1 api/);
+    assert.deepEqual(cleanRuns(), []);
+  });
+  test("a handed-over story whose commits are all pushed is cleaned up", async () => {
+    const dir = repoIn("ABC-1");
+    const remote = join(root, "remote.git");
+    git(root, "init", "-q", "--bare", remote);
+    git(dir, "remote", "add", "origin", remote);
+    git(dir, "push", "-q", "origin", "HEAD:refs/heads/work");
+    await cleanUp(profile, handed());
     assert.doesNotMatch(note(), /wasn't cleaned up/);
     assert.ok(cleanRuns().length >= 1, "the clean-up command ran");
   });

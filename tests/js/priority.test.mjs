@@ -76,7 +76,9 @@ describe("ordering by priority", () => {
   });
   test("what's sunk stays after the rest in the board's order, whatever its priority", () => {
     const d = data({ mine: ["AA-1", "BB-1", "CC-1"], parents: [withPriority(issue("AA-1", "qa"), "5"), withPriority(issue("BB-1", "qa"), "1"), withPriority(issue("CC-1"), "5")] });
-    assert.deepEqual(keysOf(ordered(build({ ...d, priorities: LEVELS }, new Map()), true)), ["CC-1", "AA-1", "BB-1"]);
+    // A space for the sunk ones, so they stay listed (#318: with nothing here they go to the Done group).
+    const here = new Map([["AA-1", { id: "a" }], ["BB-1", { id: "b" }]]);
+    assert.deepEqual(keysOf(ordered(build({ ...d, priorities: LEVELS }, new Map(), {}, here), true)), ["CC-1", "AA-1", "BB-1"]);
   });
 });
 

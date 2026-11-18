@@ -1,9 +1,9 @@
 v_flex #kelpie-confirm [bg=popover] {key_down}
   div [fg=foreground]
-    "Clean up 3 stories?"
+    "Clean up 4 stories?"
   v_flex #confirm-detail
     div [fg=muted]
-      "Each is done, merged or someone else's now, and leaves something behind:"
+      "Each is finished for you (done, merged, or your part of it handed over) or someone else's now, and leaves something behind:"
     v_flex
       h_flex
         div [fg=dim]
@@ -12,6 +12,13 @@ v_flex #kelpie-confirm [bg=popover] {key_down}
           "ACME-190"
         div [fg=foreground]
           "Reassigned to Jordan Blake: closes its space, forgets its paused session"
+      h_flex
+        div [fg=dim]
+          "•"
+        div [fg=dim]
+          "ACME-126"
+        div [fg=foreground]
+          "Your part is done: closes its space"
       h_flex
         div [fg=dim]
           "•"

@@ -68,7 +68,8 @@ describe("what counts as yours, worked alone", () => {
   test("build() counts every ticket of a solo load as the person's, whatever its `mine` says", () => {
     // A story of someone else's: one subtask yours in QA, one unassigned in progress.
     const d = data({ parents: [issue("ACME-1", "doing")], children: [issue("ACME-2", "qa", "ACME-1"), issue("ACME-3", "doing", "ACME-1")], mine: ["ACME-2"] });
-    const team = build(d, new Map())[0], solo = build({ ...d, solo: true }, new Map())[0];
+    // Every story (`all`): the team's, handed over with nothing here, is in the Done group (#318).
+    const team = build(d, new Map(), {}, new Map(), null, { all: true })[0], solo = build({ ...d, solo: true }, new Map())[0];
     assert.deepEqual(team.subs.map((s) => s.mine), [true, false]);
     assert.equal(team.sunk, true);
     assert.deepEqual(keys(donePlan(team).others), ["ACME-3"]);

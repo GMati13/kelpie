@@ -12,6 +12,9 @@ beforeEach(() => mock.reset());
 
 const byKey = (items) => Object.fromEntries(items.map((it) => [it.key, it]));
 const keys = (list) => list.map((x) => x.it?.key ?? x.key);
+// Every story build() makes, settled or not (`all`), for tests of how a story is worked out rather than
+// of which the list holds: a handed-over story with nothing here goes to the Done group (#318).
+const every = (d, byAgent, paused = {}, started = new Map(), handover = null) => build(d, byAgent, paused, started, handover, { all: true });
 
 describe("keyIn: the ticket a title names", () => {
   const known = new Set(["ABC"]);
@@ -182,7 +185,7 @@ describe("need: what a story needs from you, most urgent first", () => {
 
 describe("ordered and needQueue: the list's order and Next's", () => {
   // In board order: A (nothing), B (ready to merge), C (sunk), D (changes requested), E (agent waiting).
-  const items = () => build(data({
+  const items = () => every(data({
     mine: ["AA-1", "BB-1", "CC-1", "DD-1", "EE-1"],
     parents: [issue("AA-1", "doing"), issue("BB-1", "doing"), issue("CC-1", "qa"), issue("DD-1", "doing"), issue("EE-1", "doing")],
     prs: [pr("BB-1 x", { checks: "SUCCESS", review: "APPROVED", number: 1 }), pr("DD-1 y", { review: "CHANGES_REQUESTED", number: 2 })],
@@ -199,6 +202,23 @@ describe("ordered and needQueue: the list's order and Next's", () => {
     assert.equal(it.sunk, true);
     assert.equal(sunk(it), false);
     assert.deepEqual(keys(ordered([it])), ["CC-1"]);
+  });
+});
+
+// #318: with nothing of it here, a story whose part of yours is handed over is over for you on a
+// team's board (the Done group); worked alone, Built waits on you to check it, so it stays listed.
+describe("a handed-over story with nothing here", () => {
+  const d = (solo) => ({ ...data({ mine: ["ABC-1"], parents: [issue("ABC-1", "qa")] }), ...(solo ? { solo: true } : {}) });
+  const groups = (x) => [build(x, new Map()).map((it) => it.key), build(x, new Map(), {}, new Map(), null, { done: true }).map((it) => it.key)];
+  test("on a team's board it's in the Done group", () => {
+    assert.deepEqual(groups(d(false)), [[], ["ABC-1"]]);
+  });
+  test("worked alone it stays in the list, as Built", () => {
+    assert.deepEqual(groups(d(true)), [["ABC-1"], []]);
+  });
+  test("with its space open it stays in the list either way, to be cleaned up", () => {
+    const listed = build(d(false), new Map(), {}, new Map([["ABC-1", { id: "s" }]])).map((it) => it.key);
+    assert.deepEqual(listed, ["ABC-1"]);
   });
 });
 
@@ -222,7 +242,7 @@ describe("a handed-over story still being talked to", () => {
   });
   const agent = (status, tab = "ABC-2", space = "s1") => ({ address: `t-${tab}`, space, tab_name: tab, status });
   // ABC-1's subtask of yours is in QA (handed over); ABC-9 is a story in progress.
-  const items = (status = "qa") => build(data({ mine: ["ABC-2", "ABC-9"], parents: [issue("ABC-1", "doing"), issue("ABC-9", "doing")], children: [issue("ABC-2", status, "ABC-1")] }), agentsByKey(profile));
+  const items = (status = "qa") => every(data({ mine: ["ABC-2", "ABC-9"], parents: [issue("ABC-1", "doing"), issue("ABC-9", "doing")], children: [issue("ABC-2", status, "ABC-1")] }), agentsByKey(profile));
   const it = (status) => items(status)[0];
   for (const status of ["working", "blocked", "done"]) {
     test(`its agent ${status}: not sunk, in progress, its board status unchanged`, () => {
@@ -306,7 +326,7 @@ describe("a handed-over story still being talked to", () => {
 });
 
 describe("sinking at the handover column", () => {
-  const story = (statuses, { handover = null, mine = statuses.map((_, i) => `ABC-${i + 2}`) } = {}) => build(data({
+  const story = (statuses, { handover = null, mine = statuses.map((_, i) => `ABC-${i + 2}`) } = {}) => every(data({
     mine, parents: [issue("ABC-1", "doing")], children: statuses.map((s, i) => issue(`ABC-${i + 2}`, s, "ABC-1")),
   }), new Map(), {}, new Map(), handover)[0];
   test("by default the first column sounding like testing (QA here)", () => {
@@ -323,12 +343,12 @@ describe("sinking at the handover column", () => {
   });
   test("with none of yours, by the story's own status; a task by its own", () => {
     assert.equal(story(["todo"], { mine: [] }).sunk, false, "the story is In Progress");
-    const task = (s) => build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", s)] }), new Map())[0];
+    const task = (s) => every(data({ mine: ["ABC-9"], parents: [issue("ABC-9", s)] }), new Map())[0];
     assert.equal(task("qa").sunk, true);
     assert.equal(task("doing").sunk, false);
   });
   test("a done status always counts, even with no columns known", () => {
-    const [it] = build(data({ columns: [], mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "done", "ABC-1")] }), new Map());
+    const [it] = every(data({ columns: [], mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "done", "ABC-1")] }), new Map());
     assert.equal(it.sunk, true);
   });
   test("with no testing column, the board's last", () => {
@@ -340,24 +360,24 @@ describe("sinking at the handover column", () => {
 
 describe("progress: where a story's subtasks are", () => {
   test("each subtask has a stage by its column, for the row's bar", () => {
-    const [s] = build(data({
+    const [s] = every(data({
       mine: ["ABC-2", "ABC-3", "ABC-4", "ABC-5", "ABC-6"], parents: [issue("ABC-1", "doing")],
       children: [issue("ABC-2", "todo", "ABC-1"), issue("ABC-3", "doing", "ABC-1"), issue("ABC-4", "blocked", "ABC-1"), issue("ABC-5", "qa", "ABC-1"), issue("ABC-6", "done", "ABC-1")],
     }), new Map());
     assert.deepEqual(s.subs.map((x) => x.stage), ["todo", "doing", "blocked", "testing", "past"]);
   });
   test("a column right of the handover one is past it", () => {
-    const [s] = build(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1")] }), new Map(), {}, new Map(), "In Progress");
+    const [s] = every(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1")] }), new Map(), {}, new Map(), "In Progress");
     assert.equal(s.subs[0].stage, "past");
   });
   test("the words: subtasks by state, a task by its pull requests", () => {
-    const [s] = build(data({
+    const [s] = every(data({
       mine: ["ABC-2"], parents: [issue("ABC-1", "doing")],
       children: [issue("ABC-2", "doing", "ABC-1"), issue("ABC-3", "doing", "ABC-1"), issue("ABC-4", "todo", "ABC-1"), issue("ABC-5", "done", "ABC-1")],
       prs: [pr("ABC-2 x")],
     }), new Map());
     assert.equal(progress(s), "4 subtasks · 1 in review · 1 in progress · 1 to do · 1 done");
-    const task = (prs) => progress(build(data({ mine: ["ABC-9"], parents: [issue("ABC-9", "doing")], prs }), new Map())[0]);
+    const task = (prs) => progress(every(data({ mine: ["ABC-9"], parents: [issue("ABC-9", "doing")], prs }), new Map())[0]);
     assert.equal(task([]), "No PR yet");
     assert.equal(task([pr("ABC-9 a", { number: 1 })]), "PR in review");
     assert.equal(task([pr("ABC-9 a", { number: 1 }), pr("ABC-9 b", { number: 2 })]), "2 PRs in review");
@@ -366,13 +386,13 @@ describe("progress: where a story's subtasks are", () => {
   // KELPIE-221: the handover column and anything past it were "in progress", as every column between
   // the first and the last is the board's in-progress category.
   test("by stage: the handover column by its name, past it, blocked; in review only before it", () => {
-    const [s] = build(data({
+    const [s] = every(data({
       mine: ["ABC-2", "ABC-3", "ABC-4", "ABC-5", "ABC-6"], parents: [issue("ABC-1", "doing")],
       children: [issue("ABC-2", "qa", "ABC-1"), issue("ABC-3", "qa", "ABC-1"), issue("ABC-4", "blocked", "ABC-1"), issue("ABC-5", "doing", "ABC-1"), issue("ABC-6", "done", "ABC-1")],
       prs: [pr("ABC-3 open, in QA", { number: 1 }), pr("ABC-5 open", { number: 2 })],
     }), new Map());
     assert.equal(progress(s), "5 subtasks · 1 blocked · 1 in review · 2 in QA · 1 done");
-    const [past] = build(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1"), issue("ABC-3", "doing", "ABC-1")] }), new Map(), {}, new Map(), "In Progress");
+    const [past] = every(data({ mine: ["ABC-2"], parents: [issue("ABC-1", "doing")], children: [issue("ABC-2", "qa", "ABC-1"), issue("ABC-3", "doing", "ABC-1")] }), new Map(), {}, new Map(), "In Progress");
     assert.equal(progress(past), "2 subtasks · 1 in In Progress · 1 past In Progress");
   });
   test("worked alone, what's in or past the handover column is built", () => {
@@ -381,7 +401,7 @@ describe("progress: where a story's subtasks are", () => {
   });
   for (const [board, profile] of [["Jira", DEMO_PROFILE], ["a GitHub Project", DEMO_PROJECT_PROFILE]]) {
     test(`the demo on ${board}: a story handed over reads its handover column, not in progress`, async () => {
-      const it = build(await demoData(profile), new Map(), {}, new Map(), null).find((x) => x.key === "ACME-129");
+      const it = every(await demoData(profile), new Map(), {}, new Map(), null).find((x) => x.key === "ACME-129");
       assert.ok(it.sunk, "the fixture's handed-over story");
       // Its subtask of yours is in QA (it read "2 in progress"); someone else's is still in progress.
       assert.equal(progress(it), "2 subtasks · 1 in progress · 1 in QA");
@@ -439,8 +459,10 @@ describe("the demo's stories, as the list builds them", () => {
       ["ACME-151", 2, false], ["ACME-160", 1, false], ["ACME-171", 3, false],
       // In progress by last activity (#141): ACME-175's pull request changed most recently.
       ["ACME-175", 6, false], ["ACME-142", 6, false], ["ACME-138", 6, false], ["ACME-184", 6, false], ["ACME-180", 6, false], ["ACME-176", 6, false], ["ACME-178", 6, false],
-      ["ACME-129", 6, true], ["ACME-126", 6, true],
     ]);
+    // #318: ACME-129 and ACME-126 are handed over with nothing of them here (no space or agent given):
+    // on a team's board that's your done.
+    assert.deepEqual(build(d, new Map(), {}, new Map(), null, { done: true }).map((x) => x.key), ["ACME-129", "ACME-126", "ACME-122", "ACME-118", "ACME-116"]);
   });
   // ACME-126 is handed over (its subtask of yours in QA), but its agent finished a
   // turn the person hasn't seen yet: it stays among the stories in progress.
@@ -457,11 +479,15 @@ describe("the demo's stories, as the list builds them", () => {
     const d = await demoData();
     const snap = (jira) => {
       const profile = { ...DEMO_PROFILE, jira };
-      return suggestSnapshot({ data: d, profile, setup: { profile, jira, github: profile.github } }, ordered(build(d, new Map())), []);
+      // Worked alone, a story handed over stays in the list, as Built (#318, settled()): every story here.
+      const items = jira.solo ? every(d, new Map()).filter((it) => it.category !== "done") : build(d, new Map());
+      return suggestSnapshot({ data: d, profile, setup: { profile, jira, github: profile.github } }, ordered(items), []);
     };
     const team = snap(DEMO_PROFILE.jira);
     assert.match(team, /^Handed over means my part is done and it waits on others\.$/m);
-    assert.match(team, /^- ACME-129: handed over\b/m);
+    // #318: on a team's board ACME-129 (nothing of it here) is done for the person: in the Done group,
+    // which the snapshot leaves out as it does every done story.
+    assert.doesNotMatch(team, /^- ACME-129\b/m);
     const alone = snap({ ...DEMO_PROFILE.jira, solo: true });
     assert.match(alone, /^I work alone: a ticket handed over waits on me to check it\.$/m);
     assert.match(alone, /^- ACME-129: handed over\b/m);
@@ -475,7 +501,7 @@ describe("the demo's stories, as the list builds them", () => {
     assert.deepEqual(pullsOf(d).map((it) => it.key), ["pull:docs#58"]);
   });
   test("who each story and subtask is assigned to: a story's own assignee too, not only yours", async () => {
-    const it = byKey(build(await demoData(), new Map()));
+    const it = byKey(every(await demoData(), new Map()));
     // ACME-142 reaches the list only as the parent of your subtasks, whose embedded parent names no one.
     assert.equal(it["ACME-142"].assignee, "Priya Nair");
     assert.equal(it["ACME-142"].mine, false);
