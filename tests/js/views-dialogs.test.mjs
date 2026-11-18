@@ -137,24 +137,24 @@ test("each kind of setting says why it waits in its own words", () => {
   assert.match(why({ commands: { status: "x" }, prompts: { fix: "y" } }), /a command runs on this machine and a prompt steers your agents/);
 });
 
-test("a long value is kept whole, a new one and a removed one say so, a prompt unset is its default", () => {
+test("a long value is kept whole, a new one and a removed one say so, a prompt unset is its skill line", () => {
   setupDemoWorld({ stories, profile: { commands: { status: "make status" } } });
   const long = Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of the prompt.`).join("\n");
   const asks = needsYes(DEMO, { prompts: { fix: long }, commands: { status: null, leftovers: long } });
   assert.deepEqual(asks.map((x) => [x.key, x.label, x.was, x.now === long ? "long" : x.now, x.from ?? null]), [
-    ["prompts.fix", "Fix checks", "The checks fail on {prs}. Find out why and fix them.", "long", "default"],
+    ["prompts.fix", "Fix checks", "/kelpie:fix-checks <pull request>", "long", "default"],
     ["commands.status", "Status command", "make status", null, null],
     ["commands.leftovers", "Leftovers check", null, "long", null]]);
   requestProfileChange(DEMO, { prompts: { fix: long }, commands: { status: null, leftovers: long } });
   const { el } = lastDialog();
-  assert.ok(texts(byId(el, "confirm-change-0")).includes("replacing the default"));
+  assert.ok(texts(byId(el, "confirm-change-0")).includes("replacing its skill"));
   assert.ok(texts(byId(el, "confirm-change-1")).includes("removed"));
   assert.ok(texts(byId(el, "confirm-change-2")).includes("new"));
   assert.ok(byId(el, "confirm-change-2-39"), "all 40 lines drawn");
-  // A prompt removed goes back to its default, shown as what it becomes.
+  // A prompt removed goes back to its job's skill line, shown as what it becomes.
   setupDemoWorld({ stories, profile: { prompts: { fix: "Fix it." } } });
   const [back] = needsYes(DEMO, { prompts: null });
-  assert.deepEqual([back.was, back.now, back.to], ["Fix it.", "The checks fail on {prs}. Find out why and fix them.", "default"]);
+  assert.deepEqual([back.was, back.now, back.to], ["Fix it.", "/kelpie:fix-checks <pull request>", "default"]);
 });
 
 test("lineDiff keeps the lines in common and puts each run's removed lines first", () => {
@@ -333,11 +333,12 @@ test("the profile dialog's Prompts page: a ticket pinned to Kelpie's routine or 
   let el = d.render(cx);
   assert.deepEqual(texts(byId(el, "setup-ticket-use-0")), ["Automatic"]);
   assert.equal(byId(el, "setup-ticket-use-1") && texts(byId(el, "setup-ticket-use-1"))[0], "Kelpie's own");
-  // Automatic (#246): the ticket's skill, which uses the person's own skill or Kelpie's routine; a
-  // changed message goes instead. Without the plugin, the message as it is.
+  // Automatic (#246): the ticket's skill, which uses the person's own skill or Kelpie's routine; the
+  // person's own words go instead. Without the plugin, the page says jobs can't start until it's in.
   assert.ok(texts(el).join("\n").includes("your own skill for working a ticket when one fits, else Kelpie's routine"), "automatic: the ticket's skill");
+  assert.ok(!texts(el).join("\n").includes("isn't on this profile's Claude account"));
   d.pluginReady = false;
-  assert.ok(texts(d.render(cx)).join("\n").includes("the message below, as the Kelpie plugin isn't on this profile's Claude account"), "without the plugin: the message");
+  assert.ok(texts(d.render(cx)).join("\n").includes("The Kelpie plugin isn't on this profile's Claude account yet, so these jobs can't start"), "without the plugin: says so");
   d.pluginReady = null;
   press(el, "setup-ticket-use-2", cx);
   el = d.render(cx);

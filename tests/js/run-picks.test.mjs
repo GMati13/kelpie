@@ -12,6 +12,7 @@ import { StoryList, busyOf, needQueueOf, picksPlan, runPicks, storyItems, takeRu
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { OTHERS } from "../../mods/kelpie/config.js";
 import { bodyOf, readRepo } from "../lib/helpers.mjs";
+import { pluginOn } from "../lib/plugin.mjs";
 
 const SUGGESTED = "kelpie.next.suggested";
 // Claude's picks as applyPicks() keeps them: a subtask's story (ACME-180, not started, from its
@@ -44,8 +45,8 @@ describe("which picks show", () => {
     putPicks([pickOf({ key: "ACME-175", action: "Go on with it" }), PICKS[0]]);
     assert.deepEqual(said().map((x) => x.suggest.key), ["ACME-180"]);
   });
-  test("What next?'s prompt asks for work not started yet", () => {
-    assert.match(readRepo("mods/kelpie/config.js"), /already in progress[^"]*don't pick it/);
+  test("What next?'s routine asks for work not started yet", () => {
+    assert.match(readRepo("plugin/skills/what-next/references/routine.md"), /already in progress[^\n]*don't pick it/);
   });
 });
 

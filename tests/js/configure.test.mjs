@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { REPO, bodyOf, put, readRepo, tempDir } from "../lib/helpers.mjs";
-import { CONFIGURE_PROMPT, PLUGIN, configureOnDesk, configureText, hasPlugin } from "../../mods/kelpie/config.js";
+import { PLUGIN, configureOnDesk, configureText, hasPlugin } from "../../mods/kelpie/config.js";
 import { Confirm } from "../../mods/kelpie/dialogs.js";
 import { Setup } from "../../mods/kelpie/setup.js";
 import { fakeCx } from "../lib/views.mjs";
@@ -101,9 +101,9 @@ describe("configureOnDesk", () => {
     const [env, plugin, sh, flag, script, name, source, task, ...claude] = space.argv.slice(3);
     assert.deepEqual([env, plugin, sh, flag, name], ["env", `PLUGIN=${PLUGIN}`, "/bin/sh", "-c", "sh"]);
     assert.equal(source, REPO.replace(/\/$/, ""));
-    assert.equal(task, 'Configure my Kelpie profile "Work" (id work). Scope: status (Story commands: status only).');
+    assert.equal(task, "/kelpie:configure work\nscope: status");
     assert.deepEqual(claude, ["env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "KELPIE_GH_ACCOUNT=", "claude"]);
-    assert.ok(!script.includes(home) && !script.includes(source) && !script.includes("Configure my"), "no value is written into the script");
+    assert.ok(!script.includes(home) && !script.includes(source) && !script.includes("kelpie:configure"), "no value is written into the script");
     assert.match(script, /"\$@" plugin marketplace add "\$root"; if "\$@" plugin install "\$PLUGIN"; then/);
   });
   // The script itself, run with a fake claude: a good install goes on into Claude with the task as
@@ -181,9 +181,9 @@ describe("the plugin's install is the person's click", () => {
 });
 
 describe("configureText", () => {
-  test("the default is one line, the skill does the rest", () => {
-    assert.ok(!CONFIGURE_PROMPT.includes("\n"));
-    assert.equal(configureText({ id: "w", name: "W" }, "jira"), 'Configure my Kelpie profile "W" (id w). Scope: jira (Jira: board, sign-in, your part).');
+  test("its skill line names the profile and the scope, the skill does the rest", () => {
+    assert.equal(configureText({ id: "w", name: "W" }, "jira"), "/kelpie:configure w\nscope: jira");
+    assert.equal(configureText({ id: "w", name: "W" }, "nonsense"), "/kelpie:configure w\nscope: all");
   });
   test("a saved prompt naming {guide} still reads", () => {
     assert.equal(configureText({ id: "w", name: "W", prompts: { configure: "Set up {name}, following {guide}." } }, "all"), "Set up W, following Kelpie's configure-profile skill.");

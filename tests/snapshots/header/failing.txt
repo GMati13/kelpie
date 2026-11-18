@@ -40,7 +40,7 @@ div
                 div
                   div [bg=#7fb3ae]
       h_flex
-        h_flex #story-ask-fix [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="The checks fail on https://github.com/kelpie--demo/payments/pull/97. Find out why and fix them."
+        h_flex #story-ask-fix [font="DM Sans" bg=accent fg=accent_foreground hover(opacity=0.88) bg=#2a2724 fg=foreground border=#e6dcc833] {down:left click} tip="Find why the checks fail on payments#97."
           "Fix checks"
           div
             div

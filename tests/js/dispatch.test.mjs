@@ -1,14 +1,15 @@
 // #246: Kelpie's jobs go to Claude as the plugin's skill for each (/kelpie:<skill> and checked keys and
-// links) whenever the profile's Claude account has the plugin. What each sends, in order: a pin (with
-// `use:`), else the person's own prompt for it, else the skill line with the plugin, else (no plugin,
-// or not known yet) the job's plain wording.
+// links). What each sends, in order: a pin (with `use:`), else the person's own prompt for it, else the
+// skill line; Kelpie has no plain wording of its own for a job. A skill line goes out only with the
+// plugin on the profile's Claude account (withPlugin()): without, Kelpie offers to install it and
+// sends nothing.
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { readdirSync, readFileSync } from "node:fs";
 import {
-  ASK_SKILLS, DISPATCHERS, HAND_IN, MERGE_GO, OTHERS, PLUGIN, PLUGIN_ON, approvalTask, configureText, dispatchText, hasPlugin, ideaText,
-  jiraTask, mergeTask, pluginOn, pullAsk, reviewTask, storyReviewTask, suggestText, syncPlugin,
+  ASK_SKILLS, DISPATCHERS, HAND_IN, MERGE_GO, NO_PLUGIN, OTHERS, PLUGIN, PLUGIN_ON, approvalTask, configureText, dispatchText, hasPlugin, ideaText,
+  jiraTask, mergeTask, openDesk, pluginOn, pullAsk, reviewTask, sendToClaude, storyReviewTask, suggestText, syncPlugin, withPlugin,
 } from "../../mods/kelpie/config.js";
 import { askMessage, fileAbout, linesAbout, textAbout, ticketAbout } from "../../mods/kelpie/askclaude.js";
 import { triageText } from "../../mods/kelpie/triage.js";
@@ -27,13 +28,12 @@ beforeEach(() => {
 const fields = { key: "ABC-1", url: URL, parent: "", subtasks: ["ABC-2", "ABC-3"] };
 
 describe("which message a job sends", () => {
-  test("with the plugin: the skill line; without, or not known yet: the plain wording", () => {
-    assert.equal(jiraTask(null, fields), "Work on ABC-1\nhttps://jira.example.com/browse/ABC-1");
-    assert.equal(jiraTask(null, fields, undefined, "", { profile: P }), jiraTask(null, fields), "not known yet");
+  test("the skill line, whatever is known of the plugin: there's no plain wording to fall back to", () => {
+    assert.equal(jiraTask(null, fields, undefined, "", { profile: P }), `/kelpie:ticket ABC-1 ${URL}`, "not known yet");
     plugin(false);
-    assert.equal(jiraTask(null, fields, undefined, "", { profile: P }), jiraTask(null, fields), "known: not there");
-    plugin(true);
-    assert.equal(jiraTask(null, fields, undefined, "", { profile: P }), `/kelpie:ticket ABC-1 ${URL}`);
+    assert.equal(jiraTask(null, fields, undefined, "", { profile: P }), `/kelpie:ticket ABC-1 ${URL}`, "known: not there");
+    assert.equal(pullAsk(P, "fix", [PR]), `/kelpie:fix-checks ${PR}`);
+    assert.equal(ideaText(P, { idea: "Speed up the tests" }), "/kelpie:idea Speed up the tests");
   });
   test("the person's own prompt for a job beats the plugin, a pin beats both", () => {
     plugin(true);
@@ -48,6 +48,44 @@ describe("which message a job sends", () => {
   test("the demo's account counts as having it", () => {
     assert.equal(pluginOn({ id: "demo", demo: true }), true);
     assert.equal(pluginOn(P), false);
+  });
+});
+
+// A skill line Claude's account doesn't have would read as an unknown command, so it goes only with the
+// plugin there: known, at once; not known, Kelpie checks; not there, the install dialog opens and
+// nothing is sent. The person's own words go either way.
+describe("a skill line goes out only with the plugin", () => {
+  const installed = (has) => { mock.on.exec = (c, a) => (String(a?.[1] ?? "").includes("installed_plugins.json") ? { code: 0, stdout: has ? `{"plugins":{"${PLUGIN}":[{}]}}\n\u001e\n{}` : "\n\u001e\n{}", stderr: "" } : undefined); };
+  const dialogs = () => mock.of("openOverlay").filter(([o]) => o.props?.role === "confirm");
+  test("known to be there: it goes, with nothing checked", async () => {
+    plugin(true);
+    assert.equal(await withPlugin(P, `/kelpie:ticket ABC-1 ${URL}`), true);
+    assert.equal(mock.of("exec").length, 0);
+  });
+  test("not known yet: checked now, and noted", async () => {
+    installed(true);
+    assert.equal(await withPlugin(P, "/kelpie:review x"), true);
+    assert.equal(pluginOn(P), true);
+    assert.equal(dialogs().length, 0);
+  });
+  test("not there: the dialog offering to install it, and nothing goes", async () => {
+    installed(false);
+    assert.equal(await withPlugin(P, "/kelpie:review x"), false);
+    await new Promise((r) => setImmediate(r));
+    assert.equal(dialogs().length, 1);
+    assert.match(dialogs()[0][0].props.detail, /isn't installed on this profile's Claude account \(\/home\/x\/\.claude-work\)/);
+  });
+  test("the person's own words go without it", async () => {
+    installed(false);
+    assert.equal(await withPlugin(P, "Pick up ABC-1 my way"), true);
+    assert.equal(dialogs().length, 0);
+  });
+  test("a new agent with a skill line isn't started without it, on the Desk or by a send", async () => {
+    installed(false);
+    assert.equal(await openDesk(P, { name: "PR web#12", argv: ["claude"], task: `/kelpie:fix-checks ${PR}` }), null);
+    assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0);
+    await assert.rejects(sendToClaude("t1", `/kelpie:fix-checks ${PR}`, { profile: P }), new RegExp(NO_PLUGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.equal(mock.of("hc").length, 0, "nothing typed into the terminal");
   });
 });
 
@@ -86,16 +124,13 @@ describe("each job's skill line", () => {
     assert.equal(pullAsk(P, "approve", [PR]), `/kelpie:approve ${PR}`);
     assert.equal(pullAsk(P, "changes", [PR]), `/kelpie:request-changes ${PR}`);
     assert.equal(pullAsk(P, "merge", [PR]), `/kelpie:merge ${PR}\n\n${MERGE_GO}`);
-    // The person's own message for it, or no plugin: the words, the pages filled in.
+    // The person's own message for it: the words, the pages filled in.
     assert.equal(pullAsk({ ...P, prompts: { fix: "Sort out {prs}" } }, "fix", [PR]), `Sort out ${PR}`);
-    plugin(false);
-    assert.equal(pullAsk(P, "fix", [PR]), `The checks fail on ${PR}. Find out why and fix them.`);
   });
   test("an idea of What next?'s: the idea, where and why", () => {
     assert.equal(ideaText(P, { idea: "Speed up the tests", where: "/work/web", why: "they take 4 minutes" }),
       "/kelpie:idea Speed up the tests\nwhere: /work/web\nwhy: they take 4 minutes");
-    plugin(false);
-    assert.match(ideaText(P, { idea: "Speed up the tests" }), /^An idea for making things better/);
+    assert.equal(ideaText({ ...P, prompts: { idea: "Look into {idea}" } }, { idea: "Speed up the tests" }), "Look into Speed up the tests");
   });
   test("What next?: the profile, its board and owner, the snapshot after a blank line, and the hand-in after it", () => {
     const text = suggestText(P, { name: "Work", snapshot: "ABC-1 (To do)", board: "https://acme.atlassian.net/jira/software/projects/ABC/boards/1", owner: "acme" });

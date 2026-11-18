@@ -79,10 +79,10 @@ const profilePage = (focus) => {
 test("the Prompts page describes What next? and the orchestrator as they work", () => {
   const words = profilePage("prompts");
   assert.match(words, /in the background, reading only, with no tab of its own/);
-  assert.match(words, /through its Claude Code plugin/);
+  assert.match(words, /Kelpie asks for the picks itself, through its plugin/);
   assert.doesNotMatch(words, /JSON/);
   assert.doesNotMatch(words, /a Claude on the Desk that suggests/);
-  assert.match(words, /When set, a story's More menu offers Start orchestrator/);
+  assert.match(words, /A story's More menu offers Start orchestrator/);
 });
 
 // Move to Done's switch names the stories it shows on by what they are for a team too, not "built",
