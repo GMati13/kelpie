@@ -3,7 +3,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
-import { applyPicks, build, needQueueOf, nextIn, ordered } from "../../mods/kelpie/stories.js";
+import { applyPicks, build, need, needQueueOf, nextIn, ordered } from "../../mods/kelpie/stories.js";
 import { demoFixture } from "../../mods/kelpie/demo.js";
 import { DEMO_PROFILE, data, demoData, issue, pr } from "../lib/stories.mjs";
 
@@ -24,6 +24,9 @@ const board = () => data({
   prs: [pr("AA-1 x", { review: "CHANGES_REQUESTED" })],
 });
 const items = () => ordered(build(board(), new Map([["BB-1", { status: "blocked" }]]), {}, new Map([["EE-1", { id: "s-ee" }]])));
+// The Done group, as the list leaves it out: DD-1, handed over with nothing of it here, is there (#318).
+const doneOf = (d = board(), byAgent = new Map([["BB-1", { status: "blocked" }]])) =>
+  build(d, byAgent, {}, new Map([["EE-1", { id: "s-ee" }]]), null, { done: true }).map((it) => ({ it, n: need(it) }));
 const review = { key: "review:web#3", review: { author: { login: "priya" } }, title: "Share" };
 
 describe("needQueueOf: what Next goes through", () => {
@@ -77,7 +80,7 @@ describe("needQueueOf: what Next goes through", () => {
   test("Claude's picks come last, and drop out once their story needs you, is sunk, finished or in progress", () => {
     const pick = (key) => ({ key, action: `Do ${key}`, why: "", title: "", url: "" });
     mock.state.shared.set(SUGGESTED, { w: { at: Date.now(), items: ["HH-1", "CC-1", "AA-1", "DD-1", "EE-1", "XX-9", "pr:web#4"].map(pick) } });
-    const q = needQueueOf(profile, items(), []);
+    const q = needQueueOf(profile, items(), [], null, doneOf());
     assert.deepEqual(keys(q), ["BB-1", "AA-1", "clean", "suggest:HH-1", "suggest:XX-9", "suggest:pr:web#4"]);
     assert.equal(q[3].it.key, "HH-1", "a pick the list has carries its story");
     assert.equal(q[4].it, null, "one it doesn't opens on the web");
@@ -115,39 +118,45 @@ describe("needQueueOf: what Next goes through", () => {
 // isn't Done yet, just before the clean-up. DD-1 is in QA (the handover column), yours, nothing open.
 describe("needQueueOf: the stories ready for Done", () => {
   const merged = pr("DD-1 x", { merged: true, number: 9 });
-  const list = ({ prs = [merged], agents = new Map() } = {}) => ordered(build({ ...board(), prs: [...board().prs, ...prs] }, new Map([["BB-1", { status: "blocked" }], ...agents]), {}, new Map([["EE-1", { id: "s-ee" }]])));
+  // The list and its Done group: DD-1 has nothing of it here, so on a team's board it's in the Done
+  // group (#318), where Next still finds it.
+  const queue = (prof, { prs = [merged], agents = new Map() } = {}) => {
+    const d = { ...board(), prs: [...board().prs, ...prs] };
+    const byAgent = new Map([["BB-1", { status: "blocked" }], ...agents]);
+    return needQueueOf(prof, ordered(build(d, byAgent, {}, new Map([["EE-1", { id: "s-ee" }]]))), [], null, doneOf(d, byAgent));
+  };
   const finish = (q) => q.find((x) => x.key === "finish")?.finish.map((it) => it.key) ?? null;
   test("one item, just before the clean-up, for a handed-over story whose pull request merged", () => {
-    const q = needQueueOf(profile, list(), []);
+    const q = queue(profile);
     assert.deepEqual(keys(q), ["BB-1", "AA-1", "finish", "clean"]);
     assert.deepEqual(finish(q), ["DD-1"]);
     assert.equal(q[2].column, "Done", "the board's done column, for its words");
   });
   test("on a team's board, nothing merged means it's the testers' to move: no item", () => {
-    assert.equal(finish(needQueueOf(profile, list({ prs: [] }), [])), null);
+    assert.equal(finish(queue(profile, { prs: [] })), null);
   });
   test("worked alone, a handed-over story is the person's to close, pull request or not", () => {
     const alone = { ...profile, jira: { ...profile.jira, solo: true } };
-    assert.deepEqual(finish(needQueueOf(alone, list({ prs: [] }), [])), ["DD-1"]);
+    assert.deepEqual(finish(queue(alone, { prs: [] })), ["DD-1"]);
   });
   test("not while a pull request of it is open, or an agent of it works or waits", () => {
-    assert.equal(finish(needQueueOf(profile, list({ prs: [merged, pr("DD-1 y", { number: 10 })] }), [])), null);
-    assert.equal(finish(needQueueOf(profile, list({ agents: [["DD-1", { status: "working" }]] }), [])), null);
+    assert.equal(finish(queue(profile, { prs: [merged, pr("DD-1 y", { number: 10 })] })), null);
+    assert.equal(finish(queue(profile, { agents: [["DD-1", { status: "working" }]] })), null);
   });
   test("none with the board's Move to Done turned off", () => {
     const off = { ...profile, jira: { ...profile.jira, moveToDone: false } };
-    assert.equal(finish(needQueueOf(off, list(), [])), null);
+    assert.equal(finish(queue(off)), null);
   });
   test("not while it's being moved or cleaned up, nor while Ready for Done runs", () => {
     const busy = (name, kind = "done", keys = []) => mock.state.shared.set("kelpie.busy", { [name]: { kind, keys, step: "x", at: Date.now(), until: Date.now() + 60e3 } });
     busy("DD-1");
-    assert.equal(finish(needQueueOf(profile, list(), [])), null);
+    assert.equal(finish(queue(profile)), null);
     busy("move:DD-1", "move", ["DD-1"]);
-    assert.equal(finish(needQueueOf(profile, list(), [])), null, "its chip moving");
+    assert.equal(finish(queue(profile)), null, "its chip moving");
     busy("done-all:w");
-    assert.equal(finish(needQueueOf(profile, list(), [])), null);
+    assert.equal(finish(queue(profile)), null);
     busy("done-all:other");
-    assert.deepEqual(finish(needQueueOf(profile, list(), [])), ["DD-1"], "another profile's run doesn't count");
+    assert.deepEqual(finish(queue(profile)), ["DD-1"], "another profile's run doesn't count");
   });
 });
 

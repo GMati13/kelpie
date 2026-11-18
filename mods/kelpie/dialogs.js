@@ -39,8 +39,9 @@ export class StoryPicker {
     const s = storyItems();
     if (!s) return [];
     const words = this.filter.toLowerCase().split(/\s+/).filter(Boolean);
-    // The finished stories of the sidebar's Done group come last, so they can be found again too.
-    return [...s.items, ...s.done.map((x) => ({ ...x, done: true }))].filter(({ it }) => {
+    // The finished stories of the sidebar's Done group come last, so they can be found again too; one
+    // there only as your part is handed over (#318, the board not at Done) says so.
+    return [...s.items, ...s.done.map((x) => ({ ...x, done: x.it.category === "done" ? "Done" : "Handed over" }))].filter(({ it }) => {
       const text = [it.key, it.title, ...it.subs.flatMap((x) => [x.key, x.title])].join(" ").toLowerCase();
       return words.every((w) => text.includes(w));
     }).map((x) => ({ ...x, profile: s.st.profile }));
@@ -65,13 +66,13 @@ export class StoryPicker {
         .tooltip([`${x.it.key} ${x.it.title ?? ""}`.trim(), line].filter(Boolean).join("\n"))
         .when(on, (el) => el.bg(t.hover)).hover((s) => s.bg(t.hover))
         .on_click(() => this.go(x))
-        .child(statusMark(t, x.done ? "done" : storyState(x.it, x.n), { where: "picker", size: 8, color: t[color] ?? t.dim }) ?? div().flex_none().size(8).rounded_full().bg(t[color] ?? t.dim))
+        .child(statusMark(t, x.done === "Done" ? "done" : storyState(x.it, x.n), { where: "picker", size: 8, color: t[color] ?? t.dim }) ?? div().flex_none().size(8).rounded_full().bg(t[color] ?? t.dim))
         .child(v_flex().flex_1().min_w(0).gap(1)
           .child(h_flex().min_w(0).gap(8)
             .child(skinFont(div(), "numbers").flex_none().text_size(SMALL).text_color(t.accent).child(x.it.key))
             .child(skinFont(div(), "ui").flex_1().min_w(0).truncate().text_color(t.foreground).child(x.it.title)))
           .child(div().truncate().text_size(SMALL).text_color(color === "dim" ? t.muted : t[color] ?? t.muted).child(line)))
-        .when(Boolean(x.it.space) || Boolean(x.done), (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(x.done ? "Done" : "Open here")));
+        .when(Boolean(x.it.space) || Boolean(x.done), (el) => el.child(div().flex_none().text_size(SMALL).text_color(t.dim).child(x.done || "Open here")));
     };
     const loaded = Boolean(storyItems());
     return decor("blockDecor", t, v_flex().id("story-picker").track_focus(this.handle).w_full().min_h(0).p(DIALOG.pad).gap(DIALOG.gap).bg(t.popover).text_size(TEXT)

@@ -144,7 +144,7 @@ div #work-setup-fit [bg=#00000080]
             h_flex #setup-handover-4 [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
               "Done"
           div [fg=dim]
-            "A story whose subtasks of yours are all in QA or further right waits on others: it sinks to the end of your list. Not chosen: the first testing column, else the board's last."
+            "A story whose subtasks of yours are all in QA or further right is done for you and waits on others: it sinks to the end of your list, and can be cleaned up. Not chosen: the first testing column, else the board's last."
         h_flex #setup-solo {click}
           v_flex
             div

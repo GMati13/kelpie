@@ -435,8 +435,17 @@ function ticketTask(st, it, key, template, then, others = false, orchestrate = f
 // A finished story: done on the board, or every pull request of it merged. It may leave things to
 // clean up (cleanable()).
 const finished = (it) => it.category === "done" || (allPrs(it).length > 0 && allPrs(it).every((p) => p.merged));
-// What can be cleaned up here: a finished story, or one someone else has now (reassigned).
-const letGo = (it) => finished(it) || Boolean(it.reassigned);
+// A story whose part of yours is handed over (#318): every subtask of yours at or past the handover
+// column, or the story itself with none of yours (build()'s `sunk`), though the board doesn't say Done
+// yet: what comes after (testing, release) is other people's, so it's over for you.
+const handedOver = (it) => !it.pr && !it.pull && !it.review && it.category !== "done" && Boolean(it.sunk);
+// Over for the person: finished, or their part handed over.
+const over = (it) => finished(it) || handedOver(it);
+// What can be cleaned up here: a story over for you, or one someone else has now (reassigned).
+const letGo = (it) => over(it) || Boolean(it.reassigned);
+// Why a story may be cleaned up, in words: "ACME-12 is done", "your part of ACME-12 is done"…
+const letGoWords = (it) => (finished(it) ? `${it.key} is ${it.category === "done" ? "done" : "merged"}`
+  : handedOver(it) ? `your part of ${it.key} is done` : `${reassignedWords(it)}: ${it.key} isn't yours any more`);
 const storyKeys = (it) => [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a) => a.indexOf(k) === i);
 
 // What to ask an agent about some pull requests: one button each, by what they need.
@@ -459,6 +468,7 @@ const askFor = (p) => (p.merged ? null : p.reviewDecision === "CHANGES_REQUESTED
 // once the story itself is. A task of yours with no subtasks goes by its own status the same way.
 // `left`: the keys of finished stories the leftovers check found something under (leftStories()), so
 // they stay listed to be cleaned up; `done`: instead of the list, the finished stories it leaves out
+// (done on the board, or on a team's board handed over, settled())
 // (the sidebar's Done group); `all`: every story, finished or not (the leftovers check's, the pruning's).
 function build(data, byAgent, paused = {}, started = new Map(), handover = null, { left = new Set(), done = false, all = false } = {}) {
   const known = projectsOf(data);
@@ -567,11 +577,12 @@ export function priorityRanks(levels) { // exported for the tests
     return rank >= 0 ? { name: list[rank].name, rank, of: list.length } : null;
   };
 }
-// Finished stories leave the list once nothing of theirs is open (no pull request) and nothing's left
+// Finished stories (done on the board, or on a team's board your part handed over, #318: the handover
+// column is your done there; worked alone, Built waits on you to check it) leave the list once nothing of theirs is open (no pull request) and nothing's left
 // to clean up: no space, no paused session, no leftovers found (`left`, the story keys with some). One
 // with any of those stays, so its broom shows; the others go to the Done group, still reachable. One
 // whose agent the person still talks to (talking()) stays too, out of the folded group.
-const settled = (it, left = new Set()) => it.category === "done" && !it.space && !it.subs.some((s) => s.prs.some((p) => !p.merged))
+const settled = (it, left = new Set()) => (it.category === "done" || (handedOver(it) && !it.solo)) && !it.space && !it.subs.some((s) => s.prs.some((p) => !p.merged))
   && allPaused(it).length === 0 && !left.has(it.key) && !talking(it);
 // The keys of the profile's stories something of which is here: a space named after one, a paused
 // agent on one, a story with an open pull request of yours in the last load (`prior`). The load asks
@@ -595,9 +606,10 @@ function reassignedWords(it) {
 // last 14 days'), as that's all the load holds.
 // One build gives both (#37: the list and its Done group each built every story again, every render):
 // `items` the list's, in its order, `done` the Done group's, `all` every story (the leftovers check's).
-// The Done group's order (#141): the most recently done first, those with no time after, as they were.
+// The Done group's order (#141): the most recently done (or handed over, for a story whose part of
+// yours is, #318) first, those with no time after, as they were.
 export const byDone = (list) => // exported for the tests
-  list.map((it, i) => ({ it, i })).sort((a, b) => (b.it.doneAt?.at ?? -Infinity) - (a.it.doneAt?.at ?? -Infinity) || a.i - b.i).map((x) => x.it);
+  list.map((it, i) => ({ it, i, at: (it.doneAt ?? it.handed)?.at ?? -Infinity })).sort((a, b) => b.at - a.at || a.i - b.i).map((x) => x.it);
 // When a story's part was handed over, or it was done, in words for its row's tooltip (#141): "Handed
 // over 2h ago"; a time the board only guesses at (a Jira ticket's last change) says "about".
 function whenWords(what, m, now = Date.now()) {
@@ -999,15 +1011,16 @@ const DESK_ITEM = { key: "desk", desk: true };
 // waiting on you (their own asks and those found waiting, waitingIn(), one row per agent), then your
 // pull requests' needs (changes requested, failing checks, ready to merge), then finished turns to
 // check (readyIn()), then the reviews waiting for you.
-const needQueueOf = (profile, items, reviews = [], data = null) => {
+const needQueueOf = (profile, items, reviews = [], data = null, done = []) => {
   const ranked = (keep) => items.filter((x) => keep(x.n[0])).sort((a, b) => a.n[0] - b.n[0]).map((x) => x.it);
   const desk = deskAgents(profile).some((a) => a.status === "blocked") ? [DESK_ITEM] : [];
   const needs = [...ranked((r) => r === 0), ...desk, ...waitingIn(profile, items), ...ranked((r) => r >= 1 && r <= NEEDS_YOU), ...readyIn(profile, items), ...reviews];
-  const ready = busyOf(`done-all:${profile?.id}`) ? [] : items.filter((x) => readyForDone(profile, x.it, x.n)).map((x) => x.it);
+  // The Done group's too: a story only handed over (#318) is there once nothing of it is left here.
+  const ready = busyOf(`done-all:${profile?.id}`) ? [] : [...items, ...done].filter((x) => readyForDone(profile, x.it, x.n)).map((x) => x.it);
   const finish = ready.length ? [{ key: "finish", finish: ready, column: doneName(data) }] : [];
   const dirty = items.map((x) => x.it).filter((it) => cleanable(profile, it).length && !busyOf(it.key));
   const clean = dirty.length ? [{ key: "clean", clean: dirty }] : [];
-  return [...needs, ...finish, ...clean, ...suggestedIn(profile, items, new Set(needs.map((x) => x.key)))];
+  return [...needs, ...finish, ...clean, ...suggestedIn(profile, items, new Set(needs.map((x) => x.key)), done)];
 };
 
 // In progress by last activity (#141): when each ticket was last worked on, by profile, in shared
@@ -1196,7 +1209,8 @@ export function addAsk(profile, { action, why, key, url, terminal } = {}) {
 // Claude had run again (#127). What's shown only shrinks until Claude is asked again.
 const SUGGESTED = "kelpie.next.suggested";
 const SUGGEST_FOR = 24 * 3600 * 1000;
-function suggestedIn(profile, items, needs = new Set()) {
+// `done`: the Done group's, as a story whose part of yours is handed over may be there (#318).
+function suggestedIn(profile, items, needs = new Set(), done = []) {
   const all = shared(SUGGESTED) ?? {};
   const e = all[profile?.id];
   if (!e || Date.now() - e.at > SUGGEST_FOR) return [];
@@ -1207,12 +1221,12 @@ function suggestedIn(profile, items, needs = new Set()) {
     const pr = s.key.startsWith("pr:") ? s.key.slice(3) : null;
     if (needs.has(s.key) || (pr && (needs.has(`review:${pr}`) || needs.has(`pull:${pr}`)))) return "it already needs you";
     if (!it) return null;
-    return finished(it) ? "it's finished" : sunk(it) ? "your part is done" : underWay(it) ? "it's in progress" : null;
+    return finished(it) ? "it's finished" : sunk(it) || handedOver(it) ? "your part is done" : underWay(it) ? "it's in progress" : null;
   };
   let changed = false;
   const settled = (e.items ?? []).map((s) => {
     if (s.aside) return s;
-    const why = asideWhy(s, items.find((x) => x.it.key === s.key)?.it ?? null);
+    const why = asideWhy(s, [...items, ...done].find((x) => x.it.key === s.key)?.it ?? null);
     if (!why) return s;
     changed = true;
     return { ...s, aside: why };
@@ -1237,7 +1251,7 @@ const queueLabel = (x) => (x.desk ? "Desk: an agent needs you"
   : x.wait ? x.wait.line || "Waiting on you"
   : x.ready ? x.ready.line || "Finished: check its work"
   : x.finish ? (x.finish.length === 1 ? `${x.finish[0].key}: ready for ${x.column}, move it` : `${x.finish.length} stories ready for ${x.column}: move them`)
-  : x.clean ? (x.clean.length === 1 ? `${x.clean[0].key}: ${finished(x.clean[0]) ? "finished" : "reassigned"}, clean up` : `${x.clean.length} ${x.clean.every(finished) ? "finished " : ""}stories: clean up all`)
+  : x.clean ? (x.clean.length === 1 ? `${x.clean[0].key}: ${over(x.clean[0]) ? "finished" : "reassigned"}, clean up` : `${x.clean.length} ${x.clean.every(over) ? "finished " : ""}stories: clean up all`)
   : x.suggest ? x.suggest.action
   : `${lonePr(x) ? prName(lonePr(x)) : x.key}: ${need(x)[1]}`);
 // Its second line: what it is (the story's title, who asked for the review), or why Claude picked it.
@@ -2353,7 +2367,8 @@ async function requestProfile(req) {
 function itemsFor(profile) {
   const data = (shared(DATA) ?? {})[profile?.id]?.data;
   if (!hasBoard(profile) || !data) return null;
-  return { data, items: ordered(build(data, agentsByKey(profile), pausedIn(profile), storySpaces(profile), boardOf(profile).handover, { left: leftStories(profile) }), priorityOf(profile).order), reviews: reviewsOf(data) };
+  const { items, done } = storyLists(data, profile, boardOf(profile).handover);
+  return { data, items, done, reviews: reviewsOf(data) };
 }
 const profileHasNext = (profile) => {
   if (!profile) throw new Error("No Kelpie profile is shown.");
@@ -2371,7 +2386,7 @@ export function getNextRequest() {
     const kind = (x) => (x.desk ? "desk" : x.finish ? "move-to-done" : x.clean ? "clean" : x.ask ? "agent-ask" : x.wait ? "agent-waiting" : x.ready ? "agent-finished" : x.suggest ? (x.suggest.idea ? "idea" : "suggestion") : x.review ? "review" : "story");
     const keyOfItem = (x) => (x.finish ? x.finish.map((it) => it.key).join(", ") : x.clean ? x.clean.map((it) => it.key).join(", ") : x.ask ? x.ask.key : x.wait || x.ready ? x.it?.key ?? "" : x.suggest ? (x.suggest.idea ? "" : x.suggest.key.replace(/^pr:/, "")) : x.review ? prName(x.review) : x.desk ? "" : x.key);
     const urlOf = (x) => (x.ask ? x.ask.url : x.wait || x.ready ? "" : x.suggest ? x.suggest.url : x.review ? x.review.url : !x.desk && !x.clean && !x.finish && x.key && !lonePr(x) ? ticketUrl(boardOf(profile), s.data, x.key) : lonePr(x)?.url);
-    const items = needQueueOf(profile, s.items, s.reviews, s.data).map((x) => Object.fromEntries(Object.entries({ kind: kind(x), key: keyOfItem(x), action: queueLabel(x), detail: queueDetail(x), url: urlOf(x) }).filter(([, v]) => v)));
+    const items = needQueueOf(profile, s.items, s.reviews, s.data, s.done).map((x) => Object.fromEntries(Object.entries({ kind: kind(x), key: keyOfItem(x), action: queueLabel(x), detail: queueDetail(x), url: urlOf(x) }).filter(([, v]) => v)));
     return { ok: true, profile: profile.name, items };
   });
 }
@@ -6017,17 +6032,23 @@ export class StoryList extends Stories {
   // requests among them); a click previews it, as a story not open. On a GitHub Project, while an
   // issue of it is still open there, the row hovered (`this.hoverRow`, this copy's) has Close, laid
   // over the end of the row on its own colour made solid, so it keeps no room at rest; while its
-  // issues close, the working mark in its place.
+  // issues close, the working mark in its place. A story only handed over (#318: your part done, the
+  // board not at Done yet) has no done mark but its board status in words, and on the row hovered
+  // Move to Done while something of it is yours to move.
   doneRow(t, it, on, st) {
-    const sign = statusMark(t, "done", { where: "row", size: 8, color: t.done });
-    const busy = busyOf(it.key)?.kind === "close" ? busyOf(it.key) : null;
-    const offer = closesTickets(boardOf(st.setup)) && (busy || (this.hoverRow === it.key && closable(it)));
-    const bg = on ? solidOver(t.background, t.selected) : this.hoverRow === it.key ? solidOver(t.background, t.hover) : t.background;
-    const close = offer && h_flex().id(`done-actions-${it.key}`).absolute().top(0).bottom(0).right(0).items_center()
+    const handed = handedOver(it);
+    const sign = handed ? statusMark(t, "waiting", { where: "row", size: 8, color: t.dim }) : statusMark(t, "done", { where: "row", size: 8, color: t.done });
+    const busy = ["close", "done"].includes(busyOf(it.key)?.kind) ? busyOf(it.key) : null;
+    const hovered = this.hoverRow === it.key;
+    const closes = !handed && closesTickets(boardOf(st.setup)) && (busy || (hovered && closable(it)));
+    const moves = handed && finishes(st.setup) && (busy || (hovered && canMoveToDone(it)));
+    const bg = on ? solidOver(t.background, t.selected) : hovered ? solidOver(t.background, t.hover) : t.background;
+    const action = closes ? (busy ? busyMark(t, `close-${it.key}-busy`, busy, { box: ROW_CONTROL }) : this.closeButton(t, `close-${it.key}-button`, "Close", () => askClose(st, [it]), closeTip([it])))
+      : moves ? this.finishButton(t, st, it, `finish-${it.key}-button`, { box: ROW_CONTROL }) : null;
+    const close = action && h_flex().id(`done-actions-${it.key}`).absolute().top(0).bottom(0).right(0).items_center()
       .child(bands(Array.from({ length: 6 }, (_, i) => alpha(bg, (i + 1) / 7)), {}).flex_none().w(24).h_full())
-      .child(div().id(`close-${it.key}`).flex_none().h_full().flex().items_center().pl(4).pr(8).bg(bg).rounded_r(8).on_mouse_down("left", stop).on_click(stop)
-        .child(busy ? busyMark(t, `close-${it.key}-busy`, busy, { box: ROW_CONTROL })
-          : this.closeButton(t, `close-${it.key}-button`, "Close", () => askClose(st, [it]), closeTip([it]))));
+      .child(div().id(`${closes ? "close" : "finish"}-${it.key}`).flex_none().h_full().flex().items_center().pl(4).pr(8).bg(bg).rounded_r(8).on_mouse_down("left", stop).on_click(stop)
+        .child(action));
     return decor("rowDecor", t, h_flex().id(`done-${it.key}`).relative().flex_none().px(8).py(7).gap(10).items_start().rounded(8).cursor_pointer()
       .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .on_hover((over, cx) => {
@@ -6036,12 +6057,14 @@ export class StoryList extends Stories {
         this.hoverRow = over ? it.key : was === it.key ? null : was;
         if (this.hoverRow !== was) cx.notify();
       })
-      .on_click(() => selectStory(st.profile, it)).tooltip(`${it.doneAt ? whenWords("Done", it.doneAt) : "Done on the board"} · ${progress(it)}. Show its details, pull requests and earlier sessions`)
-      .child(div().flex_none().mt(1).child(sign ?? mark(t, "done", 16)))
+      .on_click(() => selectStory(st.profile, it))
+      .tooltip(`${handed ? `${(it.handed && whenWords("Handed over", it.handed)) || "Your part is done"}, ${it.status || "not done"} on the board` : it.doneAt ? whenWords("Done", it.doneAt) : "Done on the board"} · ${progress(it)}. Show its details, pull requests and earlier sessions`)
+      .child(div().flex_none().mt(1).child(sign ?? mark(t, handed ? "waiting" : "done", 16)))
       .child(v_flex().flex_1().min_w(0).gap(2)
         .child(skinFont(div(), "ui").truncate().font_medium().text_color(t.muted).child(it.title))
         .child(h_flex().min_w(0).h(14).gap(8).items_center().text_size(SMALL).opacity(0.6)
           .child(skinFont(div(), "numbers").flex_none().text_color(t.dim).child(it.key))
+          .when(handed && Boolean(it.status), (el) => el.child(div().id(`done-status-${it.key}`).min_w(0).truncate().text_color(t.dim).child(it.status)))
           .children(storyBadges(t, it))))
       .when(Boolean(close), (el) => el.child(close)),
       { selected: on, state: "done", story: it, now: new Date() });
@@ -6152,7 +6175,7 @@ export class StoryList extends Stories {
     // Next: what cmd-shift-j goes to, the one after the item shown in what needs you.
     const desk = deskOf(st.profile);
     const onDesk = Boolean(desk?.active) && !shown;
-    const queue = needQueueOf(st.profile, items, reviews, st.data);
+    const queue = needQueueOf(st.profile, items, reviews, st.data, done);
     const shownKey = shown?.key ?? (onDesk ? DESK_ITEM.key : undefined);
     const top = nextIn(queue, shownKey);
     const next = top ? this.nextCard(t, st, items, reviews, queue, top, shownKey) : this.allClear(t, st, items, reviews);
@@ -6318,7 +6341,7 @@ export class StoryList extends Stories {
     const sweeping = busyOf(`all:${st.profile.id}`) ?? items.map((x) => busyOf(x.it.key)).find((e) => e?.kind === "clean") ?? null;
     const cleanAll = dirty.length || sweeping ? h_flex().flex_none().gap(2).items_center()
       .child(sweeping ? busyMark(t, "stories-clean-all", sweeping) : iconButton(t, "stories-clean-all", own("brush-cleaning"), () => askCleanAll(st.profile, dirty),
-        `Clean up ${dirty.length === 1 ? `the ${finished(dirty[0]) ? "finished" : "reassigned"} story` : `all ${dirty.length} ${dirty.every(finished) ? "finished " : ""}stories`} with something left`))
+        `Clean up ${dirty.length === 1 ? `the ${over(dirty[0]) ? "finished" : "reassigned"} story` : `all ${dirty.length} ${dirty.every(over) ? "finished " : ""}stories`} with something left`))
       .when(dirty.length > 0, (el) => el.child(div().text_size(SMALL).text_color(t.dim).child(String(dirty.length)))) : null;
     // The last action's note when it's about several stories or the whole list (Clean up all, Run
     // all), not one story's (that one is in its details), under the freshness line.
@@ -6657,14 +6680,15 @@ function leftoverItems(profile, it) {
 }
 
 // Why a story can't be cleaned up yet, if anything: only work that's done and settled goes. A story
-// must be done on its board (a pull request without a ticket: merged) or reassigned to someone else
+// must be done on its board, or your part of it handed over (#318: past the handover column; a pull
+// request without a ticket: merged), or reassigned to someone else
 // (what's left of it here is the person's to clear), with no pull request still
 // open and no agent of it working or waiting for you (in its space too, whatever its tab). Uncommitted
 // work is checked when it's cleaned (cleanUp), as that takes a look at its folders.
 export function cleanBlockers(it) {
   const why = [];
   const lone = it.pull || it.review;
-  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done" && !it.reassigned) why.push(lone ? "its pull request isn't merged" : "it isn't done on the board");
+  if (lone ? !allPrs(it).every((p) => p.merged) : it.category !== "done" && !handedOver(it) && !it.reassigned) why.push(lone ? "its pull request isn't merged" : "your part of it isn't done yet");
   if (!lone && allPrs(it).some((p) => !p.merged)) why.push("a pull request of it is still open");
   const live = [...allAgents(it), ...(it.space ? agents().filter((a) => a.space === it.space.id) : [])];
   if (live.some((a) => a.status === "working")) why.push("an agent is working on it");
@@ -6682,14 +6706,15 @@ function cleanable(profile, it) {
 }
 
 // What a clean-up would lose in a story's repos (changes.py), as phrases for its note: uncommitted
-// work, and for a story someone else has now (reassigned, not finished) commits no remote has, as its
-// work was never merged (a finished one's branch may well be gone from the remote once merged). A
+// work, and for a story not finished on the board (reassigned, or only handed over, #318) commits no
+// remote has, as its work may never have been merged (a finished one's branch may well be gone from
+// the remote once merged). A
 // clean-up command may delete those folders, so a story with any isn't cleaned up. A demo profile has
 // none on disk.
 async function unsaved(profile, it) {
   if (isDemo(profile)) return [];
   const on = it.space ? spaces().find((s) => s.id === it.space.id)?.machine : null;
-  const ahead = !finished(it) && Boolean(it.reassigned);
+  const ahead = !finished(it);
   const code = await readTextFile(modFile("changes.py"));
   const r = await exec("python3", ["-I", "-c", code, profile.folder, ...(ahead ? ["--unpushed"] : []), ...storyKeys(it)], on ? { on } : {});
   const why = (r.stderr || "").trim().split("\n").pop();
@@ -6775,10 +6800,10 @@ function askCleanUp(profile, it) {
   const parts = cleanable(profile, it);
   const items = leftoverItems(profile, it);
   const said = parts.map((p, i) => (items.length && i === parts.length - 1 ? p.replace(/ \(\d+ things\)$/, "") : p));
-  const why = finished(it) ? `${it.key} is ${it.category === "done" ? "done" : "merged"}` : `${reassignedWords(it)}: ${it.key} isn't yours any more`;
+  const why = letGoWords(it);
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(items.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${it.key}?`, yes: "Clean up", command: { name: `${MOD}.clean-story-${it.key}` },
-    detail: `${why}, nothing of it is open or running. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
+    detail: `${why[0].toUpperCase()}${why.slice(1)}, nothing of it is open or running. This ${said.join(", ")}${items.length ? ":" : "."}`, items } });
 }
 
 // Move to Done (the header's More): a story and its subtasks to the board's done column in one go.
@@ -6837,8 +6862,10 @@ function doneLines(it, plan, done) {
       : !shownDone(it) ? [{ key: it.key, text: `Stays ${it.status ?? "as it is"}, as ${keyList(plan.others.map((x) => x.key))} ${plan.others.length === 1 ? "is" : "are"} still open` }] : []),
   ];
 }
-// Clean up afterwards, offered only when a story will be done (one that stays can't be cleaned up),
+// Clean up afterwards, offered only when the story will be over for you once moved: done, or with
+// every subtask of yours done, your part handed over (#318), though others' subtasks keep it open;
 // off unless chosen last time.
+const overOnceMoved = (it, plan) => Boolean(plan?.story || (it.story && it.subs.some((x) => x.mine)));
 const cleanAfter = (profile, will) => (will ? { label: "Clean up afterwards", on: Boolean((shared(DONE_CLEAN) ?? {})[profile.id]),
   about: "Once everything is moved, clean it up as the broom does: only if nothing of it is still open, running or uncommitted." } : null);
 
@@ -6852,7 +6879,7 @@ function askMoveToDone(st, it) {
   const detail = it.story
     ? `This moves your subtasks of ${it.key} to ${done} on the board, one after another, then the story once every subtask is done. Others' subtasks are left as they are, as they aren't yours to close:`
     : `This moves ${it.key} to ${done} on the board:`;
-  const check = cleanAfter(st.profile, plan.story);
+  const check = cleanAfter(st.profile, overOnceMoved(it, plan));
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(520, (check ? 250 : 200) + Math.min(items.length, 10) * 24), props: {
     role: "confirm", title: `Move ${it.key} to ${done}?`, yes: `Move to ${done}`, doneStory: { profile: st.profile.id, key: it.key }, detail, items, check } });
 }
@@ -6909,8 +6936,10 @@ async function movingToDone(s, it, plan, clean, at) {
   say({ profile, keys: key }, text, failed.length ? failed.map((f) => `${f.key}: ${f.why}`).join("\n") : null);
   if (failed.length) notify({ title: `Some of ${key} didn't move to ${done}`, body: failed.map((f) => `${f.key}: ${f.why}`).join("\n"), level: "warning" });
   if (!clean) return { moved, failed };
-  // The story as it is now: done when it moved (the loaded copy still has its old status).
-  const now = shownDone(it) ? { ...it, category: "done" } : it;
+  // The story as it is now (the loaded copy still has its old statuses): done when it moved; else, with
+  // every subtask of yours now done, your part of it is handed over (#318), though others' stay open.
+  const yoursDone = it.story && it.subs.some((x) => x.mine) && it.subs.every((x) => !x.mine || shownDone(x));
+  const now = shownDone(it) ? { ...it, category: "done" } : yoursDone ? { ...it, sunk: true } : it;
   const why = cleanBlockers(now);
   if (!why.length) why.push(...await unsaved(s.st.profile, now));
   if (why.length) {
@@ -6947,7 +6976,7 @@ function askFinishAll(profile, ready) {
     role: "confirm", title: `Move ${ready.length} stories to ${done}?`, yes: `Move to ${done}`,
     doneStories: { profile: profile.id, keys: ready.map((it) => it.key) },
     detail: `Your part of each is done and nothing of it is open or running. This moves your subtasks to ${done} on the board, one story after another, then each story once every subtask is done. Others' subtasks are left as they are, as they aren't yours to close:`,
-    items, check: cleanAfter(profile, plans.some(([, plan]) => plan.story)) } });
+    items, check: cleanAfter(profile, plans.some(([it, plan]) => overOnceMoved(it, plan))) } });
 }
 
 // Ready for Done's dialog button: each story moved as its own Move to Done moves it (moveStoryToDone,
@@ -7010,7 +7039,8 @@ export function closePlan(it) {
     left: subs.filter((x) => open(x) && x.category !== "done"),
   };
 }
-const closable = (it) => (closePlan(it)?.close.length ?? 0) > 0;
+// Only a story done on the board: one only handed over (#318) is still the board's to close.
+const closable = (it) => it?.category === "done" && (closePlan(it)?.close.length ?? 0) > 0;
 // Close's tip: what it closes, in a few words.
 const closeTip = (list) => {
   const n = list.reduce((m, it) => m + (closePlan(it)?.close.length ?? 0), 0);
@@ -7177,11 +7207,11 @@ function askCleanAll(profile, dirty) {
   if (busyOf(`all:${profile.id}`)) return say({ profile }, "Clean up all is already running.");
   dirty = dirty.filter((it) => !busyOf(it.key));
   if (!dirty.length) return say({ profile }, "Those stories are already being cleaned up.");
-  const what = dirty.every(finished) ? "finished " : "";
+  const what = dirty.every(over) ? "finished " : "";
   openOverlay({ mod: MOD, kind: "dialog", width: 520, height: Math.min(480, 200 + Math.min(dirty.length, 10) * 24), props: {
     role: "confirm", title: `Clean up ${dirty.length === 1 ? `1 ${what}story` : `${dirty.length} ${what}stories`}?`, yes: "Clean up all",
-    command: { name: `${MOD}.clean-all` }, detail: what ? "Each is done or merged, and leaves something behind:" : "Each is done, merged or someone else's now, and leaves something behind:",
-    items: dirty.map((it) => ({ key: it.key, text: `${finished(it) ? "" : `${reassignedWords(it)}: `}${cleanable(profile, it).join(", ")}` })) } });
+    command: { name: `${MOD}.clean-all` }, detail: what ? "Each is finished for you (done, merged, or your part of it handed over) and leaves something behind:" : "Each is finished for you (done, merged, or your part of it handed over) or someone else's now, and leaves something behind:",
+    items: dirty.map((it) => ({ key: it.key, text: `${finished(it) ? "" : handedOver(it) ? "Your part is done: " : `${reassignedWords(it)}: `}${cleanable(profile, it).join(", ")}` })) } });
 }
 
 // The sidebar's Clean up all (`kelpie.clean-all`): every finished story of the shown profile with
@@ -7482,7 +7512,7 @@ export async function runPicks({ profile, keys = null }) {
   const s = storyItems();
   if (s?.st.profile.id !== profile) { say({}, "Nothing was started: that profile isn't shown any more."); return null; }
   const want = keys ? new Set(keys) : null;
-  const plan = picksPlan(needQueueOf(s.st.profile, s.items, s.reviews, s.st.data).filter((x) => x.suggest)).filter((p) => p.run && (!want || want.has(p.x.suggest.key)));
+  const plan = picksPlan(needQueueOf(s.st.profile, s.items, s.reviews, s.st.data, s.done).filter((x) => x.suggest)).filter((p) => p.run && (!want || want.has(p.x.suggest.key)));
   if (!plan.length) { say({ profile }, "Nothing was started: those picks are gone from Next."); return null; }
   // Its mark (Run all's place in Next turns into the working mark, saying which it's starting), as
   // the dialog no longer waits: a second Run all is refused meanwhile.
@@ -7581,7 +7611,7 @@ async function applyPicks(profile, items) {
   setShared(SUGGESTED, { ...(shared(SUGGESTED) ?? {}), [profile.id]: { at: Date.now(), items: ordered } });
   // Settled against the list as it is now: a pick hidden from the start is set aside at once, so it
   // can't show up later (suggestedIn()). A list that won't build leaves that to the next render.
-  try { const s = itemsFor(profile); if (s) needQueueOf(profile, s.items, s.reviews, s.data); } catch { /* settled when drawn */ }
+  try { const s = itemsFor(profile); if (s) needQueueOf(profile, s.items, s.reviews, s.data, s.done); } catch { /* settled when drawn */ }
   return { kept: (shared(SUGGESTED) ?? {})[profile.id]?.items ?? ordered, dropped };
 }
 
@@ -7591,7 +7621,7 @@ export function nextNeed() {
   const s = storyItems();
   const now = s && storyNow();
   const onDesk = Boolean(s && !now && deskOf(s.st.profile)?.active);
-  const top = s && nextIn(needQueueOf(s.st.profile, s.items, s.reviews, s.st.data), now?.story.key ?? (onDesk ? DESK_ITEM.key : undefined));
+  const top = s && nextIn(needQueueOf(s.st.profile, s.items, s.reviews, s.st.data, s.done), now?.story.key ?? (onDesk ? DESK_ITEM.key : undefined));
   // A profile without stories: only its Desk can need you.
   if (!s && goDeskAsking(shownProfile())) return;
   if (top) return goNext(s.st.profile, top);

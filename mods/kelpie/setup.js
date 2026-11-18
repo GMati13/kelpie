@@ -825,7 +825,7 @@ export class Setup {
         group("Your part", null, "handover"),
         columns
           ? field("Done from column", choice("setup-handover", columns.map((c, i) => ({ label: c.name, value: c.name, on: i === from })), (v) => { this.handover = v; }),
-            `A story whose subtasks of yours are all in ${columns[from]?.name ?? "it"} or further right ${this.solo ? "is yours to check" : "waits on others"}: it sinks to the end of your list.${this.handover ? "" : " Not chosen: the first testing column, else the board's last."}`,
+            `A story whose subtasks of yours are all in ${columns[from]?.name ?? "it"} or further right ${this.solo ? "is yours to check" : "is done for you and waits on others"}: it sinks to the end of your list, and can be cleaned up.${this.handover ? "" : " Not chosen: the first testing column, else the board's last."}`,
             this.handover ? { id: "setup-handover-reset", action: (_e, cx) => { this.handover = null; cx.notify(); } } : null)
           : hint(onJira ? "Check the connection to choose the column where your part of a story is done." : "Check the Project to choose the column where your part of a story is done."),
         toggle("setup-solo", "I work alone", this.solo, (_e, cx) => { this.solo = !this.solo; cx.notify(); },

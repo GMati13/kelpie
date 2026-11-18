@@ -131,11 +131,27 @@ describe("Move to Done on the demo's board", async () => {
   test("the sidebar's rows have it only under Built / Waiting on others", async () => {
     setupDemoWorld({ stories });
     const { el, cx } = await draw(new StoryList());
-    assert.ok(byId(el, "finish-ACME-129"), "a built story (its subtask of yours past the handover column)");
+    assert.ok(byId(el, "finish-ACME-126"), "a built story (its subtask of yours past the handover column)");
     for (const key of ["ACME-180", "ACME-142", "ACME-175"]) assert.equal(byId(el, `finish-${key}`), null, `${key} isn't built yet`);
-    assert.ok(handlers(el, "on_mouse_down").some((h) => h.id === "finish-ACME-129"), "its click stays off the row");
-    handlers(el).find((h) => h.id === "finish-ACME-129-button").fn({}, cx);
+    assert.ok(handlers(el, "on_mouse_down").some((h) => h.id === "finish-ACME-126"), "its click stays off the row");
+    handlers(el).find((h) => h.id === "finish-ACME-126-button").fn({}, cx);
+    assert.equal(mock.of("openOverlay").at(-1)[0].props.title, "Move ACME-126 to Done?");
+  });
+  // #318: ACME-129 is handed over with nothing of it here, so on a team's board it's in the Done group,
+  // its board status in words, and its row hovered still offers Move to Done.
+  test("a story only handed over, in the Done group, keeps Move to Done on its row hovered", async () => {
+    setupDemoWorld({ stories });
+    mock.state.shared.set("kelpie.done.open", { [DEMO]: true });
+    const list = new StoryList();
+    const { el, cx } = await draw(list);
+    assert.ok(byId(el, "done-ACME-129"), "in the Done group");
+    assert.equal(texts(byId(el, "done-status-ACME-129")).join(""), "In QA", "its board status, not done");
+    assert.equal(byId(el, "finish-ACME-129-button"), null, "at rest, no button");
+    handlers(el, "on_hover").find((h) => h.id === "done-ACME-129").fn(true, cx);
+    const hovered = list.render(cx);
+    handlers(hovered).find((h) => h.id === "finish-ACME-129-button").fn({}, cx);
     assert.equal(mock.of("openOverlay").at(-1)[0].props.title, "Move ACME-129 to Done?");
+    assert.equal(byId(hovered, "close-ACME-129-button"), null, "never Close: the board hasn't said Done");
   });
 
   test("the dialog's button moves your subtasks, then the story, and loads the stories once", async () => {
@@ -223,9 +239,11 @@ describe("Move to Done on the demo's board", async () => {
   });
 
   // Clean up afterwards (#72): the dialog's switch, then the clean-up's own checks after the moves.
-  test("the dialog offers Clean up afterwards only when the story will be done, off at first", async () => {
+  // #318: a story that stays (ACME-180: Tomás's subtask still open) is over for you once your subtasks
+  // move, so it's offered too.
+  test("the dialog offers Clean up afterwards once the story will be over for you, off at first", async () => {
     setupDemoWorld({ stories });
-    for (const [key, offered] of [["ACME-138", true], ["ACME-180", false]]) {
+    for (const [key, offered] of [["ACME-138", true], ["ACME-180", true]]) {
       mock.state.shared.set("kelpie.stories.preview", { [DEMO]: key });
       const { el, cx } = await draw(new Stories());
       handlers(el).find((h) => h.id === "story-finish").fn({}, cx);
@@ -274,11 +292,26 @@ describe("Move to Done on the demo's board", async () => {
     assert.ok(!mock.of("run").some(([c]) => c === "space.close"), "its space stays");
   });
 
-  test("a story that stays isn't cleaned up", async () => {
+  // Before the next test, which moves ACME-181 (a move made shows until the mod reloads, MOVED).
+  test("a story whose subtask of yours didn't move isn't cleaned up", async () => {
+    // The same stories on a real Jira board (its answers faked), refusing ACME-181's move.
+    setupDemoWorld({ profile: { jira: { site: "https://acme.atlassian.net", board: 7, keychain: "k" } } });
+    mock.state.shared.set("kelpie.stories.data", { [DEMO]: { ...stories, key: new Stories().context().key } });
+    mock.on.exec = (_cmd, args) => {
+      if (args[3] === "get") return { code: 0, stdout: JSON.stringify({ code: 200, authed: true, body: { transitions: [{ id: "41", name: "Done", to: { id: "10001", name: "Done", statusCategory: { key: "done" } } }] } }), stderr: "" };
+      return { code: 0, stdout: JSON.stringify({ code: 400, body: { errorMessages: ["Resolution is required."] } }), stderr: "" };
+    };
+    const r = await moveStoryToDone({ profile: DEMO, key: "ACME-180", clean: true });
+    assert.deepEqual(r.failed.map((f) => f.key), ["ACME-181"]);
+    assert.deepEqual(r.why, ["your part of it isn't done yet"]);
+  });
+  // #318: once your subtasks are done your part is handed over, so a story that stays (someone else's
+  // subtask still open) is cleaned up too.
+  test("a story that stays, with every subtask of yours moved, is cleaned up", async () => {
     setupDemoWorld({ stories });
     const r = await moveStoryToDone({ profile: DEMO, key: "ACME-180", clean: true });
-    assert.deepEqual(r.why, ["it isn't done on the board"]);
-    assert.match(note(), /ACME-180 stays, as ACME-182 is still open\. ACME-180 wasn't cleaned up: it isn't done on the board\.$/);
+    assert.equal(r.cleaned, true);
+    assert.match(note(), /ACME-180 stays, as ACME-182 is still open\. Cleaned up ACME-180/);
   });
 });
 

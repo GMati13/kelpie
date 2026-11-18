@@ -23,7 +23,7 @@ before(async () => { setupDemoWorld(); stories = await loadStories(StoryList); }
 // A profile with a leftovers check and a clean-up command, and what the check found for ACME-122
 // (as checkLeftovers() keeps it: `ask` says what was asked, so it isn't asked again).
 const COMMANDS = { leftovers: "check-leftovers {key}", cleanUp: "clean-up {key}" };
-const LEFTOVERS = { [DEMO]: { at: Date.now(), ask: `3|${COMMANDS.leftovers}|${COMMANDS.cleanUp}|ACME-116 ACME-118 ACME-122 ACME-129 ACME-190`,
+const LEFTOVERS = { [DEMO]: { at: Date.now(), ask: `3|${COMMANDS.leftovers}|${COMMANDS.cleanUp}|ACME-116 ACME-118 ACME-122 ACME-126 ACME-129 ACME-190`,
   found: { "ACME-122": { "ACME-123": ["worktrees/ACME-123/api: 2 files not pushed", "a branch ACME-123 in api"] } } } };
 
 // The dialog the last openOverlay() asked for, drawn as Herdr would: its props, then Confirm.
@@ -57,11 +57,15 @@ test("Clean up all lists every finished story with something left", async () => 
 // Move to Done from a built story's row: each ticket and where it goes, and Clean up afterwards.
 test("Move to Done lists each ticket, with Clean up afterwards", async () => {
   setupDemoWorld({ stories });
-  const { el } = await draw(new StoryList());
-  press(el, "finish-ACME-129-button");
+  // ACME-129 is in the Done group (#318: handed over, nothing of it here): its row hovered has it.
+  mock.state.shared.set("kelpie.done.open", { [DEMO]: true });
+  const { el, view, cx } = await draw(new StoryList());
+  handlers(el, "on_hover").find((h) => h.id === "done-ACME-129").fn(true, cx);
+  press(view.render(cx), "finish-ACME-129-button");
   const { spec, el: dialog } = lastDialog();
   assert.equal(spec.props.title, "Move ACME-129 to Done?");
-  assert.equal(spec.props.check, null, "ACME-131 is someone else's and still open, so the story stays and nothing can be cleaned up");
+  // ACME-131 is someone else's and still open, so the story stays, but your part is done: #318.
+  assert.equal(spec.props.check?.label, "Clean up afterwards");
   snap("dialogs/move-to-done", dialog);
 });
 test("Move to Done of a story that will be done offers Clean up afterwards", async () => {

@@ -20,6 +20,9 @@ const iso = (ms) => new Date(ms).toISOString();
 const at = (i, hoursAgo) => ({ ...i, fields: { ...i.fields, updated: iso(NOW - hoursAgo * H), statuscategorychangedate: iso(NOW - hoursAgo * H) } });
 const keysOf = (list) => list.map((x) => x.it.key);
 const sunkKeys = (list) => list.filter((x) => sunk(x.it, x.n)).map((x) => x.it.key);
+// A space here for each story, so one handed over stays listed (#318: with nothing of it here, a
+// team's board puts it in the Done group).
+const here = (d) => new Map(d.parents.map((p) => [p.key, { id: `s-${p.key}` }]));
 
 describe("when a ticket moved", () => {
   test("Jira: a done ticket's status category change is exact; otherwise its last change, a guess", () => {
@@ -46,7 +49,7 @@ describe("Built / Waiting on others", () => {
     mine: ["AA-1", "BB-1", "CC-1", "DD-1"],
     parents: [["AA-1", "qa"], ["BB-1", "qa"], ["CC-1", "qa"], ["DD-1", "doing"]].map(([k, s]) => (times[k] === undefined ? issue(k, s) : at(issue(k, s), times[k]))),
   });
-  const list = (times) => ordered(build(board(times), new Map()));
+  const list = (times) => { const d = board(times); return ordered(build(d, new Map(), {}, here(d))); };
 
   test("the most recently handed over first", () => {
     assert.deepEqual(sunkKeys(list({ "AA-1": 30, "BB-1": 2, "CC-1": 10 })), ["BB-1", "CC-1", "AA-1"]);
@@ -65,9 +68,9 @@ describe("Built / Waiting on others", () => {
       parents: [issue("S1-1", "doing"), issue("S2-1", "doing")],
       children: [at(issue("S1-2", "qa", "S1-1"), 20), at(issue("S1-3", "done", "S1-1"), 3), at(issue("S1-4", "doing", "S1-1"), 0), at(issue("S2-2", "qa", "S2-1"), 1)],
     });
-    const it = build(d, new Map()).find((x) => x.key === "S1-1");
+    const it = build(d, new Map(), {}, here(d)).find((x) => x.key === "S1-1");
     assert.equal(it.handed.at, NOW - 3 * H, "S1-3's, not the later move of someone else's S1-4");
-    assert.deepEqual(sunkKeys(ordered(build(d, new Map()))), ["S2-1", "S1-1"], "S2-1 handed over an hour ago, S1-1 three");
+    assert.deepEqual(sunkKeys(ordered(build(d, new Map(), {}, here(d)))), ["S2-1", "S1-1"], "S2-1 handed over an hour ago, S1-1 three");
   });
 });
 
@@ -75,7 +78,7 @@ describe("a move made from Kelpie", () => {
   test("counts from when it was made, until the board's answer shows it", () => {
     const d = data({ mine: ["AA-1", "BB-1"], parents: [at(issue("AA-1", "qa"), 1), at(issue("BB-1", "doing"), 50)] });
     noteMoved({ id: "p" }, "BB-1", { to: "In QA", category: "indeterminate", toId: "3" }, { kind: "jira" });
-    assert.deepEqual(sunkKeys(ordered(build(settleMoved(d), new Map()))), ["BB-1", "AA-1"], "BB-1 just moved");
+    assert.deepEqual(sunkKeys(ordered(build(settleMoved(d), new Map(), {}, here(d)))), ["BB-1", "AA-1"], "BB-1 just moved");
   });
 });
 
@@ -83,6 +86,11 @@ describe("the Done group", () => {
   test("the most recently done first, those with no time after, as they were", () => {
     const d = data({ mine: ["AA-1", "BB-1", "CC-1"], parents: [at(issue("AA-1", "done"), 48), issue("BB-1", "done"), at(issue("CC-1", "done"), 1)] });
     assert.deepEqual(byDone(build(d, new Map(), {}, new Map(), null, { done: true })).map((it) => it.key), ["CC-1", "AA-1", "BB-1"]);
+  });
+  // #318: a story only handed over is there once nothing of it is here, by when it was handed over.
+  test("a story only handed over goes by when it was handed over, among the done ones", () => {
+    const d = data({ mine: ["AA-1", "BB-1", "CC-1"], parents: [at(issue("AA-1", "done"), 48), at(issue("BB-1", "qa"), 5), at(issue("CC-1", "done"), 1)] });
+    assert.deepEqual(byDone(build(d, new Map(), {}, new Map(), null, { done: true })).map((it) => it.key), ["CC-1", "BB-1", "AA-1"]);
   });
 });
 
