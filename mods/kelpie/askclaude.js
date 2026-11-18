@@ -8,8 +8,8 @@
 // thread): sent, held for a Claude mid-task until its turn ends, or why one didn't go. Sending and the
 // shared state are the caller's (stories.js); this module holds the rules and the look.
 //
-// Its look is Kelpie's "magic", what marks anything Claude does for the person (CLAUDE.md, Visual
-// kit): the sparkles in the accent, and nothing moving while nothing is happening.
+// Its look is Kelpie's "magic", what marks anything Claude does for the person
+// (docs/reference/visual-kit.md): the sparkles in the accent, and nothing moving while nothing is happening.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
@@ -300,7 +300,7 @@ export function askThread(t, { entries, more = 0, sendNow, drop, show, unfold, e
 // The Ask line: the sparkles, what it's about (✕ goes back to the story; a word when it's others'
 // text), the question (Enter sends), who it goes to (`to`, the caller's menu) and Send; under it the
 // suggestions for that kind of thing (a click sends that one) and a word on where it goes (`hint`).
-// It's lit as Kelpie's magic is (CLAUDE.md, Visual kit): a faint accent tint behind it and a soft
+// It's lit as Kelpie's magic is (docs/reference/visual-kit.md): a faint accent tint behind it and a soft
 // accent edge, so it reads apart from the story's details above it; still, as nothing is happening.
 // The Ask line (KELPIE-305): one row that never changes height, so nothing moves under the pointer.
 // At rest: the sparkles, what it's about as faint words, the question, ONE offer (`offer`: the ask that

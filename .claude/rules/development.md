@@ -1,10 +1,10 @@
 # Developing Kelpie
 
-How to work on this repo. `CLAUDE.md` is the reference for how each part works; these rules are how to change it. Keep both true: when you change how something works, update the `CLAUDE.md` passage about it in the same commit.
+How to work on this repo. `CLAUDE.md` is the map (the rules every change needs, and where each part is described) and `docs/reference/` holds how each part works, a doc per part; these rules are how to change it. Keep both true: when you change how something works, update its doc (the one whose `covers` lists the file) in the same commit, and `CLAUDE.md` only when the map or a rule every change needs changes (its Keeping these docs says how).
 
 ## Before you change anything
 
-- Read the `CLAUDE.md` passage for the part you're touching, and the code around it. Follow the patterns already there (naming, comment style: why, not what; shared state through `setShared`, never module variables, as every copy of a mod shares one context).
+- Read the doc for the part you're touching (`docs/reference/`, from `CLAUDE.md`'s map), and the code around it. Follow the patterns already there (naming, comment style: why, not what; shared state through `setShared`, never module variables, as every copy of a mod shares one context).
 - Keep a change minimal and focused. No drive-by refactors, no renames unless asked.
 - Kelpie is a product for anyone (see the top of `CLAUDE.md` and `product.md`): nothing personal, no company, account, path or tool of one person in code, docs, prompts or tests.
 
@@ -34,14 +34,14 @@ The person works in the same Herdr while you develop. Their windows, spaces and 
 - `layout.switch` closes their open Herdr windows: say so before you do it.
 - Put back what you changed to drive the UI: profile, panel, sidebar width, the shown space.
 - Never `hc kill`, `hc rm`, close a space or send to an agent you didn't create. Spaces live in herdr-core and show in every Herdr window.
-- A Herdr layout file a shown slot depends on can be rewritten by Herdr when its terminal ends (see `CLAUDE.md`, Web panel): restore from git.
+- A Herdr layout file a shown slot depends on can be rewritten by Herdr when its terminal ends (see `docs/reference/web-panel.md`): restore from git.
 
 ## Git
 
 - Commit format: `[scope] description`, scopes `kelpie`, `skins`, `artifacts`, `docs`, `tests`; lowercase, starting with a verb. The body says why. Small, atomic commits that each build and pass `./test.sh`.
 - Commit or push only when the person asks. Never force-push or rewrite history without their explicit yes for that push.
-- Before committing: `./test.sh` passes, the mod check passes, you've read the whole diff, and `CLAUDE.md` matches what you changed. The pre-commit hook runs `./test.sh` once enabled (`git config core.hooksPath scripts`); never skip it with `--no-verify`.
-- A shared file touched by unrelated changes (`CLAUDE.md`, `config.js`, `stories.js`): commit each change with its own part of the file, not everything in one commit.
+- Before committing: `./test.sh` passes, the mod check passes, you've read the whole diff, and the docs (`CLAUDE.md`'s rules and map, the part's doc under `docs/reference/`) match what you changed. The pre-commit hook runs `./test.sh` once enabled (`git config core.hooksPath scripts`); never skip it with `--no-verify`.
+- A shared file touched by unrelated changes (`CLAUDE.md`, a doc under `docs/reference/`, `config.js`, `stories.js`): commit each change with its own part of the file, not everything in one commit.
 
 ## Writing for people
 

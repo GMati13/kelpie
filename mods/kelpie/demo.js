@@ -605,7 +605,7 @@ export async function removeDemo() {
   const root = `${home}/.local/share/kelpie/demo/`;
   const folder = String(p?.folder ?? "").replace(/\/+$/, "");
   const rest = folder.slice(root.length);
-  // Never the demo window's own Herdr home (CLAUDE.md, Demo), kept beside it.
+  // Never the demo window's own Herdr home (docs/reference/demo.md), kept beside it.
   if (folder.startsWith(root) && rest && !rest.includes("..") && rest.split("/")[0] !== "herdr-app") await exec("rm", ["-rf", folder]).catch(() => {});
 }
 

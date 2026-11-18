@@ -1,4 +1,4 @@
-// The plugin's configure-profile skill is the agents' guide to every profile setting (CLAUDE.md: "keep
+// The plugin's configure-profile skill is the agents' guide to every profile setting (docs/reference/profiles.md: "keep
 // it in step with any profile setting added or changed"), so what it says is checked against what the
 // code takes: which changes wait for the person's yes, the scopes, the messages and placeholders.
 import { describe, test } from "node:test";
@@ -203,6 +203,6 @@ describe("the dispatchers", () => {
     for (const c of cases) assert.match(readRepo(`plugin/skills/ticket/evals/${c}/prompt.md`), /^\/kelpie:ticket /m, c);
   });
   test("no skill or doc names the old /kelpie:do", () => {
-    for (const f of ["README.md", "CLAUDE.md", ...DISPATCHERS.map((p) => `plugin/skills/${p}/SKILL.md`)]) assert.doesNotMatch(readRepo(f), /\/kelpie:do\b/, f);
+    for (const f of ["README.md", "CLAUDE.md", "docs/reference/plugin.md", "docs/reference/profiles.md", ...DISPATCHERS.map((p) => `plugin/skills/${p}/SKILL.md`)]) assert.doesNotMatch(readRepo(f), /\/kelpie:do\b/, f);
   });
 });
