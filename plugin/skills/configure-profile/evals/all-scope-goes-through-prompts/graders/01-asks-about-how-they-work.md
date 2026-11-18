@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-The reply doesn't end the setup: it goes on to the prompts Kelpie sends its agents, and asks the person how they work (how they start on a ticket, or how a pull request gets merged), so the prompts can fit them
+The reply doesn't end the setup: it goes on to how Kelpie hands its agents their jobs, saying each job goes to the person's own skill for it, or Kelpie's own routine when none fits, with nothing to set up for that

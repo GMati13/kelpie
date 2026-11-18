@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: all-scope-goes-through-prompts
 expected_outcome: |
-  Setting a profile up from A to Z, with the connections and story commands already saved. Rather than finishing, it moves on to the agents' prompts: it asks the person, in plain questions, how they work (how they start on a ticket, how a pull request gets merged: one repo or several, a deploy or none, who approves) so it can fit the prompts to them. It saves no prompt in this turn, and the person can say the defaults are fine and stop.
+  Setting a profile up from A to Z, with the connections and story commands already saved. Rather than finishing, it moves on to how the agents get their jobs: it says each job goes to the person's own skill for it, else Kelpie's own routine, with nothing to set up, and asks only whether any job should be done differently. It saves no prompt in this turn, and the person can say it's fine and stop.
