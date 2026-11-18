@@ -155,7 +155,7 @@ herdr-app do kelpie.demo-remove
 
 ## Contributing
 
-`CLAUDE.md` holds the internals and design notes. It's written for the coding agents that work on Kelpie, so it's dense, but it's the reference for how every part works.
+`CLAUDE.md` is the map of the internals: the rules every change needs, and where each part is described. How each part works is in `docs/reference/`, a doc per part. Both are written for the coding agents that work on Kelpie, so they're dense, but they're the reference for how every part works.
 
 Run `./test.sh` before committing (Node 22 or later, `python3`, `git` and `jq`; nothing to install), or let git run it for you: `git config core.hooksPath scripts`. CI runs it on macOS and Linux. `tests/README.md` says how the tests work and how to add one; a security-relevant change comes with a test. The rules for working on Kelpie (development, testing, security, product) are in `.claude/rules/`.
 

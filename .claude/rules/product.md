@@ -13,7 +13,7 @@ Kelpie is for anyone who runs Claude agents in Herdr, set up from its profile di
 
 - Function first: start from what the person needs to do and make that comfortable; look and motion come second, and only where they help.
 - Calm and warm, never noisy: marks instead of words for states, one main action per header, motion only where something is happening.
-- Follow the visual kit in `CLAUDE.md` (buttons, marks, icons, dialogs, spacing) rather than inventing new pieces.
+- Follow the visual kit (`docs/reference/visual-kit.md`) (buttons, marks, icons, dialogs, spacing) rather than inventing new pieces.
 - What a person reads is human-readable: plain words, what happened and what to do next. Text cut off mid-line, raw names and silent failures are bugs.
 - A skin changes the look only, never the layout's sizes or behaviour.
 - Design for every width, a wide screen too: think of how anything new looks stretched across a very wide window as well as on a laptop. Rows, lines and inputs that would run far apart keep to a reading width, centred (`ROWS`, 760, as the subtask rows and the Ask line do), so what belongs together stays together. Check it in the demo at a wide window before calling it done.
