@@ -7,7 +7,7 @@ import { mock } from "herdr";
 import {
   OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
-import { resumeArgv } from "../../mods/kelpie/ui.js";
+import { GH_FIRST, ghFirst, resumeArgv } from "../../mods/kelpie/ui.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fakeBin, sh, tempDir } from "../lib/helpers.mjs";
@@ -185,11 +185,13 @@ describe("the argv agents start with", () => {
   });
   test("the profile's GitHub account goes to new and resumed agents as KELPIE_GH_ACCOUNT, a name only, with Kelpie's gh's folder", () => {
     const gh = { github: { owner: "acme", account: "work-me" } };
-    const BIN = `KELPIE_GH_BIN=${mock.state.appHome}/mods/kelpie/bin`;
-    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude"]);
-    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "-p"]);
-    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
-    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, "claude", "--resume", "abc"]);
+    const dir = `${mock.state.appHome}/mods/kelpie/bin`;
+    const BIN = `KELPIE_GH_BIN=${dir}`;
+    const first = ["/bin/sh", "-c", GH_FIRST, "sh", dir];
+    assert.deepEqual(claudeArgv(gh), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, ...first, "claude"]);
+    assert.deepEqual(claudeArgv({ ...gh, claude: { config: "/h/.claude-work" } }, "-p"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, ...first, "claude", "-p"]);
+    assert.deepEqual(resumeArgv("abc", null, "work-me"), ["env", "KELPIE_GH_ACCOUNT=work-me", BIN, ...first, "claude", "--resume", "abc"]);
+    assert.deepEqual(resumeArgv("abc", "/h/.claude-work", "work-me"), ["env", "CLAUDE_CONFIG_DIR=/h/.claude-work", "KELPIE_GH_ACCOUNT=work-me", BIN, ...first, "claude", "--resume", "abc"]);
     // A name that isn't a GitHub login is left out, never passed on.
     for (const bad of ["-u", "a b", "x;y", "bob\nx", "bob\n"]) assert.deepEqual(claudeArgv({ github: { account: bad } }), ["env", "KELPIE_GH_ACCOUNT=", "claude"], bad);
   });
@@ -201,6 +203,34 @@ describe("the argv agents start with", () => {
         assert.deepEqual(claudeArgv({ github: { account: "work-me" } }), ["env", "KELPIE_GH_ACCOUNT=work-me", "claude"], bad);
       }
     } finally { mock.state.appHome = home; }
+  });
+  // #322: Herdr runs an agent's argv through the person's login shell, whose setup (and the shell line
+  // in it) has run before env sets KELPIE_GH_BIN; Claude Code then copies its own PATH for every
+  // command. So a new or resumed agent's claude itself starts with Kelpie's gh first in PATH.
+  test("a new or resumed agent's claude starts with Kelpie's gh first in PATH, after the shell setup ran", () => {
+    const dir = `${mock.state.appHome}/mods/kelpie/bin`;
+    const fakes = fakeBin().add("claude", 'printf "%s|%s|%s" "$PATH" "$KELPIE_GH_BIN" "$*"');
+    for (const argv of [claudeArgv({ github: { account: "work-me" } }, "-p"), resumeArgv("abc", null, "work-me")]) {
+      const r = sh(argv[0], argv.slice(1), { env: { PATH: fakes.path } });
+      const [path, bin, args] = r.stdout.split("|");
+      assert.equal(path, `${dir}:${fakes.path}`);
+      assert.equal(bin, dir);
+      assert.ok(args === "-p" || args === "--resume abc", args);
+    }
+    // No account: PATH as the shell left it.
+    const plain = claudeArgv(null);
+    assert.equal(sh(plain[0], plain.slice(1), { env: { PATH: fakes.path } }).stdout.split("|")[0], fakes.path);
+  });
+  test("ghFirst: the folder is an argument, never script, and goes into PATH only when absolute with no colon", () => {
+    for (const bad of ["rel/bin", "/a:b", "/a\nb", ""]) assert.deepEqual(ghFirst([`KELPIE_GH_BIN=${bad}`], ["claude"]), ["claude"], bad);
+    assert.deepEqual(ghFirst(["KELPIE_GH_ACCOUNT="], ["claude"]), ["claude"]);
+    // The script itself checks it again, and runs nothing it holds.
+    const cwd = tempDir();
+    const fakes = fakeBin().add("show-path", 'printf %s "$PATH"');
+    for (const [folder, path] of [["/a:b", fakes.path], ["rel", fakes.path], ["/x $(touch pwned) `touch pwned`", `/x $(touch pwned) \`touch pwned\`:${fakes.path}`]]) {
+      assert.equal(sh("/bin/sh", ["-c", GH_FIRST, "sh", folder, "show-path"], { cwd, env: { PATH: fakes.path } }).stdout, path, folder);
+    }
+    assert.equal(existsSync(join(cwd, "pwned")), false, "nothing in the folder's name ran");
   });
   test("shellArgv: the GitHub account reaches the login shell's environment as an argument, never as script", () => {
     const argv = shellArgv({ github: { owner: "acme", account: "work-me" } });

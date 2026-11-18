@@ -1,10 +1,12 @@
 #!/bin/sh
-# Checks the person's own shell setup for a profile's GitHub account: starts their shell the way Herdr
-# starts an agent's (login and interactive, so it reads their .zshrc, or bash's .bash_profile) with
-# KELPIE_GH_ACCOUNT and KELPIE_GH_BIN set, as Kelpie starts them (githubEnv in ui.js), and asks GitHub
+# Checks the person's own shell setup for a profile's GitHub account: starts their shell the way a
+# Kelpie terminal's starts (login and interactive, so it reads their .zshrc, or bash's .bash_profile)
+# with KELPIE_GH_ACCOUNT and KELPIE_GH_BIN set, as Kelpie starts them (githubEnv in ui.js), and asks GitHub
 # whom gh acts as there (`shell=`) and in a program started from it (`program=`, a plain `sh -c`, which
 # reads no shell setup: what fails when only a gh() function is set up); `token=1` when the shell setup
-# sets GH_TOKEN itself. 15 s at most. Run by setup.js (the GitHub page's "Check my shell").
+# sets GH_TOKEN itself. 15 s at most. Run by setup.js (the GitHub page's "Check my shell"). Terminals
+# only: an agent's claude gets Kelpie's gh first in PATH from Kelpie, after its shell setup ran
+# (ghFirst in ui.js), as Herdr runs an agent's argv through the shell, before env sets the variables.
 #   gh-shell-check.sh <account>
 account=$1
 # A GitHub login: letters, digits and single hyphens, not at either end (GITHUB_LOGIN in ui.js). A case
