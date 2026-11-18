@@ -110,7 +110,7 @@ div #work-setup-fit [bg=#00000080]
             "Who Kelpie is on GitHub for this profile: whose pull requests show, and who approves. Lists the accounts gh is signed in to (gh auth login adds one). Default follows gh's active account, which another sign-in can change: keep your main account active (gh auth switch), and pick the others here."
         v_flex
           div [fg=dim]
-            "For agents and terminals too: Kelpie starts them with KELPIE_GH_ACCOUNT=kelpie-demo. Put this at the end of your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it), and gh there acts as that account, also when a program they start runs it. Agents started before it, and sessions resumed since, may still run without it: start a new one."
+            "Kelpie starts this profile's agents and terminals with KELPIE_GH_ACCOUNT=kelpie-demo, and its agents with Kelpie's gh first, so gh in an agent acts as that account, also when a program it runs runs gh. For its terminals too, put this at the end of your shell setup once (~/.zshrc, or for bash ~/.bashrc, with your ~/.bash_profile reading it): a terminal's shell reads your setup after Kelpie started it, which puts gh's own folder first again. A terminal opened before the line, or an agent started before this version of Kelpie, still acts as gh's active account: open a new one."
           h_flex [bg=background border=border]
             v_flex [fg=muted]
               div
@@ -120,7 +120,7 @@ div #work-setup-fit [bg=#00000080]
             h_flex #setup-gh-copy [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click}
               "Copy"
           h_flex
-            h_flex #setup-gh-shell-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Starts your shell as an agent's starts and asks GitHub who gh is there, and in a program started from it"
+            h_flex #setup-gh-shell-check [font="DM Sans" fg=muted hover(bg=hover fg=foreground)] {down:left click} tip="Starts your shell as a terminal's starts and asks GitHub who gh is there, and in a program started from it"
               "Check my shell"
           div
         h_flex #setup-notify-pulls {click}

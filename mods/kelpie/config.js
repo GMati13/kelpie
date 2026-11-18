@@ -48,7 +48,7 @@
 
 import { appHome, exec, notify, openOverlay } from "herdr";
 import { hc, panes, run, setShared, shared, spaces } from "./host.js";
-import { GITHUB_LOGIN, MOD, githubEnv, modFile, placed } from "./ui.js";
+import { GITHUB_LOGIN, MOD, ghFirst, githubEnv, modFile, placed } from "./ui.js";
 import { DEFAULT_HOURS } from "./estimates.js";
 import { accountKey, allowedFor, mayReach, whoAsks } from "./boundary.js";
 
@@ -291,13 +291,14 @@ export const claudeConfigOf = (profile) => profile?.claude?.config || null;
 // global config (.claude.json) and sign-in from elsewhere.
 export const isOwnClaude = (dir) => base(dir) === ".claude";
 // The argv that starts a new Claude agent for a profile (any extra arguments after "claude"), on its
-// Claude account and with its GitHub account named (githubEnv in ui.js).
-// A demo profile's (demo.js) start the demo's stand-in agent instead, waiting for its first message.
+// Claude account and with its GitHub account named (githubEnv in ui.js), Kelpie's gh first in PATH
+// (ghFirst in ui.js). A demo profile's (demo.js) start the demo's stand-in agent instead, waiting for
+// its first message.
 export function claudeArgv(profile, ...args) {
   if (profile?.demo) return ["sh", modFile("demo/agent.sh"), "idle", ""];
   const dir = claudeConfigOf(profile);
   const env = [...(!dir ? [] : isOwnClaude(dir) ? ["-u", "CLAUDE_CONFIG_DIR"] : [`CLAUDE_CONFIG_DIR=${dir}`]), ...githubEnv(profile?.github?.account)];
-  return [...(env.length ? ["env", ...env] : []), "claude", ...args];
+  return [...(env.length ? ["env", ...env] : []), ...ghFirst(env, ["claude", ...args])];
 }
 // The argv of a plain terminal for a profile: the user's own login shell, started with the profile's
 // Claude account already chosen (CLAUDE_CONFIG_DIR set, or cleared for Claude's own ~/.claude) and

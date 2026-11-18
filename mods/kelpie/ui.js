@@ -445,6 +445,18 @@ export function githubEnv(account) {
   const bin = modFile("bin");
   return [`KELPIE_GH_ACCOUNT=${account}`, ...(/^\/[^:\n\r]*$/.test(bin) ? [`KELPIE_GH_BIN=${bin}`] : [])];
 }
+// A Claude agent gets Kelpie's gh first in PATH from Kelpie itself, not from the shell line (#322):
+// Herdr runs an agent's argv through the person's `zsh -lic`, whose setup has run before `env` sets
+// KELPIE_GH_BIN, so the line never sees it there; and Claude Code's shell snapshot copies Claude's own
+// PATH for every command it runs. So `claude` starts through this fixed script, which puts "$1" first
+// in PATH (only an absolute folder with no colon, as the shell line checks) once the shell setup is
+// done and nothing reorders it, then runs the rest. The folder is an argument, never in the script.
+// A terminal still needs the shell line, as its login shell reads the setup after Kelpie set PATH.
+export const GH_FIRST = 'case $1 in *:*) ;; /*) PATH="$1:$PATH"; export PATH ;; esac; shift; exec "$@"';
+export function ghFirst(env, argv) {
+  const bin = env.find((e) => e.startsWith("KELPIE_GH_BIN="))?.slice("KELPIE_GH_BIN=".length);
+  return bin && /^\/[^:\n\r]*$/.test(bin) ? ["/bin/sh", "-c", GH_FIRST, "sh", bin, ...argv] : argv;
+}
 // Where an agent or terminal Kelpie starts runs, for the Claude in it (the plugin's SessionStart hook
 // and get_story, plugin/server.py): KELPIE_PROFILE, the profile's id, and KELPIE_STORY, the story's
 // key, empty on the Desk and in a space that isn't a story's. Ids and keys only, each checked first
@@ -459,13 +471,13 @@ export function placed(argv, profile, key = null) {
   return env.length && argv?.length ? ["env", ...env, ...argv] : argv;
 }
 // The argv that resumes a Claude session, on the account (config folder) it ran on, with the profile's
-// GitHub account (githubEnv). No config (the session is in Claude's own ~/.claude): no
-// CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids
+// GitHub account (githubEnv) and Kelpie's gh first in PATH (ghFirst). No config (the session is in
+// Claude's own ~/.claude): no CLAUDE_CONFIG_DIR, as herdr-core's environment sets none. The demo's made-up sessions (demo.js, ids
 // "demo-…"; Claude's are UUIDs) resume as its stand-in agent.
 export function resumeArgv(id, config, github = null) {
   if (String(id).startsWith("demo-")) return ["sh", modFile("demo/agent.sh"), "idle", ""];
   const env = [...(config ? [`CLAUDE_CONFIG_DIR=${config}`] : []), ...githubEnv(github)];
-  return [...(env.length ? ["env", ...env] : []), "claude", "--resume", id];
+  return [...(env.length ? ["env", ...env] : []), ...ghFirst(env, ["claude", "--resume", id])];
 }
 
 // The agent whose limits to show: the focused one, else the shown tab's, else the last one shown.

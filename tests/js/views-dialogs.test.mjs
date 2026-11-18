@@ -304,7 +304,7 @@ test("the profile dialog's GitHub page: with an account picked, the shell setup 
   const words = texts(el).join("\n");
   for (const s of ["GitHub account", "KELPIE_GH_ACCOUNT=kelpie-demo", "Check my shell"]) assert.ok(words.includes(s), s);
   // A login shell's bash reads ~/.bash_profile, not ~/.bashrc, unless the first reads the second.
-  assert.ok(words.includes("~/.bashrc, with your ~/.bash_profile reading it"), "the bash setup an agent's shell reads");
+  assert.ok(words.includes("~/.bashrc, with your ~/.bash_profile reading it"), "the bash setup a terminal's shell reads");
   assert.ok(byId(el, "setup-gh-copy"));
   snap("dialogs/profile-github", el);
 });
