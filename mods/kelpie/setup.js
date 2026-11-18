@@ -166,7 +166,8 @@ export class Setup {
     this.prompt = TextareaState.new({ value: board?.prompt || DEFAULT_PROMPT });
     this.prompt.set_auto_grow(3, 10);
     this.prompt.on("change", (_e, cx) => cx.notify());
-    // How a ticket is worked (#244, skills.ticket): automatic (unset: the ticket prompt), Kelpie's
+    // How a ticket is worked (#244, skills.ticket): automatic (unset: /kelpie:ticket with the plugin,
+    // the ticket prompt when one is saved or without the plugin, #246), Kelpie's
     // own routine, or one of the person's skills by its slash name. Whether the plugin, whose
     // dispatcher reads the pin, is on the profile's account is asked once, for the page's hint.
     const pin = saved.skills?.ticket ?? null;
@@ -866,11 +867,13 @@ export class Setup {
         page("Prompts", "The first message each kind of agent gets. Each starts as a default; Reset brings it back."),
         group("Stories", hasBoard ? null : "Saved once a board is connected"),
         field("Use for tickets", choice("setup-ticket-use", [
-          { label: "Automatic", value: "auto", on: this.ticketUse === "auto", tip: "The message below, as it is" },
+          { label: "Automatic", value: "auto", on: this.ticketUse === "auto", tip: "Your own skill for it when one fits, else Kelpie's routine; a message saved below instead" },
           { label: "Kelpie's own", value: "kelpie", on: this.ticketUse === "kelpie", tip: "Kelpie's routine, even where a skill of yours fits" },
           { label: "A skill of yours", value: "skill", on: this.ticketUse === "skill", tip: "Always this skill, without looking for others" },
         ], (v) => { this.ticketUse = v; }), this.ticketUse === "auto"
-          ? "How an agent works on a ticket: the message below, sent as it is."
+          ? (this.pluginReady === false
+            ? "How an agent works on a ticket: the message below, as the Kelpie plugin isn't on this profile's Claude account. With it, Kelpie sends /kelpie:ticket, which uses your own skill for tickets when one fits, else Kelpie's routine."
+            : "Kelpie sends /kelpie:ticket with the ticket's key and link: your own skill for working a ticket when one fits, else Kelpie's routine. A message you change below is sent instead.")
           : `Kelpie sends /kelpie:ticket with the ticket's key and link and this choice, and the Kelpie plugin's dispatcher does it that way, saying so in its first line; the message below isn't used.${this.pluginReady === false ? " The Kelpie plugin isn't on this profile's Claude account yet: Let me configure it for you offers to install it." : ""}`),
         this.ticketUse === "skill" && field("Skill", input(this.ticketSkill), "Its slash name, as you'd type it in Claude: /acme-dev:ticket. When the agent can't find it, it says so and uses Kelpie's routine."),
         promptField("prompt", "Agent started on a ticket", this.prompt, DEFAULT_PROMPT,

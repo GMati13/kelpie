@@ -110,15 +110,16 @@ describe("prompt templates", () => {
     assert.equal(jiraTask({ prompt: "   " }, fields), jiraTask(null, fields));
     assert.equal(jiraTask(null, fields, "Orchestrate {key}"), "Orchestrate ABC-1");
   });
-  test("jiraTask pinned (#244): the dispatcher with the pin, the note after it; the orchestrator stays its own", () => {
+  test("jiraTask pinned (#244): the dispatcher with the pin, over the board's own prompt, the note after it; the orchestrator stays its own", () => {
     const fields = { key: "ABC-1", url: "https://jira.example.com/browse/ABC-1", parent: "ABC-0", subtasks: ["ABC-2"] };
-    assert.equal(jiraTask({ prompt: "Work on {key} my way" }, fields, undefined, "", { pin: "/acme-dev:ticket" }),
+    const pinned = (pin) => ({ id: "work", skills: { ticket: pin } });
+    assert.equal(jiraTask({ prompt: "Work on {key} my way" }, fields, undefined, "", { profile: pinned("/acme-dev:ticket") }),
       "/kelpie:ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: /acme-dev:ticket");
-    assert.equal(jiraTask(null, fields, undefined, "Then this.", { pin: "kelpie", others: true }),
+    assert.equal(jiraTask(null, fields, undefined, "Then this.", { profile: pinned("kelpie"), others: true }),
       `/kelpie:ticket ABC-1 https://jira.example.com/browse/ABC-1\nuse: kelpie\n\nThen this.\n\n${OTHERS}`);
-    assert.equal(jiraTask(null, fields, "Orchestrate {key}", "", { pin: "kelpie" }), "Orchestrate ABC-1");
+    assert.equal(jiraTask(null, fields, "Orchestrate {key}", "", { profile: pinned("kelpie"), orchestrate: true }), "Orchestrate ABC-1");
     // A pin that isn't one is never sent: the ticket prompt goes as without one.
-    assert.equal(jiraTask(null, fields, undefined, "", { pin: "/x\nrm -rf ~" }), jiraTask(null, fields));
+    assert.equal(jiraTask(null, fields, undefined, "", { profile: pinned("/x\nrm -rf ~") }), jiraTask(null, fields));
   });
   test("fillLines: a line whose placeholders all came out empty goes, others stay", () => {
     const t = "Ticket {ticket}: {summary}\nPRs:\n{prs}\n\nKeep {other}\nPlain line";

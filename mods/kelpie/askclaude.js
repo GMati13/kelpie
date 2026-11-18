@@ -14,7 +14,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
 import { SMALL, ago, chrome, icon, own, sessionTitle, stop, textButton, tint } from "./ui.js";
-import { ASK_PROMPTS, OTHERS, askText, checkedKey, checkedLink, checkedPath, fenced, promptValue, pullParts } from "./config.js";
+import { ASK_PROMPTS, ASK_SKILLS, OTHERS, askText, checkedKey, dispatchText, checkedLink, checkedPath, fenced, promptValue, pullParts } from "./config.js";
 
 // The Claudes a story's ask may go to: those in its space, and those on one of its keys elsewhere
 // (a tab named after the key), never another story's or profile's. Outside a story (`story` null),
@@ -95,14 +95,14 @@ export function fileAbout(f, key) {
   if (g.url) {
     const pull = pullParts(g.url), path = checkedPath(f.path);
     if (!pull) return { ...base, text: `About a file of a pull request of ${story ? story.slice(2, -1) : "this story"}.` };
-    return { ...base, pull: pull.url, text: path
+    return { ...base, pull: pull.url, args: [path ? `file: ${path}` : "", pull.url], text: path
       ? `About the file ${path} in the pull request ${pull.repo}#${pull.number}${story}: ${pull.url} (its changes: ${pull.url}/files).`
       : `About a file of the pull request ${pull.repo}#${pull.number}${story} whose path Kelpie doesn't pass on (it isn't plain characters): its changes are at ${pull.url}/files.` };
   }
   const path = promptValue("path", f.path), repo = promptValue("repo", g.repo);
   const full = promptValue("path", g.path ? `${g.path}/${f.path}` : f.path);
   const state = g.committed ? `committed on ${promptValue("branch", g.committed.branch)}, no pull request yet` : "not committed yet";
-  return { ...base, text: `About the file ${path} in ${repo}${story}, ${state}: ${full}.`, others: false };
+  return { ...base, args: [checkedPath(full) ? `file: ${checkedPath(full)}` : ""], text: `About the file ${path} in ${repo}${story}, ${state}: ${full}.`, others: false };
 }
 
 // What's asked about, for lines of a file in Changes (KELPIE-227): the file as fileAbout() says it,
@@ -111,11 +111,16 @@ export function fileAbout(f, key) {
 // removed, the text), fenced, each cleaned (promptValue()), LINES_MAX at most. A pull request's lines
 // are anyone's code: only which lines go, and Claude reads them there (KELPIE-302).
 export const LINES_MAX = 80;
+// The skill line's `lines: <from>-<to>` from which lines they are ("line 12", "lines 9-14"), after the file.
+const withLines = (args, what) => {
+  const m = /(\d{1,7})(?:\s*[-–]\s*(\d{1,7}))?/.exec(String(what ?? ""));
+  return m ? [args[0], `lines: ${m[1]}-${m[2] ?? m[1]}`, ...args.slice(1)] : args;
+};
 export function linesAbout(f, key, rows, what) {
   const file = fileAbout(f, key);
   if (file.pull) {
     const range = promptValue("note", what);
-    return { ...file, id: `lines:${f.id ?? f.path}:${range}`, kind: "lines", label: `${file.name} ${range}`,
+    return { ...file, id: `lines:${f.id ?? f.path}:${range}`, kind: "lines", label: `${file.name} ${range}`, args: withLines(file.args, what),
       text: `${file.text}\n\nAbout ${range} of it (line numbers as in its diff): read them in the pull request.` };
   }
   const shown = rows.slice(0, LINES_MAX).map((r) => {
@@ -125,8 +130,10 @@ export function linesAbout(f, key, rows, what) {
   });
   if (rows.length > LINES_MAX) shown.push(`… and ${rows.length - LINES_MAX} lines more`);
   const range = promptValue("note", what);
-  return { ...file, id: `lines:${f.id ?? f.path}:${range}`, kind: "lines", label: `${file.name} ${range}`,
-    text: `${file.text}\n\nAbout ${range} of it (old and new line numbers as in the diff, + added, - removed):\n\n${fenced("the lines", shown.join("\n"))}` };
+  const lines = fenced("the lines", shown.join("\n"));
+  return { ...file, id: `lines:${f.id ?? f.path}:${range}`, kind: "lines", label: `${file.name} ${range}`, args: withLines(file.args, what),
+    note: `Old and new line numbers as in the diff, + added, - removed:\n\n${lines}`,
+    text: `${file.text}\n\nAbout ${range} of it (old and new line numbers as in the diff, + added, - removed):\n\n${lines}` };
 }
 
 // What's asked about, for a passage the person copied (KELPIE-226): Herdr doesn't tell a mod what's
@@ -139,7 +146,9 @@ export function textAbout(text, it, { found = false } = {}) {
   let body = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   if (body.length > PASSAGE_MAX) body = `${body.slice(0, PASSAGE_MAX - 1).trimEnd()}…`;
   const head = body.replace(/\s+/g, " ");
+  const where = found ? `from the description of the story ${story}` : `which I copied while looking at the story ${story}`;
   return { id: `text:${head.slice(0, 60)}`, key: story, name: "the passage", kind: "text", others: true,
+    args: [checkedKey(it.key)], note: `About this passage, ${where}:\n\n${fenced("the passage", body)}`,
     label: `“${head.length > 28 ? `${head.slice(0, 27)}…` : head}”`,
     text: `About this passage, ${found ? `from the description of the story ${story}` : `which I copied while looking at the story ${story}`}:\n\n${fenced("the passage", body)}` };
 }
@@ -156,18 +165,18 @@ export function ticketAbout(it, kind, x = null, { url = null, name = null } = {}
   if (kind === "pr") {
     const pull = pullParts(url);
     const pr = pull ? `${pull.repo}#${pull.number}` : promptValue("repo", name ?? "");
-    return { id: `pr:${pr}`, key: story, name: pr, label: pr, kind, others: false,
+    return { id: `pr:${pr}`, key: story, name: pr, label: pr, kind, others: false, args: [pull?.url ?? ""],
       text: pull ? `About the pull request ${pr} of ${story || "this story"}: ${pull.url}.` : `About a pull request of ${story || "this story"}.` };
   }
   const page = checkedLink(url);
   const at = page ? `: ${page}` : "";
   if (kind === "sub") {
     const key = checkedKey(x.key);
-    return { id: `sub:${key}`, key, name: key, label: `${key} · ${title}`, kind, others: false,
+    return { id: `sub:${key}`, key, name: key, label: `${key} · ${title}`, kind, others: false, args: [[key, page].filter(Boolean).join(" ")],
       text: `About the subtask ${key} of the story ${story}${at}.` };
   }
   const subs = (it.subs ?? []).filter((s) => s.key !== it.key && checkedKey(s.key)).map((s) => `${s.key}${s.you ? " (mine)" : ""}`);
-  return { id: `story:${story}`, key: story, name: story, label: `${story} · the story`, kind: "story", others: false,
+  return { id: `story:${story}`, key: story, name: story, label: `${story} · the story`, kind: "story", others: false, args: [[story, page].filter(Boolean).join(" ")],
     text: `About the story ${story}${at}.${subs.length ? ` Its subtasks: ${subs.join(", ")}.` : ""}` };
 }
 
@@ -199,10 +208,18 @@ export const suggestionsFor = (kind) => (SUGGESTIONS[kind] ?? []).map((id) => ({
 // The message: what it's about, then the suggestion (the profile's wording) or what was typed, then,
 // with the ask's `id`, the line asking for a short answer back (handBack()), then OTHERS when what it's
 // about is others' work. Null when there's nothing to ask.
+// With the plugin (#246) it's the suggestion's skill, or `/kelpie:ask` for a typed question, with what
+// it's about as that skill takes it (`args`: checked keys, links and paths), then the person's
+// question and the lines or passage they pointed at, fenced (`note`); a suggestion the person
+// rewrote (their prompt for it) stays in their words.
 export function askMessage(profile, about, { suggestion, note } = {}, id = null) {
   const what = suggestion ? askText(profile, suggestion) : promptValue("note", note ?? "").trim();
   if (!what) return null;
-  return `${about.text}\n\n${what}${id ? `\n\n${handBack(id)}` : ""}${about.others ? `\n\n${OTHERS}` : ""}`;
+  const end = `${id ? `\n\n${handBack(id)}` : ""}${about.others ? `\n\n${OTHERS}` : ""}`;
+  const skill = suggestion ? ASK_SKILLS[suggestion] : "ask";
+  const said = skill && (about.args ?? []).some((a) => String(a ?? "").trim()) && dispatchText(profile, skill, about.args,
+    { saved: Boolean(suggestion && profile?.prompts?.[suggestion]?.trim()), note: [suggestion ? "" : what, about.note].filter(Boolean).join("\n\n") });
+  return said ? `${said}${end}` : `${about.text}\n\n${what}${end}`;
 }
 
 // Asked from the Ask line, a Claude hands a short answer back to Kelpie, which puts it on the story's

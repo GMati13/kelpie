@@ -64,9 +64,12 @@ describe("configure-profile", () => {
   });
   test("goes through the prompts with the person on scope all and prompts, saving only what differs", () => {
     const prompts = guide.split("### 7. Prompts")[1].split("\n### ")[0];
-    assert.match(prompts, /for `all` and the `prompts` scope, go through them with the person/);
+    assert.match(prompts, /For `all` and the `prompts` scope, go through this with the person/);
     assert.match(prompts, /\*\*Save only what differs from the default\*\*/);
-    assert.match(prompts, /\*\*Skip what fits, and let them stop\.\*\*/);
+    // Jobs go to the person's own skills or Kelpie's routine (#246): it asks only what's left, and
+    // a saved prompt is said to stand in for the job's skill.
+    assert.match(prompts, /\*\*Say how jobs are handed over, then ask only what's left\.\*\*.*Don't go through how they start tickets, merge or review job by job.*"No" ends the round/s);
+    assert.match(prompts, /A saved prompt replaces the skill for its job/);
     assert.match(prompts, /never how to reach the board or GitHub/);
     assert.ok(prompts.includes("references/default-prompts.md"), "points at the defaults");
     assert.match(guide.split("## Setting up, from A to Z")[1], /^For `all`[^\n]*ends with the prompts and messages/m);

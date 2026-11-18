@@ -328,7 +328,8 @@ test("a suggestion asks the Claude on the subtask's key, and leaves no history i
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1);
-  assert.match(sent[0][0].at(-1), /^About the subtask ACME-172 /);
+  // The demo counts as having the plugin (#246): the suggestion's skill, about the subtask.
+  assert.equal(sent[0][0].at(-1), "/kelpie:explain ACME-172 https://jira.example.com/browse/ACME-172");
   assert.deepEqual(mock.of("run").filter(([n]) => n === "space.select"), [], "the person stays where they are");
   // Sent, it leaves no line in the story: its answer is the Claude's own, in its chat.
   assert.equal(byId(view.render(cx), "ask-thread"), null);
@@ -390,7 +391,7 @@ test("Catch me up goes to the story's own Claude, not a new one", async () => {
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1, "sent to the open Claude");
-  assert.match(sent[0][0].at(-1), /Catch me up on this story/);
+  assert.equal(sent[0][0].at(-1), "/kelpie:catch-up ACME-171 https://jira.example.com/browse/ACME-171");
   assert.equal(mock.of("run").filter(([n]) => n === "space.new" || n === "tab.new").length, 0, "no new Claude");
 });
 test("Plan this starts a new Claude", async () => {
@@ -463,7 +464,7 @@ test("the Ask line: one offer at rest; writing makes room and offers a clear; cl
   await new Promise((r) => setImmediate(r));
   const sent = mock.of("hc").filter(([a]) => a[0] === "send");
   assert.equal(sent.length, 1);
-  assert.match(sent[0][0].at(-1), /Catch me up on this story/, "asked in the profile's words");
+  assert.equal(sent[0][0].at(-1), "/kelpie:catch-up ACME-171 https://jira.example.com/browse/ACME-171", "asked as its skill");
   assert.match(render(view.render(cx), skinTheme()), /spin/, "the sparkles brew after a send");
 });
 

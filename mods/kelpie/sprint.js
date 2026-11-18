@@ -206,7 +206,7 @@ export class Sprint extends Source {
     const st = this.st;
     return iconButton(t, id, chrome("terminal"), (_e, cx) => {
       cx.stop_propagation();
-      startAgent(st, { name: fields.key, task: jiraTask(st.setup.jira, { ...fields, url: `${site}/browse/${fields.key}` }) });
+      startAgent(st, { name: fields.key, task: jiraTask(st.setup.jira, { ...fields, url: `${site}/browse/${fields.key}` }, undefined, "", { profile: st.setup }) });
     }, "Start an agent on this ticket").size(20);
   }
 

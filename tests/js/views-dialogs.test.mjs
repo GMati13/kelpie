@@ -333,7 +333,12 @@ test("the profile dialog's Prompts page: a ticket pinned to Kelpie's routine or 
   let el = d.render(cx);
   assert.deepEqual(texts(byId(el, "setup-ticket-use-0")), ["Automatic"]);
   assert.equal(byId(el, "setup-ticket-use-1") && texts(byId(el, "setup-ticket-use-1"))[0], "Kelpie's own");
-  assert.ok(texts(el).join("\n").includes("the message below, sent as it is"), "automatic: the prompt goes as it is");
+  // Automatic (#246): the ticket's skill, which uses the person's own skill or Kelpie's routine; a
+  // changed message goes instead. Without the plugin, the message as it is.
+  assert.ok(texts(el).join("\n").includes("your own skill for working a ticket when one fits, else Kelpie's routine"), "automatic: the ticket's skill");
+  d.pluginReady = false;
+  assert.ok(texts(d.render(cx)).join("\n").includes("the message below, as the Kelpie plugin isn't on this profile's Claude account"), "without the plugin: the message");
+  d.pluginReady = null;
   press(el, "setup-ticket-use-2", cx);
   el = d.render(cx);
   assert.ok(texts(el).join("\n").includes("Kelpie sends /kelpie:ticket"), "pinned: says what's sent instead");

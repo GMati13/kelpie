@@ -72,7 +72,9 @@ describe("only checked values reach Claude, whatever the route", () => {
     }
     askClaude(st, { ...it, space: null }, it.key, { id: "new" }, ticketAbout(it, "story", null, { url: ticketLink({ kind: "jira", cfg: profile.jira }, d, it.key) }), { suggestion: "explain" });
     const [task] = await until(() => tasks().length && tasks());
-    assert.match(task, new RegExp(`^Work on ${it.key}\\nhttps://jira\\.example\\.com/browse/${it.key}\\n`));
+    // The demo's account counts as having the plugin (#246): the suggestion's skill, with the story's
+    // key and page alone.
+    assert.equal(task, `/kelpie:explain ${it.key} https://jira.example.com/browse/${it.key}`);
     clean(task);
   });
   test("an open Claude asked about a story, a subtask, a pull request, its file and lines", async () => {
