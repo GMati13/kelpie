@@ -198,8 +198,10 @@ export class Confirm {
   change(t, c, i) {
     const ADD = /^#[0-9a-f]{6}$/i.test(t.ansi2 ?? "") ? t.ansi2 : "#8cc26e", DEL = /^#[0-9a-f]{6}$/i.test(t.ansi1 ?? "") ? t.ansi1 : "#e5786d";
     const tag = c.was == null ? "new" : c.now == null ? "removed" : null;
-    // A prompt from or back to its default: still a change of lines, said beside its name.
-    const note = c.to === "default" ? "back to the default" : c.from === "default" ? "replacing the default" : null;
+    // A prompt from or back to its default (a job's: its skill line, #246): still a change of lines,
+    // said beside its name.
+    const skill = /^\/kelpie:/.test(c.to === "default" ? c.now ?? "" : c.was ?? "");
+    const note = c.to === "default" ? (skill ? "back to its skill" : "back to the default") : c.from === "default" ? (skill ? "replacing its skill" : "replacing the default") : null;
     const font = c.kind === "command" ? "mono" : c.kind === "prompt" ? "reading" : "ui";
     const lines = this.diffs?.[i] ?? lineDiff(c.was, c.now);
     const shown = (text) => text.replace(/^ +/, (sp) => "\u00a0".repeat(sp.length)) || "\u00a0";

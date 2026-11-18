@@ -7,10 +7,12 @@ import { join, relative } from "node:path";
 import { REPO, bodyOf, readRepo, until } from "../lib/helpers.mjs";
 import { mock } from "herdr";
 import { HOLD_TRIES, sendToClaude } from "../../mods/kelpie/config.js";
+import { pluginOn } from "../lib/plugin.mjs";
 
 let foreground;
 beforeEach(() => {
   mock.reset();
+  pluginOn();
   foreground = null;
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify(foreground === undefined ? {} : { foreground }), stderr: "" } : undefined);
 });
@@ -137,7 +139,7 @@ test("every hc send in the mods goes through sendToClaude", () => {
   // the only way to it.
   const config = readRepo("mods/kelpie/config.js");
   assert.match(bodyOf(config, "async function sendOnce(address, text) {"), /await hc\(\["get", address[\s\S]*if \(!claude\) throw[\s\S]*await hc\(\["send", "--json", "--", address, text\]\)/);
-  assert.match(bodyOf(config, "export async function sendToClaude(address, text, { onHeld = null } = {}) {"), /return await sendOnce\(address, text\)/);
+  assert.match(bodyOf(config, "export async function sendToClaude(address, text, { onHeld = null, profile = null } = {}) {"), /return await sendOnce\(address, text\)/);
   assert.equal(config.match(/\bsendOnce\(/g).length, 2, "sendOnce() is called only by sendToClaude()");
   assert.match(seen[0], /^mods\/kelpie\/config\.js:/);
 });

@@ -22,13 +22,13 @@ div #confirm-fit
             div [fg=muted]
               "Messages · Fix checks"
             div [fg=dim]
-              "replacing the default"
+              "replacing its skill"
           v_flex [border=border bg=background]
             h_flex #confirm-change-1-0 [bg=ansi1/24]
               div [fg=ansi1]
                 "−"
               div [font="Fraunces" fg=foreground]
-                "The checks fail on {prs}. Find out why and fix them."
+                "/kelpie:fix-checks <pull request>"
             h_flex #confirm-change-1-1 [bg=ansi2/24]
               div [fg=ansi2]
                 "+"

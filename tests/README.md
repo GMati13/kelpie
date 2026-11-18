@@ -36,6 +36,7 @@ tests/lib/stories.mjs   story data: the demo loaded as the story list loads it, 
 tests/lib/views.mjs     the demo as a Herdr world at a fixed time, a fake cx, draw() (Snapshots, below)
 tests/lib/snapshot.mjs  a view's element tree as text, compared with tests/snapshots/ (Snapshots, below)
 tests/lib/askline.mjs   the Ask line in a view: fire its input's events (emit()), ask one of its asks by id as a click would (pickAndSend(): the offer, or a row of its menu)
+tests/lib/plugin.mjs    pluginOn(): the Kelpie plugin noted as on a Claude account, so a job's skill line goes out (config.js withPlugin()) with no check to fake
 tests/js/*.test.mjs     mods' logic, under the stubs; views-*.test.mjs, what the views draw
 tests/snapshots/        the views' snapshots, one .txt per state (plain/: the Kelpie-Plain layout)
 tests/shell/*.test.mjs  shell scripts run for real in temp folders (jira.sh, gh.sh, avatar.sh, install.sh, ...)

@@ -10,6 +10,7 @@ import { mock } from "herdr";
 import { OTHERS } from "../../mods/kelpie/config.js";
 import { reviewTaskRows, sendStoryReview, startStoryReview, storyTaskRows, tabKey } from "../../mods/kelpie/stories.js";
 import { skinTheme } from "../../mods/kelpie/skins/index.js";
+import { pluginOn } from "../lib/plugin.mjs";
 
 const profile = { id: "w", name: "W", folder: "/work/acme", github: { owner: "acme" } };
 const story = { key: "ABC-1", title: "Show times in each zone", subs: [] };
@@ -19,6 +20,7 @@ const checkouts = () => mock.of("exec").filter(([cmd, args]) => cmd === "sh" && 
 
 beforeEach(() => {
   mock.reset();
+  pluginOn();
   mock.state.shared.set("kelpie.profiles", { w: profile });
   mock.on.exec = (cmd, args) => (cmd === "sh" && String(args[1]).includes("worktree add") ? { code: 0, stdout: `ok:/work/acme/worktrees/review-${args.at(-2)}-${args.at(-1)}\n`, stderr: "" } : undefined);
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude" } }), stderr: "" } : { code: 0, stdout: "{}", stderr: "" });
@@ -33,8 +35,8 @@ describe("Review on a story's heading", () => {
     assert.equal(args.tab, "Review ABC-1");
     assert.equal(args.folder, "/work/acme", "the profile's folder, never a checkout");
     for (const p of prs) assert.ok(args.task.includes(p.url), p.url);
-    assert.match(args.task, /is in \/work\/acme\/worktrees\/review-web-4: read it there/);
-    assert.match(args.task, /is in \/work\/acme\/worktrees\/review-api-9: read it there/);
+    assert.ok(args.task.startsWith("/kelpie:review https://github.com/acme/web/pull/4\ncheckout: /work/acme/worktrees/review-web-4\n"), args.task);
+    assert.match(args.task, /\ncheckout: \/work\/acme\/worktrees\/review-api-9\n/);
     // KELPIE-302: their pages and checkouts only, never their titles or authors.
     for (const p of prs) assert.ok(!args.task.includes(p.title), p.title);
     assert.ok(!args.task.includes(OTHERS));

@@ -205,21 +205,20 @@ export function blocksText(blocks, max = 2000) {
 const SUGGESTIONS = { file: ["explain", "check", "fixit", "test"], lines: ["explain", "check", "fixit"], text: ["explain", "left"], story: ["catchup", "left", "plan", "explain"], sub: ["left", "explain"], pr: ["explain", "check"] };
 export const suggestionsFor = (kind) => (SUGGESTIONS[kind] ?? []).map((id) => ({ id, label: ASK_PROMPTS.find((a) => a.id === id).label }));
 
-// The message: what it's about, then the suggestion (the profile's wording) or what was typed, then,
-// with the ask's `id`, the line asking for a short answer back (handBack()), then OTHERS when what it's
-// about is others' work. Null when there's nothing to ask.
-// With the plugin (#246) it's the suggestion's skill, or `/kelpie:ask` for a typed question, with what
-// it's about as that skill takes it (`args`: checked keys, links and paths), then the person's
-// question and the lines or passage they pointed at, fenced (`note`); a suggestion the person
-// rewrote (their prompt for it) stays in their words.
+// The message: the suggestion's skill, or `/kelpie:ask` for a typed question (#246), with what it's
+// about as that skill takes it (`args`: checked keys, links and paths), then the person's question
+// and the lines or passage they pointed at, fenced (`note`). A suggestion the person rewrote (their
+// prompt for it) goes in their words, after what it's about (`text`). Then, with the ask's `id`, the
+// line asking for a short answer back (handBack()), then OTHERS when what it's about is others' work.
+// Null when there's nothing to ask.
 export function askMessage(profile, about, { suggestion, note } = {}, id = null) {
-  const what = suggestion ? askText(profile, suggestion) : promptValue("note", note ?? "").trim();
-  if (!what) return null;
+  const typed = suggestion ? "" : promptValue("note", note ?? "").trim();
+  if (!suggestion && !typed) return null;
   const end = `${id ? `\n\n${handBack(id)}` : ""}${about.others ? `\n\n${OTHERS}` : ""}`;
-  const skill = suggestion ? ASK_SKILLS[suggestion] : "ask";
-  const said = skill && (about.args ?? []).some((a) => String(a ?? "").trim()) && dispatchText(profile, skill, about.args,
-    { saved: Boolean(suggestion && profile?.prompts?.[suggestion]?.trim()), note: [suggestion ? "" : what, about.note].filter(Boolean).join("\n\n") });
-  return said ? `${said}${end}` : `${about.text}\n\n${what}${end}`;
+  const own = suggestion ? askText(profile, suggestion) : "";
+  const said = dispatchText(profile, suggestion ? ASK_SKILLS[suggestion] : "ask", about.args ?? [],
+    { saved: Boolean(own), note: [typed, about.note].filter(Boolean).join("\n\n") });
+  return said ? `${said}${end}` : `${about.text}\n\n${own}${end}`;
 }
 
 // Asked from the Ask line, a Claude hands a short answer back to Kelpie, which puts it on the story's

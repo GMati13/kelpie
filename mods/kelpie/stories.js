@@ -18,7 +18,7 @@ import { CONTROL, ROW_CONTROL, INSET, MOD, waitColor, ScrollPool, SMALL, TEXT, T
 import { countShots } from "./shots.js";
 import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, ideaText, pluginOn, pullAsk, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
+import { OTHERS, PREVIEWS, ideaText, pullAsk, withPlugin, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketLink, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -358,6 +358,9 @@ async function spaceFor(profile, it, before, ms = 3000) {
 // space for it. Shows that space; returns its id, null when a new space didn't show up in time.
 // Its terminal is told the profile and the story (placed(), ui.js), whichever tab it is.
 async function launch(profile, it, { name, folder, argv: given, task }) {
+  // A skill line needs the plugin on the profile's account (config.js withPlugin()): without, the
+  // dialog offering to install it opens and nothing starts.
+  if (task && !(await withPlugin(profile, task))) return null;
   const argv = placed(given, profile, it.key);
   const tab = { name, folder: folder ?? profile.folder, ...(argv ? { argv } : {}), ...(task ? { task } : {}) };
   if (it.space) {
@@ -437,13 +440,14 @@ const letGo = (it) => finished(it) || Boolean(it.reassigned);
 const storyKeys = (it) => [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a) => a.indexOf(k) === i);
 
 // What to ask an agent about some pull requests: one button each, by what they need.
-// What a pull request's buttons ask its agent; the messages are the profile's (config.js askText).
+// What a pull request's buttons ask its agent: the job's skill, or the person's own message for it.
 const ASK = { fix: "Fix checks", comments: "Address comments", merge: "Merge" };
 // Each pull request by its page, rebuilt from its checked owner, repo and number (KELPIE-302): the
-// button's skill line with the plugin (config.js pullAsk()), else the profile's message. A button's
-// tip says what it asks in words (askWords), never the skill line.
+// button's skill line (config.js pullAsk()), or the person's own message. A button's tip says what it
+// asks in words (askWords), never the skill line.
 const askOf = (profile, kind, ps) => pullAsk(profile, kind, ps.map((p) => p.url));
-const askWords = (profile, kind, ps) => askText(profile, kind, { prs: ps.map((p) => pullLink(p.url)).filter(Boolean).join(" and ") });
+const ASK_WORDS = { fix: "Find why the checks fail on", comments: "Address the review comments on", merge: "Merge" };
+const askWords = (_profile, kind, ps) => `${ASK_WORDS[kind] ?? ASK[kind]} ${ps.map(prName).join(" and ")}.`;
 // Changes requested comes before failing checks, as in need() and the marks (prState()): a pull
 // request in both once had no header action, as the header looks for need()'s kind.
 const askFor = (p) => (p.merged ? null : p.reviewDecision === "CHANGES_REQUESTED" ? "comments" : failing(p) ? "fix" : ready(p) ? "merge" : null);
@@ -2857,7 +2861,7 @@ function sendAsked(about, agent, text, what) {
   run("space.select", { id: agent.space });
   run("pane.focus", { pane: agent.pane });
   say(about, `Sending ${what} to ${name}…`);
-  return sendToClaude(agent.address, text, { onHeld: () => held(about, what, name) })
+  return sendToClaude(agent.address, text, { onHeld: () => held(about, what, name), profile: about.profile })
     .then(() => say(about, `Sent ${what} to ${name}.`))
     .catch((e) => failed(String(e?.message ?? e)));
 }
@@ -2894,7 +2898,7 @@ const patchEntry = (profile, key, id, patch) => setThread(profile, key, (list) =
 // Sends a thread entry's question to its Claude now; why it didn't go stays on the entry.
 function sendEntry(profile, key, e) {
   patchEntry(profile, key, e.id, { status: "sent", at: Date.now(), waiting: false });
-  return sendToClaude(e.address, e.text, { onHeld: () => held({ profile, keys: key }, "your question", e.to) })
+  return sendToClaude(e.address, e.text, { onHeld: () => held({ profile, keys: key }, "your question", e.to), profile })
     .catch((err) => patchEntry(profile, key, e.id, { status: "failed", why: String(err?.message ?? err) }));
 }
 
@@ -2931,7 +2935,7 @@ export function askClaude(st, it, key, row, about, ask) {
     setThread(profile, it.key, (list) => withEntry(list, e));
     if (e.status === "held") return say(said, `Holding your question for ${name}: it's mid-task, and gets it when its turn ends.`);
     say(said, `Sending your question to ${name}…`);
-    return sendToClaude(a.address, text, { onHeld: () => held(said, "your question", name) })
+    return sendToClaude(a.address, text, { onHeld: () => held(said, "your question", name), profile })
       .then(() => say(said, `Sent your question to ${name}.`))
       .catch((err) => { const why = String(err?.message ?? err); patchEntry(profile, it.key, e.id, { status: "failed", why }); failed(why); });
   }
@@ -3047,11 +3051,12 @@ function askPull(profile, p, kind, key) {
   const text = askOf(profile, kind, [p]);
   const a = pullAgent(p);
   if (!a) {
-    openDesk(profile, { name: `PR ${prName(p)}`, argv: claudeArgv(profile), task: text });
-    return say(about, `Asked a new agent on the Desk: ${ASK[kind].toLowerCase()} ${prName(p)}.`);
+    // Nothing to say when it didn't start: without the plugin its install dialog says why.
+    return openDesk(profile, { name: `PR ${prName(p)}`, argv: claudeArgv(profile), task: text })
+      .then((id) => id && say(about, `Asked a new agent on the Desk: ${ASK[kind].toLowerCase()} ${prName(p)}.`));
   }
   if (a.status === "blocked") return say(about, `${a.tab_name} is waiting for your answer: answer it first.`);
-  sendToClaude(a.address, text, { onHeld: () => held(about, "it", a.tab_name) }).then(() => { showPullAgent(p); say(about, `Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
+  sendToClaude(a.address, text, { onHeld: () => held(about, "it", a.tab_name), profile }).then(() => { showPullAgent(p); say(about, `Asked ${a.tab_name}: ${ASK[kind].toLowerCase()} ${prName(p)}.`); })
     .catch((e) => say(about, `Couldn't send it to ${a.tab_name}: ${String(e?.message ?? e)}`));
 }
 
@@ -3126,7 +3131,8 @@ export function startReview(profile, p, key = null) {
 // A review agent's tab in the profile's Reviews space (made on the first one). The agent starts in the
 // profile's folder, never in a checkout: it's someone else's code, and Claude would take in its
 // settings, hooks and instructions there. It reads the checkouts by path.
-function openInReviews(profile, name, task) {
+async function openInReviews(profile, name, task) {
+  if (!(await withPlugin(profile, task))) return;
   const tab = { name, folder: profile.folder, argv: placed(claudeArgv(profile), profile), task };
   const space = spacesOf(profile).find((s) => s.name === REVIEWS);
   if (!space) return run("space.new", { name: REVIEWS, folder: tab.folder, tab: name, argv: tab.argv, task: tab.task });
@@ -3197,7 +3203,7 @@ export async function sendStoryReview(profile, story, prs, agent) {
   run("pane.focus", { pane: agent.pane });
   say(about, `Checking out ${story.key}'s pull requests for ${name}…`);
   try {
-    await sendToClaude(agent.address, await storyReviewText(profile, story, prs));
+    await sendToClaude(agent.address, await storyReviewText(profile, story, prs), { profile });
     say(about, `Sent ${story.key}'s review to ${name}.`);
   } catch (e) { failed(String(e?.message ?? e)); }
 }
@@ -3872,7 +3878,7 @@ export class Stories extends Source {
     if (!agent && launchHeld(it.key)) { if (busyOf(it.key)?.kind !== "clean") say(about, `${it.key}'s agent is still starting: try again in a few seconds.`); cx.notify(); return; }
     if (agent) {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
-      sendToClaude(agent.address, told, { onHeld: () => { held(about, "it", agent.tab_name); cx.notify(); } }).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
+      sendToClaude(agent.address, told, { onHeld: () => { held(about, "it", agent.tab_name); cx.notify(); }, profile: st.profile }).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); }).catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
     } else if (pausedIn(st.profile)[key]) once(it.key, () => resume(st.profile, it, key, told));
     else if (sub?.last ?? (key === it.key ? it.last : null)) once(it.key, () => resumeSession(st.profile, it, key, sub?.last ?? it.last, told));
     // A new agent knows nothing yet: the ticket prompt comes first.
@@ -4180,7 +4186,7 @@ export class Stories extends Source {
     // Start orchestrator: a story with subtasks, once the board has an orchestrator prompt or the
     // plugin is there (its /kelpie:orchestrate has a routine of its own, #246).
     const conductor = it.story ? boardOf(st.setup)?.orchestrator?.trim() || null : null;
-    const conducts = Boolean(it.story && (conductor || pluginOn(st.profile)));
+    const conducts = Boolean(it.story);
     const earlier = sessionsFor(st.data, key).filter((x) => !(work?.last && x.id === ticket.last.id));
     const rows = [
       // The main action, when a pull request's or the agent's took its place.
@@ -4222,7 +4228,7 @@ export class Stories extends Source {
     const about = { profile: st.profile, keys: it.key };
     const tell = (text) => (cx) => {
       if (agent.status === "blocked") { say(about, `${agent.tab_name} is waiting for your answer: answer it first.`); cx.notify(); return; }
-      sendToClaude(agent.address, text, { onHeld: () => { held(about, "it", agent.tab_name); cx.notify(); } }).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
+      sendToClaude(agent.address, text, { onHeld: () => { held(about, "it", agent.tab_name); cx.notify(); }, profile: st.profile }).then(() => { run("space.select", { id: agent.space }); run("pane.focus", { pane: agent.pane }); })
         .catch((e) => { say(about, `Couldn't send it to ${agent.tab_name}: ${String(e?.message ?? e)}`); cx.notify(); });
     };
     const decide = (id, label, text, tip) => this.carefulButton(t, `review-${id}`, label, true, tell(text), { tip, confirmTip: `${tip}: click again to send it to its agent` });

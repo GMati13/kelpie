@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { mock } from "herdr";
 import { until } from "../lib/helpers.mjs";
 import { sendStoryTask } from "../../mods/kelpie/stories.js";
+import { pluginOn } from "../lib/plugin.mjs";
 
 const profile = { id: "w", name: "W", folder: "/work/acme", github: { owner: "acme" } };
 const story = { key: "ABC-1", title: "Checkout", subs: [] };
@@ -15,6 +16,7 @@ const agent = { address: "t7", space: "s1", pane: "p1", tab_name: "ABC-1 fix the
 let sendAnswer;
 beforeEach(() => {
   mock.reset();
+  pluginOn();
   sendAnswer = { code: 0, stdout: "{}", stderr: "" };
   mock.on.hc = (args) => (args[0] === "get" ? { code: 0, stdout: JSON.stringify({ foreground: { name: "claude", argv: ["claude"] } }), stderr: "" } : sendAnswer);
 });
@@ -39,7 +41,7 @@ describe("sending a story's Merge to an open Claude", () => {
     await sendStoryTask("merge", profile, story, prs, agent);
     const [[args]] = sends();
     assert.equal(args.at(-2), "t7");
-    assert.match(args.at(-1), /web#4/);
+    assert.match(args.at(-1), /^\/kelpie:merge ABC-1\b[^]*https:\/\/github.com\/acme\/web\/pull\/4/);
   });
   test("a send hc refused says so, never Sent, and as a toast", async () => {
     sendAnswer = { code: 5, stdout: JSON.stringify({ error: { kind: "unavailable", message: "t7 is still starting" } }), stderr: "" };

@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "herdr";
 import {
-  DEFAULT_APPROVAL_PROMPT, OTHERS, DEFAULT_MERGE_PROMPT, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
+  OTHERS, approvalTask, askText, claudeArgv, deskOf, fillLines, handoverFrom, jiraTask, mergeTask, profileOf, runCommand, shellArgv, spacesOf,
 } from "../../mods/kelpie/config.js";
 import { resumeArgv } from "../../mods/kelpie/ui.js";
 import { existsSync } from "node:fs";
@@ -102,9 +102,9 @@ describe("handoverFrom: where your part of a ticket is done", () => {
 });
 
 describe("prompt templates", () => {
-  test("jiraTask: the default, the profile's own, a blank one counting as none", () => {
+  test("jiraTask: the skill line, the profile's own, a blank one counting as none", () => {
     const fields = { key: "ABC-1", summary: "Login", url: "https://jira.example.com/browse/ABC-1", type: "Story", status: "To Do", parent: "", subtasks: ["ABC-2"] };
-    assert.equal(jiraTask(null, fields), "Work on ABC-1\nhttps://jira.example.com/browse/ABC-1");
+    assert.equal(jiraTask(null, fields), "/kelpie:ticket ABC-1 https://jira.example.com/browse/ABC-1");
     // The board's words (type, status, title) no longer go (KELPIE-302): only keys and the page.
     assert.equal(jiraTask({ prompt: "{type} {key} ({status})\n{subtasks}\n{other}" }, fields), "ABC-1 ()\nABC-2\n{other}");
     assert.equal(jiraTask({ prompt: "   " }, fields), jiraTask(null, fields));
@@ -129,26 +129,23 @@ describe("prompt templates", () => {
   test("fillLines: no more than one blank line in a row, nothing around", () => {
     assert.equal(fillLines("\nA\n{x}\n\n\n{x}\n\nB\n", ["x"], {}), "A\n\nB");
   });
-  test("mergeTask and approvalTask: the defaults, without their ticket lines on the Desk", () => {
+  test("mergeTask and approvalTask: their skill lines, without a ticket line on the Desk", () => {
     const prs = [{ url: "https://github.com/kelpie--demo/web/pull/1", state: "Approved" }];
-    const line = "- web#1 (approved) https://github.com/kelpie--demo/web/pull/1";
     assert.equal(mergeTask(null, { ticket: "ABC-1", link: "https://jira.example.com/browse/ABC-1", prs }),
-      DEFAULT_MERGE_PROMPT.replace("{ticket}", "ABC-1").replace("{link}", "https://jira.example.com/browse/ABC-1").replace("{prs}", line));
-    const desk = approvalTask({}, { ticket: "", prs });
-    assert.ok(!desk.includes("{"), desk);
-    assert.ok(desk.startsWith(`These pull requests aren't approved yet:\n${line}`), desk);
-    assert.equal(desk.split("\n").length, DEFAULT_APPROVAL_PROMPT.split("\n").length - 2, "its two ticket lines less");
+      "/kelpie:merge ABC-1 https://jira.example.com/browse/ABC-1\nhttps://github.com/kelpie--demo/web/pull/1 (approved)");
+    assert.equal(approvalTask({}, { ticket: "", prs }), "/kelpie:request-approval https://github.com/kelpie--demo/web/pull/1 (approved)");
   });
   test("mergeTask and approvalTask: the profile's own templates", () => {
     const prs = [{ url: "https://github.com/acme/api/pull/7" }];
     assert.equal(mergeTask({ mergePrompt: "Merge {prs} for {ticket}" }, { ticket: "ABC-1", prs }), "Merge - api#7 https://github.com/acme/api/pull/7 for ABC-1");
     assert.equal(approvalTask({ approvalPrompt: "Chase {prs}" }, { prs }), "Chase - api#7 https://github.com/acme/api/pull/7");
   });
-  test("askText: the profile's message, else the default; unknown placeholders left", () => {
-    assert.equal(askText(null, "fix", { prs: "a and b" }), "The checks fail on a and b. Find out why and fix them.");
+  test("askText: the person's own message, nothing for a job left to its skill, Kelpie's for a pick; unknown placeholders left", () => {
+    assert.equal(askText(null, "fix", { prs: "a and b" }), "");
     assert.equal(askText({ prompts: { fix: "Fix {prs} {later}" } }, "fix", { prs: "a" }), "Fix a {later}");
-    assert.equal(askText({ prompts: { fix: "  " } }, "fix", { prs: "a" }), "The checks fail on a. Find out why and fix them.");
-    assert.match(askText(null, "idea", { idea: "Faster\nbuilds", where: "web", why: "slow" }), /^An idea[\s\S]*\n\nFaster\nbuilds\n\nWhere: web\nWhy: slow\n/);
+    assert.equal(askText({ prompts: { fix: "  " } }, "fix", { prs: "a" }), "");
+    assert.equal(askText({ prompts: { idea: "Idea: {idea}" } }, "idea", { idea: "Faster\nbuilds" }), "Idea: Faster\nbuilds");
+    assert.equal(askText(null, "picked", { action: "Do it", why: "now" }), "Claude suggested this as what I should do next: Do it\nWhy: now\n\nStart with that.");
   });
 });
 

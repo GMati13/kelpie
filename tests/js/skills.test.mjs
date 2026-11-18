@@ -6,13 +6,10 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { readRepo, repoFile } from "../lib/helpers.mjs";
 import {
-  ASK_PROMPTS, PURPOSES, CONFIGURE_SCOPES, CONFIRM_KEYS, DEFAULT_APPROVAL_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_PROMPT,
-  DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, SUGGEST_FIELDS, SUGGEST_PROMPT,
+  ASK_PROMPTS, PURPOSES, CONFIGURE_SCOPES, CONFIRM_KEYS, MERGE_FIELDS, PROMPT_FIELDS, REVIEW_FIELDS, STORY_REVIEW_FIELDS, SUGGEST_FIELDS,
 } from "../../mods/kelpie/config.js";
 
 const guide = readRepo("plugin/skills/configure-profile/SKILL.md");
-// The defaults the configuring Claude shows the person before proposing a prompt of their own (#55).
-const defaults = readRepo("plugin/skills/configure-profile/references/default-prompts.md");
 // Let me configure it for you's placeholders (configureText() in config.js; {guide} is an old one, kept for saved prompts).
 const CONFIGURE_FIELDS = ["name", "id", "scope", "about", "home"];
 const bullet = (start) => guide.split("\n").find((l) => l.startsWith(start)) ?? "";
@@ -62,16 +59,18 @@ describe("configure-profile", () => {
     for (const { id } of ASK_PROMPTS) assert.match(guide, new RegExp(`^\\| \`${id}\` \\|`, "m"), id);
     for (const f of [...PROMPT_FIELDS, ...REVIEW_FIELDS, ...STORY_REVIEW_FIELDS, ...MERGE_FIELDS, ...SUGGEST_FIELDS, ...CONFIGURE_FIELDS]) assert.ok(guide.includes(`{${f}}`), `{${f}}`);
   });
-  test("goes through the prompts with the person on scope all and prompts, saving only what differs", () => {
+  test("goes through the prompts with the person on scope all and prompts, saving only what they want", () => {
     const prompts = guide.split("### 7. Prompts")[1].split("\n### ")[0];
     assert.match(prompts, /For `all` and the `prompts` scope, go through this with the person/);
-    assert.match(prompts, /\*\*Save only what differs from the default\*\*/);
+    assert.match(prompts, /\*\*Save only the prompts they want\*\*/);
     // Jobs go to the person's own skills or Kelpie's routine (#246): it asks only what's left, and
     // a saved prompt is said to stand in for the job's skill.
     assert.match(prompts, /\*\*Say how jobs are handed over, then ask only what's left\.\*\*.*Don't go through how they start tickets, merge or review job by job.*"No" ends the round/s);
-    assert.match(prompts, /A saved prompt replaces the skill for its job/);
+    assert.match(prompts, /a saved one replaces the skill for its job/);
     assert.match(prompts, /never how to reach the board or GitHub/);
-    assert.ok(prompts.includes("references/default-prompts.md"), "points at the defaults");
+    // Kelpie has no wording of its own for a job besides its skill (#246): no defaults to show.
+    assert.match(prompts, /Kelpie has no wording of its own for a job besides its skill/);
+    assert.ok(!guide.includes("default-prompts.md"), "no list of defaults Kelpie no longer has");
     assert.match(guide.split("## Setting up, from A to Z")[1], /^For `all`[^\n]*ends with the prompts and messages/m);
     assert.match(CONFIGURE_SCOPES.all, /prompts/, "the message for scope all says the prompts are part of it");
   });
@@ -82,12 +81,9 @@ describe("configure-profile", () => {
     // The dispatcher reads the pin as its `use:` line.
     assert.match(readRepo("plugin/skills/ticket/SKILL.md"), /^use: <a skill, or kelpie>/m);
   });
-  test("keeps every default prompt and message, word for word, in its reference", () => {
-    const blocks = [...defaults.matchAll(/^```text\n([\s\S]*?)\n```$/gm)].map((m) => m[1]);
-    const all = [DEFAULT_PROMPT, DEFAULT_REVIEW_PROMPT, DEFAULT_STORY_REVIEW_PROMPT, DEFAULT_MERGE_PROMPT, DEFAULT_APPROVAL_PROMPT, SUGGEST_PROMPT, ...ASK_PROMPTS.map((a) => a.text)];
-    for (const text of all) assert.ok(blocks.includes(text), `missing or changed: ${text.split("\n")[0]}`);
-    assert.equal(blocks.length, all.length, "no default that Kelpie no longer has");
-    for (const { id } of ASK_PROMPTS) assert.ok(defaults.includes(`(\`${id}\`)`), id);
+  test("no job has wording of Kelpie's own: only Run a pick's note and the triage model's message", () => {
+    assert.deepEqual(ASK_PROMPTS.filter((a) => a.text).map((a) => a.id), ["picked", "triage"]);
+    assert.throws(() => readRepo("plugin/skills/configure-profile/references/default-prompts.md"), "the defaults' reference is gone");
   });
 });
 

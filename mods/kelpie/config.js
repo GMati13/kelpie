@@ -7,8 +7,8 @@
 //            Cloud board URL pasted in setup, the Keychain item whose account is the Jira email and
 //            password the API token (macOS), or instead a shell command that prints the token, with the
 //            email beside it (any system; jira.sh keeps the token in pipes), the task
-//            template for agents started on a ticket (none: DEFAULT_PROMPT), an optional one for an agent
-//            that runs a whole story through its subtasks (none: no "Start orchestrator"), and the board
+//            template for agents started on a ticket (none: /kelpie:ticket), an optional one for an agent
+//            that runs a whole story through its subtasks (none: /kelpie:orchestrate), and the board
 //            column from which your part of a ticket is done (none: handoverFrom() picks one), and
 //            `solo` (true/false) when the person works alone on it: every ticket in scope is theirs,
 //            assigned or not (board.js loadBoard(), stories.js build()), and the stories past that
@@ -251,6 +251,7 @@ export const isDesk = (space) => Boolean(space) && deskOf(profileOf(space))?.id 
 // a new one didn't show up in time.
 export async function openDesk(profile = shownProfile(), given = null) {
   if (!profile) return null;
+  if (given?.task && !(await withPlugin(profile, given.task))) return null;
   // Its terminals are told the profile, and that they're in no story (placed(), ui.js).
   const tab = given && { ...given, ...(given.argv ? { argv: placed(given.argv, profile) } : {}) };
   // A story previewed over the Desk would hide its terminals.
@@ -503,19 +504,18 @@ export function priorityOf(p) {
   return { order: has && b.cfg.byPriority === true, show: has && b.cfg.showPriority === true, field };
 }
 
-// The task an agent started on a ticket gets: the board's own template (jira.prompt or
-// project.prompt), else this. It carries only values Kelpie checked (KELPIE-302): {key}, {url} (the
+// The task an agent started on a ticket gets: `/kelpie:ticket <key> <link>` (dispatchText(), below),
+// or the board's own prompt when the person saved one (jira.prompt or project.prompt), filled with
+// only values Kelpie checked (KELPIE-302): {key}, {url} (the
 // ticket's page, built from checked parts: ticketLink() in board.js), {parent} (a subtask's story's
 // key) and {subtasks} (a story's subtasks' keys, a line each); Claude reads the rest itself, through
 // its own access. {summary}, {type} and {status}, which carried the board's words, come out empty in a
 // template that still names them (fillLines() tidies the line). With `template`, that one instead (the
 // orchestrator prompt). `then` is what follows it in the same first message (a button's ask, a pick
 // of Claude's); with `others` (a pick or an idea: Claude's own earlier words, which may carry text it
-// read), it ends with OTHERS. With the plugin (dispatchText(), below) it's `/kelpie:ticket <key>
-// <link>` instead, unless the board has its own prompt; `orchestrate`, `/kelpie:orchestrate` with the
-// subtasks' keys, unless the board has an orchestrator prompt (`template`, its plain wording).
+// read), it ends with OTHERS. `orchestrate`: `/kelpie:orchestrate` with the subtasks' keys, unless
+// the board has an orchestrator prompt (`template`).
 export const PROMPT_FIELDS = ["key", "summary", "url", "type", "status", "parent", "subtasks"];
-export const DEFAULT_PROMPT = "Work on {key}\n{url}";
 
 export function jiraTask(jira, fields, template = undefined, then = "", { others = false, profile = null, orchestrate = false } = {}) {
   const own = (orchestrate ? jira?.orchestrator : jira?.prompt)?.trim() ? (orchestrate ? jira.orchestrator : jira.prompt) : null;
@@ -527,9 +527,9 @@ export function jiraTask(jira, fields, template = undefined, then = "", { others
   const subs = (Array.isArray(fields.subtasks) ? fields.subtasks : []).map(checkedKey).filter(Boolean);
   const key = checkedKey(fields.key), url = checkedLink(fields.url);
   const skill = dispatchText(profile, orchestrate ? "orchestrate" : "ticket",
-    [[key, url].filter(Boolean).join(" "), orchestrate && subs.length ? `subtasks: ${subs.join(" ")}` : ""], { saved: Boolean(own), note: after });
+    [[key, url].filter(Boolean).join(" "), orchestrate && subs.length ? `subtasks: ${subs.join(" ")}` : ""], { saved: Boolean(template ?? own), note: after });
   if (skill) return [skill, end].filter(Boolean).join("\n\n");
-  const filled = fillLines(template ?? own ?? DEFAULT_PROMPT, PROMPT_FIELDS, { key, url, parent: checkedKey(fields.parent), subtasks: subs.join("\n") });
+  const filled = fillLines(template ?? own, PROMPT_FIELDS, { key, url, parent: checkedKey(fields.parent), subtasks: subs.join("\n") });
   return [filled, after, end].filter(Boolean).join("\n\n");
 }
 
@@ -539,17 +539,18 @@ export function jiraTask(jira, fields, template = undefined, then = "", { others
 // What a job sends (dispatchText()), in this order:
 //   1. a pin (the profile's `skills`, #244): the skill line with `use: <pin>`, whatever else is set;
 //   2. a prompt the person saved for that job: their prompt, as it is;
-//   3. the plugin on the profile's Claude account (pluginOn()): the skill line;
-//   4. otherwise, or while that isn't known yet: the job's plain default wording.
+//   3. otherwise the skill line. There's no plain wording of Kelpie's own: a skill line needs the
+//      plugin on the Claude account, so where it goes out (launch(), openDesk(), sendToClaude())
+//      Kelpie checks first (withPlugin()) and, without it, offers to install it and sends nothing.
 // Every dispatcher skill a message may start (plugin/skills/<name>, skills.test keeps them equal).
 export const DISPATCHERS = ["ticket", "orchestrate", "review", "merge", "request-approval", "fix-checks", "address-comments",
   "post-review", "approve", "request-changes", "idea", "explain", "fix", "write-test", "whats-left", "catch-up", "plan", "ask",
   "what-next", "configure"];
 // The skill line for `skill`, its input `lines` (checked values only; empty ones left out) and `note`,
-// or null when the job's plain wording goes instead (`saved`: the person's own prompt for it).
+// or null when the person's own prompt for it goes instead (`saved`).
 export function dispatchText(profile, skill, lines, { saved = false, note = "" } = {}) {
   const pin = pinOf(profile, skill);
-  if (!pin && (saved || !pluginOn(profile))) return null;
+  if (!pin && saved) return null;
   const [first, ...rest] = lines.map((l) => String(l ?? "").trim()).filter(Boolean);
   const head = [`/kelpie:${skill}${first ? ` ${first}` : ""}`, ...rest, pin ? `use: ${pin}` : ""].filter(Boolean).join("\n");
   const after = String(note ?? "").trim();
@@ -571,8 +572,8 @@ export const pinOf = (profile, purpose) => {
 // Whether the profile's Claude account has the plugin, as last checked (hasPlugin(), which notes each
 // answer in shared PLUGIN_ON by account): the message builders run in clicks and renders, where an
 // exec can't wait, so they read what the copy following what's shown checks once a minute
-// (syncPlugin(), from main.js track()). Not checked yet counts as no: plain words, never a slash
-// command Claude can't run. The demo's stand-in takes either.
+// (syncPlugin(), from main.js track()). Not checked yet counts as no, and withPlugin() then asks.
+// The demo's stand-in needs none.
 export const PLUGIN_ON = "kelpie.plugin";
 const pluginAccount = (profile) => claudeKey(claudeConfigOf(profile)) || "~/.claude";
 export const pluginOn = (profile) => Boolean(profile?.demo) || (shared(PLUGIN_ON) ?? {})[pluginAccount(profile)]?.has === true;
@@ -598,62 +599,84 @@ export async function syncPlugin(now = Date.now()) {
 }
 // Asks for the next check at once (after Install it, whose terminal may be done by then).
 export const recheckPlugin = () => { pluginChecked = 0; };
+// Where a skill line goes out (a new agent's task, a message to an open Claude): only with the plugin
+// on the profile's Claude account, as a slash command it doesn't have would read as an unknown command.
+// Not known to be there, it's checked now; still not there, the dialog offering to install it opens
+// and nothing is sent. A prompt the person saved (plain words) goes either way.
+export async function withPlugin(profile, text) {
+  if (!profile || !String(text ?? "").startsWith("/kelpie:") || pluginOn(profile)) return true;
+  if (await hasPlugin(profile).catch(() => false)) return true;
+  askPlugin(profile, "job").catch(() => {});
+  return false;
+}
+export const NO_PLUGIN = "Kelpie's plugin isn't on this profile's Claude account: install it, then try again";
 
-// The task a review agent starts with: the profile's own template (github.reviewPrompt), else this.
-// Only checked values (KELPIE-302): {url} (the pull request's page, rebuilt from its checked owner,
+// What each job sends while the person hasn't saved a prompt of their own for it: its skill line, as
+// the Prompts and Messages pages show it (each box's placeholder; the confirm dialog's "was" for a
+// prompt removed). By the setting's key: a board's `prompt` and `orchestrator`, github's prompts, and
+// prompts.<id>. `picked` and `triage` aren't jobs: Run all's note and the small model's message.
+export const SKILL_SENT = {
+  prompt: "/kelpie:ticket <ticket key> <its link>",
+  orchestrator: "/kelpie:orchestrate <story key> <its link>\nsubtasks: <its subtasks' keys>",
+  reviewPrompt: "/kelpie:review <pull request>\ncheckout: <the folder it's checked out in>\nticket: <ticket key> <its link>",
+  storyReviewPrompt: "/kelpie:review <pull request>\ncheckout: <its folder>\n<pull request>\ncheckout: <its folder>\nticket: <story key> <its link>",
+  mergePrompt: "/kelpie:merge <story key> <its link>\n<pull request> (<its state>)",
+  approvalPrompt: "/kelpie:request-approval <story key> <its link>\n<pull request> (<its state>)",
+  fix: "/kelpie:fix-checks <pull request>",
+  comments: "/kelpie:address-comments <pull request>",
+  merge: "/kelpie:merge <pull request>\n\nThe person pressed Merge and confirmed it.",
+  post: "/kelpie:post-review <pull request>",
+  approve: "/kelpie:approve <pull request>",
+  changes: "/kelpie:request-changes <pull request>",
+  idea: "/kelpie:idea <Claude's idea>\nwhere: <the file or area>\nwhy: <why it pays off>",
+  explain: "/kelpie:explain <what it's about>",
+  check: "/kelpie:review <what it's about>",
+  fixit: "/kelpie:fix <what it's about>",
+  test: "/kelpie:write-test <what it's about>",
+  left: "/kelpie:whats-left <what it's about>",
+  catchup: "/kelpie:catch-up <what it's about>",
+  plan: "/kelpie:plan <what it's about>",
+  suggest: "/kelpie:what-next <profile name>\nboard: <its address>\nowner: <GitHub owner>\n\n<where everything stands>",
+  configure: "/kelpie:configure <profile id>\nscope: <what to set up>",
+};
+
+// The task a review agent starts with: `/kelpie:review`, or the profile's own prompt when one is
+// saved (github.reviewPrompt), filled with only checked values (KELPIE-302): {url} (the pull request's page, rebuilt from its checked owner,
 // repo and number: pullLink()), {repo} {number}, {folder} (where Kelpie checked it out; empty when it
 // couldn't be), {ticket} (the key its title names) and {link} (that ticket's page, ticketLink()).
 // {title}, {author}, {summary} and {description}, which carried others' words, come out empty in a
 // template that still names them. A line whose placeholders all came out empty is left out, so
 // "Ticket {ticket}: {link}" goes when there's no ticket.
 export const REVIEW_FIELDS = ["url", "repo", "number", "title", "author", "folder", "ticket", "link", "summary", "description"];
-export const DEFAULT_REVIEW_PROMPT = [
-  "Review pull request {repo}#{number}",
-  "{url}",
-  "Its code, at its latest commit, is in {folder}: read it there.",
-  "",
-  "Ticket {ticket}: {link}",
-  "",
-  "Read the pull request's description and its ticket yourself. Read the change against its base branch, and check it does what the ticket asks, when there is one. Review it by reading only: don't run, build, install or test anything from it, as it's someone else's code. Then list your findings, most important first, each with file and line, and draft the review comments. Don't post anything to GitHub, approve or request changes until I say so.",
-].join("\n");
-
 export function reviewTask(github, fields, profile = null) {
   const pull = pullParts(fields.url);
   const folder = checkedPath(fields.folder), ticket = checkedKey(fields.ticket);
-  const skill = pull && dispatchText(profile, "review", [pull.url, folder ? `checkout: ${folder}` : "", ticket ? `ticket: ${[ticket, checkedLink(fields.link)].filter(Boolean).join(" ")}` : ""],
+  const skill = dispatchText(profile, "review", [pull?.url, folder ? `checkout: ${folder}` : "", ticket ? `ticket: ${[ticket, checkedLink(fields.link)].filter(Boolean).join(" ")}` : ""],
     { saved: Boolean(github?.reviewPrompt?.trim()) });
   if (skill) return skill;
-  return fillLines(github?.reviewPrompt?.trim() ? github.reviewPrompt : DEFAULT_REVIEW_PROMPT, REVIEW_FIELDS, {
+  return fillLines(github.reviewPrompt, REVIEW_FIELDS, {
     url: pull?.url ?? "", repo: pull?.repo ?? "", number: pull?.number ?? "", folder: checkedPath(fields.folder),
     ticket: checkedKey(fields.ticket), link: checkedLink(fields.link),
   });
 }
 
 // The task one agent reviewing a story's pull requests together starts with (the Review menu on a
-// story's heading under Reviews for you): the profile's own template (github.storyReviewPrompt), else
-// this. Only checked values (KELPIE-302): {ticket} (the story's key), {link} (its page) and {prs}, the
+// story's heading under Reviews for you): `/kelpie:review` with each pull request, or the profile's own
+// prompt when one is saved (github.storyReviewPrompt), filled with only checked values (KELPIE-302): {ticket} (the story's key), {link} (its page) and {prs}, the
 // pull requests waiting for your review, a line each with its rebuilt link and, under it, the folder
 // Kelpie checked it out in (`prs`: [{url, folder}]). {summary} and {description} come out empty in a
 // template that still names them. Lines whose placeholders all came out empty are left out.
 export const STORY_REVIEW_FIELDS = ["ticket", "link", "summary", "description", "prs"];
-export const DEFAULT_STORY_REVIEW_PROMPT = [
-  "Review the pull requests of {ticket} together, as one change.",
-  "{link}",
-  "{prs}",
-  "",
-  "Read each pull request's description and the ticket yourself. Read each change against its base branch, and check that together they do what the ticket asks: how they fit (what one calls or needs from another), and anything left out between them. Review them by reading only: don't run, build, install or test anything from them, as it's someone else's code. Then list your findings for each pull request, most important first, each with file and line, then those about how they fit together, and draft the review comments for each pull request. Don't post anything to GitHub, approve or request changes until I say so.",
-].join("\n");
-
 export function storyReviewTask(github, fields, profile = null) {
   const ticket = checkedKey(fields.ticket);
   const lines = (fields.prs ?? []).flatMap((x) => {
     const pull = pullParts(x?.url), folder = pull ? checkedPath(x.folder) : "";
     return pull ? [pull.url, folder ? `checkout: ${folder}` : ""] : [];
   });
-  const skill = lines.length && dispatchText(profile, "review", [...lines, ticket ? `ticket: ${[ticket, checkedLink(fields.link)].filter(Boolean).join(" ")}` : ""],
+  const skill = dispatchText(profile, "review", [...lines, ticket ? `ticket: ${[ticket, checkedLink(fields.link)].filter(Boolean).join(" ")}` : ""],
     { saved: Boolean(github?.storyReviewPrompt?.trim()) });
   if (skill) return skill;
-  const template = github?.storyReviewPrompt?.trim() ? github.storyReviewPrompt : DEFAULT_STORY_REVIEW_PROMPT;
+  const template = github.storyReviewPrompt;
   const prs = (fields.prs ?? []).flatMap((x) => {
     const pull = pullParts(x?.url);
     if (!pull) return [];
@@ -663,46 +686,26 @@ export function storyReviewTask(github, fields, profile = null) {
   return fillLines(template, STORY_REVIEW_FIELDS, { ticket: checkedKey(fields.ticket), link: checkedLink(fields.link), prs: prs.join("\n") });
 }
 
-// The task a merge agent starts with (a story's Merge, in its header and on its row): the profile's
-// own template (github.mergePrompt), else this. Only checked values (KELPIE-302): {ticket} (the
+// The task a merge agent starts with (a story's Merge, in its header and on its row): `/kelpie:merge`,
+// or the profile's own prompt when one is saved (github.mergePrompt), filled with only checked values (KELPIE-302): {ticket} (the
 // story's key), {link} (its page) and {prs}, its open pull requests of yours, a line each: "repo#n
 // (Kelpie's words for its state) url" (`prs`: [{url, state}]). {summary} comes out empty in a
 // template that still names it. Lines whose placeholders all came out empty are left out, as for
 // reviews: the pull requests of no ticket have no ticket lines.
 export const MERGE_FIELDS = ["ticket", "link", "summary", "prs"];
-export const DEFAULT_MERGE_PROMPT = [
-  "Get {ticket} ready to merge and deploy.",
-  "{link}",
-  "Its open pull requests:",
-  "{prs}",
-  "",
-  "For each one, check whether it's ready to merge: checks pass, reviews approved, no unresolved comments, up to date with its base branch, no conflicts, and nothing in the change that looks risky. Say what blocks each one that isn't ready.",
-  "Then write a merge and deploy plan: the order to merge them in (what depends on what across repositories), what to do before and after each merge, how to deploy and check it worked, and how to roll back. Don't merge, push, comment or deploy anything until I say so.",
-].join("\n");
-
 export function mergeTask(github, fields, profile = null) {
   const skill = pullTaskSkill(profile, "merge", fields, github?.mergePrompt);
   if (skill) return skill;
-  return fillLines(github?.mergePrompt?.trim() ? github.mergePrompt : DEFAULT_MERGE_PROMPT, MERGE_FIELDS, pullTaskFields(fields));
+  return fillLines(github.mergePrompt, MERGE_FIELDS, pullTaskFields(fields));
 }
 
 // The task Request approval starts with (shown on a story's header and row while one
-// of its open pull requests isn't approved): the profile's own template (github.approvalPrompt), else
-// this. The same placeholders as merge, {prs} only the pull requests not approved yet.
-export const DEFAULT_APPROVAL_PROMPT = [
-  "Get approval for {ticket}.",
-  "{link}",
-  "These pull requests aren't approved yet:",
-  "{prs}",
-  "",
-  "For each one, find out what it's waiting on: who's been asked to review it and who has, unresolved comments, failing checks, or no reviewer at all.",
-  "Then suggest who to ask (from the repository's CODEOWNERS and recent reviewers) and draft a short, friendly message asking them to review, with the links. Don't request reviews, comment or post anything until I say so.",
-].join("\n");
-
+// of its open pull requests isn't approved): `/kelpie:request-approval`, or the profile's own prompt
+// (github.approvalPrompt), with the same placeholders as merge, {prs} only those not approved yet.
 export function approvalTask(github, fields, profile = null) {
   const skill = pullTaskSkill(profile, "request-approval", fields, github?.approvalPrompt);
   if (skill) return skill;
-  return fillLines(github?.approvalPrompt?.trim() ? github.approvalPrompt : DEFAULT_APPROVAL_PROMPT, MERGE_FIELDS, pullTaskFields(fields));
+  return fillLines(github.approvalPrompt, MERGE_FIELDS, pullTaskFields(fields));
 }
 // Merge's and Request approval's fields, checked: the story's key and page, and each pull request as
 // "- repo#n (state) url", its state Kelpie's own words for it (prLook() in ui.js), letters and spaces only.
@@ -723,35 +726,36 @@ function pullTaskSkill(profile, skill, fields, saved) {
     const state = /^[A-Za-z][A-Za-z ,]{0,40}$/.test(String(x?.state ?? "")) ? ` (${String(x.state).toLowerCase()})` : "";
     return pull ? [`${pull.url}${state}`] : [];
   });
-  if (!prs.length) return null;
   return dispatchText(profile, skill, [[checkedKey(fields.ticket), checkedLink(fields.link)].filter(Boolean).join(" "), ...prs], { saved: Boolean(saved?.trim()) });
 }
 
-// The messages a pull request's buttons send to its agent, each changeable in the profile dialog
-// (prompts.<id>; the default isn't saved). {prs}: the pull requests' links ("a and b"); a review's
-// is its one pull request. "idea" is what a What next? idea starts a Desk agent with ({idea} {where}
-// {why}; stories.js startIdea()); "picked" what Run all adds to a picked story's ticket prompt
-// ({action} {why}, Claude's words; stories.js, its Run all dialog's button).
+// The messages a pull request's buttons and Ask Claude's suggestions send, each a job with its skill
+// (ASK_SKILLS, SKILL_SENT) unless the person saved their own words for it in the profile dialog
+// (prompts.<id>; {prs}: the pull requests' links, "a and b"). "idea" is what a What next? idea starts
+// a Desk agent with ({idea} {where} {why} in a saved one; stories.js startIdea()). Two aren't jobs and
+// keep Kelpie's wording: "picked", the note Run all puts after a pick's ticket skill ({action} {why},
+// Claude's words; stories.js, its Run all dialog's button), and "triage", the small model's message.
 export const ASK_PROMPTS = [
-  { id: "fix", label: "Fix checks", text: "The checks fail on {prs}. Find out why and fix them." },
-  { id: "comments", label: "Address comments", text: "Address the review comments on {prs}." },
-  { id: "merge", label: "Merge", text: "Merge {prs}." },
-  { id: "post", label: "Post comments (review)", text: "Post your review comments on {prs} now, as one GitHub review that only comments (it neither approves nor requests changes), with inline comments on the lines they're about. Then tell me what you posted." },
-  { id: "approve", label: "Approve (review)", text: "Approve {prs} now, with a short summary as the review's body, and any comments we agreed on inline in the same review. Then tell me what you posted." },
-  { id: "idea", label: "Start an idea (What next?)", text: "An idea for making things better, found while nothing else needed doing:\n\n{idea}\n\nWhere: {where}\nWhy: {why}\n\nLook into it with me first: is it worth doing, and how big is it? Don't change anything until I say so; if we go ahead, a ticket for it may come first." },
+  { id: "fix", label: "Fix checks" },
+  { id: "comments", label: "Address comments" },
+  { id: "merge", label: "Merge" },
+  { id: "post", label: "Post comments (review)" },
+  { id: "approve", label: "Approve (review)" },
+  { id: "idea", label: "Start an idea (What next?)" },
   { id: "picked", label: "Run a pick (What next?)", text: "Claude suggested this as what I should do next: {action}\nWhy: {why}\n\nStart with that." },
-  { id: "changes", label: "Request changes (review)", text: "Submit your review on {prs} now as Request changes, with your findings as inline comments on the lines they're about and a short summary as the body. Then tell me what you posted." },
+  { id: "changes", label: "Request changes (review)" },
   // Ask Claude's suggestions (askclaude.js): each follows what's asked about (a story, a subtask, a
-  // pull request, a file), so they need no placeholders.
-  { id: "explain", label: "Explain this", text: "Explain what this does and why it's there, in plain words. Don't change anything." },
-  { id: "check", label: "Review this change", text: "Review this change: is it correct, and is anything missing or risky? Tell me what you find; don't change anything yet." },
-  { id: "fixit", label: "Fix this", text: "Find what's wrong here and fix it, then tell me what you changed." },
-  { id: "test", label: "Write a test for it", text: "Write a test for this, in the style of the tests around it, and tell me what it covers." },
-  { id: "left", label: "What's left?", text: "What's left before this is done, and what's in the way? Answer briefly; don't change anything." },
+  // pull request, a file).
+  { id: "explain", label: "Explain this" },
+  { id: "check", label: "Review this change" },
+  { id: "fixit", label: "Fix this" },
+  { id: "test", label: "Write a test for it" },
+  { id: "left", label: "What's left?" },
   // Catch me up (KELPIE-223), to the Claude already on the story, and Plan this (KELPIE-230), to a new
-  // Claude in plan mode; their answers come back pinned on the story's thread.
-  { id: "catchup", label: "Catch me up", text: "Catch me up on this story in a few short lines: what's done, what you're doing now, what's next, anything that needs me, and how I can try it. Don't change anything for this." },
-  { id: "plan", label: "Plan this", text: "Plan how to build this before writing any code. Read the ticket, its subtasks and the code, and change nothing. Give the parts in order, each with what it looks like and how it behaves; a checkpoint after each where you stop for me; the open questions only I can answer; and what could go wrong." },  // Finding agents that wait on you (#251, triage.js): a small model reads an agent's closing message
+  // Claude in plan mode.
+  { id: "catchup", label: "Catch me up" },
+  { id: "plan", label: "Plan this" },
+  // Finding agents that wait on you (#251, triage.js): a small model reads an agent's closing message
   // when Kelpie's own rules can't tell; {message} is that message, fenced. It answers in a set shape
   // (triage.js SCHEMA), so the message only says what to decide.
   { id: "triage", label: "Find agents waiting on you", text: "One of my Claude agents just ended its turn. This is the last message it wrote:\n\n{message}\n\nDecide one thing: is it now waiting on me?\n- waiting: it can't go on well without me: it asks me something, needs a choice or a decision, wants me to read or approve a plan, or is stuck.\n- ready: it finished, and there's something for me to check or try.\n- none: neither, a report with nothing for me to do.\nGive the state, its kind (question, choice, plan, review, stuck or done) and a line: what it waits for, or what to check, in under 12 words, as I'd read it in a list (\"asks which of two layouts to use\"). Decide from the message alone." },
@@ -759,8 +763,10 @@ export const ASK_PROMPTS = [
 // The messages Ask Claude offers as suggestions, in ASK_PROMPTS.
 export const ASK_CLAUDE = ["explain", "check", "fixit", "test", "left", "catchup", "plan"];
 
+// The person's own words for one of them, or Kelpie's for picked and triage; "" for a job left to
+// its skill.
 export function askText(profile, id, fields = {}) {
-  const template = profile?.prompts?.[id]?.trim() || ASK_PROMPTS.find((a) => a.id === id).text;
+  const template = profile?.prompts?.[id]?.trim() || ASK_PROMPTS.find((a) => a.id === id)?.text || "";
   return template.replace(/\{(\w+)\}/g, (all, name) => (name in fields ? promptValue(name, fields[name]) : all)).trim();
 }
 // Each message's skill (DISPATCHERS) where it has one: a pull request's buttons, What next?'s idea,
@@ -773,19 +779,19 @@ export const ASK_SKILLS = { fix: "fix-checks", comments: "address-comments", mer
 // skill waits for; its note says so (plugin/skills/merge).
 export const MERGE_GO = "The person pressed Merge and confirmed it.";
 // What a pull request's button sends (`id` fix, comments, merge, post, approve, changes) about the
-// pull requests at `urls`: its skill with their pages rebuilt from checked parts, or the profile's
+// pull requests at `urls`: its skill with their pages rebuilt from checked parts, or the person's own
 // message for it (askText(), `{prs}` the pages).
 export function pullAsk(profile, id, urls) {
   const links = (urls ?? []).map(pullLink).filter(Boolean);
-  const skill = links.length && dispatchText(profile, ASK_SKILLS[id], links, { saved: Boolean(profile?.prompts?.[id]?.trim()), note: id === "merge" ? MERGE_GO : "" });
+  const skill = dispatchText(profile, ASK_SKILLS[id], links, { saved: Boolean(profile?.prompts?.[id]?.trim()), note: id === "merge" ? MERGE_GO : "" });
   return skill || askText(profile, id, { prs: links.join(" and ") });
 }
 // What a What next? idea starts a Desk Claude with: its skill line (the idea, where and why: Claude's
 // own words, which may carry what it read, so OTHERS follows it, stories.js startIdea()), or the
-// profile's message for it.
+// person's own message for it.
 export function ideaText(profile, s) {
   const idea = promptValue("idea", s?.idea).trim();
-  const skill = idea && dispatchText(profile, "idea", [idea, s.where ? `where: ${promptValue("where", s.where)}` : "", s.why ? `why: ${promptValue("why", s.why)}` : ""],
+  const skill = dispatchText(profile, "idea", [idea, s.where ? `where: ${promptValue("where", s.where)}` : "", s.why ? `why: ${promptValue("why", s.why)}` : ""],
     { saved: Boolean(profile?.prompts?.idea?.trim()) });
   return skill || askText(profile, "idea", { idea: s?.idea, where: s?.where || "not said", why: s?.why || "not said" });
 }
@@ -793,42 +799,12 @@ export function ideaText(profile, s) {
 // What next? (the magic button in the story list's Next place): a Claude run in the background
 // (claude -p, no terminal, no saved session; stories.js brew()) that looks at where everything stands
 // and hands picks for Next's queue to the plugin's tool (HAND_IN, below). It runs whether or not
-// something needs the person (the slim button under Next's card, kelpie.what-next). Its message is prompts.suggest (the default
-// isn't saved). Placeholders: {name} (the profile), {snapshot} (what the list knows: sprints, stories,
-// pull requests, reviews, agents; stories.js suggestSnapshot), {board} (the Jira board's address),
-// {owner} (GitHub). It says what to look at, never how to reach or sign in to it: the agent uses
-// whatever access its own setup gives it (its MCP servers, plugins, tools, and the permissions its
-// settings allow), and where that falls short it says so. A line whose placeholders all come out
-// empty is left out.
+// something needs the person (the slim button under Next's card, kelpie.what-next). Its message is
+// `/kelpie:what-next <name>` with `board:`, `owner:` and the snapshot (stories.js suggestSnapshot:
+// sprints, stories, pull requests, reviews, agents, in Kelpie's own words), or the person's own when
+// saved (prompts.suggest, placeholders {name} {snapshot} {board} {owner}; a line whose placeholders
+// all come out empty is left out). It says what to look at, never how to reach or sign in to it.
 export const SUGGEST_FIELDS = ["name", "snapshot", "board", "owner"];
-export const SUGGEST_PROMPT = [
-  "Help me choose what to work on next in \"{name}\". What already needs me (an agent waiting on me, failing checks, requested changes, a review asked of me, something to clean up) is in my Next queue: don't pick that, find what comes after it.",
-  "",
-  "You run unattended: nobody will read your messages or answer questions, only the picks you hand to Kelpie.",
-  "",
-  "## Where things stand",
-  "",
-  "A snapshot from when I asked. Use it as a starting point; where the board or GitHub say otherwise, trust them.",
-  "",
-  "{snapshot}",
-  "",
-  "## Your task",
-  "",
-  "1. Check the live state, reading only, with the access you already have. If something is out of reach, skip it and work with the rest.",
-  "   - The board ({board}): the current sprint, then the backlog.",
-  "   - GitHub ({owner}): open pull requests, mine and my team's.",
-  "2. Rank what I could do on this ladder. Don't offer a lower rung while a higher one has something real:",
-  "   1. Finish my own sprint work: my tickets not started yet; anything of mine that's blocked, and what would unblock it. A ticket already in progress (on the board, or open here with a space, an agent or a pull request) is in my hands already: don't pick it.",
-  "   2. Help the sprint land: unassigned sprint tickets that fit the work I do (judge it from my own tickets and pull requests), teammates' pull requests waiting for a review, tickets that look done but weren't moved.",
-  "   3. Get ahead: backlog tickets likely to come next that fit my work, and unclear ones worth asking about now. If no sprint is running, look at the next planned sprint first, then the backlog.",
-  "   4. Only when 1 to 3 have nothing real, make things better: in the repositories under this folder that I've worked in lately, find 2 or 3 small, concrete improvements worth doing (flaky or slow tests, TODO or FIXME notes worth doing, outdated or vulnerable dependencies, missing docs or types, CI warnings, a small refactor near recent work). Each specific: the file or area, and why it pays off.",
-  "3. Pick 3 to 5, best first. Name each the way my sidebar shows it: a story, or a task without a parent, by its own key; a subtask by its parent story's key (say which subtask in why). One per story, never two for the same one. Improvements from rung 4 have no ticket: they're ideas.",
-  "4. Hand the picks to Kelpie, best first: each a ticket key, a pull request link, or an idea (a short brief for an agent, and where), with `action`, what my Next queue shows (a verb first, under 60 characters), and `why`, one short line on why now. Ideas only from rung 4, and only then.",
-  "",
-  "## Rules",
-  "",
-  "- Read only. Don't assign, move, comment, review, merge, push, edit files or start any work.",
-].join("\n");
 
 // How the picks come back, after the profile's message whatever it says (one saved before the plugin
 // asked for a JSON block): through the plugin's tool, which checks each and says what it dropped.
@@ -837,7 +813,7 @@ export function suggestText(profile, fields) {
   const skill = dispatchText(profile, "what-next", [promptValue("name", fields.name), checkedLink(fields.board) ? `board: ${fields.board}` : "",
     /^[A-Za-z0-9-]{1,39}$/.test(String(fields.owner ?? "")) ? `owner: ${fields.owner}` : ""], { saved: Boolean(profile?.prompts?.suggest?.trim()), note: promptValue("snapshot", fields.snapshot) });
   if (skill) return `${skill}\n\n${HAND_IN}`;
-  return `${fillLines(profile?.prompts?.suggest?.trim() || SUGGEST_PROMPT, SUGGEST_FIELDS, fields)}\n\n${HAND_IN}`;
+  return `${fillLines(profile.prompts.suggest, SUGGEST_FIELDS, fields)}\n\n${HAND_IN}`;
 }
 
 // A value going into a prompt: no control characters (typed into an agent, one could act as a key:
@@ -913,18 +889,17 @@ export const CONFIGURE_SCOPES = {
   cleanUp: "Story commands: clean-up only",
   status: "Story commands: status only",
 };
-// The message it starts with (prompts.configure; the default isn't saved). Placeholders: {name} {id}
-// (the profile), {scope} (its id) and {about} (what it covers), {home} (Herdr's app folder). {guide},
-// which pointed at the guide this replaced, still reads in a saved prompt, as the skill's name.
-export const CONFIGURE_PROMPT = 'Configure my Kelpie profile "{name}" (id {id}). Scope: {scope} ({about}).';
+// The message it starts with: `/kelpie:configure <id>` and `scope:`, or the person's own (prompts.configure).
+// Placeholders in that one: {name} {id} (the profile), {scope} (its id) and {about} (what it covers),
+// {home} (Herdr's app folder). {guide}, which pointed at the guide the skill replaced, still reads, as
+// the skill's name.
 
 export function configureText(profile, scope) {
-  const skill = /^[a-z0-9-]{1,40}$/.test(String(profile.id ?? "")) && dispatchText(profile, "configure", [profile.id, `scope: ${Object.hasOwn(CONFIGURE_SCOPES, scope) ? scope : "all"}`],
+  const skill = dispatchText(profile, "configure", [/^[a-z0-9-]{1,40}$/.test(String(profile.id ?? "")) ? profile.id : "", `scope: ${Object.hasOwn(CONFIGURE_SCOPES, scope) ? scope : "all"}`],
     { saved: Boolean(profile.prompts?.configure?.trim()) });
   if (skill) return skill;
   const fields = { name: profile.name, id: profile.id, scope, about: CONFIGURE_SCOPES[scope] ?? scope, guide: "Kelpie's configure-profile skill", home: appHome() };
-  const template = profile.prompts?.configure?.trim() || CONFIGURE_PROMPT;
-  return template.replace(/\{(name|id|scope|about|guide|home)\}/g, (_all, name) => fields[name]);
+  return profile.prompts.configure.replace(/\{(name|id|scope|about|guide|home)\}/g, (_all, name) => fields[name]);
 }
 
 // The plugin, as Claude Code names it (plugin@marketplace: the repo is its own marketplace).
@@ -973,6 +948,7 @@ export async function configureOnDesk(profile, scope = "all", agent = null) {
 // Let me configure it for you, `scope` (CONFIGURE_SCOPES) is what the Claude started once it's
 // installed sets up.
 const PLUGIN_USES = {
+  job: ["Kelpie hands this to Claude as the job's skill, from Kelpie's Claude Code plugin: your own skill for it when one fits, else Kelpie's routine.", "the button"],
   configure: ["Claude sets up a profile through Kelpie's Claude Code plugin: it gives Claude the setup guide and a safe way to save your profile.", "Let me configure it for you"],
   "what-next": ["What next? gets Claude's suggestions through Kelpie's Claude Code plugin: Claude hands them to Kelpie with it.", "Conjure what's next"],
 };
@@ -1254,10 +1230,10 @@ export function whyItWaits(asks) {
 const asText = (v) => (v === null || v === undefined || v === "" ? null : String(v));
 
 // The default a prompt left unset stands for, so a change shows what it really replaces.
+// A job's is its skill line (SKILL_SENT), picked's and triage's Kelpie's wording.
 function promptDefault(section, k) {
-  if (section === "prompts") return k === "suggest" ? SUGGEST_PROMPT : k === "configure" ? CONFIGURE_PROMPT : ASK_PROMPTS.find((a) => a.id === k)?.text ?? null;
-  if ((section === "jira" || section === "project") && k === "prompt") return DEFAULT_PROMPT;
-  if (section === "github") return { reviewPrompt: DEFAULT_REVIEW_PROMPT, storyReviewPrompt: DEFAULT_STORY_REVIEW_PROMPT, mergePrompt: DEFAULT_MERGE_PROMPT, approvalPrompt: DEFAULT_APPROVAL_PROMPT }[k] ?? null;
+  if (section === "prompts") return SKILL_SENT[k] ?? ASK_PROMPTS.find((a) => a.id === k)?.text ?? null;
+  if (section === "jira" || section === "project" || section === "github") return SKILL_SENT[k] ?? null;
   return null;
 }
 
@@ -1325,7 +1301,10 @@ export async function applyPendingProfile(yes) {
 export const HOLD_TRIES = 6;
 const HELD_AFTER = 5;
 const SENDING = "kelpie.sending";
-export async function sendToClaude(address, text, { onHeld = null } = {}) {
+// With `profile`, a skill line goes only with the plugin on its account (withPlugin()).
+export async function sendToClaude(address, text, { onHeld = null, profile = null } = {}) {
+  // Checked only when not already known, so a send with the plugin waits on nothing first.
+  if (profile && !pluginOn(profile) && !(await withPlugin(profile, text))) throw new Error(NO_PLUGIN);
   const busy = (shared(SENDING) ?? {})[address];
   if (busy && Date.now() < busy.until) throw new Error("the last one is still waiting: press Ctrl+U in it");
   setShared(SENDING, { ...(shared(SENDING) ?? {}), [address]: { at: Date.now(), until: Date.now() + (HOLD_TRIES * 30 + 15) * 1000 } });
