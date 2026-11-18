@@ -63,7 +63,8 @@ describe("configureOnDesk", () => {
     installed(`${home}/.claude-work`);
     await configureOnDesk(work(), "status");
     const [space] = runs("space.new");
-    assert.equal(space.task, 'Configure my Kelpie profile "Work" (id work). Scope: status (Story commands: status only).');
+    // The plugin is there, so its configure skill (#246): the profile's id and the scope.
+    assert.equal(space.task, "/kelpie:configure work\nscope: status");
     assert.equal(space.tab, "Configure status");
     // Told it's the profile's and in no story (the Desk), then on the profile's account.
     assert.deepEqual(space.argv, ["env", "KELPIE_PROFILE=work", "KELPIE_STORY=", "env", `CLAUDE_CONFIG_DIR=${home}/.claude-work`, "KELPIE_GH_ACCOUNT=", "claude"]);

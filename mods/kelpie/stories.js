@@ -18,7 +18,7 @@ import { CONTROL, ROW_CONTROL, INSET, MOD, waitColor, ScrollPool, SMALL, TEXT, T
 import { countShots } from "./shots.js";
 import { WAITING, agentStatus, attention, blockedAgents, waitingAgents, waitsOnYou } from "./attention.js";
 import { REFRESH, Source, frame, needsSetup, notice } from "./source.js";
-import { OTHERS, PREVIEWS, pinOf, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
+import { OTHERS, PREVIEWS, ideaText, pluginOn, pullAsk, STORIES, askPlugin, boardOf, priorityOf, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, hasPlugin, deskOf, isDesk, openDesk, handoverFrom, sunkWords, worksAlone, showsUnassigned, hasBoard, askText, suggestText, jiraTask, keepProfileOnClose, approvalTask, mergeTask, profileOf, profiles, promptValue, reviewTask, runCommand, sendToClaude, heldWords, setupOf, shownProfile, shownSpace, spaceProfiles, spacesOf, shellArgv, newTab, storyReviewTask, pullLink, checkedKey } from "./config.js";
 import { lozenge } from "./sprint.js";
 import { CLOSE_BATCH, boardSite, closeTickets, closesTickets, comments as boardComments, description as boardDescription, doneOption, loadBoard, lookUp, movable, moveStatus, statusOptions, ticketLink, ticketUrl } from "./board.js";
 import { approvePull, gh, pullBody, readPulls, searchPulls } from "./pulls.js";
@@ -416,17 +416,17 @@ async function resumeAll(profile, it, keys) {
 // and page (ticketLink()), a subtask's story's key, a story's subtasks' keys; Claude reads their
 // titles and descriptions itself. With `template`, that prompt instead of the ticket prompt (the
 // orchestrator's); `then`, what follows it in the same message; `others`: `then` passes on Claude's
-// own earlier words (a pick), so the note about others' text ends it (config.js jiraTask()). A ticket
-// pinned to a skill or to Kelpie's routine (the profile's skills.ticket, #244) goes to the plugin's
-// dispatcher with the pin instead of the ticket prompt.
-function ticketTask(st, it, key, template, then, others = false) {
+// own earlier words (a pick), so the note about others' text ends it (config.js jiraTask()). With the
+// plugin, or a pin (#244, #246), it's the ticket's skill line instead (config.js dispatchText());
+// `orchestrate`, the orchestrator's (Start orchestrator).
+function ticketTask(st, it, key, template, then, others = false, orchestrate = false) {
   const s = key === it.key && it.story ? it : it.subs.find((x) => x.key === key) ?? it;
   const board = boardOf(st.setup);
   return jiraTask(board, {
     key, url: ticketLink(board, st.data, key) ?? "",
     parent: it.story && key !== it.key ? it.key : "",
     subtasks: s === it && it.story ? it.subs.map((x) => x.key) : [],
-  }, template || undefined, then, { others, pin: pinOf(st.profile, "ticket") });
+  }, template || undefined, then, { others, profile: st.profile, orchestrate });
 }
 
 // A finished story: done on the board, or every pull request of it merged. It may leave things to
@@ -439,8 +439,11 @@ const storyKeys = (it) => [it.key, ...it.subs.map((s) => s.key)].filter((k, i, a
 // What to ask an agent about some pull requests: one button each, by what they need.
 // What a pull request's buttons ask its agent; the messages are the profile's (config.js askText).
 const ASK = { fix: "Fix checks", comments: "Address comments", merge: "Merge" };
-// Each pull request by its page, rebuilt from its checked owner, repo and number (KELPIE-302).
-const askOf = (profile, kind, ps) => askText(profile, kind, { prs: ps.map((p) => pullLink(p.url)).filter(Boolean).join(" and ") });
+// Each pull request by its page, rebuilt from its checked owner, repo and number (KELPIE-302): the
+// button's skill line with the plugin (config.js pullAsk()), else the profile's message. A button's
+// tip says what it asks in words (askWords), never the skill line.
+const askOf = (profile, kind, ps) => pullAsk(profile, kind, ps.map((p) => p.url));
+const askWords = (profile, kind, ps) => askText(profile, kind, { prs: ps.map((p) => pullLink(p.url)).filter(Boolean).join(" and ") });
 // Changes requested comes before failing checks, as in need() and the marks (prState()): a pull
 // request in both once had no header action, as the header looks for need()'s kind.
 const askFor = (p) => (p.merged ? null : p.reviewDecision === "CHANGES_REQUESTED" ? "comments" : failing(p) ? "fix" : ready(p) ? "merge" : null);
@@ -2802,7 +2805,7 @@ const taskPrs = (it) => {
 const storyTaskText = (kind, profile, it, prs) => STORY_TASKS[kind].task(profile.github, {
   ticket: it.key, link: it.key ? ticketLink(boardOf(profile), (shared(STORIES) ?? {})[profile.id]?.data, it.key) ?? "" : "",
   prs: prs.map((x) => ({ url: x.url, state: x.state })),
-});
+}, profile);
 
 // Its agent for a story: in its space (made if needed), a tab "<KEY> <tab>" (so it counts as the
 // story's agent). Its tab already open is shown instead.
@@ -3115,7 +3118,7 @@ export function startReview(profile, p, key = null) {
     say(about, `Checking out ${prName(p)} for review…`);
     const checkout = await checkoutReview(profile, p);
     say(about, checkout.note);
-    const task = reviewTask(profile.github, { url: p.url, folder: checkout.folder ?? "", ...reviewTicket(profile, p) });
+    const task = reviewTask(profile.github, { url: p.url, folder: checkout.folder ?? "", ...reviewTicket(profile, p) }, profile);
     openInReviews(profile, name, task);
   });
 }
@@ -3167,7 +3170,7 @@ async function storyReviewText(profile, story, prs) {
   const notes = outs.map((o) => o.note).filter(Boolean);
   if (notes.length) say(about, notes.join(" "));
   const data = (shared(STORIES) ?? {})[profile.id]?.data;
-  return storyReviewTask(profile.github, { ...ticketFields(profile, story.key, data), prs: prs.map((p, i) => ({ url: p.url, folder: outs[i].folder ?? "" })) });
+  return storyReviewTask(profile.github, { ...ticketFields(profile, story.key, data), prs: prs.map((p, i) => ({ url: p.url, folder: outs[i].folder ?? "" })) }, profile);
 }
 export function startStoryReview(profile, story, prs) {
   if (prs.length === 1) return startReview(profile, prs[0], story.key);
@@ -3884,7 +3887,7 @@ export class Stories extends Source {
     const text = askOf(st.profile, kind, prs);
     const key = prs[0].key ?? it.key;
     return this.carefulButton(t, id, ASK[kind], kind === "merge", (cx) => this.ask(st, it, key, text, cx),
-      { tip: text, confirmTip: `Click again to ask ${key}'s agent to ${kind} ${prs.map(prName).join(", ")}`, filled });
+      { tip: askWords(st.profile, kind, prs), confirmTip: `Click again to ask ${key}'s agent to ${kind} ${prs.map(prName).join(", ")}`, filled });
   }
 
   // A pull request's line: its state's mark and its title (the ticket key it starts with left out,
@@ -4174,7 +4177,10 @@ export class Stories extends Source {
     const pauseIt = it.space ? this.carefulButton(t, "story-pause", "Pause", Boolean(why), (cx) => this.pauseStory(st, it, cx),
       { tip: "Pause every agent of this story and close its space; their sessions are kept ⌥⌘P", confirmTip: `${capitalize(why)}: click again to pause the story anyway` }) : null;
     const start = () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key) }));
-    const conductor = it.story ? boardOf(st.setup)?.orchestrator?.trim() : null;
+    // Start orchestrator: a story with subtasks, once the board has an orchestrator prompt or the
+    // plugin is there (its /kelpie:orchestrate has a routine of its own, #246).
+    const conductor = it.story ? boardOf(st.setup)?.orchestrator?.trim() || null : null;
+    const conducts = Boolean(it.story && (conductor || pluginOn(st.profile)));
     const earlier = sessionsFor(st.data, key).filter((x) => !(work?.last && x.id === ticket.last.id));
     const rows = [
       // The main action, when a pull request's or the agent's took its place.
@@ -4182,8 +4188,8 @@ export class Stories extends Source {
       // With a space, more agents come from the tab bar's +; before one, this starts the story afresh
       // instead of resuming its last session.
       ...((work?.fresh && !over) || it.space ? [] : [{ label: "Start fresh", tip: `Start a fresh Claude agent on ${key}`, action: start }]),
-      ...(conductor ? [{ label: "Start orchestrator", tip: `Start one Claude agent that runs ${key} through its subtasks, with the profile's orchestrator prompt`,
-        action: () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, conductor) })) }] : []),
+      ...(conducts ? [{ label: "Start orchestrator", tip: `Start one Claude agent that runs ${key} through its subtasks${conductor ? ", with the profile's orchestrator prompt" : ""}`,
+        action: () => once(it.key, () => launch(st.profile, it, { name: key, argv: claudeArgv(st.profile), task: ticketTask(st, it, key, conductor, "", false, true) })) }] : []),
       ...(earlier.length ? [{ header: `Resume a session on ${key}` }, ...this.sessionRows(st, it, key, earlier)] : []),
     ];
     // A finished story (done, or every PR merged) with something left to clean gets the broom.
@@ -4269,7 +4275,7 @@ export class Stories extends Source {
     const agent = pullAgent(p);
     const kind = askFor(p);
     const ask = kind ? this.carefulButton(t, `pull-ask-${kind}`, ASK[kind], kind === "merge", () => askPull(st.profile, p, kind, it.key),
-      { tip: `${askOf(st.profile, kind, [p])}${agent ? "" : " (a new agent on the Desk)"}`, confirmTip: `Click again to ask ${agent ? agent.tab_name : "a new agent on the Desk"} to merge ${prName(p)}`, filled: true }) : null;
+      { tip: `${askWords(st.profile, kind, [p])}${agent ? "" : " (a new agent on the Desk)"}`, confirmTip: `Click again to ask ${agent ? agent.tab_name : "a new agent on the Desk"} to merge ${prName(p)}`, filled: true }) : null;
     const show = agent ? (ask ? textButton : primaryButton)(t, "pull-show", "Show agent", () => showPullAgent(p), { tip: `Show ${agent.tab_name} on the Desk ⌘⇧R` }) : null;
     const waiting = !p.isDraft && p.reviewDecision !== "APPROVED" && !kind && !worksAlone(st.setup);
     const approval = waiting ? textButton(t, "pull-approval", "Request approval", () => startDeskTask("approval", st.profile, [prLine(t, p)]),
@@ -7425,7 +7431,7 @@ export async function brew(profile, task) {
 export function startIdea(profile, s) {
   const name = `Idea: ${s.action}`.slice(0, 60);
   // The idea is Claude's words, maybe drawn from others' (tickets, pull requests): information.
-  const desk = openDesk(profile, { name, argv: claudeArgv(profile), task: `${askText(profile, "idea", { idea: s.idea, where: s.where || "not said", why: s.why || "not said" })}\n\n${OTHERS}` });
+  const desk = openDesk(profile, { name, argv: claudeArgv(profile), task: `${ideaText(profile, s)}\n\n${OTHERS}` });
   dismissSuggestion(profile, s.key);
   return desk;
 }

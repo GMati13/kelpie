@@ -20,7 +20,7 @@ import { openStoryPicker } from "./dialogs.js";
 import { noteTurns } from "./triage.js";
 import { agentStatus, attention } from "./attention.js";
 import { REFRESH } from "./source.js";
-import { applyProfileRequest, getProfileRequest, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
+import { applyProfileRequest, getProfileRequest, syncPlugin, requestProfileChange, chooseProfile, claudeArgv, claudeConfigOf, claudeKey, liveFolder, newSpace, openProfile, openSetup, profileElsewhere, profiles, shownProfile, saveProfile, shellArgv, switchProfile, isDesk, newTab } from "./config.js";
 import { deskAgents, deskNow, deskShown, goDesk, pauseDesk, pauseDeskByKey, showDeskView } from "./desk.js";
 import { demoAccounts, demoPlaying, isDemo, removeDemo, setupDemo } from "./demo.js";
 import { decor, footerExtras, sidebarFoot, skinFont, skinMeter, skinText, skinTheme, skinTick, syncSkin } from "./skins/index.js";
@@ -263,6 +263,9 @@ function track(role) {
   syncTracking();
   noteTurns();
   syncBadge();
+  // Whether each profile's Claude account has the plugin, which decides how its messages go
+  // (config.js pluginOn()): once a minute, a check an account, never awaited here.
+  syncPlugin().catch(() => {});
   syncPanel();
   syncWebOpen();
   syncSkin();
